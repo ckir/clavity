@@ -37,6 +37,21 @@ Describe 'agy-discipline-reaching.sh' {
             return $h
         }
 
+        # ROADMAP section 31b. The hook now records ONLY where `.clavity/` ALREADY exists, because a
+        # globally registered SessionStart hook has no business creating a directory in a repository that
+        # never asked for this plugin. So every row that expects a CAPTURE needs a repo that has used the
+        # plugin before, and this wrapper is that repo.
+        #
+        # It deliberately does NOT change the shared New-TempRepo in BashHookHelpers.ps1: twelve suites
+        # use that helper, and giving them all a `.clavity/` they did not ask for would mask exactly the
+        # footprint this section exists to remove. The zero-footprint row below uses the bare New-TempRepo
+        # for the same reason - its whole subject is a repo WITHOUT the directory.
+        function New-ClavityRepo {
+            $d = New-TempRepo
+            New-Item -ItemType Directory -Force -Path (Join-Path $d '.clavity') | Out-Null
+            return $d
+        }
+
         # A realistic transcript. This hook must NOT read it - the fixture exists so a capture row has a
         # real path to name, and so a regression that starts scanning would have something to find. The
         # counting expectations it encodes are asserted in discipline-reaching-report.Tests.ps1.
@@ -87,7 +102,7 @@ Describe 'agy-discipline-reaching.sh' {
     }
 
     It 'writes exactly ONE well-formed record per invocation' {
-        $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
+        $r = New-ClavityRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h }
             $x.ExitCode | Should -Be 0
@@ -109,7 +124,7 @@ Describe 'agy-discipline-reaching.sh' {
         # shipped v17, twice, writing nothing. A row carrying counts is proof the scan came back - which
         # must never happen in THIS hook again, whatever event it is registered on. It fires at every
         # session start now, so the cost is paid on every session rather than once at the end.
-        $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
+        $r = New-ClavityRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h }
             $x.ExitCode | Should -Be 0
@@ -127,7 +142,7 @@ Describe 'agy-discipline-reaching.sh' {
     It 'does not read the transcript at all - an UNREADABLE path still yields a clean deferred row' {
         # If the hook touched the file, an unreadable path would change the outcome. It must not: the
         # verdict on readability belongs to the report, later, where there is time to reach it.
-        $r = New-TempRepo; $h = New-CleanHome
+        $r = New-ClavityRepo; $h = New-CleanHome
         try {
             $bogus = Join-Path ([IO.Path]::GetTempPath()) 'no-such-transcript-xyz.jsonl'
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $bogus) -Env @{ HOME = $h }
@@ -149,7 +164,7 @@ Describe 'agy-discipline-reaching.sh' {
         #      path with an embedded CR, and the hook exited SILENTLY writing nothing.
         # A suite green over forward-slash fixtures is a test lying in the worst direction. Real payloads
         # carry backslashes, so this one does.
-        $r = New-TempRepo; $h = New-CleanHome
+        $r = New-ClavityRepo; $h = New-CleanHome
         try {
             $winPath = 'C:\Users\user\.claude\projects\C--x\81fb317f.jsonl'
             $payload = @{ cwd = $r.Replace([char]92, [char]47); session_id = 'win'; reason = 'prompt_input_exit'
@@ -164,7 +179,7 @@ Describe 'agy-discipline-reaching.sh' {
     }
 
     It 'carries the BOOT SOURCE so STEP 0 item 2 is self-measuring' {
-        $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
+        $r = New-ClavityRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
             Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx -Source 'clear') -Env @{ HOME = $h } | Out-Null
             (Get-Record $r).Last.source | Should -BeExactly 'clear'
@@ -172,7 +187,7 @@ Describe 'agy-discipline-reaching.sh' {
     }
 
     It 'writes schema v:3 with source and model, and no reason field' {
-        $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
+        $r = New-ClavityRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
             Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx -Source 'compact' -Model 'claude-opus-5[1m]') -Env @{ HOME = $h } | Out-Null
             $rec = Get-Record $r
@@ -187,7 +202,7 @@ Describe 'agy-discipline-reaching.sh' {
     It 'records a naming scan_status when the payload names NO transcript' -ForEach @(
         @{ Case = 'absent from the payload'; Kind = 'none' }
     ) {
-        $r = New-TempRepo; $h = New-CleanHome
+        $r = New-ClavityRepo; $h = New-CleanHome
         try {
             $tx = if ($Kind -eq 'none') { $null } else { (Join-Path ([IO.Path]::GetTempPath()) 'definitely-not-here.jsonl') }
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h }
@@ -199,17 +214,37 @@ Describe 'agy-discipline-reaching.sh' {
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'creates .clavity/ when it does not exist' {
+    It 'creates NOTHING in a repository that has never used the plugin' {
+        # ROADMAP section 31b, and this row is the inversion of the one it replaces - which asserted that
+        # the hook CREATES `.clavity/` when absent. That was the defect: this hook is registered globally,
+        # so it fired at every session start in every directory on the machine and left a directory in
+        # repositories with nothing to do with clavity. MEASURED per hook in fresh throwaway repos: the two
+        # siblings on this matcher created nothing and this one created a directory.
+        #
+        # The opt-in is PRIOR USE. `.clavity/` already exists wherever a discipline has ever run, so its
+        # presence is the workspace saying it wants this; no new setting, nothing to remember.
         $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
             Test-Path -LiteralPath (Join-Path $r '.clavity') | Should -BeFalse -Because 'the fixture must start without it or this test proves nothing'
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h }
+            $x.ExitCode | Should -Be 0 -Because 'declining to record is not an error - the hook is fail-open and says nothing'
+            Test-Path -LiteralPath (Join-Path $r '.clavity') | Should -BeFalse -Because 'a globally registered SessionStart hook must leave no trace in a repository that never asked for it'
+            $x.StdOut | Should -BeNullOrEmpty -Because 'and it must not announce its own restraint either'
+        } finally { Remove-Item $r,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'DOES record where .clavity/ already exists - the success-path counterpart' {
+        # Without this row the one above passes against a hook that never records ANYWHERE, which is the
+        # same silent zero this suite's header exists to prevent. A refusing half needs an accepting half.
+        $r = New-ClavityRepo; $h = New-CleanHome; $tx = New-Transcript
+        try {
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h }
             Test-Path -LiteralPath (Join-Path $r '.clavity/discipline-reaching.jsonl') | Should -BeTrue
         } finally { Remove-Item $r,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
     It 'APPENDS across sessions rather than overwriting' {
-        $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
+        $r = New-ClavityRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
             Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx -Sid 'sess-1') -Env @{ HOME = $h } | Out-Null
             Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx -Sid 'sess-2') -Env @{ HOME = $h } | Out-Null
@@ -223,7 +258,7 @@ Describe 'agy-discipline-reaching.sh' {
     It 'is SILENT under .no-agy (<Scope>) and writes nothing' -ForEach @(
         @{ Scope = 'workspace' }, @{ Scope = 'global' }, @{ Scope = 'root-from-subdir' }, @{ Scope = 'subdir-only' }
     ) {
-        $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
+        $r = New-ClavityRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
             $cwdArg = $r
             switch ($Scope) {
@@ -271,7 +306,7 @@ Describe 'agy-discipline-reaching.sh' {
         # RENAMED, not deleted. The hook no longer invokes jq at all, so the old name described a
         # dependency that no longer exists - but the assertion still means something: it proves the hook
         # fails OPEN when almost nothing is on PATH.
-        $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
+        $r = New-ClavityRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h; PATH = $script:NoJqPath }
             $x.ExitCode | Should -Be 0 -Because 'a boot hook must fail open; a non-zero exit at SessionStart helps nobody and risks the session'

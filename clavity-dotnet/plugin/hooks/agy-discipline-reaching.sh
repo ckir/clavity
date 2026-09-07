@@ -94,6 +94,27 @@ if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
   exit 0
 fi
 
+# ROADMAP section 31b: ZERO FOOTPRINT IN A REPOSITORY THAT NEVER ASKED FOR THIS PLUGIN.
+# This hook is registered GLOBALLY, so it fires at every session start in every directory on the machine.
+# Until now it created `.clavity/` unconditionally, which meant installing the plugin in one profile
+# silently added an untracked directory to every repository opened there - MEASURED per hook in fresh
+# throwaway repos: of the three clavity hooks on this matcher, the two siblings create nothing and this
+# one created a directory.
+#
+# THE OPT-IN IS PRIOR USE, NOT A NEW SETTING. A repository that actually uses the disciplines already has
+# `.clavity/` - every discipline writes a seam, a marker or a scratch dir through agy-mark.sh, which
+# creates and shields it. So "the directory already exists" IS the signal that this workspace asked for
+# the plugin, and it needs no configuration file, no environment variable and nothing to remember.
+#
+# `.no-agy` REMAINS THE OPT-OUT and is checked above, deliberately FIRST: a repository that has used the
+# plugin before and has since asked for silence must stay silent, so the two gates are not interchangeable
+# and their order is not cosmetic.
+#
+# THE COST, STATED: a brand-new clavity repository records nothing until some other clavity operation
+# creates the directory. That is one lost session row in exchange for touching no unrelated repository
+# ever, and reaching is a longitudinal signal that survives one missing row.
+[ -d "$root/.clavity" ] || exit 0
+
 if [ -n "$tx" ]; then status='deferred'; else status='transcript_not_found'; fi
 
 # printf's %()T is a bash builtin - no `date` process. TZ=UTC above makes it UTC.

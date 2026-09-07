@@ -37,27 +37,28 @@ Describe 'agy-liveness-check.sh' {
         }
     }
 
-    It 'is SILENT (exit 0, no stderr) when superpowers is enabled' {
+    It 'is SILENT (exit 0, no output at all) when superpowers is enabled' {
         $cfg = New-ConfigFixture $true; $h = New-CleanHome
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.ExitCode | Should -Be 0
-            $r.StdErr   | Should -BeNullOrEmpty
+            $r.StdOut   | Should -BeNullOrEmpty
+            $r.StdErr   | Should -BeNullOrEmpty -Because 'ROADMAP section 31: this hook must never write to stderr again - stderr plus a non-zero exit is what rendered a routine notice as a red hook error'
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
-    It 'ADVISES (stderr + exit 2) when superpowers is disabled' {
+    It 'ADVISES (systemMessage + exit 0) when superpowers is disabled' {
         $cfg = New-ConfigFixture $false; $h = New-CleanHome
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'superpowers not detected'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'superpowers not detected'
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
     It 'ADVISES when no settings files exist at all' {
         $cfg = New-ConfigFixture 'nofile'; $h = New-CleanHome
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
-            $r.ExitCode | Should -Be 2
+            $r.ExitCode | Should -Be 0
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
     It 'honors the settings hierarchy: project-local disable overrides user enable -> ADVISES' {
@@ -69,7 +70,7 @@ Describe 'agy-liveness-check.sh' {
         $h = New-CleanHome
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
-            $r.ExitCode | Should -Be 2
+            $r.ExitCode | Should -Be 0
         } finally { Remove-Item $cfg,$proj,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
     It 'honors the hierarchy: project-local enable overrides user disable -> SILENT' {
@@ -91,19 +92,19 @@ Describe 'agy-liveness-check.sh' {
         $h = New-CleanHome
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
-            $r.ExitCode | Should -Be 2
+            $r.ExitCode | Should -Be 0
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
-    It 'announces .no-agy in cwd (exit 2) and does NOT also emit the superpowers/jq notice' {
+    It 'announces .no-agy in cwd (systemMessage, exit 0) and does NOT also emit the superpowers/jq notice' {
         $repo = New-TempRepo; $cfg = New-ConfigFixture $false; $h = New-CleanHome  # superpowers disabled too
         try {
             New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
             $cwd = ($repo -replace '\\','/')
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $cwd) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'suppressed by .no-agy'
-            $r.StdErr   | Should -Not -Match 'superpowers not detected'   # no triple-spam
-            ($r.StdErr -split "`n").Count | Should -Be 1
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'suppressed by .no-agy'
+            $r.StdOut   | Should -Not -Match 'superpowers not detected'   # no triple-spam
+            ($r.StdOut -split "`n").Count | Should -Be 1
         } finally { Remove-Item $repo,$cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
     It 'announces a global $HOME/.claude/.no-agy' {
@@ -112,8 +113,8 @@ Describe 'agy-liveness-check.sh' {
         New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'suppressed by .no-agy'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'suppressed by .no-agy'
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
     # --- .no-agy at the REPO ROOT, session cwd in a SUBDIRECTORY ---------------------------------
@@ -128,9 +129,9 @@ Describe 'agy-liveness-check.sh' {
             New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
             $payload = '{"cwd":"' + ($sub -replace '\\', '\\') + '","source":"startup","hook_event_name":"SessionStart"}'
             $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
-            $r.ExitCode | Should -Be 2 -Because 'SessionStart announces and stops - it must NOT exit 0 silently'
-            $r.StdErr   | Should -Match 'suppressed by \.no-agy' -Because 'a root opt-out must suppress it from a subdirectory'
-            $r.StdErr   | Should -Not -Match 'src[\\/]\.no-agy' -Because 'it must name the file that actually exists, not the cwd candidate'
+            $r.ExitCode | Should -Be 0 -Because 'SessionStart announces and stops - it must NOT exit 0 silently'
+            $r.StdOut   | Should -Match 'suppressed by \.no-agy' -Because 'a root opt-out must suppress it from a subdirectory'
+            $r.StdOut   | Should -Not -Match 'src[\\/]\.no-agy' -Because 'it must name the file that actually exists, not the cwd candidate'
         } finally { Remove-Item $repo,$cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
     It 'still ADVISES from that same subdirectory when .no-agy is absent (positive control)' {
@@ -140,8 +141,8 @@ Describe 'agy-liveness-check.sh' {
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             $payload = '{"cwd":"' + ($sub -replace '\\', '\\') + '","source":"startup","hook_event_name":"SessionStart"}'
             $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
-            $r.StdErr | Should -Not -Match 'suppressed by \.no-agy' -Because 'without the opt-out nothing may claim suppression - otherwise the test above proves nothing'
-            $r.StdErr | Should -Match 'superpowers'               -Because 'it must still deliver its real advisory'
+            $r.StdOut | Should -Not -Match 'suppressed by \.no-agy' -Because 'without the opt-out nothing may claim suppression - otherwise the test above proves nothing'
+            $r.StdOut | Should -Match 'superpowers'               -Because 'it must still deliver its real advisory'
         } finally { Remove-Item $repo,$cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
     It 'no-jq: announces the ROOT .no-agy from a subdirectory, not the literal ./.no-agy' {
@@ -154,10 +155,10 @@ Describe 'agy-liveness-check.sh' {
             New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
             $payload = '{"cwd":"' + ($sub -replace '\\', '\\') + '","source":"startup","hook_event_name":"SessionStart"}'
             $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ PATH = $script:NoJqPath; HOME = $h }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'suppressed by \.no-agy' -Because 'the degraded path must honour the same root opt-out'
-            $r.StdErr   | Should -Not -Match 'missing jq'        -Because 'one announce, not two - the kill-switch wins'
-            $r.StdErr   | Should -Not -Match '\./\.no-agy'       -Because 'it must name the real file, not the process-cwd placeholder'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'suppressed by \.no-agy' -Because 'the degraded path must honour the same root opt-out'
+            $r.StdOut   | Should -Not -Match 'missing jq'        -Because 'one announce, not two - the kill-switch wins'
+            $r.StdOut   | Should -Not -Match '\./\.no-agy'       -Because 'it must name the real file, not the process-cwd placeholder'
         } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
     It 'no-jq: still warns about jq from that subdirectory when .no-agy is absent (degraded control)' {
@@ -167,17 +168,17 @@ Describe 'agy-liveness-check.sh' {
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             $payload = '{"cwd":"' + ($sub -replace '\\', '\\') + '","source":"startup","hook_event_name":"SessionStart"}'
             $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ PATH = $script:NoJqPath; HOME = $h }
-            $r.StdErr | Should -Match 'missing jq' -Because 'without the opt-out the degraded path must still warn'
+            $r.StdOut | Should -Match 'missing jq' -Because 'without the opt-out the degraded path must still warn'
         } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'emits ONE jq-missing warning (exit 2) when jq is absent' {
+    It 'emits ONE jq-missing warning (systemMessage, exit 0) when jq is absent' {
         $h = New-CleanHome
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ PATH = $script:NoJqPath; HOME = $h }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'missing jq'
-            ($r.StdErr -split "`n").Count | Should -Be 1
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'missing jq'
+            ($r.StdOut -split "`n").Count | Should -Be 1
         } finally { Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue }
     }
     It 'ships as pure ASCII' {
@@ -192,8 +193,8 @@ Describe 'agy-liveness-check.sh' {
                hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-liveness-check.sh"' } ) } ) }
             } | ConvertTo-Json -Depth 8 | Set-Content $s -Encoding ascii
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'agy-liveness-check'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'agy-liveness-check'
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -206,9 +207,9 @@ Describe 'agy-liveness-check.sh' {
             } | ConvertTo-Json -Depth 8 | Set-Content $s -Encoding ascii
             New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'suppressed by .no-agy'
-            $r.StdErr   | Should -Match 'agy-liveness-check'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'suppressed by .no-agy'
+            $r.StdOut   | Should -Match 'agy-liveness-check'
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -217,7 +218,8 @@ Describe 'agy-liveness-check.sh' {
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.ExitCode | Should -Be 0
-            $r.StdErr   | Should -BeNullOrEmpty
+            $r.StdOut   | Should -BeNullOrEmpty
+            $r.StdErr   | Should -BeNullOrEmpty -Because 'ROADMAP section 31: this hook must never write to stderr again - stderr plus a non-zero exit is what rendered a routine notice as a red hook error'
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -238,9 +240,9 @@ Describe 'agy-liveness-check.sh' {
                hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-liveness-check.sh"' } ) } ) }
             } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'settings unreadable'
-            $r.StdErr   | Should -Match 'agy-liveness-check'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'settings unreadable'
+            $r.StdOut   | Should -Match 'agy-liveness-check'
         } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -248,7 +250,7 @@ Describe 'agy-liveness-check.sh' {
         $cfg = New-ConfigFixture $true; $h = New-CleanHome
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
-            $r.StdErr | Should -Not -Match 'schema unrecognised'
+            $r.StdOut | Should -Not -Match 'schema unrecognised'
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -260,8 +262,8 @@ Describe 'agy-liveness-check.sh' {
             @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-seam-inject.sh"' } ) } ) } } |
                 ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'agy-seam-inject'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'agy-seam-inject'
         } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -273,8 +275,8 @@ Describe 'agy-liveness-check.sh' {
             @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-after-reminder.sh"' } ) } ) } } |
                 ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.local.json') -Encoding ascii
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'agy-after-reminder'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'agy-after-reminder'
         } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -288,8 +290,8 @@ Describe 'agy-liveness-check.sh' {
                 ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
             # cwd is the SUBDIR; CLAUDE_PROJECT_DIR still names the root, which is why the hook finds it.
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload -Cwd $sub) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'agy-seam-inject'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'agy-seam-inject'
         } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -306,10 +308,10 @@ Describe 'agy-liveness-check.sh' {
             @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-seam-inject.sh"' } ) } ) } } |
                 ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.local.json') -Encoding ascii
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'schema unrecognised'
-            $r.StdErr   | Should -Not -Match 'settings unreadable'
-            $r.StdErr   | Should -Match 'agy-seam-inject'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'schema unrecognised'
+            $r.StdOut   | Should -Not -Match 'settings unreadable'
+            $r.StdOut   | Should -Match 'agy-seam-inject'
         } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -325,7 +327,8 @@ Describe 'agy-liveness-check.sh' {
                 Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
             $r.ExitCode | Should -Be 0
-            $r.StdErr   | Should -BeNullOrEmpty
+            $r.StdOut   | Should -BeNullOrEmpty
+            $r.StdErr   | Should -BeNullOrEmpty -Because 'ROADMAP section 31: this hook must never write to stderr again - stderr plus a non-zero exit is what rendered a routine notice as a red hook error'
         } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -340,8 +343,8 @@ Describe 'agy-liveness-check.sh' {
             '{ "hooks": { "SessionStart": [ { "hooks": [ { "type": "other" } ] } ] } }' |
                 Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match "none carries a 'command' field"
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match "none carries a 'command' field"
         } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -355,9 +358,9 @@ Describe 'agy-liveness-check.sh' {
             '{ "hooks": { "SessionStart": [ { "hooks": [ { "type": "other" }, { "type": "command", "command": "bash agy-seam-inject.sh" } ] } ] } }' |
                 Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'agy-seam-inject\.sh is shipped by this plugin'
-            $r.StdErr   | Should -Not -Match "none carries a 'command' field"
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'agy-seam-inject\.sh is shipped by this plugin'
+            $r.StdOut   | Should -Not -Match "none carries a 'command' field"
         } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -369,8 +372,8 @@ Describe 'agy-liveness-check.sh' {
             Copy-Item $script:Hook (Join-Path $fake 'agy-liveness-check.sh')
             '{ "hooks": { ,,,' | Set-Content (Join-Path $fake 'hooks.json') -Encoding ascii
             $r = Invoke-BashHook -HookPath (Join-Path $fake 'agy-liveness-check.sh') -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'shipped-hook list unreadable'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'shipped-hook list unreadable'
         } finally { Remove-Item $cfg,$h,$fake -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -388,8 +391,8 @@ Describe 'agy-liveness-check.sh' {
                hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-invented-for-this-test.sh"' } ) } ) }
             } | ConvertTo-Json -Depth 8 | Set-Content $s -Encoding ascii
             $r = Invoke-BashHook -HookPath (Join-Path $fake 'agy-liveness-check.sh') -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'agy-invented-for-this-test'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'agy-invented-for-this-test'
         } finally { Remove-Item $cfg,$h,$fake -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -403,7 +406,8 @@ Describe 'agy-liveness-check.sh' {
         try {
             $r = Invoke-WithPersonalHook 'my-custom-hook.sh' $cfg $h
             $r.ExitCode | Should -Be 0
-            $r.StdErr   | Should -BeNullOrEmpty
+            $r.StdOut   | Should -BeNullOrEmpty
+            $r.StdErr   | Should -BeNullOrEmpty -Because 'ROADMAP section 31: this hook must never write to stderr again - stderr plus a non-zero exit is what rendered a routine notice as a red hook error'
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -414,7 +418,8 @@ Describe 'agy-liveness-check.sh' {
         try {
             $r = Invoke-WithPersonalHook 'my-agy-seam-inject.sh' $cfg $h
             $r.ExitCode | Should -Be 0
-            $r.StdErr   | Should -BeNullOrEmpty
+            $r.StdOut   | Should -BeNullOrEmpty
+            $r.StdErr   | Should -BeNullOrEmpty -Because 'ROADMAP section 31: this hook must never write to stderr again - stderr plus a non-zero exit is what rendered a routine notice as a red hook error'
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -424,8 +429,8 @@ Describe 'agy-liveness-check.sh' {
         $cfg = New-ConfigFixture $true; $h = New-CleanHome
         try {
             $r = Invoke-WithPersonalHook 'AGY-SEAM-INJECT.SH' $cfg $h
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'agy-seam-inject\.sh is shipped by this plugin'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'agy-seam-inject\.sh is shipped by this plugin'
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
