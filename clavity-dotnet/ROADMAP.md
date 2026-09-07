@@ -2332,7 +2332,7 @@ caveat stated; do not publish a token count.
 **Spec:** `docs/superpowers/specs/2026-09-03-plugin-footprint-analyzer-design.md`.
 **AGY-FIRST consult:** `.clavity/seams/agyfirst-footprint-analyzer.md`.
 
-### §27 — A completion marker can advance with no ledger row, and nothing in the tree can detect it — ▶ **OWNER ACCEPTED 2026-09-03, spec written, SEQUENCED as its own Phase 2b, build DEFERRED**
+### §27 — A completion marker can advance with no ledger row, and nothing in the tree can detect it — ✅ **SHIPPED 2026-09-07. AGY-CAPSTONE GREEN, OWNER-ADJUDICATED at round 8 (NOT a clean round - round 8 filed two BLOCKING, both true and folded, and its own fold `f62e659` was never reviewed by a round). Ledger row in `docs/agy-capstone-ledger.md`. AGY-TEST-AUDIT still owed; the push is HELD at the owner's instruction. 🔴 OPEN: the peer recommends removing this gate entirely - its alternative is measured wrong, its judgement about the investment is not.**
 
 > **Placement ruled 2026-09-03 (AGY-FIRST, `.clavity/seams/agyfirst-s27-phase2-fold.md`): §27 gets its
 > OWN phase, after Phase 2 — not folded into it, and not Phase 3.** Not Phase 3 because this sequence
