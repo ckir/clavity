@@ -281,7 +281,7 @@ illustrative
 '@
 
         function New-LedgerRepo {
-            param([string]$LedgerBody, [string]$Discipline = 'agy-capstone', [switch]$HexBranch)
+            param([string]$LedgerBody, [string]$Discipline = 'agy-capstone', [switch]$HexBranch, [switch]$Crlf)
             $d = Join-Path ([IO.Path]::GetTempPath()) ("aglfx-" + [guid]::NewGuid().ToString('N'))
             New-Item -ItemType Directory -Force -Path $d | Out-Null
             [void]$script:Fixtures.Add($d)   # FIXTURE HYGIENE
@@ -311,7 +311,11 @@ illustrative
             $body = $LedgerBody.Replace('<<SHORT>>', $sha.Substring(0, 7)).
                                 Replace('<<FULL>>', $sha).
                                 Replace('<<PREV>>', $prev.Substring(0, 7))
-            [IO.File]::WriteAllText((Join-Path $d "docs/$Discipline-ledger.md"), ($body -replace "`r`n", "`n"))
+            # -Crlf writes REAL CR bytes instead of normalising. See the CRLF row for why this is
+            # opt-in and what it can and cannot prove on each platform.
+            $text = $body -replace "`r`n", "`n"
+            if ($Crlf) { $text = $text -replace "`n", "`r`n" }
+            [IO.File]::WriteAllText((Join-Path $d "docs/$Discipline-ledger.md"), $text)
             [pscustomobject]@{ Dir = $d; Sha = $sha; Prev = $prev }
         }
 
@@ -533,6 +537,27 @@ illustrative
         $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
         $out | Should -Match 'ABSENT' -Because 'an empty answer is a broken probe, not a refusal'
         $out | Should -Not -Match 'FOUND'
+    }
+
+    It 'reads a ledger written with CRLF line endings' {
+        # CAPSTONE ROUND 5, BLOCKING, and PLATFORM-CONDITIONAL - read this before trusting a green.
+        # gawk on WINDOWS opens files in text mode and turns CRLF into LF before $0 exists, so on the
+        # platform this suite normally runs on THIS ROW PASSES WITH OR WITHOUT THE FIX. It is live on
+        # Linux and in any LF-native CI. The real evidence is a WSL measurement recorded in the fold
+        # commit: before the fix this exact fixture answered ABSENT unparsed=0 with NO FENCE PRESENT -
+        # a silent refusal of a valid ledger, because the separator test reduces the line with gsub and
+        # a surviving CR is not the empty string - and MALFORMED once a fence was added, because a
+        # closing fence carries no info string and a surviving CR reads as one. Both answer FOUND now.
+        # It is kept despite being inert here because these hooks SHIP to other repositories, where a
+        # ledger committed from Windows without a .gitattributes carries real CR bytes.
+        $r = New-LedgerRepo -LedgerBody $script:GoodLedger -Crlf
+        $raw = [IO.File]::ReadAllBytes((Join-Path $r.Dir 'docs/agy-capstone-ledger.md'))
+        # ASSERT THE FIXTURE IS WHAT IT CLAIMS. Without this the row could silently degrade into a
+        # duplicate of the plain success case if the -Crlf switch ever stopped writing CR bytes.
+        ($raw | Where-Object { $_ -eq 13 }).Count |
+            Should -BeGreaterThan 0 -Because 'the fixture is worthless unless it really contains CR bytes'
+        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out |
+            Should -Match 'FOUND' -Because 'a CRLF ledger is a valid ledger'
     }
 
     It 'refuses a range endpoint that is a hex-named BRANCH rather than a sha' {

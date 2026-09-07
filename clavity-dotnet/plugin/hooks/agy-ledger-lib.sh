@@ -106,6 +106,23 @@ agy_ledger_lookup() {
         fi
     done <<EOF
 $(awk -F'|' '
+    # STRIP A TRAILING CARRIAGE RETURN BEFORE ANY OTHER RULE SEES THE LINE. This is a PORTABILITY fix,
+    # not a cosmetic one, and it is invisible on the platform this repo is developed on. gawk on Windows
+    # opens files in TEXT mode and translates CRLF to LF before $0 exists, so every fixture here passes
+    # with or without this line. gawk on Linux does NOT: the CR stays on $0.
+    #
+    # MEASURED on WSL, capstone round 5, against a CRLF ledger: a table with NO FENCE AT ALL answered
+    # ABSENT unparsed=0 - SILENTLY refusing a valid ledger - because the separator test below reduces the
+    # line with gsub and compares to the empty string, and a surviving CR is not empty, so _agl_sep never
+    # set. With a fence the same file answered MALFORMED, because a closer carries no info string and a
+    # surviving CR reads AS an info string. The LF control answered FOUND in the same run.
+    #
+    # This matters because these hooks SHIP to other repositories. This one commits its ledgers LF and
+    # pins *.sh in .gitattributes, but a consumer repo that committed markdown from Windows without
+    # .gitattributes carries real CR bytes, and then every marker write is refused on Linux or in CI.
+    # sub is used rather than a regex RS because a regex RS is a gawk extension.
+    { sub(/\r$/, "") }
+
     # FENCED CODE BLOCKS ARE NOT LEDGER ROWS, and capstone round 1 proved this the hard way. awk reads
     # line by line with no notion of markdown block scope, so a table row QUOTED inside a fence - which
     # these ledgers do routinely, to show what a row looked like before a fold - was parsed as a live
