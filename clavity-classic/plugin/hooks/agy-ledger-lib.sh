@@ -161,7 +161,7 @@ $(awk -F'|' '
         # block, then a single orphan pipe-line carrying a sha answered FOUND, though markdown renders
         # that trailing line as literal text and not a row. The two guards are only independent once the
         # earlier one stops smuggling state past the later one.
-        _agl_blk = 0; _agl_sep = 0
+        _agl_sep = 0
         next
     }
     _agl_fence { next }
@@ -179,6 +179,12 @@ $(awk -F'|' '
     # with a header and a |---| separator. A row QUOTED in prose does not - whatever wraps it, it is one
     # or two orphan lines with no separator above them in the same run. So the locator asks "is there a
     # separator earlier in this same block?" rather than "which container might this be inside?".
+    #
+    # CONTIGUITY IS CARRIED BY _agl_sep ALONE, and there is deliberately no second block flag. An
+    # earlier draft also tracked _agl_blk; capstone round 5 showed it was written and never read in
+    # any condition that reaches control flow, and MEASURED that deleting every reference leaves the
+    # parser output on both real ledgers byte-identical. Every non-pipe line clears _agl_sep, which
+    # IS the unbroken-run test. Do not reintroduce a companion flag believing contiguity is untracked.
     #
     # ACCEPTED LIMITATION, OWNER-RULED 2026-09-07, recorded here because the first draft of this comment
     # claimed more than the rule delivers. A COMPLETE table - header, separator and rows together -
@@ -199,12 +205,11 @@ $(awk -F'|' '
     # together inside a fence - satisfies this rule on its own. Neither guard is sufficient alone. They
     # became genuinely independent only in round 4, when the fence rule was made to reset this block
     # state; before that it `next`ed over the reset and carried an authorised block across a fence.
-    !/^\|/ { _agl_blk = 0; _agl_sep = 0; next }
+    !/^\|/ { _agl_sep = 0; next }
     {
         _agl_s = $0
         gsub(/[|: \t-]/, "", _agl_s)
-        if (_agl_s == "") { _agl_blk = 1; _agl_sep = 1; next }
-        if (!_agl_blk) { _agl_blk = 1 }
+        if (_agl_s == "") { _agl_sep = 1; next }
     }
     !_agl_sep { next }
     /^\|/ && NF >= 7 {
