@@ -16,11 +16,15 @@
 # $2 gets the DATE, which fails hex validation on every row, and the gate then refuses every marker write
 # forever. MEASURED, and it is the defect a panel round caught in this design's own prose.
 #
-# WHY THE DATE COLUMN DECIDES WHETHER A LINE IS A RECORD AT ALL. Without it a header row
-# ("| date | range | ...") is a candidate whose range token is the word "range", which fails hex
-# validation and is then reported as an unparseable record on EVERY run. MEASURED against the two real
-# ledgers: with the date test, 40 records / 6 non-records in the capstone ledger and 5 / 2 in the
-# test-audit ledger - and the 6 and 2 are exactly the header rows and the |---| separators.
+# WHY THE DATE COLUMN DECIDES WHETHER A LINE IS A RECORD AT ALL - AND WHAT THAT REASON IS *NOT*.
+# This comment used to say the date test is what stops a header row ("| date | range | ...") being
+# read as a record. **That rationale is STALE and was corrected in capstone round 7.** It was measured
+# before the contiguous-block rule existed. Headers and |---| separators now sit BEFORE the separator
+# that authorises a block, so they never reach this test at all. MEASURED round 7: deleting the date
+# test entirely changes NOTHING on either real ledger - 40 candidate rows and 3 unparsed in the
+# capstone ledger either way, 5 and 0 in the test-audit ledger either way.
+# What it still does is narrower and real: inside an authorised block, a pipe-line with seven or more
+# fields whose second column is not a date is not a record, and saying so lets the answer NAME it.
 #
 # WHY ONLY THE FIRST TOKEN OF THE CELL. Range cells carry trailing parenthetical prose, and that prose
 # contains further `..` ranges (docs/agy-capstone-ledger.md:69-70). Scanning every token would let a fold
@@ -236,7 +240,12 @@ $(awk -F'|' '
     /^\|/ && NF >= 7 {
         d = $2
         gsub(/^[ \t]+|[ \t]+$/, "", d)
-        if (d !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) next
+        # COUNT IT, DO NOT SKIP IT. Capstone round 7: a row whose DATE is malformed used to be
+        # dropped silently, so the answer was ABSENT unparsed=0 lines=- - BYTE-IDENTICAL to a ledger
+        # with no row at all. An operator who appended a row and got back the same refusal as before,
+        # naming nothing, has no way to learn their row was seen and rejected; the documented failure
+        # is appending a second malformed row and looping. Counting it names the LINE.
+        if (d !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) { printf "%d\t-\n", NR; next }
         cell = $3
         # Strip the markup a range can legitimately be wrapped in. Backticks were always stripped;
         # BRACKETS were not, and capstone round 1 measured the consequence: a range written as a

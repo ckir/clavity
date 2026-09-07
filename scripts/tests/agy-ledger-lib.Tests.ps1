@@ -246,6 +246,17 @@ echo hi
 > |---|---|---|---|---|
 > | 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
 '@
+        # CAPSTONE ROUND 7. A row whose DATE column is malformed. It used to be dropped SILENTLY, so
+        # the answer was byte-identical to a ledger with no candidate row at all - and an operator who
+        # had just appended a row got back a refusal naming nothing, with no way to learn their row was
+        # seen and rejected. The documented failure is appending a SECOND malformed row and looping.
+        $script:BadDateLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|---|---|---|---|---|
+| 06-09-2026 | `aaaaaaa..<<SHORT>>` | 1 | GREEN | e |
+'@
         # CAPSTONE ROUND 4. A FENCE INTERRUPTING A LIVE TABLE. The fence rule runs BEFORE the block rule
         # and ends in `next`, which jumped straight over the block reset - so an authorised table was
         # carried ACROSS the fence and the orphan pipe-line below it answered FOUND, though markdown
@@ -558,6 +569,18 @@ illustrative
             Should -BeGreaterThan 0 -Because 'the fixture is worthless unless it really contains CR bytes'
         (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out |
             Should -Match 'FOUND' -Because 'a CRLF ledger is a valid ledger'
+    }
+
+    It 'COUNTS a row whose date is malformed, and names its line' {
+        # The point is the CONTRAST: this must NOT be indistinguishable from an empty ledger. The row
+        # would otherwise have matched the target sha, so a silent drop is the worst case - the
+        # operator wrote the right sha and was told nothing was found.
+        $r = New-LedgerRepo -LedgerBody $script:BadDateLedger
+        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+        $out | Should -Match 'ABSENT' -Because 'an empty answer is a broken probe, not a refusal'
+        $out | Should -Not -Match 'FOUND' -Because 'a malformed date is not a valid record'
+        $out | Should -Match 'unparsed=1' -Because 'the row must be COUNTED, not silently skipped'
+        $out | Should -Not -Match 'lines=-' -Because 'the answer must NAME the offending line'
     }
 
     It 'refuses a range endpoint that is a hex-named BRANCH rather than a sha' {

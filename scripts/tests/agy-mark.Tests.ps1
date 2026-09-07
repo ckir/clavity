@@ -602,11 +602,13 @@ Describe 'agy-mark.sh' {
         # PRE-EXISTING row in this suite is unaffected by the gate: measured, they still pass unchanged.
         BeforeAll {
             function New-GatedFixture {
-                param([switch]$WithRow, [switch]$Unclosed, [string]$Discipline = 'agy-capstone')
+                param([switch]$WithRow, [switch]$Unclosed, [switch]$BadRow, [string]$Discipline = 'agy-capstone')
                 $d = New-MarkFixture
                 $sha = (& git -C $d rev-parse HEAD).Trim()
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'docs') | Out-Null
-                $row = if ($WithRow) { "| 2026-09-06 | ``aaaaaaa..$($sha.Substring(0,7))`` | 1 | GREEN | e |" } else { '' }
+                $row = if ($WithRow) { "| 2026-09-06 | ``aaaaaaa..$($sha.Substring(0,7))`` | 1 | GREEN | e |" }
+                       elseif ($BadRow) { "| 06-09-2026 | ``aaaaaaa..$($sha.Substring(0,7))`` | 1 | GREEN | e |" }
+                       else { '' }
                 $body = "# ledger`n`n| date | range | rounds | verdict | evidence |`n|------|-------|--------|---------|----------|`n$row`n"
                 # -Unclosed opens a fence and never closes it, which hides every row BELOW it. The gate
                 # then answers MALFORMED rather than ABSENT, and the two need different advice.
@@ -614,6 +616,29 @@ Describe 'agy-mark.sh' {
                 [IO.File]::WriteAllText((Join-Path $d "docs/$Discipline-ledger.md"), $body)
                 [pscustomobject]@{ Dir = $d; Sha = $sha }
             }
+        }
+
+        It 'tells an operator whose row was SEEN-BUT-REJECTED to read the line numbers' {
+            # CAPSTONE ROUND 7, the novice loop. `ABSENT unparsed=0` and `ABSENT unparsed=N` are
+            # different situations - nothing was a candidate, versus rows were candidates and failed
+            # to parse - and they need different advice. Telling the second operator to `append the
+            # row FIRST` sends them round the loop again with the same mistake.
+            $f = New-GatedFixture -BadRow
+            $r = Invoke-Mark -Cwd $f.Dir -MarkArgs @('head', 'agy-capstone', $f.Sha)
+            $r.ExitCode | Should -Be 1
+            $r.Err | Should -Match 'unparsed=1' -Because 'the row must be counted'
+            $r.Err | Should -Match 'READ THE LINE NUMBERS' -Because 'the advice must point at the row'
+            $r.Err | Should -Not -Match 'NO row in that file was even a candidate' -Because 'that is the OTHER branch'
+        }
+
+        It 'tells an operator with NO candidate row that nothing was a candidate' {
+            # The success-path counterpart of the row above. Without it, both branches could emit the
+            # same text and the pair would still pass.
+            $f = New-GatedFixture
+            $r = Invoke-Mark -Cwd $f.Dir -MarkArgs @('head', 'agy-capstone', $f.Sha)
+            $r.ExitCode | Should -Be 1
+            $r.Err | Should -Match 'NO row in that file was even a candidate'
+            $r.Err | Should -Not -Match 'READ THE LINE NUMBERS'
         }
 
         It 'gives MALFORMED its own advice instead of telling the operator to append a row' {

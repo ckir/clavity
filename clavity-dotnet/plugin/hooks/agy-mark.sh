@@ -269,6 +269,12 @@ case "$mode" in
                         MALFORMED*)
                             _die_refuse "docs/$discipline-ledger.md is UNPARSEABLE ($_gate), so no row below the fault is visible to the gate. DO NOT append the row yet - it would land below the unclosed fence and stay hidden, and this refusal would repeat. Close the fence in that file FIRST, then append the row, then write the marker. If you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
                             ;;
+                        *unparsed=0*)
+                            _die_refuse "docs/$discipline-ledger.md does not record $sha ($_gate). NO row in that file was even a candidate for this sha. Append the row for this run FIRST, then write the marker. If that file is NOT actually a ledger, the gate applies to any discipline whose docs/<name>-ledger.md exists - remove or rename it. If you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
+                            ;;
+                        ABSENT*)
+                            _die_refuse "docs/$discipline-ledger.md does not record $sha ($_gate). READ THE LINE NUMBERS: those rows LOOK like records but their range column did not parse, so appending another row in the same shape will fail the same way. Fix the cited lines - the range must be the FIRST thing in that column, and the date column must be YYYY-MM-DD - then write the marker. If you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
+                            ;;
                         UNREADABLE*)
                             _die_refuse "docs/$discipline-ledger.md exists but could NOT BE READ, so the gate can make no claim about $sha - this is a PERMISSIONS or filesystem fault, not a missing row. Fix the file permissions and re-run. If you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
                             ;;
