@@ -1045,6 +1045,20 @@ path-lib.Tests.ps1                                9,5s   11 tests   <- FAST, ADD
                                                                       600s foreground cap - so this row is
                                                                       the first thing to revisit if that
                                                                       half starts straddling it again.
+check-installer-ascii.Tests.ps1                   10,7s   2 tests   <- SLOW, ADDED 2026-09-08 (section 28).
+                                                                      THE PLAN SAID FAST; THIS ROW DEVIATES, and
+                                                                      the reason is measurement. The plan argued
+                                                                      FAST from "the gate runs in ~6s", but the
+                                                                      SUITE measures 10,7s because BOTH rows spawn
+                                                                      a child pwsh - the control runs the whole
+                                                                      gate, the short-root row runs it again. That
+                                                                      is the same shape as clavity-install above
+                                                                      (7,9s, child-spawning, SLOW). The fast half
+                                                                      was already at 92% of the 600s cap before
+                                                                      path-lib joined it the same day; a second
+                                                                      ~10s addition would have taken it to ~95%,
+                                                                      and straddling that cap is the exact failure
+                                                                      this whole split exists to prevent.
 clavity-install.Tests.ps1                         7,9s   12 tests   <- SLOW, ADDED 2026-08-27. The one
                                                                       suite `test-scripts-slow` names from
                                                                       OUTSIDE scripts/tests, so it sat

@@ -24,6 +24,7 @@ param(
 )
 
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'lib' 'path-lib.ps1')
 $ErrorActionPreference = 'Stop'
 
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
@@ -51,7 +52,7 @@ $bad = @()
 foreach ($f in $targets) {
     $offenders = @([System.IO.File]::ReadAllBytes($f.FullName) | Where-Object { $_ -gt 0x7F })
     if ($offenders.Count -gt 0) {
-        $rel = $f.FullName.Substring($RepoRoot.Length).TrimStart('\', '/')
+        $rel = Get-RootRelativePath -Root $RepoRoot -Path $f.FullName
         $bad += "  $rel - $($offenders.Count) non-ASCII byte(s)"
     }
 }

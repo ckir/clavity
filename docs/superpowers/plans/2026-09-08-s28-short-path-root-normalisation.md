@@ -707,8 +707,15 @@ Expected: both rows pass (or 1 passed + 1 skipped where 8.3 is off).
 
 - [ ] **Step 5: Register the suite, staging first**
 
-Add `'scripts/tests/check-installer-ascii.Tests.ps1'` to `justfile:101` and a `2 tests` row to
-`scripts/tests/_partition.md`, then:
+🔴 **SLOW, not fast — this step's original instruction was wrong and execution corrected it.** The plan
+argued for the fast half from "the gate runs in ~6s". MEASURED, the SUITE takes **10,7s**, because BOTH
+rows spawn a child `pwsh`: the control runs the whole gate, and the short-root row runs it again. That is
+the same shape as `clavity-install.Tests.ps1` (7,9s, child-spawning, SLOW). The fast half was already at
+92% of the 600s cap before `path-lib.Tests.ps1` joined it the same day, and a second ~10s addition would
+have taken it to ~95% — straddling that cap is the exact failure the split exists to prevent.
+
+Add `'scripts/tests/check-installer-ascii.Tests.ps1'` to the **`test-scripts-slow`** array at
+`justfile:108`, and a `10,7s / 2 tests` row to `scripts/tests/_partition.md`, then:
 
 ```bash
 git add scripts/tests/check-installer-ascii.Tests.ps1
