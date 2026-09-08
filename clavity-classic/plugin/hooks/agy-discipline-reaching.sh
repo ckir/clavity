@@ -164,7 +164,21 @@ else
   # not "did my write return 0" - an unreadable shield is equally unprotected and must warn too. Same
   # `agy-shield:` prefix and same stderr channel as agy-shield-lib.sh:107, deliberately: one failure, one
   # vocabulary, whichever path produced it.
-  if ! grep -qx '*' "$root/.clavity/.gitignore" 2>/dev/null; then
+  # TWO CAUSES, TWO MESSAGES, because grep's exit code distinguishes them and a single message cannot.
+  # MEASURED under WSL (capstone round 2d) with `chmod 200` and both preconditions probed - writable=YES,
+  # readable=NO: the append SUCCEEDS, the verify grep fails, and the first version of this diagnostic told
+  # the operator to "check that it is a regular, WRITABLE file" while the file was writable all along and
+  # the real fault was READ permission. That is the precise failure agy-shield-lib.sh:214-220 already
+  # records folding once - "a diagnostic that names the wrong cause is worse than a vague one, because it
+  # is actionable and wrong" - and this branch reproduced it two rounds later.
+  #
+  # grep's exit code IS the unreadability oracle, and it is the same one agy-ledger-lib.sh uses: 0 matched,
+  # 1 matched nothing, GREATER THAN 1 could not read. Not `[ -r ]`, which does not consult Windows ACLs.
+  grep -qx '*' "$root/.clavity/.gitignore" 2>/dev/null
+  _dr_rc=$?
+  if [ "$_dr_rc" -gt 1 ]; then
+    printf 'agy-shield: %s\n' "could not READ $root/.clavity/.gitignore, so whether .clavity/ is shielded cannot be determined - assume it is exposed to git. Check that it is a regular file THIS process can read; it may be writable and still unreadable." >&2
+  elif [ "$_dr_rc" -ne 0 ]; then
     printf 'agy-shield: %s\n' "could not assert the shield in $root/.clavity/.gitignore - .clavity/ is NOT protected and is exposed to git. Check that it is a regular, writable file whose contents include a bare '*'." >&2
   fi
 fi

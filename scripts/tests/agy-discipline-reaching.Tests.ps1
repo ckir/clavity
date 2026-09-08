@@ -442,10 +442,23 @@ Describe 'agy-discipline-reaching.sh' {
             Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
             $errF = Join-Path ([IO.Path]::GetTempPath()) ("reach-deny-" + [guid]::NewGuid().ToString('N') + ".err")
             try {
-                & icacls $gi /deny "${me}:(W)" | Out-Null
+                # PLATFORM-BRANCHED, AND THE STDERR REDIRECT IS NOT DECORATION. This row first shipped
+                # calling `icacls` bare and ungated, while the CORRECT idiom already sat in a sibling
+                # suite this same session (agy-ledger-lib.Tests.ps1:413). On a host without icacls the
+                # bare call raises CommandNotFoundException, and under Pester's $ErrorActionPreference
+                # that TERMINATES - inside the finally below it would abort teardown midway and leak the
+                # temp dir and the stderr file. WSL is a supported platform here, so that host is real.
+                if ($IsWindows) { & icacls $gi /deny "${me}:(W)" 2>&1 | Out-Null }
+                else            { & chmod 500 $gi 2>&1 | Out-Null }
+
                 # THE PRECONDITION IS ASSERTED, not assumed: if the deny did not take, this row would
-                # pass for the wrong reason on a box where icacls is a no-op.
-                { [IO.File]::AppendAllText($gi, "x`n") } | Should -Throw -Because 'the ACL deny must actually make the shield unwritable, or this row proves nothing'
+                # pass for the wrong reason on a box where icacls is a no-op or the filesystem ignores
+                # ACLs. SKIP rather than fail - an unreachable state is not a regression.
+                $stillWritable = $false
+                try { [IO.File]::AppendAllText($gi, "x`n"); $stillWritable = $true } catch {}
+                if ($stillWritable) {
+                    Set-ItResult -Skipped -Because 'the write-deny did not take on this host, so the unassertable-shield state is unreachable here'
+                }
                 $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-deny'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
                 $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2> $errF | Out-Null
                 $err = Get-Content -Raw -LiteralPath $errF -ErrorAction SilentlyContinue
@@ -453,7 +466,44 @@ Describe 'agy-discipline-reaching.sh' {
                 $err | Should -Match 'exposed to git' -Because 'the operator needs the CONSEQUENCE named, not just a failed write'
             }
             finally {
-                & icacls $gi /remove:d $me | Out-Null
+                # TEARDOWN MUST NOT BE ABLE TO THROW. Each step is independently guarded, so a missing
+                # tool or an already-removed path cannot abort the ones after it.
+                if ($IsWindows) { & icacls $gi /remove:d $me 2>&1 | Out-Null }
+                else            { & chmod 600 $gi 2>&1 | Out-Null }
+                Remove-Item -LiteralPath $errF -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath $hookDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'the FALLBACK names READ as the cause when it cannot read the shield (capstone r2d)' {
+            # THE ROW ABOVE PROVES IT WARNS; THIS ONE PROVES IT WARNS THE RIGHT THING. MEASURED under
+            # WSL with chmod 200 and both preconditions probed - writable=YES, readable=NO - the first
+            # version of this diagnostic said "check that it is a regular, WRITABLE file" while the file
+            # was writable all along and READ was the real fault. Sending an operator to the wrong
+            # permission is the failure agy-shield-lib.sh:214-220 already records folding once.
+            #
+            # THE FIXTURE IS A DIRECTORY, not an ACL, and that is what makes this row portable. A
+            # Windows deny-READ ACE also blocks the OPEN (measured: icacls /deny R left the file neither
+            # readable nor writable), so "writable but unreadable" cannot be built there at all. `grep`
+            # against a directory exits 2 on BOTH Git Bash and WSL (measured), which is the same
+            # greater-than-one code the real unreadable case produces - so this reaches the branch with
+            # no permissions, no platform gate, and no skip.
+            $d = New-ReachingFixture -Shield '!keepme.md'
+            $gi = Join-Path $d '.clavity/.gitignore'
+            Remove-Item -LiteralPath $gi -Force
+            New-Item -ItemType Directory -Force -Path $gi | Out-Null
+            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib5-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
+            Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
+            $errF = Join-Path ([IO.Path]::GetTempPath()) ("reach-unread-" + [guid]::NewGuid().ToString('N') + ".err")
+            try {
+                $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-unread'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
+                $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2> $errF | Out-Null
+                $err = Get-Content -Raw -LiteralPath $errF -ErrorAction SilentlyContinue
+                $err | Should -Match 'could not READ' -Because 'grep exiting above 1 means unreadable, and that is a different fault from an unwritable shield'
+                $err | Should -Not -Match 'regular, writable file whose contents' -Because 'naming the WRITE permission here sends the operator to investigate the one thing that is not wrong'
+            }
+            finally {
                 Remove-Item -LiteralPath $errF -Force -ErrorAction SilentlyContinue
                 Remove-Item -LiteralPath $hookDir -Recurse -Force -ErrorAction SilentlyContinue
             }
