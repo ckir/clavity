@@ -188,7 +188,11 @@ else
   elif [ "$_dr_rc" -ne 0 ]; then
     printf 'agy-shield: %s\n' "could not assert the shield in $root/.clavity/.gitignore - .clavity/ is NOT protected and is exposed to git. Check that it is a regular, writable file whose contents include a bare '*'." >&2
   else
-    # `check-ignore` HAS THREE EXIT CODES, NOT TWO: 0 ignored, 1 NOT ignored, 128 git could not answer.
+    # `check-ignore` HAS MORE THAN TWO EXIT CODES: 0 ignored, 1 NOT ignored, 128 git could not answer
+    # (empty pathspec, a path outside the repo, `-q` with more than one pathname, a corrupt index), 129
+    # an invalid option, 127 no git on PATH at all - all MEASURED. Only 1 is evidence; everything else
+    # means "I could not tell" and must stay silent. Writing the test as `-eq 1` rather than `-ne 0` is
+    # what makes that true for codes nobody has enumerated yet.
     # This started life as `if ! git check-ignore`, which folds 128 in with 1 and reports "your file is
     # TRACKED" whenever git itself fails. MEASURED: a corrupted `.git/index` returns 128, and CI proved it
     # is not hypothetical - the runner logged "fatal: .git/index: index file smaller than expected" twice
