@@ -39,7 +39,7 @@ if ! command -v jq >/dev/null 2>&1; then
       [ -d "$_dc" ] || mkdir -p "$_dc" 2>/dev/null
       _dw="$_dc/.clavity-assert-nojq-$dsid"
       [ -f "$_dw" ] && exit 0
-      if : > "$_dw" 2>/dev/null; then
+      if : 2>/dev/null > "$_dw"; then
         printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[ASSERTION-STRENGTH] guard inactive: missing jq - the assertion-strength reminder will not fire on test-file writes this session"}}'
         exit 0
       fi
@@ -118,7 +118,7 @@ for _cand in "${TMPDIR:-/tmp}" "$HOME/.clavity-tmp"; do
   # `[ -f ] || : >` condition puts `find` - a SUBPROCESS - on EVERY test-file write, which is the hottest
   # path this plugin has. Do not re-merge them.
   if [ -f "$_s" ]; then seen=$_s; break; fi
-  if : > "$_s" 2>/dev/null; then
+  if : 2>/dev/null > "$_s"; then
     seen=$_s
     # -mtime +30, NOT +7: the markers of a session that is still OPEN are as old as that session, and this
     # prune runs from a DIFFERENT session (agy-anomaly-capture-reminder.sh:103-106).

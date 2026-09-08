@@ -1026,7 +1026,7 @@ plugin-hooks-registration.Tests.ps1               0,6s   33 tests   <- FAST, re-
                                                                       0,5s / 18 tests; +4 for the recorder's
                                                                       SessionStart registration, which this
                                                                       suite had never covered)
-plugin-hooks-payload.Tests.ps1                    3,4s    3 tests   <- FAST. COUNT corrected 2026-08-06:
+plugin-hooks-payload.Tests.ps1                    3,4s    5 tests   <- FAST. COUNT corrected 2026-08-06:
                                                                       the row said 2 and had been wrong
                                                                       since 413c617 added the repo-root
                                                                       walk case 40 min after the sweep

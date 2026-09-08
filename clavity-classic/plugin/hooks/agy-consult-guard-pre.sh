@@ -38,5 +38,5 @@ fi
 
 quad=$(agy_guard_quad "$cwd")
 tmp="$sf.tmp.$$"
-printf '%s\n' "$quad" > "$tmp" 2>/dev/null && mv -f "$tmp" "$sf" 2>/dev/null
+printf '%s\n' "$quad" 2>/dev/null > "$tmp" && mv -f "$tmp" "$sf" 2>/dev/null
 exit 0

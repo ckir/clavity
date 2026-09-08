@@ -124,4 +124,53 @@ Describe 'shipped plugin hook payload' {
             $walks | Should -BeGreaterThan 10 -Because "$dir should carry the walk in most hooks; a near-zero count means the pattern moved and this test went blind"
         }
     }
+
+    It 'redirects stderr BEFORE the target, so a failed OPEN cannot leak a raw OS diagnostic' {
+        # ROADMAP section 22. `CMD > "$f" 2>/dev/null` does NOT suppress a failure to OPEN $f: the shell
+        # applies redirections left to right, so at the moment the open fails stderr is still the
+        # terminal. `CMD 2>/dev/null > "$f"` is silent. RE-MEASURED 2026-09-08 with a full paired control
+        # against a target whose parent is a regular file:
+        #   > "$f" 2>/dev/null  unopenable -> rc 1, `bash: line 1: blocker/child: Not a directory`
+        #   2>/dev/null > "$f"  unopenable -> rc 1, nothing
+        #   both forms          writable   -> rc 0, nothing        <- the control: the ORDER is the cause
+        # The `>>` append form behaves identically, so it is not a separate case.
+        #
+        # THIS GUARD EXISTS BECAUSE THE ONE-TIME FIX DEMONSTRABLY DOES NOT HOLD. Section 22 catalogued 8
+        # sites per driver on 2026-08-30; sweeping on 2026-09-08 found TEN, and the two extra were added
+        # AFTER the section was written - one by section 24 (`ff05520`) and one by section 27
+        # (`5d25825`), the latter written by the same driver that then executed this section. The
+        # reachability argument is the `2>/dev/null` itself: an author writes it precisely because they
+        # expect the open to fail, and the suppression they reach for is the one that does not work.
+        # A catalogue of line numbers cannot stop that; a glob-discovered assertion can.
+        #
+        # COMMENT LINES ARE EXCLUDED, and that is not a convenience: agy-shield-lib.sh documents this
+        # exact rule by quoting the broken form, so a guard that read comments would fail on the file
+        # that explains it.
+        foreach ($dir in @($script:DotnetHooks, $script:ClassicHooks, $script:AutotrainHooks)) {
+            $hooks = Get-HookSet $dir
+            $hooks.Count | Should -BeGreaterThan 0 -Because "an empty glob for $dir would make this vacuous"
+
+            $bad = foreach ($h in $hooks) {
+                $n = 0
+                foreach ($line in (Get-Content -LiteralPath $h.FullName)) {
+                    $n++
+                    if ($line -match '^\s*#') { continue }
+                    if ($line -match '>>?\s*"[^"]*"\s+2>/dev/null') { "$($h.Name):${n}" }
+                }
+            }
+            ($bad -join '; ') | Should -BeNullOrEmpty -Because 'the stderr redirect must come FIRST, or a failed open prints a raw OS error over the hook that handled it correctly'
+        }
+    }
+
+    It 'the redirect-order guard REJECTS the broken form (distractor control)' {
+        # Without this row the assertion above passes against a regex that matches nothing at all - which
+        # is exactly how it would fail after a future edit moves the pattern. Feed it both orders and
+        # require it to tell them apart.
+        $unsafe = 'printf ''x'' > "$f" 2>/dev/null'
+        $safe   = 'printf ''x'' 2>/dev/null > "$f"'
+        $rx     = '>>?\s*"[^"]*"\s+2>/dev/null'
+        $unsafe | Should -Match $rx -Because 'the guard must SEE the broken form, or it certifies nothing'
+        $safe   | Should -Not -Match $rx -Because 'and it must not condemn the correct one, or every hook fails forever'
+        '    # : > "$f" 2>/dev/null   <- a comment quoting the broken form' -match '^\s*#' | Should -BeTrue -Because 'the comment skip is what lets agy-shield-lib.sh document this rule'
+    }
 }

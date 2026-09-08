@@ -106,7 +106,7 @@ if [ "$event" = "UserPromptSubmit" ]; then
     [ -d "$_cand" ] || mkdir -p "$_cand" 2>/dev/null
     _s="$_cand/.clavity-anomaly-seen-$sid"
     if [ -f "$_s" ]; then seen=$_s; sent="$_cand/.clavity-anomaly-sent-$sid"; break; fi
-    if : > "$_s" 2>/dev/null; then
+    if : 2>/dev/null > "$_s"; then
       # (a) FIRST PROMPT of this session: marker now recorded, emit nothing this turn.
       # Prune this location while we are here. It runs at most once per session and only on the path that
       # just proved itself writable, so it never touches the hot path. $HOME/.clavity-tmp in particular has
@@ -128,7 +128,7 @@ if [ "$event" = "UserPromptSubmit" ]; then
 
   # (b) SUBSEQUENT PROMPTS: emit once, then never again.
   [ -f "$sent" ] && exit 0
-  : > "$sent" 2>/dev/null
+  : 2>/dev/null > "$sent"
 fi
 
 # jq is needed only to read cwd out of the payload. Without it, STILL DELIVER: emit the same message in a

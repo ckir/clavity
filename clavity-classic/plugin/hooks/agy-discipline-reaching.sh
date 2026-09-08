@@ -148,9 +148,9 @@ else
   # fallback by the fix for the previous round's defect. Third consecutive round in which a fix created
   # one; do not "simplify" this test back apart.
   if [ ! -s "$root/.clavity/.gitignore" ]; then
-    printf '%s\n' '*' >> "$root/.clavity/.gitignore" 2>/dev/null
+    printf '%s\n' '*' 2>/dev/null >> "$root/.clavity/.gitignore"
   elif ! grep -qx '*' "$root/.clavity/.gitignore" 2>/dev/null; then
-    printf '\n%s\n' '*' >> "$root/.clavity/.gitignore" 2>/dev/null
+    printf '\n%s\n' '*' 2>/dev/null >> "$root/.clavity/.gitignore"
   fi
 fi
 
@@ -166,6 +166,6 @@ fi
 # The previous wording here asserted that a field not written at session N cannot be recovered later, which
 # is false for exactly that case and would send a reader hunting a capture bug that does not exist.
 printf '{"v":3,"session_id":"%s","timestamp":"%s","source":"%s","model":"%s","transcript_path":"%s","scan_status":"%s"}\n' \
-  "$sid" "$ts" "$src" "$model" "$tx" "$status" >> "$out/discipline-reaching.jsonl" 2>/dev/null
+  "$sid" "$ts" "$src" "$model" "$tx" "$status" 2>/dev/null >> "$out/discipline-reaching.jsonl"
 
 exit 0

@@ -257,7 +257,7 @@ case "$mode" in
                     printf -v _go_ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1 2>/dev/null || _go_ts=$(TZ=UTC date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)
                     [ -n "$_go_ts" ] || _go_ts=unknown
                     printf '%s  %s  GATE-OVERRIDE  HEAD=%s  %s\n' "$_go_ts" "$discipline" "$sha" "$_gate" \
-                        >> "$root/.clavity/agy-marks/skipped.log" 2>/dev/null \
+                        2>/dev/null >> "$root/.clavity/agy-marks/skipped.log" \
                         || _die_refuse 'GATE-OVERRIDE could not be recorded, so the marker was NOT written'
                 else
                     # THE MESSAGE NAMES THE not-a-ledger CASE ON PURPOSE. The gate applies to any
@@ -453,7 +453,7 @@ case "$mode" in
         printf '%s %s consult=%s review=%s %s %s\n' \
             "$_ts" "$discipline" "$consult_id" "$review_id" \
             "$isolation" "$(git rev-parse HEAD 2>/dev/null || echo unknown)" \
-            >> "$root/.clavity/agy-marks/consults.log" 2>/dev/null || {
+            2>/dev/null >> "$root/.clavity/agy-marks/consults.log" || {
             echo "agy-mark stamp: could not write consults.log - isolation NOT recorded" >&2
             exit 0
         }
