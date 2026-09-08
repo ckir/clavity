@@ -193,32 +193,34 @@ _check_relpath() {
     esac
 }
 
-# THE SCRIPT'S OWN DIRECTORY, WITHOUT `dirname`. That was an external command at three sites here, so an
-# empty PATH made them emit `dirname: command not found` on stderr and yield an EMPTY string - the exact
-# leak ROADMAP section 22 set out to end, bypassing it because section 22 only fixed redirect ORDER and
-# these sites had no redirect at all. MEASURED 2026-09-08 with a passing and a failing control in one
-# shell: `env -i PATH= bash -c 'x=$(dirname /a/b/c)'` leaks and leaves x empty; with PATH=/usr/bin it
-# yields /a/b. Parameter expansion closes both halves at once - no stderr to leak and no process to
-# spawn, which is also what this file's own budget rule asks for. The `case` is required: a strip on a
-# bare filename with no separator returns the FILENAME, not `.`, and would resolve the helper beside a
-# directory that does not exist.
+# THE SCRIPT'S OWN DIRECTORY. The reported defect here was NOT `dirname` itself - it was that these
+# three call sites had no stderr redirect, so an empty PATH emitted `dirname: command not found` and
+# yielded an EMPTY string. MEASURED with a passing and a failing control in one shell:
+# `env -i PATH= bash -c 'x=$(dirname /a/b/c)'` leaks and leaves x empty; with PATH=/usr/bin it yields
+# /a/b. `2>/dev/null` closes exactly that, and nothing else changes.
 #
-# EITHER SEPARATOR, BECAUSE `dirname` ACCEPTED BOTH AND THE FIRST REPLACEMENT DID NOT. Git-for-Windows
-# ships an MSYS `dirname` that splits on a BACKSLASH as well as a slash, so a native Windows "$0" - which
-# is exactly what PowerShell's Join-Path hands `bash`, and what every Pester row here uses - resolved
-# correctly for as long as this file called it. `${0%/*}` does not: MEASURED 2026-09-08, a native path
-# holds no forward slash, took the `.` arm, and every stamp/head/log/prepare call died on "shield helper
-# not found beside this script: [./agy-shield-lib.sh]" - eight rows of agy-mark-stamp.Tests.ps1 red on
-# CI. The three `rejects ...` rows stayed GREEN throughout because they assert a NON-ZERO exit and got
-# one for the wrong reason, which is why the suite still looked half-alive.
-# `%` strips the SHORTEST matching suffix, so the class below cuts at the LAST separator of either kind
-# and a mixed `C:\a\b/c.sh` resolves too. THE CLASS MUST BE QUOTED as written: the obvious spelling
-# `[/\\]` matches NEITHER separator - MEASURED in bash, dash and WSL dash, with `[/]` as the passing
-# control - and would have restored this bug in silence.
-case "$0" in
-  *['/\']*) _self_dir=${0%['/\']*} ;;
-  *)        _self_dir=. ;;
-esac
+# PARAMETER EXPANSION WAS TRIED HERE TO DROP A SUBPROCESS, AND REVERTED. It was never needed to fix the
+# leak above, and the leak was the whole defect.
+#
+# THE ROOT CAUSE, measured end to end. PowerShell's Join-Path NORMALISES to all backslashes on Windows,
+# so joining a repo root with a forward-slash relative path yields a path holding no forward slash at
+# all; and "$0" reaches this script VERBATIM - measured across four invocation styles, Git Bash rewrites
+# nothing on the way in. `${0%/*}` therefore found no separator, the self-directory collapsed to `.`,
+# and every mode died on "shield helper not found beside this script". EIGHT rows of
+# agy-mark-stamp.Tests.ps1 went red on CI; agy-mark.Tests.ps1 escaped only because it normalises its
+# path to forward slashes first. `dirname` has none of this to get wrong - the MSYS build splits a
+# Windows path as readily as a POSIX one.
+#
+# WHY THE SUITE STILL LOOKED HALF-ALIVE - and this observation came from the CI auto-fix worker, not
+# from me: the three `rejects ...` rows stayed GREEN throughout, because they assert a NON-ZERO exit and
+# got one, for entirely the wrong reason. A row that only checks "did this fail" cannot tell a refusal
+# from a broken script.
+#
+# A both-separator expansion CAN be written correctly - measured, two spellings of the bracket class
+# behave identically, with `[/]` as the passing control. It is still not worth it: correctness that
+# hinges on getting a character class exactly right, in a file this load-bearing, buys one saved fork.
+# The invariant is pinned by a test that invokes this hook through an all-backslash path.
+_self_dir="$(dirname "$0" 2>/dev/null)"
 
 # Load the shield helper. Hard-wired: there is no way to skip it. Its return value carries no
 # information (it is always 0) and must not be branched on.
@@ -401,11 +403,8 @@ case "$mode" in
         agy_shield "$root" "$rel" "$_key"
         # `$root/$rel` always contains a slash (the join supplies one), so the suffix strip is safe here
         # without the `case` guard the two sites above need.
-        # `dirname` replaced by a suffix strip - see the note at the two helper-load sites. No `case`
-        # guard is needed HERE and adding one would be dead code: every assignment to $rel in this file
-        # begins with the literal `.clavity/`, so it always contains a slash and `${rel%/*}` can never
-        # return the whole string.
-        _parent="${root}/${rel%/*}"
+        # dirname, with the redirect that was the actual fix - see the note at the helper-load site.
+        _parent=$(dirname "$root/$rel" 2>/dev/null)
         mkdir -p "$_parent" 2>/dev/null || _die_refuse "could not create $_parent"
         exit 0
         ;;

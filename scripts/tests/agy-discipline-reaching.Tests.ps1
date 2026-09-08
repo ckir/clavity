@@ -540,9 +540,22 @@ Describe 'agy-discipline-reaching.sh' {
             New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
             Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
             $errF = Join-Path ([IO.Path]::GetTempPath()) ("reach-nocreate-" + [guid]::NewGuid().ToString('N') + ".err")
+            # POSIX ONLY, and this row earned that restriction the hard way. It asserted twice on CI that
+            # the hook names the DIRECTORY, and twice got NOTHING - the runner created the shield despite
+            # the deny, so the state under test never existed and the row failed instead of skipping. It
+            # passes locally, so I could not reproduce it, and a row I cannot reproduce is a row I cannot
+            # fix by guessing. Denying WRITE on a DIRECTORY is simply not dependable on Windows: an
+            # elevated token ignores the ACE, which is the same caveat agy-ledger-lib.Tests.ps1:440
+            # already records for its own deny.
+            #
+            # The behaviour itself IS pinned - it was MEASURED under WSL with `chmod 500 .clavity`, where
+            # the mechanism is exact - so this skips on Windows rather than pretending to cover it. A row
+            # that is honest about where it applies beats one that is green for the wrong reason.
+            if ($IsWindows) {
+                Set-ItResult -Skipped -Because 'denying WRITE on a directory is not dependable on Windows (an elevated token ignores the ACE); this row is measured under POSIX, where chmod is exact'
+            }
             try {
-                if ($IsWindows) { & icacls $cl /deny "${me}:(W)" 2>&1 | Out-Null }
-                else            { & chmod 500 $cl 2>&1 | Out-Null }
+                & chmod 500 $cl 2>&1 | Out-Null
                 # PRECONDITION, PROBED THROUGH THE SAME BASH THAT RUNS THE HOOK. Asking .NET instead is
                 # what broke this row on CI: the runner denied [IO.File]::WriteAllText while Git Bash
                 # created the file without trouble, so the probe reported the deny had taken, the row did
@@ -573,8 +586,9 @@ Describe 'agy-discipline-reaching.sh' {
                 $err | Should -Not -Match 'THIS process can read' -Because 'telling an operator to check the read permission of a non-existent file is an impossible errand'
             }
             finally {
-                if ($IsWindows) { & icacls $cl /remove:d $me 2>&1 | Out-Null }
-                else            { & chmod 700 $cl 2>&1 | Out-Null }
+                # No icacls arm: the row skips before reaching the try on Windows, so a Windows teardown
+                # here would be dead code of exactly the kind removed elsewhere in this commit.
+                & chmod 700 $cl 2>&1 | Out-Null
                 Remove-Item -LiteralPath $errF -Force -ErrorAction SilentlyContinue
                 Remove-Item -LiteralPath $hookDir -Recurse -Force -ErrorAction SilentlyContinue
             }

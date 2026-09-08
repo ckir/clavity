@@ -63,6 +63,38 @@ Describe 'agy-mark.sh' {
     }
 
     Context 'head mode' {
+        It 'RESOLVES ITS OWN HELPERS when invoked by an all-BACKSLASH Windows path' {
+            # NO ROW ANYWHERE INVOKED THIS HOOK BY A WINDOWS PATH, and that gap cost a red pipeline.
+            # `$script:Mark` above ends with `-replace '\\','/'`, so every other row in this suite hands
+            # bash a forward-slash path. agy-mark-stamp.Tests.ps1:2 does NOT normalise, and PowerShell's
+            # Join-Path returns an ALL-BACKSLASH path on Windows - MEASURED:
+            #   Join-Path 'D:\a\c' 'clavity-dotnet/plugin/hooks/agy-mark.sh'
+            #     -> D:\a\c\clavity-dotnet\plugin\hooks\agy-mark.sh   (zero forward slashes)
+            # and `$0` reaches the script VERBATIM, measured across four invocation styles - Git Bash
+            # does not rewrite it. So a self-directory computed as `${0%/*}` found no `/`, collapsed to
+            # `.`, failed to find the helper beside itself, and REFUSED with exit 1. Eight rows in the
+            # other suite went red on CI while every row here stayed green.
+            #
+            # This row pins the INVARIANT rather than the implementation: however the script locates its
+            # own directory, a Windows path must work. `dirname` satisfies it today; the parameter
+            # expansion that briefly replaced `dirname` did not.
+            $d = New-MarkFixture
+            $sha = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+            $backslashMark = $script:Mark -replace '/', '\'
+            $backslashMark | Should -Not -Match '/' -Because 'the fixture must really be backslash-only, or this row proves nothing'
+
+            $outF = Join-Path ([IO.Path]::GetTempPath()) ("mkbs-" + [guid]::NewGuid().ToString('N') + ".out")
+            $errF = "$outF.err"
+            try {
+                $p = Start-Process -FilePath $script:Bash -ArgumentList @($backslashMark, 'head', 'agy-first', $sha) `
+                        -WorkingDirectory $d -RedirectStandardOutput $outF -RedirectStandardError $errF -NoNewWindow -Wait -PassThru
+                $err = Get-Content -Raw -LiteralPath $errF -ErrorAction SilentlyContinue
+                $p.ExitCode | Should -Be 0 -Because "a Windows path must resolve the helpers; stderr was: $err"
+                $err | Should -Not -Match 'helper not found beside this script' -Because 'that message is the signature of a self-directory that collapsed to .'
+            }
+            finally { Remove-Item -LiteralPath $outF, $errF -Force -ErrorAction SilentlyContinue }
+        }
+
         It 'writes the BARE sha and nothing else' {
             # docs/agy-disciplines-marker-contract.md:18 - "the commit sha from git rev-parse HEAD at
             # consult time, and nothing else". Touching the file and ignoring the argument would satisfy
