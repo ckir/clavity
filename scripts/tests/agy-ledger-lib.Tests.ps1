@@ -94,6 +94,52 @@ Describe 'agy-ledger-lib.sh' {
 |------|-------|--------|---------|----------|
 | 2026-09-06 | `<<SHORT>>..bbbbbbb` | 1 | GREEN | fold `deadbee` |
 '@
+        # A LEFT ENDPOINT CARRYING A GIT REVISION MODIFIER, both directions. The shipped ledger records
+        # this shape at docs/agy-capstone-ledger.md:65 (`77aa257^..08254ab`), so it is not contrived -
+        # and until capstone round 2a the modifier defeated the left-endpoint guard entirely, because
+        # every fixture above uses a PLAIN `..`. Four fixtures, because the caret and the tilde fail
+        # differently: the caret leaked a false FOUND on the left only, while the tilde ALSO refused the
+        # genuine right endpoint. A fix for one half moves the defect instead of closing it, so both
+        # endpoints of both shapes are pinned.
+        $script:CaretLeftLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | `<<SHORT>>^..bbbbbbb` | 1 | GREEN | fold `deadbee` |
+'@
+        $script:CaretRightLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | `aaaaaaa^..<<SHORT>>` | 1 | GREEN | fold `deadbee` |
+'@
+        $script:TildeLeftLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | `<<SHORT>>~3..bbbbbbb` | 1 | GREEN | fold `deadbee` |
+'@
+        $script:TildeRightLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | `aaaaaaa~3..<<SHORT>>` | 1 | GREEN | fold `deadbee` |
+'@
+        # THE OVER-LONG QUERY NEEDS A ROW IT WOULD OTHERWISE MATCH, or the test is vacuous: a query of
+        # 65 `a`s finds nothing in any ledger above, so it answers ABSENT with or without the length
+        # bound and passes under its own mutant. Here `aaaaaaa` IS a 7-character prefix of that query,
+        # so without the bound the alternation authenticates it and the answer flips to FOUND.
+        $script:LongQueryDecoyLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | `aaaaaaa` | 1 | GREEN | fold `deadbee` |
+'@
         # The range is present and correct but is not the FIRST thing in its column.
         $script:NotFirstLedger = @'
 # ledger
@@ -298,6 +344,43 @@ Describe 'agy-ledger-lib.sh' {
             $out | Should -Match 'mentioned=1'
         }
 
+        It 'refuses a <Name> LEFT endpoint, whose modifier must not read as a reviewed tip' -ForEach @(
+            @{ Name = 'caret-modified'; Fixture = 'CaretLeftLedger' }
+            @{ Name = 'tilde-modified'; Fixture = 'TildeLeftLedger' }
+        ) {
+            # MEASURED before the fix: both answered FOUND. The trailing class forbids a following DOT,
+            # so a bare `^` or `~` satisfied it and the left endpoint authenticated as the reviewed tip.
+            $r = New-LedgerRepo -LedgerBody (Get-Variable -Scope Script -Name $Fixture -ValueOnly)
+            $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+            $out | Should -Not -Match 'FOUND' -Because 'a revision modifier does not turn the near side of a range into the far side'
+            $out | Should -Match 'mentioned=1'
+        }
+
+        It 'authenticates the RIGHT endpoint of a <Name> range' -ForEach @(
+            @{ Name = 'caret-modified'; Fixture = 'CaretRightLedger' }
+            @{ Name = 'tilde-modified'; Fixture = 'TildeRightLedger' }
+        ) {
+            # The other half of the same fix, and the reason it cannot be done by tightening the trailing
+            # class alone. MEASURED before the fix: the tilde row answered ABSENT for a tip that WAS
+            # reviewed, because the optional left group could not consume `~3..`.
+            $r = New-LedgerRepo -LedgerBody (Get-Variable -Scope Script -Name $Fixture -ValueOnly)
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out |
+                Should -Match 'FOUND' -Because 'the far side of the range is what was reviewed, modifier or not'
+        }
+
+        It 'refuses a query LONGER than any real hash instead of hanging on it' {
+            # The alternation is built by repeated concatenation and then compiled by grep, so cost grows
+            # with the square of the length. MEASURED before the bound: 40 characters answered in under a
+            # second; 4000 had not returned after 140 seconds and had to be killed. The assertion is the
+            # ANSWER, and the timeout is the harness's - a row that only measured elapsed time would be a
+            # flaky clock test rather than a statement about behaviour.
+            $r = New-LedgerRepo -LedgerBody $script:LongQueryDecoyLedger
+            $long = 'a' * 65
+            $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $long).Out
+            $out | Should -Not -Match 'FOUND' -Because 'the decoy row `aaaaaaa` is a 7-character prefix of this query and would authenticate it without the bound'
+            $out | Should -Match 'ABSENT mentioned=0' -Because '65 hex characters is longer than any real hash, so it cannot be a sha at all'
+        }
+
         It 'refuses a range that is not FIRST in its column' {
             $r = New-LedgerRepo -LedgerBody $script:NotFirstLedger
             (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Not -Match 'FOUND'
@@ -421,6 +504,26 @@ Describe 'agy-ledger-lib.sh' {
             $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha '49be0c4e2c63fc2f3875d63ca607908d28a9d760').Out
             $out | Should -Not -Match 'FOUND'
             $out | Should -Match 'mentioned=1'
+        }
+
+        It 'refuses 77aa257, the CARET-modified LEFT endpoint in the shipped ledger' {
+            # The row above pins a PLAIN `..` left endpoint, and that is the whole reason this defect
+            # shipped: every synthetic fixture and every real-ledger row in this suite used a plain range,
+            # so nothing exercised the `^..` form the ledger actually contains at line 65. MEASURED
+            # against the live file at a7e9e97: this query answered FOUND, certifying a commit that was
+            # the range's starting point and never its reviewed tip.
+            $r = New-LedgerRepo -RawBody $script:RealLedgerBody
+            $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha '77aa2578717407c34d21c3485893dac5b63aa2fb').Out
+            $out | Should -Not -Match 'FOUND' -Because 'docs/agy-capstone-ledger.md:65 records 77aa257^..08254ab, so 77aa257 is the near side'
+            $out | Should -Match 'mentioned=1'
+        }
+
+        It 'authenticates 08254ab, the right endpoint of that same caret range' {
+            # The paired success row. Without it, tightening the trailing class until the left endpoint
+            # is refused would pass while silently refusing the tip that WAS reviewed.
+            $r = New-LedgerRepo -RawBody $script:RealLedgerBody
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha '08254abc72ffbe91a92fb81e98669f984ed87ee9').Out |
+                Should -Match 'FOUND' -Because '08254ab is the far side of 77aa257^..08254ab and was the reviewed tip'
         }
     }
 }

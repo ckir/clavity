@@ -94,6 +94,12 @@ agy_ledger_lookup() {
         ''|*[!0-9a-fA-F]*) printf 'ABSENT mentioned=0'; return 0 ;;
     esac
     [ ${#_agl_sha} -ge 7 ] || { printf 'ABSENT mentioned=0'; return 0; }
+    # AND AN UPPER BOUND, because the alternation below is built by repeated string concatenation and
+    # then compiled by grep: cost grows with the SQUARE of the length. MEASURED (capstone round 2a): a
+    # 40-character query answers in under a second, a 4000-character one had not returned after 140
+    # seconds. 64 is the longest real hash (SHA-256 hex); no shipped call site passes anything but
+    # `git rev-parse HEAD`, so this refuses nothing that happens today and bounds what a caller can cost.
+    [ ${#_agl_sha} -le 64 ] || { printf 'ABSENT mentioned=0'; return 0; }
 
     # Every prefix of the query from 7 characters to its full length. The row's endpoint must be one of
     # them, which is what lets an abbreviated ledger entry match a full sha WITHOUT resolving anything.
@@ -107,8 +113,17 @@ agy_ledger_lookup() {
     # The optional `[` and backtick carry the link and padded-bracket forms capstone round 3 folded
     # (`[ deadbeef ]`, `[x](url)`). The trailing class is what forbids a LEFT endpoint: a bare token
     # followed by a dot is the near side of a range, not the far side, and must not match.
+    #
+    # A LEFT ENDPOINT MAY CARRY A GIT REVISION MODIFIER, and both halves of that fact are load-bearing.
+    # MEASURED (capstone round 2a) against the SHIPPED ledger, which records `77aa257^..08254ab` at
+    # docs/agy-capstone-ledger.md:65: querying the left endpoint `77aa257` answered FOUND, because the
+    # optional left group could not match `77aa257^..` in one direction while `^` satisfied the trailing
+    # class in the other. So the modifier must be BOTH consumable by the left group (or a `~3..` range's
+    # genuine RIGHT endpoint is refused - also measured) AND excluded from the trailing class (or the
+    # left endpoint authenticates as a reviewed tip, which is the false FOUND this gate exists to stop).
+    # Fixing only one half moves the defect rather than closing it.
     _agl_rx='^[ ]{0,3}\|[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]]*\|[[:space:]]*`?(\[[[:space:]]*)?`?'
-    _agl_rx="${_agl_rx}([0-9a-fA-F]+\\^?\\.\\.)?(${_agl_alt})([^0-9a-fA-F.]|\$)"
+    _agl_rx="${_agl_rx}([0-9a-fA-F]+(\\^[0-9]*|~[0-9]*)?\\.\\.)?(${_agl_alt})([^0-9a-fA-F.^~]|\$)"
 
     # GREP'S EXIT CODE IS THE UNREADABILITY ORACLE, and that is the established idiom in this plugin:
     # agy-anomaly-reminder.sh:139-144 chose it over `[ -r ]` for the same reason and says so - the shell's
