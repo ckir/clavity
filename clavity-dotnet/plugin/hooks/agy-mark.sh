@@ -264,8 +264,12 @@ case "$mode" in
                     # discipline whose docs/<name>-ledger.md exists, so a file created under that name
                     # for any other reason - a scratchpad, a copy-paste - switches the gate on for a
                     # discipline that never appends rows and blocks its marker permanently. MEASURED
-                    # (capstone round 1): `docs/agy-first-ledger.md` holding two lines of prose made
-                    # `head agy-first` exit 1, with the control exiting 0. Deriving applicability from
+                    # (capstone round 1): a stray ledger-shaped file named for `agy-first`, holding two
+                    # lines of prose, made `head agy-first` exit 1 with the control exiting 0. The path
+                    # is described rather than written out because the file deliberately does NOT exist
+                    # - spelling it here makes it a DANGLING REFERENCE, which the injected-context gate
+                    # correctly refuses (it caught exactly that, on this line, at `763d0ae`).
+                    # Deriving applicability from
                     # CONTENT instead would fail OPEN - a real ledger whose header was reformatted
                     # would silently stop gating - so the fail-closed rule stays and the message
                     # carries the recovery instead.

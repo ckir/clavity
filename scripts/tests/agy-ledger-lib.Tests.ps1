@@ -289,15 +289,31 @@ Describe 'agy-ledger-lib.sh' {
                 if ($IsWindows) { & icacls $ledger /deny "$($env:USERNAME):(R)" 2>&1 | Out-Null }
                 else            { & chmod 000 $ledger }
 
-                # ORACLE CONTROL, deliberately through something OTHER than the code under test: .NET
-                # opens the file by a different path than MSYS bash does, so it can contradict the reader
-                # rather than echo it. If the deny did not take - an elevated token, a filesystem that
-                # ignores ACLs - this row cannot reach its failing answer, and a row that cannot fail
-                # certifies nothing. SKIP loudly instead of passing silently.
-                $reallyDenied = $false
-                try { [void][IO.File]::ReadAllText($ledger) } catch { $reallyDenied = $true }
-                if (-not $reallyDenied) {
-                    Set-ItResult -Skipped -Because 'the read-deny did not take on this account, so the unreadable state is unreachable here'
+                # ORACLE CONTROL, AND IT MUST ASK THE SAME SHELL THE CODE UNDER TEST USES. The first
+                # version of this row asked .NET instead, reasoning that an independent access path can
+                # contradict the reader rather than echo it. CI proved that reasoning backwards: on the
+                # runner, .NET reported the file DENIED while MSYS bash could still open it, so the
+                # precondition read as satisfied, the lookup correctly answered FOUND, and the row failed
+                # asserting UNREADABLE against a file that was perfectly readable to it.
+                #
+                # A PRECONDITION HAS TO HOLD IN THE ACCESS DOMAIN THAT MATTERS. "Unreadable" is not a
+                # property of the file; it is a property of the file AND the process asking. Establish it
+                # with the very bash that will run the library, or the row is measuring someone else's
+                # permissions - which is how it passed on a developer box and failed in CI.
+                # A DRIVER SCRIPT, for the reason Invoke-Lookup gives above: PowerShell's Start-Process
+                # argument quoting mangles a `-c` string carrying quotes and redirections. MEASURED - the
+                # first attempt passed `-c "cat '...' >/dev/null 2>&1"` and came back exit 0 on a file
+                # bash demonstrably could not read, which would have SKIPPED this row everywhere and
+                # looked exactly like a deny that did not take.
+                # The probe's own `cat: ... Permission denied` appears in the run output and is EXPECTED -
+                # it is the visible evidence that the precondition held. A green run with that line is
+                # correct; a green run WITHOUT it means the probe skipped and this row asserted nothing.
+                $probeSh = Join-Path $r.Dir 'probe-readable.sh'
+                [IO.File]::WriteAllText($probeSh, "cat docs/agy-capstone-ledger.md > /dev/null`n")
+                $probe = Start-Process -FilePath $script:Bash -ArgumentList @('probe-readable.sh') `
+                            -WorkingDirectory $r.Dir -NoNewWindow -Wait -PassThru
+                if ($probe.ExitCode -eq 0) {
+                    Set-ItResult -Skipped -Because 'the read-deny did not take for THIS bash (elevated token, or a filesystem that ignores ACLs), so the unreadable state is unreachable here'
                 }
 
                 $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
