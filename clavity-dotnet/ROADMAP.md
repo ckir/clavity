@@ -2407,33 +2407,64 @@ GATE IS — the panel is PAUSED for owner rulings, and no line-level plan may be
 Two findings were killed by measurement and are recorded in the spec's `## Stand-downs`, including the
 peer's own retraction of "the write path is the wrong chokepoint".
 
-### §28 — Four gate scripts repeat the 8.3 prefix-arithmetic shape that `41eef75` fixed once — ▶ **PROMOTED 2026-09-03, SEQUENCED as Phase 3b with §30, not yet planned**
+### §28 — Eight sites repeated the 8.3 prefix-arithmetic shape that `41eef75` fixed once — ✅ **SHIPPED 2026-09-08**, `734b30b..48da086` (`734b30b` the helper + suite · `332e729` `2365847` `6f12052` `5bd268a` the four migrations · `48da086` the guard)
 
-**The shape.** Each script resolves a root with `Resolve-Path ... .Path`/`.ProviderPath`, which
-**PRESERVES an 8.3 short path**, then computes a relative path by `Substring(<root>.Length)` against a
+**The shape.** Each script resolved a root with `Resolve-Path ... .Path`/`.ProviderPath`, which
+**PRESERVES an 8.3 short path**, then computed a relative path by `Substring(<root>.Length)` against a
 `Get-ChildItem` `FullName`, which **NORMALISES to the long form**. Long minus short is arithmetic on two
-different strings, so `$rel` comes out mangled.
+different strings, so `$rel` came out mangled — and **it did not throw**, because a short root is
+*shorter* than the long child, so the index stayed valid.
 
-**Confirmed still present at triage, at every line the capture cited** (2026-09-03, after an earlier
-narrower grep on `$root` MISSED them because these use `$repo`, `$RepoRoot` and `$prefix`):
+**EIGHT subtraction sites across FOUR files, not four sites** — one root fix per file was never enough,
+because each file subtracts in several places:
 
-| site | the line |
-|---|---|
-| `scripts/check-dangling-consumers.ps1:104,127` | root via `.ProviderPath`; `$f.FullName.Substring($repo.Length)` |
-| `scripts/check-injected-context.ps1:20,186` | root via `Resolve-Path`; `$child.FullName.Substring($RepoRoot.Length + 1)` |
-| `scripts/check-installer-ascii.ps1:29,54` | root via `Resolve-Path`; `$f.FullName.Substring($RepoRoot.Length)` |
-| `scripts/check-knowledge-store.ps1:61,125` | root via `Resolve-Path`; `$_.Substring($prefix.Length)` |
+| file | sites BEFORE the fix | the same sites NOW (they call the helper) |
+|---|---|---|
+| `scripts/check-injected-context.ps1` | `:186`, `:319`, `:456` | `:187`, `:320`, `:457` |
+| `scripts/check-dangling-consumers.ps1` | `:127`, `:162`, `:184` | `:136`, `:171`, `:193` |
+| `scripts/check-installer-ascii.ps1` | `:54` | `:55` |
+| `scripts/check-plugin-drift.ps1` | `:129` | `:135` |
 
-**Reachability: all four accept a `-RepoRoot` parameter, so a short root is CALLER-reachable** — this is
-not a theoretical Windows curiosity, it is an argument any caller can pass.
+⚠ **Both columns are given because the numbers MOVED**, by the dot-source line each file gained and, in
+`check-dangling-consumers`, by a rewritten comment. A section citing only the pre-fix numbers is stale the
+moment it ships — which is the drift this repo keeps paying for. Re-derive rather than trusting either
+column.
 
-⚠ **The MECHANISM is proven (seat-b-probe control); PER-SITE reachability is UNVERIFIED.** A short-root
-run of `check-installer-ascii` returned OK — but `$rel` is only printed on FAILURE, so that run could not
-have shown the bug. **A plan must establish per-site reachability before claiming a fix, and must not
-read that OK as evidence.**
+🔴 **TWO CORRECTIONS TO THE TRIAGE TABLE THIS SECTION USED TO CARRY.**
 
-**`41eef75` already fixed this shape once, elsewhere.** The fix is known; what is missing is applying it
-to four more sites and pinning it so a fifth cannot appear.
+- **`check-knowledge-store.ps1` was a FALSE POSITIVE and is not a site.** Its `:125`
+  `$_.Substring($prefix.Length)` runs on `git ls-tree --name-only` output already filtered by
+  `-like "$prefix*"` at `:122-124`, so the operand is guaranteed to start with the prefix. It never
+  touches PowerShell path normalisation. Do not re-add it.
+- **`check-plugin-drift.ps1` WAS a site and was missing from the table.** `41eef75` had fixed its root
+  inline after CI caught the bug on a real runner; its subtraction at `:129` was still hand-rolled.
+
+✅ **Reachability is ESTABLISHED, replacing the old "per-site reachability is UNVERIFIED" note.** The
+earlier caution was right that a short-root run returning OK proves nothing — `$rel` is printed only on
+FAILURE. The plan's fixtures therefore had to *provoke a violation* before the oracle meant anything, and
+each one measured the mangled output directly, e.g.
+`480da1887a7ee656488b/a-very-long-.../clavity-dotnet/plugin/dist`.
+
+**The fix is ONE SHARED HELPER, not the inline patch repeated.** `scripts/lib/path-lib.ps1` exports
+`Get-RootRelativePath`, dot-sourced by all four gates the way `release-lib.ps1` already is. It normalises
+the root with `Get-Item .FullName` (8.3, casing, forward slashes, a PSDrive and a provider prefix in one
+call), strips a trailing separator, **asserts the path is under the root at a SEPARATOR BOUNDARY**, then
+subtracts. That boundary check is not polish: a bare `StartsWith` accepts a sibling whose name merely
+extends the root, so `…\repository\secret.md` under `…\repo` returned `sitory\secret.md` — the same
+silent-garbage class, reintroduced inside the helper. An adversarial panel caught it in the first draft.
+
+**A fifth site cannot appear quietly.** `scripts/tests/check-dangling-consumers.Tests.ps1` carries a
+glob-discovered ratchet: a flat prohibition on the hand-rolled idiom, plus a positive row asserting each
+gate dot-sources *and* calls the helper. Measured per row — reintroducing the arithmetic reddens both and
+names the file; deleting only the dot-source reddens only the positive half. Its stated limit is in its
+own comment: it does not catch a split-variable form.
+
+Plan, with every disposition and the measurements behind them:
+`docs/superpowers/plans/2026-09-08-s28-short-path-root-normalisation.md`.
+
+⚠ **§26 will EXTEND `check-injected-context.ps1`'s subtractive discovery.** Its plan must re-derive line
+numbers against post-§28 code, and any new relative-path computation it adds must call
+`Get-RootRelativePath` or the guard will red.
 
 ---
 
