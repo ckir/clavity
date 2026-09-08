@@ -488,6 +488,14 @@ Describe 'agy-discipline-reaching.sh' {
             # against a directory exits 2 on BOTH Git Bash and WSL (measured), which is the same
             # greater-than-one code the real unreadable case produces - so this reaches the branch with
             # no permissions, no platform gate, and no skip.
+            #
+            # WHAT THIS FIXTURE DOES NOT REPRODUCE, stated because the comment above would otherwise
+            # overclaim. MEASURED across both shells: `[ ! -s <dir> ]` is TRUE on Git Bash and FALSE on
+            # WSL, so the directory reaches the verify through a DIFFERENT earlier branch on each - the
+            # append arm on Windows, the grep arm on Linux - whereas a real chmod-200 shield takes the
+            # grep arm on both. The verify runs after that if/elif either way, which is why this row is
+            # sound on both platforms, but it pins the VERIFY's unreadable answer, NOT the exact path
+            # taken to reach it. A row that needed the real path would have to be POSIX-gated.
             $d = New-ReachingFixture -Shield '!keepme.md'
             $gi = Join-Path $d '.clavity/.gitignore'
             Remove-Item -LiteralPath $gi -Force
@@ -502,6 +510,82 @@ Describe 'agy-discipline-reaching.sh' {
                 $err = Get-Content -Raw -LiteralPath $errF -ErrorAction SilentlyContinue
                 $err | Should -Match 'could not READ' -Because 'grep exiting above 1 means unreadable, and that is a different fault from an unwritable shield'
                 $err | Should -Not -Match 'regular, writable file whose contents' -Because 'naming the WRITE permission here sends the operator to investigate the one thing that is not wrong'
+            }
+            finally {
+                Remove-Item -LiteralPath $errF -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath $hookDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'the FALLBACK blames the DIRECTORY when the shield file was never created (capstone r2e)' {
+            # THIS ROW EXISTS BECAUSE A MUTANT SAID IT DID NOT. Mutant J removed the existence arm and
+            # NOTHING went red except the byte-identity row - the fix was folded and unpinned, which is
+            # the state where a later "simplification" silently restores the defect.
+            # MEASURED under WSL with `chmod 500 .clavity` (capstone round 2e): .clavity/ exists, so the
+            # :116 gate lets the hook through, but the shield file cannot be created - and `grep` on a
+            # MISSING file also exits 2, so without this arm the run lands in the unreadable message and
+            # tells the operator to check the permissions of a file that does not exist.
+            $d = New-ReachingFixture -Shield '!keepme.md'
+            $gi = Join-Path $d '.clavity/.gitignore'
+            $cl = Join-Path $d '.clavity'
+            $me = "$env:USERDOMAIN\$env:USERNAME"
+            Remove-Item -LiteralPath $gi -Force
+            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib7-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
+            Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
+            $errF = Join-Path ([IO.Path]::GetTempPath()) ("reach-nocreate-" + [guid]::NewGuid().ToString('N') + ".err")
+            try {
+                if ($IsWindows) { & icacls $cl /deny "${me}:(W)" 2>&1 | Out-Null }
+                else            { & chmod 500 $cl 2>&1 | Out-Null }
+                # PRECONDITION: creation must ACTUALLY fail, or this row proves nothing. Skip rather than
+                # fail - an unreachable state is not a regression.
+                $created = $false
+                try { [IO.File]::WriteAllText($gi, "x`n"); $created = $true } catch { }
+                if ($created) {
+                    Remove-Item -LiteralPath $gi -Force -ErrorAction SilentlyContinue
+                    Set-ItResult -Skipped -Because 'the directory write-deny did not take on this host, so an uncreatable shield is unreachable here'
+                }
+                $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-nocreate'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
+                $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2> $errF | Out-Null
+                $err = Get-Content -Raw -LiteralPath $errF -ErrorAction SilentlyContinue
+                $err | Should -Match 'could not CREATE' -Because 'a file that was never created is a DIRECTORY problem, not a file-permission one'
+                $err | Should -Not -Match 'THIS process can read' -Because 'telling an operator to check the read permission of a non-existent file is an impossible errand'
+            }
+            finally {
+                if ($IsWindows) { & icacls $cl /remove:d $me 2>&1 | Out-Null }
+                else            { & chmod 700 $cl 2>&1 | Out-Null }
+                Remove-Item -LiteralPath $errF -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath $hookDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'the FALLBACK reports a TRACKED file, which a correct shield cannot hide (capstone r2e)' {
+            # THE CONFIG BEING RIGHT IS NOT THE DIRECTORY BEING SAFE, and every other row here checks the
+            # config. A bare `*` cannot hide a file git already TRACKS, so a force-added file inside
+            # .clavity/ keeps leaking while the shield reads as perfect - and before this arm existed the
+            # fallback fell SILENT in exactly that state. MEASURED under WSL: shield contains `*`, one
+            # file force-added, `git check-ignore` says NOT ignored, fallback silent.
+            # This fixture needs NO permissions and NO platform gate - `git add -f` behaves identically
+            # everywhere - which is why it pins the arm more cheaply than the ACL rows above.
+            $d = New-ReachingFixture -Shield "*`n"
+            [IO.File]::WriteAllText((Join-Path $d '.clavity/discipline-reaching.jsonl'), "{}`n")
+            & git -C $d add -f '.clavity/discipline-reaching.jsonl' 2>&1 | Out-Null
+            & git -C $d commit -q -m 'force-track a file inside .clavity/' 2>&1 | Out-Null
+            # PRECONDITION, asserted not assumed: git must really be failing to ignore it, or this row
+            # would pass against a shield that is working perfectly well.
+            & git -C $d check-ignore -q '.clavity/discipline-reaching.jsonl' 2>$null
+            $LASTEXITCODE | Should -Not -Be 0 -Because 'the force-added file must actually be unignored, or there is nothing here to report'
+
+            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib6-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
+            Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
+            $errF = Join-Path ([IO.Path]::GetTempPath()) ("reach-tracked-" + [guid]::NewGuid().ToString('N') + ".err")
+            try {
+                $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-tracked'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
+                $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2> $errF | Out-Null
+                $err = Get-Content -Raw -LiteralPath $errF -ErrorAction SilentlyContinue
+                $err | Should -Match 'is TRACKED' -Because 'silence here is the exact failure this whole branch exists to prevent'
+                $err | Should -Match 'git rm --cached' -Because 'a gitignore rule cannot supply the remedy, so the message must'
             }
             finally {
                 Remove-Item -LiteralPath $errF -Force -ErrorAction SilentlyContinue

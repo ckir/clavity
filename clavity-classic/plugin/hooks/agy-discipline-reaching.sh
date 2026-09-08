@@ -174,12 +174,33 @@ else
   #
   # grep's exit code IS the unreadability oracle, and it is the same one agy-ledger-lib.sh uses: 0 matched,
   # 1 matched nothing, GREATER THAN 1 could not read. Not `[ -r ]`, which does not consult Windows ACLs.
+  # AND EXISTENCE IS ITS OWN CAUSE, ahead of both of them. `grep` on a MISSING file also exits 2, so a
+  # directory this process cannot write - .clavity/ exists, which is why the gate at :116 let us here, but
+  # is read-only - produces no .gitignore at all and lands in the unreadable arm. MEASURED under WSL with
+  # `chmod 500 .clavity` (capstone round 2e): the file did not exist and the operator was told to check
+  # the permissions of a regular file, which is an impossible errand. Existence first, then permission.
   grep -qx '*' "$root/.clavity/.gitignore" 2>/dev/null
   _dr_rc=$?
-  if [ "$_dr_rc" -gt 1 ]; then
+  if [ ! -e "$root/.clavity/.gitignore" ]; then
+    printf 'agy-shield: %s\n' "could not CREATE $root/.clavity/.gitignore - .clavity/ is NOT protected and is exposed to git. The shield file does not exist, so this is not a permission problem on the FILE: check that $root/.clavity/ is a writable directory." >&2
+  elif [ "$_dr_rc" -gt 1 ]; then
     printf 'agy-shield: %s\n' "could not READ $root/.clavity/.gitignore, so whether .clavity/ is shielded cannot be determined - assume it is exposed to git. Check that it is a regular file THIS process can read; it may be writable and still unreadable." >&2
   elif [ "$_dr_rc" -ne 0 ]; then
     printf 'agy-shield: %s\n' "could not assert the shield in $root/.clavity/.gitignore - .clavity/ is NOT protected and is exposed to git. Check that it is a regular, writable file whose contents include a bare '*'." >&2
+  elif ! git -C "$root" check-ignore -q ".clavity/discipline-reaching.jsonl" 2>/dev/null; then
+    # THE CONFIG BEING RIGHT IS NOT THE DIRECTORY BEING SAFE. A bare `*` cannot hide a file git already
+    # TRACKS, so a force-added file inside .clavity/ keeps leaking while the shield reads as perfect -
+    # and every arm above answers "asserted" and falls silent. MEASURED under WSL (capstone round 2e):
+    # shield contains `*`, one file force-added, `git check-ignore` says NOT ignored, fallback silent.
+    # The primary helper checks this; the fallback checked only its own configuration, which made it
+    # silent in exactly the state the whole branch exists to shout about.
+    #
+    # ONE git PROCESS, and only here. The header's budget rule is about the ROOT WALK, and it already
+    # licenses the shield assertion to spawn (:17-21). This runs only on the degraded path, only after
+    # the shield has been confirmed present and correct, so the common case still costs nothing. The
+    # remedy is quoted verbatim because a gitignore rule cannot supply it - same wording as
+    # agy-shield-lib.sh:416, one vocabulary whichever path reports it.
+    printf 'agy-shield: %s\n' "$root/.clavity/.gitignore is correct, but git still does NOT ignore .clavity/discipline-reaching.jsonl - a file inside .clavity/ is TRACKED and a gitignore rule cannot hide it. That file needs: git rm --cached -- .clavity/discipline-reaching.jsonl" >&2
   fi
 fi
 
