@@ -816,7 +816,7 @@ check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 check-growth-budget.Tests.ps1                    15,3s   15 tests   <- FAST, re-measured 2026-08-05
-check-injected-context.Tests.ps1                 91,5s  153 tests   <- SLOW as of 2026-08-24; was FAST -
+check-injected-context.Tests.ps1                 91,5s  154 tests   <- SLOW as of 2026-08-24; was FAST -
 check-knowledge-store.Tests.ps1              163-252s  21 tests   <- SLOW. Each case builds a THROWAWAY
                                                                       GIT REPO: the deletion check compares
                                                                       against the ref's HISTORY and cannot be
@@ -841,7 +841,7 @@ check-knowledge-store.Tests.ps1              163-252s  21 tests   <- SLOW. Each 
                                                                       Two rows CLONE (shallow + full), which
                                                                       is the bulk of the cost.
                                                                       RE-MEASURED 2026-08-28.
-check-dangling-consumers.Tests.ps1                58,4s  11 tests   <- SLOW. Each case builds a THROWAWAY
+check-dangling-consumers.Tests.ps1                58,4s  14 tests   <- SLOW. Each case builds a THROWAWAY
                                                                       SOURCE TREE, and one row walks the REAL
                                                                       repository, so the cost is a full
                                                                       recursive read per case. MEASURED
