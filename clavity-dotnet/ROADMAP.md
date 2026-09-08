@@ -2031,7 +2031,7 @@ merits. **If Part B cannot be made to work inside the current shape, that is a f
 **Provenance.** Richest surviving copy of both halves: `.clavity/seams/capstone-gapclosure-r27.md:11-40`.
 Rationale and the compaction post-mortem: the `feedback-use-the-disciplines-own-vocabulary` memory.
 
-### §22 — The leaking redirect order in four plugin hooks — ▶ **OPEN, promoted from the anomalies file 2026-08-30**
+### §22 — The leaking redirect order in four plugin hooks — ✅ **SHIPPED 2026-09-08** (`136c001`). 🔴 **THE SITE TABLE BELOW WAS STALE AND THE COUNT WAS WRONG: it says 8 sites per driver; the 2026-09-08 sweep found TEN.** The two extra were added AFTER this section was written - `ff05520` (§24) and `5d25825` (§27) - so the class was still being INTRODUCED while the section sat open. **The durable half is therefore not the 20 one-token swaps but a glob-discovered guard** in `plugin-hooks-payload.Tests.ps1`, sweeping both driver payloads plus agy-autotrain, skipping comment lines, with a distractor control proving the matcher tells the two orders apart. Mutant: reintroducing the §27 site alone turns it red naming `agy-mark.sh:260`. ⚠ The table below is KEPT as the original evidence; its line numbers and count are historical, not current.
 
 **Promoted at triage, not captured as opinion.** This was anomaly 1 of 2 in `.clavity/local-anomalies.md`,
 raised during the AGY-CAPSTONE round-8 Law-3 sweep on step 5. The capture recorded the pattern as
