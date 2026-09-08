@@ -171,6 +171,16 @@ Describe 'check-dangling-consumers' {
     # returns the bare path), but whose FIX was right for a different input. No caller passes this shape
     # today, so this row guards hardening rather than a live defect; it exists because the failure mode is
     # a crash rather than a wrong answer, and a crash in a gate reads as a broken build.
+    #
+    # THIS ROW NO LONGER PINS THE .ProviderPath CHOICE, AND THE COMMENT ABOVE MUST NOT BE READ AS SAYING IT
+    # DOES. Since ROADMAP section 28 the subtractions go through Get-RootRelativePath, which normalises the
+    # root with Get-Item - and MEASURED, Get-Item returns the bare native path for a provider-prefixed
+    # input exactly as .ProviderPath does. MEASURED 2026-09-08 by applying it: with the
+    # .ProviderPath -> .Path mutant this row now stays GREEN, where before section 28 it went RED.
+    # The mechanism is pinned instead by 'normalises a PROVIDER-PREFIXED root' in
+    # scripts/tests/path-lib.Tests.ps1, which covers all four gates rather than this one.
+    # The row is KEPT because the end-to-end property it asserts - the gate does not crash on this input -
+    # is still true and still worth holding.
     It 'does not crash when handed a PROVIDER-PREFIXED repository root' {
         $d = New-Tree
         Set-Reader $d 'public const string GrowthFileName = "thing.growth.md";'
@@ -187,5 +197,47 @@ Describe 'check-dangling-consumers' {
         $out = Invoke-Check $script:RepoRoot
         $LASTEXITCODE | Should -Be 0
         $out | Should -Match 'OK - \d+ runtime filename constant'
+    }
+
+    It 'reports the correct relative path when -RepoRoot is an 8.3 SHORT path' {
+        # THE FIXTURE RULE. This gate early-exits SKIP at :138 when no constants are found - its sources
+        # are globbed at :107 and matched by $declPattern at :116 - so an empty fixture never reaches the
+        # subtraction and the row would pass over broken code. Set-Reader plants a declaration that
+        # NOTHING produces, which makes the gate emit the DANGLING CONSUMER line at :197 whose File column
+        # is exactly the :127 subtraction this task migrates.
+        #
+        # Uses the suite's own New-Tree / Set-Reader / Invoke-Check rather than a hand-rolled fixture, so
+        # it cannot drift from the shape every other row here is built on.
+        $d = New-Tree
+        Set-Reader $d 'public const string GrowthFileName = "thing.growth.md";'
+        try {
+            $short = $null
+            try { $short = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($d).ShortPath } catch { $short = $null }
+            if (-not $short -or $short -eq $d) {
+                Set-ItResult -Skipped -Because '8.3 short-name generation is disabled on this volume, so the state under test is unreachable here'
+            }
+            # PRECONDITION, asserted not assumed - otherwise this row passes for the wrong reason.
+            $short | Should -Not -Be $d
+
+            $out = Invoke-Check $short
+            # PRECONDITION 1: the fixture reached the scan rather than the SKIP early-exit.
+            $out | Should -Not -Match 'SKIP'
+            # PRECONDITION 2: the dangling report fired, so a File path WAS emitted. Without this the
+            # oracle below is satisfied by silence.
+            $out | Should -Match 'DANGLING CONSUMER' -Because 'the fixture must reach the code that emits a relative path'
+            # THE ORACLE, AND IT MUST BE ANCHORED. An unanchored match on the relative path is NOT enough:
+            # MEASURED, the broken form emits
+            #   ling-6ea37d90...\clavity-dotnet\src\Clavity.Ls\Thing.cs
+            # which CONTAINS 'clavity-dotnet\src\Clavity.Ls\Thing.cs', so `Should -Match` on that alone
+            # passes over the defect. Nor does the mangled tail contain the fixture prefix 'clv-dangling-',
+            # because the subtraction cut the prefix off - so a "root must not appear" assertion misses it
+            # too. Both of those were tried and both passed against the UNMIGRATED gate.
+            #
+            # Anchor to the literal text the gate prints immediately BEFORE the path (:197), so nothing may
+            # sit between it and the relative path.
+            $out | Should -Match ([regex]::Escape('DANGLING CONSUMER: clavity-dotnet\src\Clavity.Ls\Thing.cs:')) `
+                -Because 'the reported File must be repo-relative, with nothing between the label and the path'
+        }
+        finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }

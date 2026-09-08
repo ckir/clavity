@@ -80,6 +80,7 @@ param(
 )
 
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'lib' 'path-lib.ps1')
 $ErrorActionPreference = 'Stop'
 
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
@@ -98,9 +99,17 @@ if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).
 # silence, and it is the reason to prefer .ProviderPath over merely guarding the prefix case.
 # The change also covers the pre-existing subtraction that builds the reported File column.
 # NOT SEPARATELY TESTED, deliberately: the suite invokes this gate in a CHILD pwsh, and a PSDrive created
-# in the test process does not exist there, so the case is unreachable through the harness. It needs no
-# row of its own - the guard is the .ProviderPath CHOICE, and the provider-prefix row already pins it:
-# the single mutant that would reintroduce the PSDrive bug (.ProviderPath -> .Path) reds that row.
+# in the test process does not exist there, so the case is unreachable through the harness.
+#
+# THE .ProviderPath CHOICE IS NO LONGER THE ONLY GUARD, and the mutant that used to pin it no longer
+# bites. The subtractions below now go through Get-RootRelativePath (scripts/lib/path-lib.ps1), which
+# normalises the root with Get-Item - and MEASURED, Get-Item returns the bare native path for a
+# provider-prefixed input exactly as .ProviderPath does. So mutating .ProviderPath -> .Path here no
+# longer crashes anything, and the provider-prefix row below no longer reds under it. That coverage
+# moved to the 'normalises a PROVIDER-PREFIXED root' row in scripts/tests/path-lib.Tests.ps1, where the
+# mechanism is. This line stays as it is anyway: it costs nothing, it keeps $repo native for the
+# Join-Path at :110 and the Get-ChildItem at :160, and the PSDrive reasoning above still applies to
+# those two consumers.
 $repo = (Resolve-Path -LiteralPath $RepoRoot).ProviderPath
 
 # The reader sources scanned for runtime filename constants.
@@ -124,7 +133,7 @@ foreach ($f in $sources) {
             $consts += [pscustomobject]@{
                 Symbol  = $m.Groups[1].Value
                 Literal = $m.Groups[2].Value
-                File    = $f.FullName.Substring($repo.Length).TrimStart('\', '/')
+                File    = Get-RootRelativePath -Root $repo -Path $f.FullName
                 Line    = $i + 1
             }
         }
@@ -159,7 +168,7 @@ if ($consts.Count -eq 0) {
 # only from the repo root down", which reads as a `^` claim and is what invited the suggestion.
 $searchable = @(Get-ChildItem -LiteralPath $repo -Recurse -File -ErrorAction SilentlyContinue |
     Where-Object {
-        $n = '/' + $_.FullName.Substring($repo.Length).TrimStart('\', '/').Replace('\', '/')
+        $n = '/' + (Get-RootRelativePath -Root $repo -Path $_.FullName).Replace('\', '/')
         $n -notmatch '/\.git/' -and $n -notmatch '/\.clavity/' -and
         $n -notmatch '/target/' -and $n -notmatch '/bin/' -and $n -notmatch '/obj/' -and
         $n -notmatch '/node_modules/' -and $_.Length -lt 2MB
@@ -181,7 +190,7 @@ foreach ($f in $searchable) {
     foreach ($m in [regex]::Matches($txt, $markerPattern)) {
         $name = $m.Groups[1].Value
         if (-not $declared.ContainsKey($name)) { $declared[$name] = @() }
-        $declared[$name] += $f.FullName.Substring($repo.Length).TrimStart('\', '/')
+        $declared[$name] += Get-RootRelativePath -Root $repo -Path $f.FullName
     }
 }
 
