@@ -87,7 +87,13 @@ if ! command -v jq >/dev/null 2>&1; then
   # backslash or a quote. `cwd_path` above already folds backslashes to forward slashes, so today no
   # shipped path reaches this, but a hook that emits malformed JSON fails in a way nobody can read.
   # Backslash FIRST, then quote: the other order would re-escape the backslash it just inserted.
-  _json() { _v=${1//\\/\\\\}; _v=${_v//\"/\\\"}; printf '%s' "$_v"; }
+  # CONTROL CHARACTERS ARE STRIPPED, NOT ESCAPED, and the capstone caught that they were neither. JSON
+  # forbids a raw byte below 0x20 inside a string, so a path carrying a newline or a tab would emit an
+  # envelope nothing can parse - and this is the branch with no jq to encode it properly. Escaping them
+  # by hand would mean emitting \uXXXX from pure bash for a case no shipped path can reach; deleting
+  # them keeps the envelope WELL-FORMED and the message merely less pretty, which is the right trade for
+  # a degraded path whose entire job is to still say something.
+  _json() { _v=${1//\\/\\\\}; _v=${_v//\"/\\\"}; _v=$(printf '%s' "$_v" | tr -d '\000-\037'); printf '%s' "$_v"; }
   # MODEL-ONLY, exactly as on the jq path: no `systemMessage` key, so the owner's terminal stays clean
   # while the model still learns the suppressing path. The degraded branch must not diverge from the
   # main one on WHO gets told - only on how the JSON is built.

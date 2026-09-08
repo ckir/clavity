@@ -119,7 +119,7 @@ Describe 'agy-ledger-lib.sh' {
 '@
 
         function New-LedgerRepo {
-            param([string]$LedgerBody, [string]$Discipline = 'agy-capstone', [string]$RawBody)
+            param([string]$LedgerBody, [string]$Discipline = 'agy-capstone', [string]$RawBody, [switch]$Crlf)
             $d = Join-Path ([IO.Path]::GetTempPath()) ("aglfx-" + [guid]::NewGuid().ToString('N'))
             New-Item -ItemType Directory -Force -Path $d | Out-Null
             [void]$script:Fixtures.Add($d)   # FIXTURE HYGIENE
@@ -143,7 +143,13 @@ Describe 'agy-ledger-lib.sh' {
             } else {
                 $text = $LedgerBody.Replace('<<SHORT>>', $sha.Substring(0, 7)).Replace('<<FULL>>', $sha)
             }
-            [IO.File]::WriteAllText((Join-Path $d "docs/$Discipline-ledger.md"), ($text -replace "`r`n", "`n"))
+            $text = $text -replace "`r`n", "`n"
+            # -Crlf writes REAL CR bytes. RESTORED after the capstone caught that the rewrite of this
+            # suite dropped the switch and its row entirely: CRLF was round 5's BLOCKING defect - the
+            # parser broke on Linux while this Windows box MASKED it, because gawk strips CR in text mode
+            # here - and deleting its coverage is exactly the silent regression that defect taught.
+            if ($Crlf) { $text = $text -replace "`n", "`r`n" }
+            [IO.File]::WriteAllText((Join-Path $d "docs/$Discipline-ledger.md"), $text)
             [pscustomobject]@{ Dir = $d; Sha = $sha }
         }
 
@@ -224,10 +230,45 @@ Describe 'agy-ledger-lib.sh' {
         It 'authenticates an UPPERCASE sha in the ledger' {
             # Ledgers are hand-written; case is not a contract. The match is case-insensitive, and this
             # row is what stops a future -E losing its -i.
-            $r = New-LedgerRepo -LedgerBody $script:RangeLedger
+            #
+            # THE FIXTURE MUST CONTAIN A LETTER TO UPPERCASE, and the capstone caught that it might not:
+            # a 7-character sha of pure decimal digits (about 1 run in 27) makes .ToUpper() a no-op, and
+            # the row then passes while proving nothing whatever about case. Retry until the prefix has a
+            # hex letter, and ASSERT THE FILE ACTUALLY CHANGED - the retry could fail silently too.
+            $r = $null
+            foreach ($attempt in 1..8) {
+                $cand = New-LedgerRepo -LedgerBody $script:RangeLedger
+                if ($cand.Sha.Substring(0, 7) -match '[a-f]') { $r = $cand; break }
+            }
+            $r | Should -Not -BeNullOrEmpty -Because 'eight consecutive all-digit short shas is not chance; the fixture generator changed'
+
             $p = Join-Path $r.Dir 'docs/agy-capstone-ledger.md'
-            $body = [IO.File]::ReadAllText($p).Replace($r.Sha.Substring(0, 7), $r.Sha.Substring(0, 7).ToUpper())
+            $before = [IO.File]::ReadAllText($p)
+            $body = $before.Replace($r.Sha.Substring(0, 7), $r.Sha.Substring(0, 7).ToUpper())
+            # -BeExactly, NOT -Be. PowerShell string comparison is CASE-INSENSITIVE by default, so `-Be`
+            # reports the lower-case body and its upper-cased copy as equal - which made this guard fail
+            # on a substitution that had worked perfectly. A case-sensitivity test cannot be guarded by a
+            # case-insensitive comparator, and the first version of this line was exactly that.
+            $body | Should -Not -BeExactly $before -Because 'if the substitution changed nothing, this row is asserting case-insensitivity against a ledger that is still lower-case'
             [IO.File]::WriteAllText($p, $body)
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
+        }
+
+        It 'authenticates a row written with CRLF line endings' {
+            # CAPSTONE ROUND 5, BLOCKING - and this row is RESTORED after the suite rewrite dropped it.
+            # The parser broke on Linux for CRLF ledgers while this Windows box masked it completely
+            # (gawk opens files in text mode here and strips CR before $0 exists), so every fixture
+            # passed with and without the fix. The regex that replaced the parser survives CR because
+            # `\r` satisfies the trailing `[^0-9a-fA-F.]` class - but that is an ACCIDENT of the class,
+            # not an intention, and the next edit to it has no way to know unless this row exists.
+            $r = New-LedgerRepo -LedgerBody $script:RangeLedger -Crlf
+
+            # CONTROL: prove the fixture really wrote CR bytes. Without it this row is a duplicate of the
+            # plain success case the moment -Crlf stops doing anything - which is precisely how the
+            # coverage went missing in the first place.
+            $bytes = [IO.File]::ReadAllBytes((Join-Path $r.Dir 'docs/agy-capstone-ledger.md'))
+            ($bytes -contains 13) | Should -BeTrue -Because 'the -Crlf switch must write real CR bytes or this row proves nothing'
+
             (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
         }
     }

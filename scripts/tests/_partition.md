@@ -713,7 +713,7 @@ agy-shield-lib.Tests.ps1                        409,1s   45 tests   <- SLOW, NEW
                                                                       machine the agent is working on. The 409,1s
                                                                       is the last figure measured under the stated
                                                                       conditions and is now one row short.
-agy-ledger-lib.Tests.ps1                        105,0s   24 tests   <- SLOW. RUNTIME NOT RE-MEASURED since the awk parser was replaced by a regex 2026-09-07; the count is current, the seconds are not. ROADMAP
+agy-ledger-lib.Tests.ps1                        105,0s   25 tests   <- SLOW. RUNTIME NOT RE-MEASURED since the awk parser was replaced by a regex 2026-09-07; the count is current, the seconds are not. ROADMAP
                                                                       section 27: the ledger reader behind the
                                                                       marker-write gate. Fixture-heavy like its
                                                                       agy-shield-lib sibling - every row builds a
