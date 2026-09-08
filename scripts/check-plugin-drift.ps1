@@ -30,6 +30,7 @@ param(
     [string]$PluginPath    = 'clavity-dotnet/plugin'
 )
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'lib' 'path-lib.ps1')
 $ErrorActionPreference = 'Stop'
 
 # -LiteralPath. `Resolve-Path <path>` binds the WILDCARD parameter set, and `[` and `]` are legal
@@ -96,6 +97,11 @@ $resolved = (& git -C $RepoRoot rev-parse $Sha).Trim()
 # why twelve review rounds and every local run missed it and the first CI run did not.
 # This is the FOURTH correction to this one expression: round 8 added it, round 9 fixed the MEMBER,
 # round 10 fixed the PARAMETER SET, and this fixes the API. Prefix arithmetic is unforgiving.
+# RETAINED after ROADMAP section 28, though the subtraction below now goes through
+# Get-RootRelativePath (scripts/lib/path-lib.ps1), which normalises the root itself. This line is NOT
+# redundant paranoia: $InstalledRoot is also interpolated into the Fail2 message on the next line and
+# joined at :174, and both read better as the long form. It does not trip the section 28 guard either
+# - that forbids the hand-rolled subtraction idiom, and this line performs no subtraction.
 if (Test-Path -LiteralPath $InstalledRoot) { $InstalledRoot = (Get-Item -LiteralPath $InstalledRoot).FullName }
 if (-not (Test-Path -LiteralPath $InstalledRoot -PathType Container)) {
     Fail2 "installed root '$InstalledRoot' is not a directory - the plugin is not installed there, so nothing was checked"
@@ -126,7 +132,7 @@ if ($repoFiles.Count -eq 0) { Fail2 "no files under '$PluginPath' at $resolved -
 # again. So: enumerate best-effort, and report every directory we could not read.
 $enumErrors = @()
 $installed = @(Get-ChildItem -LiteralPath $InstalledRoot -Recurse -File -Force -ErrorAction SilentlyContinue -ErrorVariable +enumErrors |
-    ForEach-Object { $_.FullName.Substring($InstalledRoot.Length).TrimStart('\', '/') -replace '\\', '/' })
+    ForEach-Object { (Get-RootRelativePath -Root $InstalledRoot -Path $_.FullName) -replace '\\', '/' })
 
 function Get-BlobBytes {
     param([string]$RepoRoot, [string]$Rev, [string]$Path)

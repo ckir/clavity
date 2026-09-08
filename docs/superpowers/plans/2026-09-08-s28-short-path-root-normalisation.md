@@ -1067,25 +1067,38 @@ git commit -m "fix(s28): check-dangling-consumers uses the shared helper; PSDriv
 
 ---
 
-### Task 5: `check-plugin-drift.ps1` — retire the inline precedent
+### Task 5: `check-plugin-drift.ps1` — migrate the subtraction, keep the inline normalisation
 
 **Files:**
-- Modify: `scripts/check-plugin-drift.ps1` (dot-source, `:99`, `:129`)
+- Modify: `scripts/check-plugin-drift.ps1` (dot-source, `:129`; **`:99` is KEPT**)
 - Test: `scripts/tests/check-plugin-drift.Tests.ps1`
 
 This gate is **already correct** — `:99` carries the inline `Get-Item` fix that `41eef75` added after CI
-caught the bug on a real runner. It is migrated anyway for one reason: **so Task 6's guard needs no
-exception list.** A guard with a hardcoded "except this file" clause is a guard a future author edits.
+caught the bug on a real runner, and `:129` is its one subtraction.
+
+⚠ **An earlier draft framed this task as "retire the inline precedent, so Task 6's guard needs no exception
+list". That premise was checked and is false**: the guard forbids the hand-rolled subtraction idiom, and
+`:99` performs no subtraction, so it was never going to be flagged and no exception was ever needed. This
+task therefore migrates only `:129`. See Step 1 for why keeping `:99` is also the better of the two.
 
 - [ ] **Step 1: Migrate**
 
-Add the dot-source after `Set-StrictMode`. Replace `:99`:
+Add the dot-source after `Set-StrictMode`.
+
+🔴 **KEEP `:99`. An earlier draft of this step said to delete it, and that was wrong on both counts.**
 
 ```powershell
 if (Test-Path -LiteralPath $InstalledRoot) { $InstalledRoot = (Get-Item -LiteralPath $InstalledRoot).FullName }
 ```
 
-with nothing — delete the line, and fold its reasoning into the comment above `:129`. Then replace `:129`:
+- The stated reason for deleting it — "so Task 6's guard needs no exception list" — does not hold. That
+  guard forbids the hand-rolled subtraction idiom, and this line performs **no subtraction**, so it never
+  trips it. Nothing has to be excepted.
+- Deleting it would make things slightly worse: `$InstalledRoot` is interpolated into the `Fail2` message
+  on the very next line and joined at `:174`, and both read better as the long form. It also carries a
+  comment recording FOUR rounds of corrections to this one expression.
+
+Add a short note above it saying why both it and the helper exist, then replace `:129`:
 
 ```powershell
     ForEach-Object { $_.FullName.Substring($InstalledRoot.Length).TrimStart('\', '/') -replace '\\', '/' })
