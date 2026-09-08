@@ -1,6 +1,13 @@
 Describe 'agy-consult-guard' {
     BeforeAll {
         . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
+        # PIN GIT BASH. This suite dot-sourced the helper above and then never called it - the ONLY hook
+        # suite that did not, while every sibling routes through it and carries a comment saying why.
+        # MEASURED 2026-09-08 by isolating one variable: with bare `bash` resolving to the WSL stub,
+        # 17 of 44 rows failed with "No such file or directory" for a file that plainly exists; with Git
+        # Bash ahead of it on PATH, 44/44. So the suite was PATH-dependent, and the worse half is not the
+        # noise - it is that a GREEN run here proved only that PATH happened to be right that day.
+        $script:Bash = Get-GitBashOrThrow
         $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Pre  = Join-Path $repoRoot 'clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh'
         $script:Post = Join-Path $repoRoot 'clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh'
@@ -285,7 +292,7 @@ Describe 'agy-consult-guard' {
             # every component of a bare repo's axis must be an explicit sentinel, never empty, so
             # "I could not look" can never encode identically to "nothing changed".
             $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_ignored '$($r -replace '\\','/')'"
-            (& bash -lc $sh) | Should -Be 'ABSENT:ABSENT:ABSENT:ABSENT'
+            (& $script:Bash -lc $sh) | Should -Be 'ABSENT:ABSENT:ABSENT:ABSENT'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -294,7 +301,7 @@ Describe 'agy-consult-guard' {
         $r = New-GuardRepo
         try {
             $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_quad '$($r -replace '\\','/')'"
-            $fp = & bash -lc $sh
+            $fp = & $script:Bash -lc $sh
             (($fp -split '\|').Count) | Should -Be 8
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -315,7 +322,7 @@ Describe 'agy-consult-guard' {
             New-Item -ItemType Directory -Path (Join-Path $r '.clavity') -Force | Out-Null
             Set-Content (Join-Path $r '.clavity/we,ird=name.txt') 'x' -Encoding ascii
             $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_ignored '$($r -replace '\\','/')'"
-            $ax = & bash -lc $sh
+            $ax = & $script:Bash -lc $sh
             ($ax -split ':').Count | Should -Be 4
             # There is deliberately NO `Should -Not -Match '\|'` here: '|' cannot occur in a Windows
             # filename, so the fixture could never introduce one and the assertion could not fail.
@@ -429,7 +436,7 @@ Describe 'agy-consult-guard' {
             New-Item -ItemType Directory -Path $c -Force | Out-Null
             0..39 | ForEach-Object { Set-Content (Join-Path $c "f$_.txt") "body$_" -Encoding ascii }
             $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
-            $out = & bash -lc $sh
+            $out = & $script:Bash -lc $sh
             # Every entry present exactly once, each with a 64-hex digest - not a shared or empty one.
             0..39 | ForEach-Object { $out | Should -Match "f$_\.txt=[0-9a-f]{64}," }
             # Distinct bodies must yield distinct digests: a zip bug would repeat one digest.
@@ -471,9 +478,9 @@ Describe 'agy-consult-guard' {
             Set-Content (Join-Path $c 'f1.txt') 'a' -Encoding ascii
             Set-Content (Join-Path $c 'f2.txt') 'b' -Encoding ascii
             $sh = "set +e; . '$($libCopy -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
-            $before = & bash -lc $sh
+            $before = & $script:Bash -lc $sh
             Set-Content (Join-Path $c 'f2.txt') 'MUTATED' -Encoding ascii
-            $after = & bash -lc $sh
+            $after = & $script:Bash -lc $sh
             $after | Should -Not -Be $before -Because 'a content overwrite must survive the mismatch fallback'
         } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -489,9 +496,9 @@ Describe 'agy-consult-guard' {
             New-Item -ItemType Directory -Path $c -Force | Out-Null
             Set-Content (Join-Path $c '.gitignore') '*' -Encoding ascii -NoNewline
             $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
-            $before = & bash -lc $sh
+            $before = & $script:Bash -lc $sh
             New-Item -ItemType Directory -Path (Join-Path $c 'local-anomalies.md') -Force | Out-Null
-            $after = & bash -lc $sh
+            $after = & $script:Bash -lc $sh
             $after | Should -Not -Be $before
             $after | Should -Match 'local-anomalies\.md=DIR'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
@@ -513,11 +520,11 @@ Describe 'agy-consult-guard' {
             Set-Content (Join-Path $c 'a=b') 'ONE' -Encoding ascii
             Set-Content (Join-Path $c 'a_b') 'TWO' -Encoding ascii
             $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
-            $before = & bash -lc $sh
+            $before = & $script:Bash -lc $sh
             # Swap the contents. Nothing is created or removed - only the pairing changes.
             Set-Content (Join-Path $c 'a=b') 'TWO' -Encoding ascii
             Set-Content (Join-Path $c 'a_b') 'ONE' -Encoding ascii
-            $after = & bash -lc $sh
+            $after = & $script:Bash -lc $sh
             $after | Should -Not -Be $before -Because 'a swap between two colliding names must not be invisible'
             $before | Should -Match 'a%3Db=' -Because 'the encoding must distinguish the two names'
             $before | Should -Match 'a_b='
@@ -561,9 +568,9 @@ Describe 'agy-consult-guard' {
             $out | Should -Not -Match 'VERSION CONTROL CHANGED' -Because 'the sanctioned write area must not raise a breach'
 
             $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
-            $withScratch = & bash -lc $sh
+            $withScratch = & $script:Bash -lc $sh
             Remove-Item (Join-Path $c 'scratch') -Recurse -Force
-            $withoutScratch = & bash -lc $sh
+            $withoutScratch = & $script:Bash -lc $sh
             $withoutScratch | Should -Not -Be $withScratch -Because 'deleting an excluded directory must still be visible'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -588,17 +595,17 @@ Describe 'agy-consult-guard' {
             Set-Content (Join-Path $c 'seams/topic.md') 'the original brief' -Encoding ascii
             $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
 
-            $base = & bash -lc $sh
+            $base = & $script:Bash -lc $sh
             Set-Content (Join-Path $c 'seams/topic.md') 'rewritten by the peer' -Encoding ascii
-            (& bash -lc $sh) | Should -Not -Be $base -Because 'a rewritten brief is the threat this monitors'
+            (& $script:Bash -lc $sh) | Should -Not -Be $base -Because 'a rewritten brief is the threat this monitors'
 
-            $base = & bash -lc $sh
+            $base = & $script:Bash -lc $sh
             Rename-Item (Join-Path $c 'seams/topic.md') 'renamed.md'
-            (& bash -lc $sh) | Should -Not -Be $base -Because 'a rename must be caught, so the listing is hashed too'
+            (& $script:Bash -lc $sh) | Should -Not -Be $base -Because 'a rename must be caught, so the listing is hashed too'
 
-            $base = & bash -lc $sh
+            $base = & $script:Bash -lc $sh
             New-Item -ItemType Directory -Path (Join-Path $c 'seams/sub') -Force | Out-Null
-            (& bash -lc $sh) | Should -Not -Be $base -Because 'an EMPTY subdirectory has no regular file, so -type f alone would miss it'
+            (& $script:Bash -lc $sh) | Should -Not -Be $base -Because 'an EMPTY subdirectory has no regular file, so -type f alone would miss it'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -614,7 +621,7 @@ Describe 'agy-consult-guard' {
             New-Item -ItemType Directory -Path (Join-Path $c 'seams') -Force | Out-Null
             Set-Content (Join-Path $c 'seams/topic.md') 'a brief' -Encoding ascii
             $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
-            $out = & bash -lc $sh
+            $out = & $script:Bash -lc $sh
             $out | Should -Match 'seams=[0-9a-f]{64}'
             $out | Should -Not -Match 'seams=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' -Because 'that is the sha256 of empty input - the signature of a silently failed pipeline'
             # And no xargs remains in the shipped hook, in either half.
@@ -644,7 +651,7 @@ Describe 'agy-consult-guard' {
             [IO.File]::WriteAllText((Join-Path $c 'scratch/t/peer.md'), 'peer work')
             [IO.File]::WriteAllText((Join-Path $c 'agy-marks/m'), 'marker')
             $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
-            $out = & bash -lc $sh
+            $out = & $script:Bash -lc $sh
             $out | Should -Not -Match 'scratch/t/peer\.md' -Because 'a glob metacharacter in the path must not defeat the exclusion'
             $out | Should -Match 'scratch=DIR' -Because 'the directory itself is still recorded'
             $out | Should -Match 'agy-marks/m=' -Because 'the rest of the tree must still be walked'
@@ -665,8 +672,8 @@ Describe 'agy-consult-guard' {
             Set-Content (Join-Path $c 'scratch/t/peer.md') 'peer work' -Encoding ascii
             Set-Content (Join-Path $c 'agy-marks/m') 'marker' -Encoding ascii
             $p = ($c -replace '\\','/')
-            $bare  = & bash -lc "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$p'"
-            $slash = & bash -lc "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$p/'"
+            $bare  = & $script:Bash -lc "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$p'"
+            $slash = & $script:Bash -lc "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$p/'"
             $slash | Should -Be $bare
             # AGY-TEST-AUDIT 2026-08-31: the negative below is satisfied for free by an EMPTY census,
             # so it is paired with a positive that proves the census actually listed something. The
@@ -702,9 +709,9 @@ Describe 'agy-consult-guard' {
             Set-Content (Join-Path $c 'seams/a.md') 'one' -Encoding ascii
             Set-Content (Join-Path $c 'seams/b.md') 'two' -Encoding ascii
             $sh = "set +e; . '$($libCopy -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
-            $before = & bash -lc $sh
+            $before = & $script:Bash -lc $sh
             Set-Content (Join-Path $c 'seams/b.md') 'CHANGED' -Encoding ascii
-            $after = & bash -lc $sh
+            $after = & $script:Bash -lc $sh
             $after | Should -Not -Be $before -Because 'the fallback must still track content, not answer the same thing every time'
             $before | Should -Not -Match 'seams=UNREADABLE' -Because 'a bare sentinel here compares equal to itself and blinds the monitor'
         } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
@@ -750,13 +757,13 @@ Describe 'agy-consult-guard' {
             @{ raw = 'plain.md'; enc = 'plain.md' }
         )
         foreach ($c in $cases) {
-            $got = & bash -lc "set +e; . '$lib'; agy_guard_encode_name '$($c.raw)'"
+            $got = & $script:Bash -lc "set +e; . '$lib'; agy_guard_encode_name '$($c.raw)'"
             $got | Should -Be $c.enc -Because "'$($c.raw)' must encode to '$($c.enc)'"
         }
         # Injectivity, the property the encoding exists for: a literal '%3D' in a name must NOT
         # collide with the encoding of '='.
-        $litP = & bash -lc "set +e; . '$lib'; agy_guard_encode_name 'a%3Db'"
-        $eq    = & bash -lc "set +e; . '$lib'; agy_guard_encode_name 'a=b'"
+        $litP = & $script:Bash -lc "set +e; . '$lib'; agy_guard_encode_name 'a%3Db'"
+        $eq    = & $script:Bash -lc "set +e; . '$lib'; agy_guard_encode_name 'a=b'"
         $litP | Should -Not -Be $eq -Because 'encoding % first is what keeps the mapping injective'
     }
 
@@ -802,7 +809,7 @@ while IFS= read -r -d '' q; do files+=("$q"); done < <(find "$dir" -type f -prin
 n=$(PATH="$shim/bin:$PATH" bash -c '. "$1"; shift; agy_guard_hash_files "$@"' _ "$lib" "${files[@]}" | wc -l)
 echo "digests=$n calls=$(wc -l < "$count")"
 '@.Replace("`r`n", "`n"))
-            $out = & bash -lc "sh '$($probePath -replace '\\','/')' '$($script:Lib -replace '\\','/')' '$($files -replace '\\','/')'"
+            $out = & $script:Bash -lc "sh '$($probePath -replace '\\','/')' '$($script:Lib -replace '\\','/')' '$($files -replace '\\','/')'"
             # A box with no sha256sum - macOS ships shasum instead - cannot run this probe at all,
             # and the first version FAILED there rather than skipping: it printed 'no-sha256sum' and
             # both assertions went red. CI is windows-latest only (ci-scripts.yml), so it was never
@@ -826,7 +833,7 @@ echo "digests=$n calls=$(wc -l < "$count")"
         # every remaining chunk doing nothing and then reported SUCCESS.
         $lib = $script:Lib -replace '\\','/'
         # Shadow `command` so neither tool resolves, without breaking the rest of the shell.
-        $rc = & bash -lc "set +e; . '$lib'; command() { return 1; }; agy_guard_hash_files /etc/hosts >/dev/null 2>&1; echo `$?"
+        $rc = & $script:Bash -lc "set +e; . '$lib'; command() { return 1; }; agy_guard_hash_files /etc/hosts >/dev/null 2>&1; echo `$?"
         $rc | Should -Be '1' -Because 'no hashing tool is a failure the caller must be able to see'
     }
 
@@ -842,15 +849,15 @@ echo "digests=$n calls=$(wc -l < "$count")"
             $g = (Join-Path $c '.gitignore') -replace '\\','/'
             $lib = $script:Lib -replace '\\','/'
 
-            $absent = & bash -lc "set +e; . '$lib'; agy_guard_file_state '$g'"
+            $absent = & $script:Bash -lc "set +e; . '$lib'; agy_guard_file_state '$g'"
             $absent | Should -Be 'ABSENT' -Because 'a missing shield must be an explicit sentinel, never an empty string'
 
             Set-Content (Join-Path $c '.gitignore') '*' -Encoding ascii -NoNewline
-            $full = & bash -lc "set +e; . '$lib'; agy_guard_file_state '$g'"
+            $full = & $script:Bash -lc "set +e; . '$lib'; agy_guard_file_state '$g'"
             $full | Should -Match '^[0-9a-f]{64}$'
 
             Set-Content (Join-Path $c '.gitignore') '' -Encoding ascii -NoNewline
-            $empty = & bash -lc "set +e; . '$lib'; agy_guard_file_state '$g'"
+            $empty = & $script:Bash -lc "set +e; . '$lib'; agy_guard_file_state '$g'"
             $empty | Should -Match '^[0-9a-f]{64}$'
             $empty | Should -Not -Be $full -Because 'emptying the shield is the change this axis exists to catch'
             $empty | Should -Not -Be 'ABSENT' -Because 'an empty file and a missing file are different states'

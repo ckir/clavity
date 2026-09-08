@@ -193,9 +193,23 @@ _check_relpath() {
     esac
 }
 
+# THE SCRIPT'S OWN DIRECTORY, WITHOUT `dirname`. That was an external command at three sites here, so an
+# empty PATH made them emit `dirname: command not found` on stderr and yield an EMPTY string - the exact
+# leak ROADMAP section 22 set out to end, bypassing it because section 22 only fixed redirect ORDER and
+# these sites had no redirect at all. MEASURED 2026-09-08 with a passing and a failing control in one
+# shell: `env -i PATH= bash -c 'x=$(dirname /a/b/c)'` leaks and leaves x empty; with PATH=/usr/bin it
+# yields /a/b. Parameter expansion closes both halves at once - no stderr to leak and no process to
+# spawn, which is also what this file's own budget rule asks for. The `case` is required: `${0%/*}` on a
+# bare filename with no slash returns the FILENAME, not `.`, and would resolve the helper beside a
+# directory that does not exist. Same idiom as the root walk at :76.
+case "$0" in
+  */*) _self_dir=${0%/*} ;;
+  *)   _self_dir=. ;;
+esac
+
 # Load the shield helper. Hard-wired: there is no way to skip it. Its return value carries no
 # information (it is always 0) and must not be branched on.
-_lib="$(dirname "$0")/agy-shield-lib.sh"
+_lib="$_self_dir/agy-shield-lib.sh"
 [ -f "$_lib" ] || _die_refuse "shield helper not found beside this script: [$_lib]"
 # shellcheck source=agy-shield-lib.sh
 . "$_lib" 2>/dev/null || _die_refuse "shield helper could not be sourced: [$_lib]"
@@ -203,7 +217,7 @@ command -v agy_shield >/dev/null 2>&1 || _die_refuse "shield helper loaded but a
 
 # Load the ledger reader. Same contract as the shield helper: sourced, never executed, and its answer is
 # an advisory STRING rather than an exit code. ROADMAP section 27.
-_ledger_lib="$(dirname "$0")/agy-ledger-lib.sh"
+_ledger_lib="$_self_dir/agy-ledger-lib.sh"
 [ -f "$_ledger_lib" ] || _die_refuse "ledger helper not found beside this script: [$_ledger_lib]"
 # shellcheck source=agy-ledger-lib.sh
 . "$_ledger_lib" 2>/dev/null || _die_refuse "ledger helper could not be sourced: [$_ledger_lib]"
@@ -372,7 +386,13 @@ case "$mode" in
         _check_relpath "$relpath"
         rel=".clavity/$relpath"
         agy_shield "$root" "$rel" "$_key"
-        _parent=$(dirname "$root/$rel")
+        # `$root/$rel` always contains a slash (the join supplies one), so the suffix strip is safe here
+        # without the `case` guard the two sites above need.
+        # `dirname` replaced by a suffix strip - see the note at the two helper-load sites. No `case`
+        # guard is needed HERE and adding one would be dead code: every assignment to $rel in this file
+        # begins with the literal `.clavity/`, so it always contains a slash and `${rel%/*}` can never
+        # return the whole string.
+        _parent="${root}/${rel%/*}"
         mkdir -p "$_parent" 2>/dev/null || _die_refuse "could not create $_parent"
         exit 0
         ;;

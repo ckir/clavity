@@ -451,13 +451,19 @@ Describe 'agy-discipline-reaching.sh' {
                 if ($IsWindows) { & icacls $gi /deny "${me}:(W)" 2>&1 | Out-Null }
                 else            { & chmod 500 $gi 2>&1 | Out-Null }
 
-                # THE PRECONDITION IS ASSERTED, not assumed: if the deny did not take, this row would
-                # pass for the wrong reason on a box where icacls is a no-op or the filesystem ignores
-                # ACLs. SKIP rather than fail - an unreachable state is not a regression.
-                $stillWritable = $false
-                try { [IO.File]::AppendAllText($gi, "x`n"); $stillWritable = $true } catch {}
-                if ($stillWritable) {
-                    Set-ItResult -Skipped -Because 'the write-deny did not take on this host, so the unassertable-shield state is unreachable here'
+                # THE PRECONDITION MUST ASK THE SAME SHELL THE CODE UNDER TEST USES, and asking .NET
+                # instead is what broke this row on CI. MEASURED: the runner denied the append to
+                # [IO.File]::AppendAllText while Git Bash - which is what actually runs the hook - wrote
+                # it happily, so the probe said "deny took", the row did not skip, and the hook then
+                # behaved as though nothing was denied. agy-ledger-lib.Tests.ps1:436-441 already carries
+                # this exact rule for its own deny row; I read that comment the same day and still probed
+                # with the wrong process. SKIP rather than fail - an unreachable state is not a regression.
+                $probe = Join-Path $d 'probe-writable.sh'
+                [IO.File]::WriteAllText($probe, ("printf 'x\n' >> .clavity/.gitignore" -replace "`r`n", "`n"))
+                $pr = Start-Process -FilePath (Get-GitBashOrThrow) -ArgumentList @('probe-writable.sh') `
+                        -WorkingDirectory $d -NoNewWindow -Wait -PassThru
+                if ($pr.ExitCode -eq 0) {
+                    Set-ItResult -Skipped -Because 'the write-deny did not take for THIS bash (elevated token, or a filesystem that ignores ACLs), so the unassertable-shield state is unreachable here'
                 }
                 $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-deny'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
                 $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2> $errF | Out-Null
@@ -537,13 +543,19 @@ Describe 'agy-discipline-reaching.sh' {
             try {
                 if ($IsWindows) { & icacls $cl /deny "${me}:(W)" 2>&1 | Out-Null }
                 else            { & chmod 500 $cl 2>&1 | Out-Null }
-                # PRECONDITION: creation must ACTUALLY fail, or this row proves nothing. Skip rather than
-                # fail - an unreachable state is not a regression.
-                $created = $false
-                try { [IO.File]::WriteAllText($gi, "x`n"); $created = $true } catch { }
-                if ($created) {
+                # PRECONDITION, PROBED THROUGH THE SAME BASH THAT RUNS THE HOOK. Asking .NET instead is
+                # what broke this row on CI: the runner denied [IO.File]::WriteAllText while Git Bash
+                # created the file without trouble, so the probe reported the deny had taken, the row did
+                # not skip, and the hook then found nothing wrong and said nothing. Same rule as
+                # agy-ledger-lib.Tests.ps1:436-441. Skip rather than fail - an unreachable state is not a
+                # regression.
+                $probe = Join-Path $d 'probe-creatable.sh'
+                [IO.File]::WriteAllText($probe, ("printf 'x\n' > .clavity/.gitignore" -replace "`r`n", "`n"))
+                $pr = Start-Process -FilePath (Get-GitBashOrThrow) -ArgumentList @('probe-creatable.sh') `
+                        -WorkingDirectory $d -NoNewWindow -Wait -PassThru
+                if ($pr.ExitCode -eq 0) {
                     Remove-Item -LiteralPath $gi -Force -ErrorAction SilentlyContinue
-                    Set-ItResult -Skipped -Because 'the directory write-deny did not take on this host, so an uncreatable shield is unreachable here'
+                    Set-ItResult -Skipped -Because 'the directory write-deny did not take for THIS bash (elevated token, or a filesystem that ignores ACLs), so an uncreatable shield is unreachable here'
                 }
                 $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-nocreate'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
                 $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2> $errF | Out-Null

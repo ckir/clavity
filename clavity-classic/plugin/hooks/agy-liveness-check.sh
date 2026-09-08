@@ -38,7 +38,7 @@
 # override - it rides in that SAME envelope rather than a second one, because a hook gets one stdout and
 # a second JSON object on it would not parse.
 # `set +e` is the fail-open guard: a mid-detection command failure does not abort the hook,
-# it continues to the not-live advisory (exit 2) -- non-blocking for SessionStart and fail-toward-loud, the
+# it continues to the not-live advisory -- fail-toward-loud, the
 # posture Decision 3 wants (a soft advisory beats a silent swallow for a liveness hook). NO blanket
 # `trap ... ERR` -- it would swallow the settings-parse path and drop the advisory. The ONLY silent outcome is (1).
 # Byte-identical across both driver plugins (kept honest by the seed-sync gate).

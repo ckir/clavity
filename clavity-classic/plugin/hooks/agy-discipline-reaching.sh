@@ -187,7 +187,18 @@ else
     printf 'agy-shield: %s\n' "could not READ $root/.clavity/.gitignore, so whether .clavity/ is shielded cannot be determined - assume it is exposed to git. Check that it is a regular file THIS process can read; it may be writable and still unreadable." >&2
   elif [ "$_dr_rc" -ne 0 ]; then
     printf 'agy-shield: %s\n' "could not assert the shield in $root/.clavity/.gitignore - .clavity/ is NOT protected and is exposed to git. Check that it is a regular, writable file whose contents include a bare '*'." >&2
-  elif ! git -C "$root" check-ignore -q ".clavity/discipline-reaching.jsonl" 2>/dev/null; then
+  else
+    # `check-ignore` HAS THREE EXIT CODES, NOT TWO: 0 ignored, 1 NOT ignored, 128 git could not answer.
+    # This started life as `if ! git check-ignore`, which folds 128 in with 1 and reports "your file is
+    # TRACKED" whenever git itself fails. MEASURED: a corrupted `.git/index` returns 128, and CI proved it
+    # is not hypothetical - the runner logged "fatal: .git/index: index file smaller than expected" twice
+    # and this branch then accused a perfectly shielded repository of tracking a file.
+    # It is the SAME exit-code lesson as the grep above, which I applied to the read and then failed to
+    # apply to the very next line: a non-zero that means "I could not tell" must never be reported as a
+    # finding. Only exactly 1 is evidence.
+    git -C "$root" check-ignore -q ".clavity/discipline-reaching.jsonl" 2>/dev/null
+    _dr_ig=$?
+    if [ "$_dr_ig" -eq 1 ]; then
     # THE CONFIG BEING RIGHT IS NOT THE DIRECTORY BEING SAFE. A bare `*` cannot hide a file git already
     # TRACKS, so a force-added file inside .clavity/ keeps leaking while the shield reads as perfect -
     # and every arm above answers "asserted" and falls silent. MEASURED under WSL (capstone round 2e):
@@ -200,7 +211,8 @@ else
     # the shield has been confirmed present and correct, so the common case still costs nothing. The
     # remedy is quoted verbatim because a gitignore rule cannot supply it - same wording as
     # agy-shield-lib.sh:416, one vocabulary whichever path reports it.
-    printf 'agy-shield: %s\n' "$root/.clavity/.gitignore is correct, but git still does NOT ignore .clavity/discipline-reaching.jsonl - a file inside .clavity/ is TRACKED and a gitignore rule cannot hide it. That file needs: git rm --cached -- .clavity/discipline-reaching.jsonl" >&2
+      printf 'agy-shield: %s\n' "$root/.clavity/.gitignore is correct, but git still does NOT ignore .clavity/discipline-reaching.jsonl - a file inside .clavity/ is TRACKED and a gitignore rule cannot hide it. That file needs: git rm --cached -- .clavity/discipline-reaching.jsonl" >&2
+    fi
   fi
 fi
 
