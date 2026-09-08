@@ -749,21 +749,37 @@ is harmless here because it resolves the REAL repository root, but do not copy t
 
 ```powershell
     It 'computes a sane relative path when -RepoRoot is an 8.3 SHORT path' {
-        # THE FIXTURE RULE: check-injected-context.ps1:204 throws `ignorelist missing: <path>` BEFORE the
-        # walk if scripts/injected-context-ignore.txt is absent, and that message CONTAINS the root - so a
-        # bare temp directory makes an absence-based oracle flip fail->pass without executing one line of
-        # the code under test. The ignorelist must exist for this row to mean anything.
+        # THE FIXTURE RULE, AND IT BIT THIS ROW TWICE. Three hurdles stand between a temp directory and a
+        # single executed line of the code under test, and each one was found by RUNNING the row:
+        #   1. :204 throws `ignorelist missing: <path>` before the walk if
+        #      scripts/injected-context-ignore.txt is absent - and that message CONTAINS the root, so an
+        #      absence-based oracle flips fail->pass on the fix without executing the subtraction.
+        #   2. :253 THROWS `domain root missing` if ANY of $script:DomainRoots (:44) is absent. Every one
+        #      must exist, even empty.
+        #   3. :773 reads scripts/injected-context-exemptions.json unguarded, so an absent file dies in
+        #      Get-Content. It must exist and parse, with an `exemptions` array.
+        #   4. The gate prints a relative path only when it reports a VIOLATION. MEASURED: with a clean
+        #      fixture this row PASSED against the UNMIGRATED gate - "the root does not appear in the
+        #      output" is trivially true of output containing no paths at all.
+        # `dist` is in $script:PrunedSegments (:91), so a dist/ inside a domain root is reported by
+        # Get-UnexpectedBuildDirs - the :186 subtraction this task migrates.
+        #
+        # THE ROOT LIST IS COPIED, AND THAT IS SAFE ONLY BECAUSE DRIFT FAILS LOUDLY: if a root is added to
+        # the gate and not here, :253 throws, no 'build-output' line is emitted, and PRECONDITION 2 below
+        # reddens this row. Do not replace that precondition with a softer check.
+        $domainRoots = @(
+            'clavity-dotnet/plugin', 'clavity-classic/plugin', 'clavity-classic/agy_skills',
+            'clavity-classic/agy-mcp-bridge', 'seed', 'agy-autotrain', 'ghidrust/plugin',
+            'ghidrust/skill', 'commonmemory'
+        )
         $parent = Join-Path ([IO.Path]::GetTempPath()) ("s28ic-" + [guid]::NewGuid().ToString('N'))
         $root   = Join-Path $parent 'a-very-long-directory-name-that-gets-shortened'
         New-Item -ItemType Directory -Force -Path (Join-Path $root 'scripts') | Out-Null
-        New-Item -ItemType Directory -Force -Path (Join-Path $root 'clavity-dotnet/plugin/skills/demo') | Out-Null
         Set-Content -LiteralPath (Join-Path $root 'scripts/injected-context-ignore.txt') -Value '# empty ignorelist'
-        Set-Content -LiteralPath (Join-Path $root 'clavity-dotnet/plugin/skills/demo/SKILL.md') -Value "# demo`n"
+        Set-Content -LiteralPath (Join-Path $root 'scripts/injected-context-exemptions.json') -Value '{"exemptions":[]}'
+        foreach ($dr in $domainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $root $dr) | Out-Null }
+        New-Item -ItemType Directory -Force -Path (Join-Path $root 'clavity-dotnet/plugin/dist') | Out-Null
         try {
-            # GUARDED, matching the shipped precedent at scripts/tests/check-plugin-drift.Tests.ps1:364-372.
-            # The COM object does not exist off Windows, so an unguarded New-Object THROWS before the skip
-            # check can run - a crash where a skip was intended. try/catch collapses "no COM" and "8.3
-            # disabled" into the same skip.
             $short = $null
             try { $short = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($root).ShortPath } catch { $short = $null }
             if (-not $short -or $short -eq $root) {
@@ -772,16 +788,14 @@ is harmless here because it resolves the REAL repository root, but do not copy t
             $short | Should -Not -Be $root
 
             $out = & pwsh -NoProfile -File (Join-Path $script:RepoRoot 'scripts/check-injected-context.ps1') -RepoRoot $short 2>&1 | Out-String
-            # PRECONDITION 1: prove the fixture actually reached the walk, not the ignorelist throw.
+            # PRECONDITION 1: reached the walk, not the ignorelist throw.
             $out | Should -Not -Match 'ignorelist missing'
-            # PRECONDITION 2: THE ORACLE BELOW IS AN ABSENCE, AND AN ABSENCE IS SATISFIED BY SILENCE.
-            # If a future change made the gate crash cleanly with no output, $out would be empty, the
-            # root fragment would be absent, and this row would pass over a gate that did nothing. Pin
-            # that the gate actually ran and did not die on an unhandled error.
-            $out | Should -Not -BeNullOrEmpty -Because 'an empty run satisfies the absence oracle below without executing the code under test'
-            $out | Should -Not -Match 'FullyQualifiedErrorId|Unhandled exception' -Because 'a crash must not read as a clean short-root run'
-            # THE ORACLE: any path the gate reports must be repo-relative, so the root cannot appear in it.
-            $out | Should -Not -Match 'a-very-long-directory-name-that-gets-shortened'
+            # PRECONDITION 2: the violation fired, so a path WAS emitted. Without this the oracle below is
+            # satisfied by silence - which is exactly how this row once passed over a broken gate.
+            $out | Should -Match 'build-output' -Because 'the fixture must reach the code that emits a relative path'
+            # THE ORACLE: the EXACT repo-relative path, never the absence of a marker.
+            $out | Should -Match ([regex]::Escape('clavity-dotnet/plugin/dist'))
+            $out | Should -Not -Match 'a-very-long-directory-name-that-gets-shortened' -Because 'a relative path cannot contain the root it was supposed to have removed'
         }
         finally { Remove-Item -LiteralPath $parent -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -790,8 +804,18 @@ is harmless here because it resolves the REAL repository root, but do not copy t
 - [ ] **Step 2: Run it and watch it FAIL**
 
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-injected-context.Tests.ps1 -Output Detailed"`
-Expected: the new row FAILS on the root fragment appearing in a reported path. 🔴 If it fails on
-`ignorelist missing` instead, the fixture is wrong — fix the fixture, not the assertion.
+Expected: the new row FAILS **on the ORACLE**, with output of exactly this shape (measured):
+
+```
+Expected regular expression 'a-very-long-directory-name-that-gets-shortened' to not match
+'480da1887a7ee656488b/a-very-long-directory-name-that-gets-shortened/clavity-dotnet/plugin/dist'
+```
+
+🔴 **If it fails on a PRECONDITION instead, the fixture is wrong — fix the fixture, never the assertion.**
+Each precondition corresponds to a hurdle the fixture must clear, and each was hit for real while executing
+this task: `ignorelist missing` (no ignore file), `domain root missing` (an absent domain root),
+a `Get-Content` error at `:773` (no exemptions JSON), or `build-output` failing to match (the fixture
+produced no violation, so the gate printed no path at all and the absence-oracle passed over broken code).
 
 - [ ] **Step 3: Migrate the three sites**
 
@@ -840,8 +864,16 @@ Expected: every row passes, including the pre-existing ones.
 - [ ] **Step 5: Run the gate for real**
 
 Run: `just check-injected-context`
-Expected: exit 0 and the same output as before this task. This gate has the most intricate downstream
-consumers of `$rel` (ignore globs, reference resolution, alias dedupe), so a green suite is not sufficient.
+Expected: **the same violation SET as before this task** — compare, do not just read the exit code. This
+gate has the most intricate downstream consumers of `$rel` (ignore globs, reference resolution, alias
+dedupe), so a green suite is not sufficient.
+
+⚠ **It may legitimately exit 1 on your box, for a reason that is not yours.** The gate walks the
+FILESYSTEM, not git, so any gitignored build output left by a previous local run is reported — measured
+2026-09-08: `clavity-classic/agy-mcp-bridge/.pytest_cache` and `.../tests/__pycache__`, both untracked and
+gitignored, after someone ran the python tests. CI is unaffected (a fresh checkout has no caches).
+**So the oracle here is "the violation set is UNCHANGED", not "exit 0"**; if the only entries are
+pre-existing build-output ones, this step passed. Captured on the anomalies conveyor 2026-09-08.
 
 - [ ] **Step 6: Commit**
 
@@ -1181,7 +1213,9 @@ grep -rl 'check-injected-context\|check-installer-ascii\|check-dangling-consumer
 Run every suite it names, plus `scripts/tests/test-suite-registration.Tests.ps1`.
 
 - [ ] **Run the gates themselves:** `just check-injected-context`, `just check-installer-ascii`,
-  `just check-dangling-consumers`. All three exit 0.
+  `just check-dangling-consumers`. The latter two exit 0. For `check-injected-context` the oracle is an
+  UNCHANGED violation set, not exit 0 — see Task 3 Step 5 for why a local run can legitimately report
+  gitignored build output.
 
 - [ ] **Run the full fast half** — `just test-scripts-fast` — and read the `Tests Passed:` count.
   🔴 A missing count line, or `Tests Passed: 0`, is an ABORTED run that reads like a pass.

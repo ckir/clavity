@@ -15,6 +15,7 @@ param(
     [string]$RepoRoot
 )
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'lib' 'path-lib.ps1')
 $ErrorActionPreference = 'Stop'
 
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
@@ -183,7 +184,7 @@ function Get-UnexpectedBuildDirs {
         while ($stack.Count) {
             $dir = $stack.Pop()
             foreach ($child in Get-ChildItem -LiteralPath $dir -Directory -Force -ErrorAction SilentlyContinue) {
-                $rel = $child.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
+                $rel = (Get-RootRelativePath -Root $RepoRoot -Path $child.FullName).Replace('\', '/')
                 if (Test-IsIgnored -RelPath ($rel + '/__probe__') -Globs $globs) { continue }
                 if (Test-IsBuildDirName -Name $child.Name) { $out.Add($rel); continue }
                 # HashSet.Add returns false when the identity was already present - the cycle guard.
@@ -316,7 +317,7 @@ function Get-InjectedContextFiles {
             $node = $stack.Pop()
             $dir  = $node.Path
             foreach ($child in Get-ChildItem -LiteralPath $dir -Force -ErrorAction SilentlyContinue) {
-                $rel = $child.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
+                $rel = (Get-RootRelativePath -Root $RepoRoot -Path $child.FullName).Replace('\', '/')
                 # A reparse point resolves to its target; anything else is its parent's physical location
                 # plus its own name. Never $child.FullName, which is the alias we are trying to collapse.
                 $childIsLink = [bool]($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
@@ -453,7 +454,7 @@ function Get-ReferenceIndex {
     $all    = [System.Collections.Generic.List[string]]::new()
     Get-ChildItem -LiteralPath $RepoRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
         ForEach-Object {
-            $rel = $_.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
+            $rel = (Get-RootRelativePath -Root $RepoRoot -Path $_.FullName).Replace('\', '/')
             # THE INDEX STILL PRUNES BY NAME, and the corpus walk above no longer does - that asymmetry is
             # deliberate, not drift. This walk covers the WHOLE repository for reference resolution and its
             # results are never audited, only matched against; name-based pruning is what keeps it cheap.
