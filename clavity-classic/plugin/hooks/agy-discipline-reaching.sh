@@ -152,6 +152,21 @@ else
   elif ! grep -qx '*' "$root/.clavity/.gitignore" 2>/dev/null; then
     printf '\n%s\n' '*' 2>/dev/null >> "$root/.clavity/.gitignore"
   fi
+  # AND THE FALLBACK MUST CHECK ITS OWN WRITE. Neither append above is tested, and the `2>/dev/null`
+  # that stops the redirect-order leak also swallows the OS error, so a failed write was indistinguishable
+  # from a successful one. MEASURED (capstone round 2b) with the helper absent and .clavity/.gitignore
+  # denied write: the hook exited 0 in COMPLETE SILENCE, the shield never gained its `*`, the jsonl was
+  # written anyway, and `git check-ignore` reported it NOT ignored. The PRIMARY path warns twice in that
+  # same case - so the fallback was strictly weaker at the one thing the comment above says it exists to
+  # guarantee, which is the fourth consecutive round in which this branch's fix carried its own defect.
+  #
+  # The check is `grep`, not the append's exit status, because the QUESTION is "is the shield asserted",
+  # not "did my write return 0" - an unreadable shield is equally unprotected and must warn too. Same
+  # `agy-shield:` prefix and same stderr channel as agy-shield-lib.sh:107, deliberately: one failure, one
+  # vocabulary, whichever path produced it.
+  if ! grep -qx '*' "$root/.clavity/.gitignore" 2>/dev/null; then
+    printf 'agy-shield: %s\n' "could not assert the shield in $root/.clavity/.gitignore - .clavity/ is NOT protected and is exposed to git. Check that it is a regular, writable file whose contents include a bare '*'." >&2
+  fi
 fi
 
 [ -d "$out" ] || mkdir -p "$out" 2>/dev/null || exit 0

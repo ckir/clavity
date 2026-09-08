@@ -425,6 +425,60 @@ Describe 'agy-discipline-reaching.sh' {
             Remove-Item -LiteralPath $hookDir -Recurse -Force -ErrorAction SilentlyContinue
         }
 
+        It 'the FALLBACK WARNS - it does not fail silent - when it cannot assert the shield (capstone r2b)' {
+            # THE TWO FALLBACK ROWS ABOVE BOTH SUCCEED, so neither could see the failure mode. MEASURED
+            # before the fix, with the helper absent and .gitignore denied write: the hook exited 0 in
+            # COMPLETE SILENCE, the shield never gained its `*`, the jsonl was written anyway, and
+            # `git check-ignore` reported it NOT ignored. The PRIMARY path warns twice in that same case,
+            # so the fallback was strictly weaker at the one thing it exists to guarantee.
+            # The oracle is STDERR, not the shield contents: the hook cannot make a denied file writable,
+            # and asserting it did would pin a fix nothing can implement. What it owes the operator is a
+            # diagnosis.
+            $d = New-ReachingFixture -Shield '!keepme.md'
+            $gi = Join-Path $d '.clavity/.gitignore'
+            $me = "$env:USERDOMAIN\$env:USERNAME"
+            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib3-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
+            Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
+            $errF = Join-Path ([IO.Path]::GetTempPath()) ("reach-deny-" + [guid]::NewGuid().ToString('N') + ".err")
+            try {
+                & icacls $gi /deny "${me}:(W)" | Out-Null
+                # THE PRECONDITION IS ASSERTED, not assumed: if the deny did not take, this row would
+                # pass for the wrong reason on a box where icacls is a no-op.
+                { [IO.File]::AppendAllText($gi, "x`n") } | Should -Throw -Because 'the ACL deny must actually make the shield unwritable, or this row proves nothing'
+                $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-deny'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
+                $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2> $errF | Out-Null
+                $err = Get-Content -Raw -LiteralPath $errF -ErrorAction SilentlyContinue
+                $err | Should -Match 'agy-shield:' -Because 'a shield it could not assert must be reported in the same vocabulary the helper uses'
+                $err | Should -Match 'exposed to git' -Because 'the operator needs the CONSEQUENCE named, not just a failed write'
+            }
+            finally {
+                & icacls $gi /remove:d $me | Out-Null
+                Remove-Item -LiteralPath $errF -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath $hookDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'the FALLBACK stays SILENT when it CAN assert the shield - the success-path counterpart' {
+            # Without this row the one above is half a test: a hook that warned unconditionally would
+            # satisfy it while making every healthy start noisy.
+            $d = New-ReachingFixture -Shield '!keepme.md'
+            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib4-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
+            Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
+            $errF = Join-Path ([IO.Path]::GetTempPath()) ("reach-ok-" + [guid]::NewGuid().ToString('N') + ".err")
+            try {
+                $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-ok'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
+                $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2> $errF | Out-Null
+                (Get-Content -Raw -LiteralPath $errF -ErrorAction SilentlyContinue) |
+                    Should -Not -Match 'agy-shield:' -Because 'a healthy fallback start must say nothing at all'
+            }
+            finally {
+                Remove-Item -LiteralPath $errF -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath $hookDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         It 'FORWARDS the payload session_id as the debounce key' {
             # THE ORACLE IS A LINE COUNT AGAINST A PERSISTENT FAULT, and it has to be: Stage A runs
             # unconditionally and ignores the key entirely, so a hook passing an empty or hard-coded key

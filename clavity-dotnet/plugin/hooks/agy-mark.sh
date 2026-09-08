@@ -354,6 +354,16 @@ case "$mode" in
         # ONE printf >>, never read-modify-write: two sessions can be open on the same repository, and a
         # single short append is atomic on POSIX, so concurrent writers interleave lines rather than
         # corrupting them.
+        #
+        # AND THAT GUARANTEE IS POSIX-ONLY, WHICH IS NOT EVERYWHERE THIS SHIPS. O_APPEND atomicity is a
+        # property of the local filesystem, not of the write() call: SMB/CIFS and NFS do not promise it,
+        # and this plugin knowingly runs on both - agy-after-reminder.sh:28 records that WSL repositories
+        # are LIVE UNC paths. So on a network share two concurrent appends CAN clobber each other. Raised
+        # by capstone round 2b; the sentence above was true and read as though it covered every
+        # deployment, which is the kind of accurate-but-overclaiming comment that stops the next reader
+        # from checking. There is no portable fix in shell - `flock` is absent on Git Bash and macOS -
+        # so this is DOCUMENTED, not solved, and tracked in .clavity/local-anomalies.md. The blast radius
+        # is one corrupted line in an APPEND-ONLY AUDIT LOG; no gate decision reads these files back.
         printf '%s\n' "$line" 2>/dev/null >> "$root/$rel" || { _log_lost 'the filesystem rejected the append'; exit 1; }
         exit 0
         ;;

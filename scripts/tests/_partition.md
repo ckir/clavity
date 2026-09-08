@@ -581,7 +581,7 @@ test-suite-registration.Tests.ps1                21,9s    9 tests   <- FAST. MEA
   so it is genuinely near-free". All three clauses were false once the count guard landed, and the guard
   this fold added checks the NUMBER in a row, never its prose - so nothing caught it.
 agy-anomaly-contract-stamp.Tests.ps1              5,5s   14 tests   <- FAST, re-measured 2026-08-05
-agy-discipline-reaching.Tests.ps1                15,2s   23 tests   <- FAST. The row said 69,1s and it had
+agy-discipline-reaching.Tests.ps1                15,2s   25 tests   <- FAST. The row said 69,1s and it had
                                                                       been WRONG since 6b87f1f split capture
                                                                       from analysis: that figure was measured
                                                                       while the hook still scanned the
