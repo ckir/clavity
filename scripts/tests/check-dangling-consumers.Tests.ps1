@@ -240,4 +240,32 @@ Describe 'check-dangling-consumers' {
         }
         finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'no script outside scripts/lib computes a repo-relative path by hand (ROADMAP section 28 guard)' {
+        # A CATALOGUE OF LINE NUMBERS CANNOT HOLD THIS - section 22 proved it: a hand-listed 8 sites became
+        # TEN within two weeks. So the population is discovered by glob.
+        #
+        # THE HONEST LIMIT OF THIS GUARD, stated because a guard that fails open certifies exactly what it
+        # stopped checking: it matches the IDIOM all eight migrated sites used. It does NOT catch a split
+        # form -- `$p = $_.FullName` on one line and `$p.Substring($root.Length)` on the next -- nor
+        # `.Remove(0, $root.Length)`. It raises the cost of reintroducing the defect; it does not make it
+        # impossible. Do not let a future reader mistake it for exhaustive.
+        $scripts = Get-ChildItem -LiteralPath (Join-Path $script:RepoRoot 'scripts') -Filter '*.ps1' -File
+        $scripts.Count | Should -BeGreaterThan 0 -Because 'an empty glob would make this guard vacuous'
+
+        $bad = foreach ($s in $scripts) {
+            if ([IO.File]::ReadAllText($s.FullName) -match '\.FullName\)?\.Substring\(') { $s.Name }
+        }
+        $bad | Should -BeNullOrEmpty -Because 'use Get-RootRelativePath from scripts/lib/path-lib.ps1: it normalises an 8.3 short root, strips a trailing separator, and throws when the path is not under the root'
+    }
+
+    It 'every gate that reports repo-relative paths dot-sources the helper' {
+        # THE POSITIVE HALF. The prohibition above goes green if someone DELETES a call site; this row goes
+        # red if someone removes the dot-source while leaving the calls, which is the likelier accident.
+        foreach ($g in @('check-injected-context', 'check-installer-ascii', 'check-dangling-consumers', 'check-plugin-drift')) {
+            $text = [IO.File]::ReadAllText((Join-Path $script:RepoRoot "scripts/$g.ps1"))
+            $text | Should -Match ([regex]::Escape("'lib' 'path-lib.ps1'")) -Because "$g reports repo-relative paths"
+            $text | Should -Match 'Get-RootRelativePath' -Because "$g must actually call the helper it loads"
+        }
+    }
 }

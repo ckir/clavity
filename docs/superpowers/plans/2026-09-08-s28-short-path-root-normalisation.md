@@ -1195,6 +1195,17 @@ Restore with `git checkout -- scripts/check-installer-ascii.ps1` and confirm `gi
 
 🔴 **Judge the mutants PER ROW.** A non-zero suite exit is not evidence; name which row reddened.
 
+✅ **MEASURED 2026-09-08, each with an application control confirming the mutant landed:**
+
+| mutant | prohibition row | positive row |
+|---|---|---|
+| reintroduce the arithmetic | **RED** — and its failure message names `check-installer-ascii.ps1` | **RED** (the call vanished with it) |
+| delete only the dot-source | green — correct, no arithmetic returned | **RED** |
+
+That asymmetry is the point: the two arms form a ratchet. You cannot go back to hand-rolled arithmetic
+without tripping the prohibition, and you cannot drop the helper import without tripping the positive
+half — and neither arm alone catches both directions.
+
 - [ ] **Step 4: Commit**
 
 ```bash
