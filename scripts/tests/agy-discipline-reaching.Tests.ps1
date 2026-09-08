@@ -554,7 +554,16 @@ Describe 'agy-discipline-reaching.sh' {
                 $pr = Start-Process -FilePath (Get-GitBashOrThrow) -ArgumentList @('probe-creatable.sh') `
                         -WorkingDirectory $d -NoNewWindow -Wait -PassThru
                 if ($pr.ExitCode -eq 0) {
-                    Remove-Item -LiteralPath $gi -Force -ErrorAction SilentlyContinue
+                    # AND THE TIDY-UP MUST NOT BE ABLE TO THROW - `-ErrorAction` is NOT enough here, which
+                    # is what took this row red on CI the very moment it had decided to SKIP. MEASURED
+                    # with a passing and a failing control in one process: `Remove-Item -Force` on a file
+                    # whose PARENT denies (W) raises a TERMINATING Win32Exception "Access is denied." from
+                    # the -Force attribute clear, under EITHER $ErrorActionPreference and under both
+                    # -ErrorAction SilentlyContinue and Ignore; without the deny the identical call is
+                    # silent. This arm runs precisely when the deny binds .NET but not bash - the same
+                    # split the probe above exists to detect - so the throw is the RULE here, not an edge.
+                    # Same discipline as the teardown at :475: each step independently guarded.
+                    try { Remove-Item -LiteralPath $gi -Force -ErrorAction SilentlyContinue } catch { }
                     Set-ItResult -Skipped -Because 'the directory write-deny did not take for THIS bash (elevated token, or a filesystem that ignores ACLs), so an uncreatable shield is unreachable here'
                 }
                 $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-nocreate'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)

@@ -199,12 +199,25 @@ _check_relpath() {
 # these sites had no redirect at all. MEASURED 2026-09-08 with a passing and a failing control in one
 # shell: `env -i PATH= bash -c 'x=$(dirname /a/b/c)'` leaks and leaves x empty; with PATH=/usr/bin it
 # yields /a/b. Parameter expansion closes both halves at once - no stderr to leak and no process to
-# spawn, which is also what this file's own budget rule asks for. The `case` is required: `${0%/*}` on a
-# bare filename with no slash returns the FILENAME, not `.`, and would resolve the helper beside a
-# directory that does not exist. Same idiom as the root walk at :76.
+# spawn, which is also what this file's own budget rule asks for. The `case` is required: a strip on a
+# bare filename with no separator returns the FILENAME, not `.`, and would resolve the helper beside a
+# directory that does not exist.
+#
+# EITHER SEPARATOR, BECAUSE `dirname` ACCEPTED BOTH AND THE FIRST REPLACEMENT DID NOT. Git-for-Windows
+# ships an MSYS `dirname` that splits on a BACKSLASH as well as a slash, so a native Windows "$0" - which
+# is exactly what PowerShell's Join-Path hands `bash`, and what every Pester row here uses - resolved
+# correctly for as long as this file called it. `${0%/*}` does not: MEASURED 2026-09-08, a native path
+# holds no forward slash, took the `.` arm, and every stamp/head/log/prepare call died on "shield helper
+# not found beside this script: [./agy-shield-lib.sh]" - eight rows of agy-mark-stamp.Tests.ps1 red on
+# CI. The three `rejects ...` rows stayed GREEN throughout because they assert a NON-ZERO exit and got
+# one for the wrong reason, which is why the suite still looked half-alive.
+# `%` strips the SHORTEST matching suffix, so the class below cuts at the LAST separator of either kind
+# and a mixed `C:\a\b/c.sh` resolves too. THE CLASS MUST BE QUOTED as written: the obvious spelling
+# `[/\\]` matches NEITHER separator - MEASURED in bash, dash and WSL dash, with `[/]` as the passing
+# control - and would have restored this bug in silence.
 case "$0" in
-  */*) _self_dir=${0%/*} ;;
-  *)   _self_dir=. ;;
+  *['/\']*) _self_dir=${0%['/\']*} ;;
+  *)        _self_dir=. ;;
 esac
 
 # Load the shield helper. Hard-wired: there is no way to skip it. Its return value carries no
