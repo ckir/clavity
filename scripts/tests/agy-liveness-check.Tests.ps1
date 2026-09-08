@@ -191,6 +191,26 @@ Describe 'agy-liveness-check.sh' {
             ($r.StdOut -split "`n").Count | Should -Be 1
         } finally { Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'the no-jq warning reaches the MODEL too, not the owner alone (capstone r2c)' {
+        # THE ROW ABOVE ASSERTS THE TEXT AND THE LINE COUNT, AND BOTH PASSED WHILE THE SHAPE WAS WRONG.
+        # This file's own contract at :22-23 names this exact fault - "an ACTIONABLE FAULT - superpowers
+        # not live, jq missing, a personal hook overriding a shipped one - earns the owner's screen:
+        # systemMessage AND additionalContext" - and the jq branch honours it through _emit. The degraded
+        # branch emitted systemMessage ALONE, so two implementations of one contract disagreed about WHO
+        # gets told, and the model was the party left out.
+        # THE ORACLE PARSES THE ENVELOPE rather than matching a substring: the defect was the object's
+        # SHAPE, and a substring match is blind to shape. It would also have matched the same words in a
+        # malformed object, or in an error message that happened to quote them.
+        $h = New-CleanHome
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ PATH = $script:NoJqPath; HOME = $h }
+            $o = $r.StdOut | ConvertFrom-Json
+            $o.systemMessage | Should -Match 'missing jq' -Because 'an actionable fault still earns the owner screen'
+            $o.hookSpecificOutput.additionalContext | Should -Match 'missing jq' -Because 'the contract names jq-missing as earning additionalContext as well'
+            $o.hookSpecificOutput.hookEventName | Should -BeExactly 'SessionStart' -Because 'a hookSpecificOutput block without the right event name is not delivered'
+        } finally { Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
     It 'ships as pure ASCII' {
         ($([IO.File]::ReadAllBytes($script:Hook)) | Where-Object { $_ -gt 127 }).Count | Should -Be 0
     }

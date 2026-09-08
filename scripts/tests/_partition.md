@@ -673,7 +673,7 @@ agy-autotrain-installer.Tests.ps1                 1,3s   17 tests   <- FAST, new
 agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new 2026-08-24. 6,4s WARM on an
                                                                       idle CPU; 11,1s cold. It will not be the
                                                                       cold-start absorber in this half
-agy-liveness-check.Tests.ps1                     56,4s   31 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-liveness-check.Tests.ps1                     56,4s   32 tests   <- SLOW, re-measured 2026-08-06 (+4)
 agy-mark.Tests.ps1                               93,0s   46 tests   <- SLOW, NEW 2026-08-16. Task 6 (14c):
                                                                       agy-mark.sh, the sanctioned .clavity writer for the
                                                                       skills. Bash + git subprocess spawns across 26 Its; the

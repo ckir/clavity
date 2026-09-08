@@ -109,7 +109,14 @@ if ! command -v jq >/dev/null 2>&1; then
   # THE ENVELOPE IS BUILT WITH printf HERE, NOT jq, because this is the branch where jq is MISSING - a
   # message that needs jq to report that jq is absent could never be delivered. The text is a fixed
   # literal with no interpolation, so there is nothing in it that needs escaping.
-  printf '%s\n' '{"systemMessage":"[AGY-DISCIPLINES] guard inactive: missing jq - cannot verify the disciplines will auto-fire; install jq"}'
+  #
+  # BOTH KEYS, because the contract at the top of this file names THIS EXACT FAULT: "an ACTIONABLE FAULT
+  # - superpowers not live, jq missing, a personal hook overriding a shipped one - earns the owner's
+  # screen: systemMessage AND additionalContext". The jq branch honours that through _emit; this branch
+  # emitted systemMessage ALONE, so the two implementations of one contract disagreed about WHO gets told,
+  # and the model - the party that would otherwise sit wondering why the disciplines never fire - was the
+  # one left out. Raised by capstone round 2c and verified against lines 22-23 of this file.
+  printf '%s\n' '{"systemMessage":"[AGY-DISCIPLINES] guard inactive: missing jq - cannot verify the disciplines will auto-fire; install jq","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"[AGY-DISCIPLINES] guard inactive: missing jq - cannot verify the disciplines will auto-fire; install jq"}}'
   exit 0
 fi
 

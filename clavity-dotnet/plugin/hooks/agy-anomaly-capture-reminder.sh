@@ -1,7 +1,21 @@
 #!/usr/bin/env bash
-# AGY-ANOMALIES capture reminder (plugin-shipped). PreCompact(manual|auto): the CAPTURE side of the
-# discipline, addressed to the MODEL. Its sibling agy-anomaly-reminder.sh is the DRAIN side, addressed to
-# the OWNER at SessionStart. Before this hook, the discipline had a drain push and no capture push: a
+# AGY-ANOMALIES capture reminder (plugin-shipped). The CAPTURE side of the discipline; its sibling
+# agy-anomaly-reminder.sh is the DRAIN side, addressed to the OWNER at SessionStart.
+#
+# TWO EVENTS, TWO AUDIENCES, AND THE SPLIT IS FORCED - hooks.json registers this file on BOTH.
+#   UserPromptSubmit -> hookSpecificOutput.additionalContext -> THE MODEL. This is the arm that carries
+#                       the discipline: it reaches the party actually asked to verify and capture.
+#   PreCompact       -> top-level systemMessage             -> THE OWNER's screen, and ONLY the owner.
+# The PreCompact arm is a SECOND nudge sited at the moment context is lost, not the primary channel, and
+# it is owner-facing because it has no choice: hookSpecificOutput is INVALID for PreCompact (below), so
+# reaching the model at compaction is not something this hook can do.
+#
+# THIS HEADER USED TO SAY "PreCompact ... addressed to the MODEL", which is what the arm cannot do.
+# Capstone round 2c read that line and filed a BLOCKING defect - "a capture reminder the agent cannot see
+# guarantees the discipline fails open". The DEFECT was the sentence: MEASURED at 039babc, the
+# UserPromptSubmit arm emits 609 bytes of additionalContext and the model is reached on every session.
+# A comment that misdescribes which audience an arm serves does not merely mislead a maintainer - it
+# invites a "fix" that would swap the working key for one the harness rejects outright. Before this hook, the discipline had a drain push and no capture push: a
 # driver working DIRECTLY -- not dispatching -- that noticed a defect got nothing from any hook at any
 # moment, because the capture contract lived only inside a skill it had to decide to pull unprompted, at
 # exactly the moment its attention is elsewhere by construction.
