@@ -336,7 +336,7 @@ Describe 'Get-RootRelativePath' {
     }
 
     It 'THROWS for a SIBLING directory whose name merely extends the root' {
-        # 🔴 THE ROW THAT PINS THE SEPARATOR BOUNDARY. A bare StartsWith passes here and returns
+        # THE ROW THAT PINS THE SEPARATOR BOUNDARY. A bare StartsWith passes here and returns
         # `sitory\secret.md` - MEASURED against the first draft of this helper. Without this row the
         # helper reintroduces, inside itself, the exact silent-garbage defect it was written to remove.
         $sibling = Join-Path $script:Parent 'a-very-long-directory-name-that-gets-shortened-EXTRA\secret.md'
@@ -394,8 +394,14 @@ Describe 'Get-RootRelativePath' {
         # A DELIBERATE BEHAVIOUR CHANGE, pinned so it is not mistaken for a regression. Before this helper,
         # a bogus -RepoRoot made a gate match nothing and exit 0 - a gate that checked nothing reporting
         # success. Get-Item throws ItemNotFoundException instead.
+        #
+        # ASSERT THE MESSAGE, NOT MERELY THAT IT THREW. MEASURED while executing this task: without the
+        # -ErrorAction Stop in the helper, Get-Item emitted a NON-terminating error under Pester's default
+        # $ErrorActionPreference, returned nothing, and the throw came from property access on $null as a
+        # PropertyNotFoundException - a DIFFERENT failure, naming the wrong thing, which a bare
+        # `Should -Throw` accepted while printing a red error record on an otherwise GREEN run.
         { Get-RootRelativePath -Root (Join-Path $script:Parent 'no-such-dir') -Path $script:Child } |
-            Should -Throw
+            Should -Throw -ExpectedMessage '*Cannot find path*'
     }
 }
 ```
@@ -403,7 +409,20 @@ Describe 'Get-RootRelativePath' {
 - [ ] **Step 2: Run it and watch every row fail on a missing function**
 
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/path-lib.Tests.ps1 -Output Detailed"`
-Expected: all 11 rows FAIL — the dot-source in `BeforeAll` cannot find `scripts/lib/path-lib.ps1`.
+Expected: `Tests Passed: 0, Failed: 11`.
+
+🔴 **The failure message will NOT say "cannot find path-lib.ps1", and that is not a problem.** MEASURED
+when this task was executed — Pester reports:
+
+```
+InvalidOperationException: A 'break' or 'continue' statement with a label that does not match any
+enclosing loop escaped from your code. ... Left unhandled it silently aborts the whole Pester run with
+no result (see https://github.com/pester/Pester/issues/2669), so Pester failed this test or block instead.
+```
+
+That is Pester's guard reacting to the failed dot-source in `BeforeAll`; the underlying cause is still the
+missing lib. **Do not go debugging a loop label.** The confirmation that it is the right failure is Step 4:
+creating the lib and nothing else turns all 11 rows green.
 
 - [ ] **Step 3: Write the helper**
 
@@ -442,11 +461,19 @@ function Get-RootRelativePath {
     # does not exist, which is deliberate: a gate handed a bogus -RepoRoot used to match nothing and exit
     # 0, reporting success for having checked nothing.
     #
+    # -ErrorAction Stop IS LOAD-BEARING, NOT DECORATION. Without it this function has TWO failure
+    # modes depending on the CALLER's $ErrorActionPreference, which a shared library must never have.
+    # MEASURED: under 'Stop' (what all four gates set) Get-Item throws ItemNotFoundException with a clear
+    # message; under 'Continue' (Pester's default) it emits a NON-terminating error, returns nothing, and
+    # the throw comes from `.FullName` on $null as a PropertyNotFoundException - naming the wrong thing,
+    # and printing a red error record on an otherwise green test run. So the unit suite would not have
+    # been exercising what the gates actually do.
+    #
     # MEASURED, and it is why this one call replaces four different idioms: Get-Item .FullName returns the
     # bare native path for a PROVIDER-PREFIXED root too (`Microsoft.PowerShell.Core\FileSystem::C:\...` ->
     # `C:\...`), exactly as Resolve-Path .ProviderPath does. So every gate calling this helper gains the
     # provider-prefix hardening that only check-dangling-consumers had.
-    $normalised = (Get-Item -LiteralPath $Root).FullName -replace '[\\/]+$', ''
+    $normalised = (Get-Item -LiteralPath $Root -ErrorAction Stop).FullName -replace '[\\/]+$', ''
 
     # TRAILING SEPARATOR STRIPPED ABOVE because Get-Item PRESERVES one - MEASURED: `Get-Item 'C:\Windows\'`
     # returns `C:\Windows\`. Callers that subtract `.Length + 1` would then over-cut by one character.
@@ -458,7 +485,7 @@ function Get-RootRelativePath {
     # THE ASSERTION IS THE POINT OF THIS FUNCTION, not the arithmetic. Nothing in the replaced code ever
     # checked that the child was under the root; it just assumed it and subtracted.
     #
-    # 🔴 A BARE StartsWith IS NOT ENOUGH, and this is the exact defect the helper exists to kill, so it
+    # A BARE StartsWith IS NOT ENOUGH, and this is the exact defect the helper exists to kill, so it
     # would be humiliating to reintroduce it here. MEASURED: with root `...\repo`, the SIBLING path
     # `...\repository\secret.md` passes StartsWith and yields `sitory\secret.md` - garbage, silently. The
     # next character after the root must therefore be a SEPARATOR, or the path is not under the root at
@@ -533,6 +560,19 @@ this mutant.
 **Three rows catch a missing boundary check, not one.** The sibling row is still the clearest of them —
 it is the only one that returns *silent garbage* rather than throwing something — but the suite is more
 resilient here than a single-row analysis suggests.
+
+**Mutant 3 — remove `-ErrorAction Stop` from the `Get-Item` call:**
+
+| row | under mutant 3 |
+|---|---|
+| **THROWS on a root that does not exist** | **RED** (`Tests Passed: 10, Failed: 1`) |
+| every other row | passes |
+
+🔴 **This mutant exists because the defect it pins was real and shipped in the first draft of this plan.**
+It is also the mutant that justifies the row's `-ExpectedMessage '*Cannot find path*'`: with a bare
+`Should -Throw`, mutant 3 goes UNDETECTED, because the broken form still throws — just a
+`PropertyNotFoundException` from `.FullName` on `$null` instead of an `ItemNotFoundException`. Measured
+both ways.
 
 Restore with `git checkout -- scripts/lib/path-lib.ps1` and confirm `git diff` is empty for it.
 

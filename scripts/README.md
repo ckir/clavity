@@ -76,8 +76,12 @@ because the check is worth re-running by hand when that area changes.
 
 ## Subdirectories
 
-- `lib/` — shared PowerShell helpers (`release-lib.ps1`), dot-sourced by the release/versioning
-  scripts above.
+- `lib/` — shared PowerShell helpers, dot-sourced by the scripts above:
+  - `release-lib.ps1` — the release/versioning machinery (roster, changelog, serials).
+  - `path-lib.ps1` — `Get-RootRelativePath`, the one sanctioned way to turn an absolute path into a
+    repo-relative one. It normalises the root (8.3 short form, casing, a PSDrive, a provider prefix) and
+    **throws if the path is not under the root**, rather than silently returning a mangled string.
+    ROADMAP section 28; `scripts/tests/path-lib.Tests.ps1` pins the behaviour.
 - `tests/` — Pester suites covering the scripts in this folder (count via `ls scripts/tests/*.Tests.ps1`), run via `just test-scripts`.
 - `ci/fake-claude/` — a stub `claude` CLI (`claude.cmd` + `fake-claude.ps1`) simulating `plugin
   marketplace add/remove`, `plugin install/uninstall`, and `plugin list`; used by the ghidrust
