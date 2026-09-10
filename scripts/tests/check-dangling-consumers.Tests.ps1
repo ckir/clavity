@@ -280,11 +280,21 @@ Describe 'check-dangling-consumers' {
         # The AST sees commands whatever their argument form, and never sees a comment.
         #
         # AND "ONCE" IS CHECKED, NOT ASSUMED. A resolver built INSIDE a loop passes every check above and is
-        # the 64-second regression again. So the construction may not sit under a loop statement, nor under
-        # a scriptblock literal - the body of ForEach-Object / Where-Object, which runs once per item.
+        # the 64-second regression again. So the construction may not sit under anything that runs its body
+        # once per item: a loop statement; a `switch`, which iterates a collection but is NOT a
+        # LoopStatementAst (AGY-CAPSTONE round 3 - measured, its body ran 3 times for 3 items); a scriptblock
+        # literal, the body of ForEach-Object / Where-Object; or a `process` block, which is also what a
+        # `filter` body parses to.
+        #
+        # AND "USES THE RESOLVER IT BUILDS" IS CHECKED THE SAME WAY. Counting .Resolve calls anywhere would
+        # accept an unrelated object's Resolve method (round 3). So every build must be ASSIGNED to a
+        # variable, and at least one .Resolve must be invoked on one of those variables.
         #
         # THE HONEST LIMIT: GetCommandName() is the name as WRITTEN. An alias, or a call through a variable
         # (`& $fn`), is invisible to it; so is a resolver built in a function that is itself called per file.
+        # A QUALIFIED name is not a hole: `path-lib\Get-RootRelativePath` and `.\Get-RootRelativePath` both
+        # throw CommandNotFoundException at runtime - MEASURED, round 3 - because path-lib is dot-sourced,
+        # not a module, so a gate written that way crashes rather than quietly paying the per-call cost.
         $A = 'System.Management.Automation.Language'
         foreach ($g in @('check-injected-context', 'check-installer-ascii', 'check-dangling-consumers', 'check-plugin-drift')) {
             $tokens = $null; $errors = $null
@@ -299,18 +309,27 @@ Describe 'check-dangling-consumers' {
 
             $builds = @($commands | Where-Object { $_.GetCommandName() -eq 'New-RootRelativePathResolver' })
             $builds.Count | Should -BeGreaterThan 0 -Because "$g must build a resolver once, not normalise per call"
-            foreach ($b in $builds) {
+            $builtVars = @(foreach ($b in $builds) {
+                $at = "line $($b.Extent.StartLineNumber)"
+                $assignment = $null
                 for ($p = $b.Parent; $p; $p = $p.Parent) {
-                    $p -is "$A.LoopStatementAst" | Should -BeFalse -Because "$g builds its resolver inside a loop at line $($b.Extent.StartLineNumber), which re-runs Get-Item per item"
-                    $p -is "$A.ScriptBlockExpressionAst" | Should -BeFalse -Because "$g builds its resolver inside a scriptblock literal at line $($b.Extent.StartLineNumber), which ForEach-Object / Where-Object run per item"
+                    $p -is "$A.LoopStatementAst" | Should -BeFalse -Because "$g builds its resolver inside a loop at $at, which re-runs Get-Item per item"
+                    $p -is "$A.SwitchStatementAst" | Should -BeFalse -Because "$g builds its resolver inside a switch at $at, which runs its body per item"
+                    $p -is "$A.ScriptBlockExpressionAst" | Should -BeFalse -Because "$g builds its resolver inside a scriptblock literal at $at, which ForEach-Object / Where-Object run per item"
+                    ($p -is "$A.NamedBlockAst" -and $p.BlockKind -eq 'Process') | Should -BeFalse -Because "$g builds its resolver inside a process block or filter at $at, which runs per pipeline item"
+                    if (-not $assignment -and $p -is "$A.AssignmentStatementAst") { $assignment = $p }
                 }
-            }
+                $assignment.Left -is "$A.VariableExpressionAst" | Should -BeTrue -Because "$g must assign the resolver it builds at $at to a variable, so its use can be checked"
+                $assignment.Left.VariablePath.UserPath
+            })
 
             $resolves = @($ast.FindAll({ param($n)
                 $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
                 $n.Member -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
-                $n.Member.Value -eq 'Resolve' }, $true))
-            $resolves.Count | Should -BeGreaterThan 0 -Because "$g must actually use the resolver it builds"
+                $n.Member.Value -eq 'Resolve' -and
+                $n.Expression -is [System.Management.Automation.Language.VariableExpressionAst] }, $true) |
+                Where-Object { $builtVars -contains $_.Expression.VariablePath.UserPath })
+            $resolves.Count | Should -BeGreaterThan 0 -Because "$g must call .Resolve() on the resolver it builds (`$$($builtVars -join ', $')), not merely call some Resolve method"
 
             $oneOff = @($commands | Where-Object { $_.GetCommandName() -eq 'Get-RootRelativePath' })
             $oneOff | ForEach-Object { "line $($_.Extent.StartLineNumber): $($_.Extent.Text)" } |
