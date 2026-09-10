@@ -49,10 +49,13 @@ if ($targets.Count -eq 0) {
 }
 
 $bad = @()
+# ONE resolver per root, built BEFORE the loop - ROADMAP section 28 capstone. Resolving inside the loop re-ran
+# Get-Item on the same root once per FILE (~64s a run). Guarded so a missing root keeps its own error.
+$pathResolver = if (Test-Path -LiteralPath $RepoRoot) { New-RootRelativePathResolver -Root $RepoRoot } else { $null }
 foreach ($f in $targets) {
     $offenders = @([System.IO.File]::ReadAllBytes($f.FullName) | Where-Object { $_ -gt 0x7F })
     if ($offenders.Count -gt 0) {
-        $rel = Get-RootRelativePath -Root $RepoRoot -Path $f.FullName
+        $rel = $pathResolver.Resolve($f.FullName)
         $bad += "  $rel - $($offenders.Count) non-ASCII byte(s)"
     }
 }

@@ -2445,17 +2445,28 @@ FAILURE. The plan's fixtures therefore had to *provoke a violation* before the o
 each one measured the mangled output directly, e.g.
 `480da1887a7ee656488b/a-very-long-.../clavity-dotnet/plugin/dist`.
 
-**The fix is ONE SHARED HELPER, not the inline patch repeated.** `scripts/lib/path-lib.ps1` exports
-`Get-RootRelativePath`, dot-sourced by all four gates the way `release-lib.ps1` already is. It normalises
-the root with `Get-Item .FullName` (8.3, casing, forward slashes, a PSDrive and a provider prefix in one
-call), strips a trailing separator, **asserts the path is under the root at a SEPARATOR BOUNDARY**, then
-subtracts. That boundary check is not polish: a bare `StartsWith` accepts a sibling whose name merely
-extends the root, so `…\repository\secret.md` under `…\repo` returned `sitory\secret.md` — the same
-silent-garbage class, reintroduced inside the helper. An adversarial panel caught it in the first draft.
+**The fix is ONE SHARED FACTORY, not the inline patch repeated.** `scripts/lib/path-lib.ps1` exports
+`New-RootRelativePathResolver`, dot-sourced by all four gates the way `release-lib.ps1` already is. It
+normalises the root ONCE with `Get-Item .FullName` (8.3, casing, forward slashes, a PSDrive and a provider
+prefix in one call) and strips a trailing separator; the resolver it returns then **asserts each path is
+under the root at a SEPARATOR BOUNDARY** and subtracts, as pure string math. That boundary check is not
+polish: a bare `StartsWith` accepts a sibling whose name merely extends the root, so
+`…\repository\secret.md` under `…\repo` returned `sitory\secret.md` — the same silent-garbage class,
+reintroduced inside the helper. An adversarial panel caught it in the first draft.
+
+🔴 **WHY A FACTORY — the AGY-CAPSTONE found the first version cost ~64 SECONDS a run.** It shipped as a
+helper that normalised the root on EVERY call. Three of the eight sites run once per file across the whole
+repository, so `Get-Item` ran 11,094 times per gate run on an unchanging root; the control timed
+`Get-Item` alone at the same count and accounted for all of it. The real-repository row of
+`check-dangling-consumers` went from ~58 s to **208 s**, then to **36 s** with the factory. Memoising the
+old helper was measured and rejected — keyed on the raw root it goes stale when the working directory
+moves, and keyed on `[IO.Path]::GetFullPath` it is STILL stale, because that follows the .NET process
+directory while `Get-Item` follows PowerShell's. The peer proposed the factory; the owner chose it.
+`Get-RootRelativePath` survives as a one-off convenience and must not be called in a loop.
 
 **A fifth site cannot appear quietly.** `scripts/tests/check-dangling-consumers.Tests.ps1` carries a
 glob-discovered ratchet: a flat prohibition on the hand-rolled idiom, plus a positive row asserting each
-gate dot-sources *and* calls the helper. Measured per row — reintroducing the arithmetic reddens both and
+gate dot-sources the lib, builds a resolver, and never calls the one-off wrapper. Measured per row — reintroducing the arithmetic reddens both and
 names the file; deleting only the dot-source reddens only the positive half. Its stated limit is in its
 own comment: it does not catch a split-variable form.
 
@@ -2463,8 +2474,8 @@ Plan, with every disposition and the measurements behind them:
 `docs/superpowers/plans/2026-09-08-s28-short-path-root-normalisation.md`.
 
 ⚠ **§26 will EXTEND `check-injected-context.ps1`'s subtractive discovery.** Its plan must re-derive line
-numbers against post-§28 code, and any new relative-path computation it adds must call
-`Get-RootRelativePath` or the guard will red.
+numbers against post-§28 code, and any new relative-path computation it adds must build a
+`New-RootRelativePathResolver` once and call `.Resolve()`, or the guard will red.
 
 ---
 

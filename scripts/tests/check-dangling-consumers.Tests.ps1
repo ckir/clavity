@@ -259,13 +259,23 @@ Describe 'check-dangling-consumers' {
         $bad | Should -BeNullOrEmpty -Because 'use Get-RootRelativePath from scripts/lib/path-lib.ps1: it normalises an 8.3 short root, strips a trailing separator, and throws when the path is not under the root'
     }
 
-    It 'every gate that reports repo-relative paths dot-sources the helper' {
+    It 'every gate that reports repo-relative paths dot-sources the helper and builds a RESOLVER' {
         # THE POSITIVE HALF. The prohibition above goes green if someone DELETES a call site; this row goes
         # red if someone removes the dot-source while leaving the calls, which is the likelier accident.
+        #
+        # AND IT PINS THE CAPSTONE PERFORMANCE FIX. The gates must build a resolver with
+        # New-RootRelativePathResolver and call .Resolve() - never the one-off Get-RootRelativePath, which
+        # runs Get-Item on every call. Three of these call sites run once per FILE across the whole
+        # repository; an AGY-CAPSTONE round measured the one-off form at about 64 SECONDS per gate run.
+        # The unit row that proves .Resolve() never touches the disk pins the LIBRARY; this row pins the
+        # CALLERS, because a caller reaching back for the convenient wrapper inside a loop would pass every
+        # correctness row while silently reintroducing the regression.
         foreach ($g in @('check-injected-context', 'check-installer-ascii', 'check-dangling-consumers', 'check-plugin-drift')) {
             $text = [IO.File]::ReadAllText((Join-Path $script:RepoRoot "scripts/$g.ps1"))
             $text | Should -Match ([regex]::Escape("'lib' 'path-lib.ps1'")) -Because "$g reports repo-relative paths"
-            $text | Should -Match 'Get-RootRelativePath' -Because "$g must actually call the helper it loads"
+            $text | Should -Match 'New-RootRelativePathResolver -Root' -Because "$g must build a resolver once, not normalise per call"
+            $text | Should -Match '\.Resolve\(' -Because "$g must actually use the resolver it builds"
+            $text | Should -Not -Match 'Get-RootRelativePath -Root' -Because "$g must not call the one-off wrapper, which runs Get-Item on every call"
         }
     }
 }

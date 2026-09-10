@@ -131,8 +131,11 @@ if ($repoFiles.Count -eq 0) { Fail2 "no files under '$PluginPath' at $resolved -
 # hiding under an unreadable directory would go unreported, which is the EXTRA fail-open all over
 # again. So: enumerate best-effort, and report every directory we could not read.
 $enumErrors = @()
+# ONE resolver per root, built BEFORE the loop - ROADMAP section 28 capstone. Resolving inside the loop re-ran
+# Get-Item on the same root once per FILE (~64s a run). Guarded so a missing root keeps its own error.
+$pathResolver = if (Test-Path -LiteralPath $InstalledRoot) { New-RootRelativePathResolver -Root $InstalledRoot } else { $null }
 $installed = @(Get-ChildItem -LiteralPath $InstalledRoot -Recurse -File -Force -ErrorAction SilentlyContinue -ErrorVariable +enumErrors |
-    ForEach-Object { (Get-RootRelativePath -Root $InstalledRoot -Path $_.FullName) -replace '\\', '/' })
+    ForEach-Object { $pathResolver.Resolve($_.FullName) -replace '\\', '/' })
 
 function Get-BlobBytes {
     param([string]$RepoRoot, [string]$Rev, [string]$Path)

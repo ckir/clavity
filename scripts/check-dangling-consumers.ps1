@@ -111,6 +111,9 @@ if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).
 # Join-Path at :110 and the Get-ChildItem at :160, and the PSDrive reasoning above still applies to
 # those two consumers.
 $repo = (Resolve-Path -LiteralPath $RepoRoot).ProviderPath
+# ONE resolver per root, built BEFORE the loop - ROADMAP section 28 capstone. Resolving inside the loop re-ran
+# Get-Item on the same root once per FILE (~64s a run). Guarded so a missing root keeps its own error.
+$pathResolver = if (Test-Path -LiteralPath $repo) { New-RootRelativePathResolver -Root $repo } else { $null }
 
 # The reader sources scanned for runtime filename constants.
 $sourceGlobs = @('clavity-dotnet/src/Clavity.Ls/*.cs', 'clavity-classic/src/*.rs')
@@ -133,7 +136,7 @@ foreach ($f in $sources) {
             $consts += [pscustomobject]@{
                 Symbol  = $m.Groups[1].Value
                 Literal = $m.Groups[2].Value
-                File    = Get-RootRelativePath -Root $repo -Path $f.FullName
+                File    = $pathResolver.Resolve($f.FullName)
                 Line    = $i + 1
             }
         }
@@ -168,7 +171,7 @@ if ($consts.Count -eq 0) {
 # only from the repo root down", which reads as a `^` claim and is what invited the suggestion.
 $searchable = @(Get-ChildItem -LiteralPath $repo -Recurse -File -ErrorAction SilentlyContinue |
     Where-Object {
-        $n = '/' + (Get-RootRelativePath -Root $repo -Path $_.FullName).Replace('\', '/')
+        $n = '/' + $pathResolver.Resolve($_.FullName).Replace('\', '/')
         $n -notmatch '/\.git/' -and $n -notmatch '/\.clavity/' -and
         $n -notmatch '/target/' -and $n -notmatch '/bin/' -and $n -notmatch '/obj/' -and
         $n -notmatch '/node_modules/' -and $_.Length -lt 2MB
@@ -190,7 +193,7 @@ foreach ($f in $searchable) {
     foreach ($m in [regex]::Matches($txt, $markerPattern)) {
         $name = $m.Groups[1].Value
         if (-not $declared.ContainsKey($name)) { $declared[$name] = @() }
-        $declared[$name] += Get-RootRelativePath -Root $repo -Path $f.FullName
+        $declared[$name] += $pathResolver.Resolve($f.FullName)
     }
 }
 

@@ -1037,7 +1037,7 @@ plugin-hooks-payload.Tests.ps1                    3,4s    5 tests   <- FAST. COU
                                                                       2026-08-05 figure, taken at 2 tests.
 register-plugin.Tests.ps1                         6,6s   18 tests   <- FAST, re-measured 2026-08-05
 release-lib.Tests.ps1                             5,5s   23 tests   <- FAST, re-measured 2026-08-05
-path-lib.Tests.ps1                                9,5s   11 tests   <- FAST, ADDED 2026-09-08 (section 28). This is
+path-lib.Tests.ps1                                9,5s   16 tests   <- FAST, ADDED 2026-09-08 (section 28). This is
                                                                       the WARM figure; the cold first run
                                                                       measured 27,1s. THE FAST HALF WAS NOT
                                                                       RE-MEASURED for this addition, and its

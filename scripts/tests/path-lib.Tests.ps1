@@ -141,3 +141,61 @@ Describe 'Get-RootRelativePath' {
             Should -Throw -ExpectedMessage '*Cannot find path*'
     }
 }
+
+Describe 'New-RootRelativePathResolver' {
+    BeforeEach {
+        $script:FParent = Join-Path ([IO.Path]::GetTempPath()) ("s28f-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force -Path (Join-Path $script:FParent 'rootA/one') | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $script:FParent 'rootB/two') | Out-Null
+        $script:RootA = Join-Path $script:FParent 'rootA'
+        $script:RootB = Join-Path $script:FParent 'rootB'
+        $script:KidA  = (Get-Item -LiteralPath (Join-Path $script:RootA 'one')).FullName
+        $script:KidB  = (Get-Item -LiteralPath (Join-Path $script:RootB 'two')).FullName
+    }
+    AfterEach {
+        Remove-Item -LiteralPath $script:FParent -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'resolves a child, and exposes the NORMALISED root it enforces' {
+        $r = New-RootRelativePathResolver -Root $script:RootA
+        $r.Resolve($script:KidA) | Should -Be 'one'
+        $r.Root | Should -Be ((Get-Item -LiteralPath $script:RootA).FullName)
+    }
+
+    It 'does NOT touch the disk per call - it still resolves after the root is DELETED' {
+        # THE ROW THAT PINS THE PERFORMANCE FIX, structurally rather than by timing. The first shipped helper
+        # ran Get-Item on every call; three call sites run once per file across the whole repository, so an
+        # AGY-CAPSTONE round measured about 64 SECONDS per gate run, all of it repeated Get-Item on an
+        # unchanging root. A resolver that re-read the disk per call would now throw ItemNotFoundException.
+        # A timing assertion would be flaky on this box; this one is deterministic.
+        $r = New-RootRelativePathResolver -Root $script:RootA
+        Remove-Item -LiteralPath $script:RootA -Recurse -Force
+        Test-Path -LiteralPath $script:RootA | Should -BeFalse -Because 'PRECONDITION: the root must really be gone, or this proves nothing'
+        $r.Resolve($script:KidA) | Should -Be 'one'
+    }
+
+    It 'reassigning .Root does NOT move the boundary Resolve enforces' {
+        # Resolve uses a CAPTURED copy of the normalised root, not $this.Root. Otherwise any caller could
+        # widen the boundary to the drive root by accident, and every path on the drive would resolve.
+        $r = New-RootRelativePathResolver -Root $script:RootA
+        $r.Root = $script:FParent
+        { $r.Resolve($script:KidB) } | Should -Throw -ExpectedMessage '*escaped root*'
+    }
+
+    It 'keeps two interleaved roots independent' {
+        # A single-entry memo - the alternative that was measured and rejected - thrashes on exactly this
+        # pattern. The factory holds one root per object, so interleaving is free and correct.
+        $ra = New-RootRelativePathResolver -Root $script:RootA
+        $rb = New-RootRelativePathResolver -Root $script:RootB
+        @($ra.Resolve($script:KidA), $rb.Resolve($script:KidB), $ra.Resolve($script:KidA)) |
+            Should -Be @('one', 'two', 'one')
+        { $ra.Resolve($script:KidB) } | Should -Throw -ExpectedMessage '*escaped root*'
+    }
+
+    It 'THROWS at construction on a root that does not exist' {
+        # The existence check lives in the FACTORY now, so a bogus -RepoRoot fails once, at the top of the
+        # gate, instead of never. Assert the MESSAGE: a PropertyNotFoundException would also "throw".
+        { New-RootRelativePathResolver -Root (Join-Path $script:FParent 'no-such-dir') } |
+            Should -Throw -ExpectedMessage '*Cannot find path*'
+    }
+}

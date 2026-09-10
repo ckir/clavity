@@ -162,6 +162,9 @@ function Get-UnexpectedBuildDirs {
     # the round-9/10 bypass) - it is named. An intentional one is subtracted by an anchored glob, which is
     # visible in the ignorelist with a reason, exactly like every other subtraction here.
     $RepoRoot = $RepoRoot -replace '[\\/]+$', ''
+    # ONE resolver per root, built BEFORE the loop - ROADMAP section 28 capstone. Resolving inside the loop re-ran
+    # Get-Item on the same root once per FILE (~64s a run). Guarded so a missing root keeps its own error.
+    $pathResolver = if (Test-Path -LiteralPath $RepoRoot) { New-RootRelativePathResolver -Root $RepoRoot } else { $null }
     $globs = Get-IgnoreGlobs -RepoRoot $RepoRoot
     $out = [System.Collections.Generic.List[string]]::new()
     foreach ($root in $script:DomainRoots) {
@@ -184,7 +187,7 @@ function Get-UnexpectedBuildDirs {
         while ($stack.Count) {
             $dir = $stack.Pop()
             foreach ($child in Get-ChildItem -LiteralPath $dir -Directory -Force -ErrorAction SilentlyContinue) {
-                $rel = (Get-RootRelativePath -Root $RepoRoot -Path $child.FullName).Replace('\', '/')
+                $rel = $pathResolver.Resolve($child.FullName).Replace('\', '/')
                 if (Test-IsIgnored -RelPath ($rel + '/__probe__') -Globs $globs) { continue }
                 if (Test-IsBuildDirName -Name $child.Name) { $out.Add($rel); continue }
                 # HashSet.Add returns false when the identity was already present - the cycle guard.
@@ -224,6 +227,9 @@ function Get-InjectedContextFiles {
     # which breaks every ignore glob and every reference resolution at once, turning a tab-completed
     # invocation into a flood of false violations.
     $RepoRoot = $RepoRoot -replace '[\\/]+$', ''
+    # ONE resolver per root, built BEFORE the loop - ROADMAP section 28 capstone. Resolving inside the loop re-ran
+    # Get-Item on the same root once per FILE (~64s a run). Guarded so a missing root keeps its own error.
+    $pathResolver = if (Test-Path -LiteralPath $RepoRoot) { New-RootRelativePathResolver -Root $RepoRoot } else { $null }
     $globs = Get-IgnoreGlobs -RepoRoot $RepoRoot
     # KEYED ON PHYSICAL IDENTITY, ACROSS ALL DOMAIN ROOTS - and each value remembers whether the path it
     # holds was reached THROUGH A LINK, because that is what decides which of two aliases survives.
@@ -317,7 +323,7 @@ function Get-InjectedContextFiles {
             $node = $stack.Pop()
             $dir  = $node.Path
             foreach ($child in Get-ChildItem -LiteralPath $dir -Force -ErrorAction SilentlyContinue) {
-                $rel = (Get-RootRelativePath -Root $RepoRoot -Path $child.FullName).Replace('\', '/')
+                $rel = $pathResolver.Resolve($child.FullName).Replace('\', '/')
                 # A reparse point resolves to its target; anything else is its parent's physical location
                 # plus its own name. Never $child.FullName, which is the alias we are trying to collapse.
                 $childIsLink = [bool]($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
@@ -450,11 +456,14 @@ function Get-ReferenceIndex {
     # keeps the cache key below canonical, so 'C:/repo' and 'C:/repo/' cannot build two different indexes.
     $RepoRoot = $RepoRoot -replace '[\\/]+$', ''
     if ($null -ne $script:RefIndex -and $script:RefIndexRoot -eq $RepoRoot) { return $script:RefIndex }
+    # ONE resolver per root, built BEFORE the loop - ROADMAP section 28 capstone. Resolving inside the loop re-ran
+    # Get-Item on the same root once per FILE (~64s a run). Guarded so a missing root keeps its own error.
+    $pathResolver = if (Test-Path -LiteralPath $RepoRoot) { New-RootRelativePathResolver -Root $RepoRoot } else { $null }
     $byName = @{}
     $all    = [System.Collections.Generic.List[string]]::new()
     Get-ChildItem -LiteralPath $RepoRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
         ForEach-Object {
-            $rel = (Get-RootRelativePath -Root $RepoRoot -Path $_.FullName).Replace('\', '/')
+            $rel = $pathResolver.Resolve($_.FullName).Replace('\', '/')
             # THE INDEX STILL PRUNES BY NAME, and the corpus walk above no longer does - that asymmetry is
             # deliberate, not drift. This walk covers the WHOLE repository for reference resolution and its
             # results are never audited, only matched against; name-based pruning is what keeps it cheap.
