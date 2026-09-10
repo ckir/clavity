@@ -38,6 +38,18 @@ BeforeAll {
     function Invoke-Check([string]$Root) {
         & pwsh -NoProfile -File $script:Script -RepoRoot $Root 2>&1 | Out-String
     }
+    # THE ROADMAP SECTION 28 GUARDS' ONE POPULATION, shared so the two rows cannot drift apart: every .ps1
+    # under scripts/, RECURSIVELY, except the two subtrees that must not be judged by these rules -
+    # scripts/lib (the library itself) and scripts/tests (whose It { } blocks legitimately call the one-off
+    # wrapper inside a scriptblock literal). AGY-CAPSTONE round 5: both rows used a NON-recursive glob, so a
+    # gate added in a subdirectory such as scripts/ci/ was never seen. Directories are excluded by NAME, one
+    # level down, rather than by path arithmetic - which is the very thing section 28 exists to avoid.
+    function Get-Section28Population {
+        $dir = Join-Path $script:RepoRoot 'scripts'
+        @(Get-ChildItem -LiteralPath $dir -Filter '*.ps1' -File) +
+        @(Get-ChildItem -LiteralPath $dir -Directory | Where-Object Name -NotIn 'lib', 'tests' |
+            ForEach-Object { Get-ChildItem -LiteralPath $_.FullName -Filter '*.ps1' -File -Recurse })
+    }
 }
 
 Describe 'check-dangling-consumers' {
@@ -242,16 +254,16 @@ Describe 'check-dangling-consumers' {
         finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'no script outside scripts/lib computes a repo-relative path by hand (ROADMAP section 28 guard)' {
+    It 'no script outside scripts/lib and scripts/tests computes a repo-relative path by hand (ROADMAP section 28 guard)' {
         # A CATALOGUE OF LINE NUMBERS CANNOT HOLD THIS - section 22 proved it: a hand-listed 8 sites became
-        # TEN within two weeks. So the population is discovered by glob.
+        # TEN within two weeks. So the population is discovered: Get-Section28Population, in BeforeAll.
         #
         # THE HONEST LIMIT OF THIS GUARD, stated because a guard that fails open certifies exactly what it
         # stopped checking: it matches the IDIOM all eight migrated sites used. It does NOT catch a split
         # form -- `$p = $_.FullName` on one line and `$p.Substring($root.Length)` on the next -- nor
         # `.Remove(0, $root.Length)`. It raises the cost of reintroducing the defect; it does not make it
         # impossible. Do not let a future reader mistake it for exhaustive.
-        $scripts = Get-ChildItem -LiteralPath (Join-Path $script:RepoRoot 'scripts') -Filter '*.ps1' -File
+        $scripts = @(Get-Section28Population)
         $scripts.Count | Should -BeGreaterThan 0 -Because 'an empty glob would make this guard vacuous'
 
         $bad = foreach ($s in $scripts) {
@@ -260,7 +272,7 @@ Describe 'check-dangling-consumers' {
         $bad | Should -BeNullOrEmpty -Because 'build a resolver with New-RootRelativePathResolver from scripts/lib/path-lib.ps1, ONCE, before the loop, and call .Resolve(): it normalises an 8.3 short root, strips a trailing separator, and throws when the path is not under the root'
     }
 
-    It 'every script that uses path-lib dot-sources it and never builds per item (ROADMAP section 28 guard)' {
+    It 'every script outside scripts/lib and scripts/tests that uses path-lib dot-sources it and never builds per item (ROADMAP section 28 guard)' {
         # THE POSITIVE HALF, AND THE CAPSTONE PERFORMANCE FIX. The prohibition above goes green if someone
         # DELETES a call site; this row goes red if someone removes the dot-source while leaving the calls.
         # It also pins the per-call cost: Get-RootRelativePath runs Get-Item on every call, and so does a
@@ -293,7 +305,13 @@ Describe 'check-dangling-consumers' {
         # both throw CommandNotFoundException at runtime - MEASURED, round 3 - because path-lib is
         # dot-sourced, not a module.
         $A = 'System.Management.Automation.Language'
-        $scripts = @(Get-ChildItem -LiteralPath (Join-Path $script:RepoRoot 'scripts') -Filter '*.ps1' -File)
+        #
+        # A DOT-SOURCE IS RECOGNISED BY THE STRING IT LOADS, NOT BY HOW IT IS SPELLED. Round 5: matching the
+        # literal text `'lib' 'path-lib.ps1'` false-REDded three legitimate forms - double quotes, a single
+        # backslash path, an expandable "$PSScriptRoot\lib\path-lib.ps1" - MEASURED. So a dot-sourced command
+        # counts when any string inside it ends in path-lib.ps1 at a path boundary; the measured distractors
+        # (release-lib.ps1, mypath-lib.ps1, and `&` instead of `.`) are all rejected.
+        $scripts = @(Get-Section28Population)
         $scripts.Count | Should -BeGreaterThan 0 -Because 'an empty glob would make this guard vacuous'
 
         $users = 0
@@ -308,7 +326,10 @@ Describe 'check-dangling-consumers' {
             $users++
             $dotSourced = $ast.Find({ param($n)
                 $n -is [System.Management.Automation.Language.CommandAst] -and $n.InvocationOperator -eq 'Dot' -and
-                $n.Extent.Text.Contains("'lib' 'path-lib.ps1'") }, $true)
+                $n.Find({ param($v)
+                    ($v -is [System.Management.Automation.Language.StringConstantExpressionAst] -or
+                     $v -is [System.Management.Automation.Language.ExpandableStringExpressionAst]) -and
+                    $v.Value -match '(^|[\\/])path-lib\.ps1$' }, $true) }, $true)
             if (-not $dotSourced) { "$($s.Name): calls $($calls[0].GetCommandName()) but never dot-sources scripts/lib/path-lib.ps1" }
             foreach ($c in $calls) {
                 for ($p = $c.Parent; $p; $p = $p.Parent) {

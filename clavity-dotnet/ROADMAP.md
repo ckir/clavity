@@ -2465,8 +2465,9 @@ directory while `Get-Item` follows PowerShell's. The peer proposed the factory; 
 `Get-RootRelativePath` survives as a one-off convenience and must not be called in a loop.
 
 **A fifth site cannot appear quietly.** `scripts/tests/check-dangling-consumers.Tests.ps1` carries three
-rows, the first two glob-discovered and read from the parser rather than the text: a flat prohibition on
-the hand-rolled idiom; a row requiring every script that calls path-lib to dot-source it and never to call
+rows. The first two are discovered - every `.ps1` under `scripts/`, recursively, except `scripts/lib/`
+and `scripts/tests/` - and the second reads the parser rather than the text: a flat prohibition on the
+hand-rolled idiom; a row requiring each of those scripts that calls path-lib to dot-source it and never to call
 either command under a loop, `switch`, `ForEach-Object`/`Where-Object` body or `process` block (the
 one-off wrapper stays legal outside one, as the README says); and a minimal floor requiring each of the
 four migrated gates to still build a resolver. Measured per row — reintroducing the arithmetic reddens the
