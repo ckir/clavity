@@ -173,8 +173,8 @@ Describe 'check-dangling-consumers' {
     # a crash rather than a wrong answer, and a crash in a gate reads as a broken build.
     #
     # THIS ROW NO LONGER PINS THE .ProviderPath CHOICE, AND THE COMMENT ABOVE MUST NOT BE READ AS SAYING IT
-    # DOES. Since ROADMAP section 28 the subtractions go through Get-RootRelativePath, which normalises the
-    # root with Get-Item - and MEASURED, Get-Item returns the bare native path for a provider-prefixed
+    # DOES. Since ROADMAP section 28 the subtractions go through a New-RootRelativePathResolver resolver, which
+    # normalises the root with Get-Item - and MEASURED, Get-Item returns the bare native path for a provider-prefixed
     # input exactly as .ProviderPath does. MEASURED 2026-09-08 by applying it: with the
     # .ProviderPath -> .Path mutant this row now stays GREEN, where before section 28 it went RED.
     # The mechanism is pinned instead by 'normalises a PROVIDER-PREFIXED root' in
@@ -200,11 +200,12 @@ Describe 'check-dangling-consumers' {
     }
 
     It 'reports the correct relative path when -RepoRoot is an 8.3 SHORT path' {
-        # THE FIXTURE RULE. This gate early-exits SKIP at :138 when no constants are found - its sources
-        # are globbed at :107 and matched by $declPattern at :116 - so an empty fixture never reaches the
-        # subtraction and the row would pass over broken code. Set-Reader plants a declaration that
-        # NOTHING produces, which makes the gate emit the DANGLING CONSUMER line at :197 whose File column
-        # is exactly the :127 subtraction this task migrates.
+        # THE FIXTURE RULE. This gate early-exits SKIP when no constants are found - its sources are the
+        # $sourceGlobs files, matched by $declPattern - so an empty fixture never reaches the subtraction
+        # and the row would pass over broken code. Set-Reader plants a declaration that NOTHING produces,
+        # which makes the gate emit the DANGLING CONSUMER line whose File column is exactly the subtraction
+        # this task migrates. (Named, not numbered: the line numbers first written here were all stale
+        # within two commits.)
         #
         # Uses the suite's own New-Tree / Set-Reader / Invoke-Check rather than a hand-rolled fixture, so
         # it cannot drift from the shape every other row here is built on.
@@ -233,7 +234,7 @@ Describe 'check-dangling-consumers' {
             # because the subtraction cut the prefix off - so a "root must not appear" assertion misses it
             # too. Both of those were tried and both passed against the UNMIGRATED gate.
             #
-            # Anchor to the literal text the gate prints immediately BEFORE the path (:197), so nothing may
+            # Anchor to the literal text the gate prints immediately BEFORE the path, so nothing may
             # sit between it and the relative path.
             $out | Should -Match ([regex]::Escape('DANGLING CONSUMER: clavity-dotnet\src\Clavity.Ls\Thing.cs:')) `
                 -Because 'the reported File must be repo-relative, with nothing between the label and the path'
@@ -256,7 +257,7 @@ Describe 'check-dangling-consumers' {
         $bad = foreach ($s in $scripts) {
             if ([IO.File]::ReadAllText($s.FullName) -match '\.FullName\)?\.Substring\(') { $s.Name }
         }
-        $bad | Should -BeNullOrEmpty -Because 'use Get-RootRelativePath from scripts/lib/path-lib.ps1: it normalises an 8.3 short root, strips a trailing separator, and throws when the path is not under the root'
+        $bad | Should -BeNullOrEmpty -Because 'build a resolver with New-RootRelativePathResolver from scripts/lib/path-lib.ps1, ONCE, before the loop, and call .Resolve(): it normalises an 8.3 short root, strips a trailing separator, and throws when the path is not under the root'
     }
 
     It 'every gate that reports repo-relative paths dot-sources the helper and builds a RESOLVER' {
@@ -270,12 +271,50 @@ Describe 'check-dangling-consumers' {
         # The unit row that proves .Resolve() never touches the disk pins the LIBRARY; this row pins the
         # CALLERS, because a caller reaching back for the convenient wrapper inside a loop would pass every
         # correctness row while silently reintroducing the regression.
+        #
+        # READ FROM THE PARSER, NOT THE TEXT. AGY-CAPSTONE round 2 on bb64f73: the text form of this row
+        # forbade the literal 'Get-RootRelativePath -Root', so a POSITIONAL call passed it. MEASURED by
+        # rewriting one of this gate's three sites to `Get-RootRelativePath $repo $f.FullName`: the row
+        # stayed GREEN, because the other two sites still satisfied '\.Resolve\('. Text matching also reads
+        # COMMENTS, so every positive check here could be satisfied by a comment that merely names the thing.
+        # The AST sees commands whatever their argument form, and never sees a comment.
+        #
+        # AND "ONCE" IS CHECKED, NOT ASSUMED. A resolver built INSIDE a loop passes every check above and is
+        # the 64-second regression again. So the construction may not sit under a loop statement, nor under
+        # a scriptblock literal - the body of ForEach-Object / Where-Object, which runs once per item.
+        #
+        # THE HONEST LIMIT: GetCommandName() is the name as WRITTEN. An alias, or a call through a variable
+        # (`& $fn`), is invisible to it; so is a resolver built in a function that is itself called per file.
+        $A = 'System.Management.Automation.Language'
         foreach ($g in @('check-injected-context', 'check-installer-ascii', 'check-dangling-consumers', 'check-plugin-drift')) {
-            $text = [IO.File]::ReadAllText((Join-Path $script:RepoRoot "scripts/$g.ps1"))
-            $text | Should -Match ([regex]::Escape("'lib' 'path-lib.ps1'")) -Because "$g reports repo-relative paths"
-            $text | Should -Match 'New-RootRelativePathResolver -Root' -Because "$g must build a resolver once, not normalise per call"
-            $text | Should -Match '\.Resolve\(' -Because "$g must actually use the resolver it builds"
-            $text | Should -Not -Match 'Get-RootRelativePath -Root' -Because "$g must not call the one-off wrapper, which runs Get-Item on every call"
+            $tokens = $null; $errors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+                (Join-Path $script:RepoRoot "scripts/$g.ps1"), [ref]$tokens, [ref]$errors)
+            $errors | Should -BeNullOrEmpty -Because "$g must parse, or everything read from its AST below is partial"
+            $commands = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true))
+
+            $dotSources = @($commands | Where-Object {
+                $_.InvocationOperator -eq 'Dot' -and $_.Extent.Text.Contains("'lib' 'path-lib.ps1'") })
+            $dotSources.Count | Should -BeGreaterThan 0 -Because "$g reports repo-relative paths"
+
+            $builds = @($commands | Where-Object { $_.GetCommandName() -eq 'New-RootRelativePathResolver' })
+            $builds.Count | Should -BeGreaterThan 0 -Because "$g must build a resolver once, not normalise per call"
+            foreach ($b in $builds) {
+                for ($p = $b.Parent; $p; $p = $p.Parent) {
+                    $p -is "$A.LoopStatementAst" | Should -BeFalse -Because "$g builds its resolver inside a loop at line $($b.Extent.StartLineNumber), which re-runs Get-Item per item"
+                    $p -is "$A.ScriptBlockExpressionAst" | Should -BeFalse -Because "$g builds its resolver inside a scriptblock literal at line $($b.Extent.StartLineNumber), which ForEach-Object / Where-Object run per item"
+                }
+            }
+
+            $resolves = @($ast.FindAll({ param($n)
+                $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+                $n.Member -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+                $n.Member.Value -eq 'Resolve' }, $true))
+            $resolves.Count | Should -BeGreaterThan 0 -Because "$g must actually use the resolver it builds"
+
+            $oneOff = @($commands | Where-Object { $_.GetCommandName() -eq 'Get-RootRelativePath' })
+            $oneOff | ForEach-Object { "line $($_.Extent.StartLineNumber): $($_.Extent.Text)" } |
+                Should -BeNullOrEmpty -Because "$g must not call the one-off wrapper, which runs Get-Item on every call"
         }
     }
 }

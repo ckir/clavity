@@ -102,14 +102,14 @@ if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).
 # in the test process does not exist there, so the case is unreachable through the harness.
 #
 # THE .ProviderPath CHOICE IS NO LONGER THE ONLY GUARD, and the mutant that used to pin it no longer
-# bites. The subtractions below now go through Get-RootRelativePath (scripts/lib/path-lib.ps1), which
-# normalises the root with Get-Item - and MEASURED, Get-Item returns the bare native path for a
+# bites. The subtractions below now go through a New-RootRelativePathResolver resolver
+# (scripts/lib/path-lib.ps1), which normalises the root with Get-Item - and MEASURED, Get-Item returns the bare native path for a
 # provider-prefixed input exactly as .ProviderPath does. So mutating .ProviderPath -> .Path here no
 # longer crashes anything, and the provider-prefix row below no longer reds under it. That coverage
 # moved to the 'normalises a PROVIDER-PREFIXED root' row in scripts/tests/path-lib.Tests.ps1, where the
 # mechanism is. This line stays as it is anyway: it costs nothing, it keeps $repo native for the
-# Join-Path at :110 and the Get-ChildItem at :160, and the PSDrive reasoning above still applies to
-# those two consumers.
+# Join-Path that globs $sourceGlobs and the Get-ChildItem that builds $searchable, and the PSDrive
+# reasoning above still applies to those two consumers.
 $repo = (Resolve-Path -LiteralPath $RepoRoot).ProviderPath
 # ONE resolver per root, built BEFORE the loop - ROADMAP section 28 capstone. Resolving inside the loop re-ran
 # Get-Item on the same root once per FILE (~64s a run). Guarded so a missing root keeps its own error.
