@@ -2464,11 +2464,16 @@ moves, and keyed on `[IO.Path]::GetFullPath` it is STILL stale, because that fol
 directory while `Get-Item` follows PowerShell's. The peer proposed the factory; the owner chose it.
 `Get-RootRelativePath` survives as a one-off convenience and must not be called in a loop.
 
-**A fifth site cannot appear quietly.** `scripts/tests/check-dangling-consumers.Tests.ps1` carries a
-glob-discovered ratchet: a flat prohibition on the hand-rolled idiom, plus a positive row asserting each
-gate dot-sources the lib, builds a resolver, and never calls the one-off wrapper. Measured per row — reintroducing the arithmetic reddens both and
-names the file; deleting only the dot-source reddens only the positive half. Its stated limit is in its
-own comment: it does not catch a split-variable form.
+**A fifth site cannot appear quietly.** `scripts/tests/check-dangling-consumers.Tests.ps1` carries three
+rows, the first two glob-discovered and read from the parser rather than the text: a flat prohibition on
+the hand-rolled idiom; a row requiring every script that calls path-lib to dot-source it and never to call
+either command under a loop, `switch`, `ForEach-Object`/`Where-Object` body or `process` block (the
+one-off wrapper stays legal outside one, as the README says); and a minimal floor requiring each of the
+four migrated gates to still build a resolver. Measured per row — reintroducing the arithmetic reddens the
+prohibition and names the file; deleting only the dot-source reddens the discovered row; a gate dropping
+its build reddens the floor. The shape of the last two was negotiated with the peer and owner-ruled across
+AGY-CAPSTONE rounds 2-4. Their stated limits are in their own comments: a split-variable form, an alias, and
+a call inside a helper that is itself called per item.
 
 Plan, with every disposition and the measurements behind them:
 `docs/superpowers/plans/2026-09-08-s28-short-path-root-normalisation.md`.

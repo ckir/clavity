@@ -260,80 +260,87 @@ Describe 'check-dangling-consumers' {
         $bad | Should -BeNullOrEmpty -Because 'build a resolver with New-RootRelativePathResolver from scripts/lib/path-lib.ps1, ONCE, before the loop, and call .Resolve(): it normalises an 8.3 short root, strips a trailing separator, and throws when the path is not under the root'
     }
 
-    It 'every gate that reports repo-relative paths dot-sources the helper and builds a RESOLVER' {
-        # THE POSITIVE HALF. The prohibition above goes green if someone DELETES a call site; this row goes
-        # red if someone removes the dot-source while leaving the calls, which is the likelier accident.
+    It 'every script that uses path-lib dot-sources it and never builds per item (ROADMAP section 28 guard)' {
+        # THE POSITIVE HALF, AND THE CAPSTONE PERFORMANCE FIX. The prohibition above goes green if someone
+        # DELETES a call site; this row goes red if someone removes the dot-source while leaving the calls.
+        # It also pins the per-call cost: Get-RootRelativePath runs Get-Item on every call, and so does a
+        # resolver built inside a loop. Three of the gates' call sites run once per FILE across the whole
+        # repository; an AGY-CAPSTONE round measured the per-call form at about 64 SECONDS per gate run.
+        # The unit row proving .Resolve() never touches the disk pins the LIBRARY; this row pins the CALLERS.
         #
-        # AND IT PINS THE CAPSTONE PERFORMANCE FIX. The gates must build a resolver with
-        # New-RootRelativePathResolver and call .Resolve() - never the one-off Get-RootRelativePath, which
-        # runs Get-Item on every call. Three of these call sites run once per FILE across the whole
-        # repository; an AGY-CAPSTONE round measured the one-off form at about 64 SECONDS per gate run.
-        # The unit row that proves .Resolve() never touches the disk pins the LIBRARY; this row pins the
-        # CALLERS, because a caller reaching back for the convenient wrapper inside a loop would pass every
-        # correctness row while silently reintroducing the regression.
+        # THE POPULATION IS DISCOVERED, like the prohibition's. AGY-CAPSTONE round 4: this row used to check
+        # four hand-listed gates under a title promising "every gate", so a NEW script using path-lib was
+        # never checked. The rule is the README's rule (scripts/README.md, path-lib), not a stricter one:
+        # Get-RootRelativePath is a legitimate ONE-OFF, so it is forbidden only where it would run per item.
+        # Two earlier checks were DROPPED by agreement with the peer, and the owner ruled on the result: an
+        # outright ban on the one-off, which contradicted the README once the population widened; and a check
+        # that .Resolve() is called on the variable a build is assigned to, which false-REDded a gate that
+        # resolves through a helper's parameter and was satisfiable by one dead call. The next row is the
+        # floor that keeps the four migrated gates pinned.
         #
-        # READ FROM THE PARSER, NOT THE TEXT. AGY-CAPSTONE round 2 on bb64f73: the text form of this row
-        # forbade the literal 'Get-RootRelativePath -Root', so a POSITIONAL call passed it. MEASURED by
-        # rewriting one of this gate's three sites to `Get-RootRelativePath $repo $f.FullName`: the row
-        # stayed GREEN, because the other two sites still satisfied '\.Resolve\('. Text matching also reads
-        # COMMENTS, so every positive check here could be satisfied by a comment that merely names the thing.
+        # READ FROM THE PARSER, NOT THE TEXT. Round 2 on bb64f73: the text form forbade the literal
+        # 'Get-RootRelativePath -Root', so a POSITIONAL call passed it - MEASURED. Text also reads COMMENTS.
         # The AST sees commands whatever their argument form, and never sees a comment.
         #
-        # AND "ONCE" IS CHECKED, NOT ASSUMED. A resolver built INSIDE a loop passes every check above and is
-        # the 64-second regression again. So the construction may not sit under anything that runs its body
-        # once per item: a loop statement; a `switch`, which iterates a collection but is NOT a
-        # LoopStatementAst (AGY-CAPSTONE round 3 - measured, its body ran 3 times for 3 items); a scriptblock
-        # literal, the body of ForEach-Object / Where-Object; or a `process` block, which is also what a
-        # `filter` body parses to.
-        #
-        # AND "USES THE RESOLVER IT BUILDS" IS CHECKED THE SAME WAY. Counting .Resolve calls anywhere would
-        # accept an unrelated object's Resolve method (round 3). So every build must be ASSIGNED to a
-        # variable, and at least one .Resolve must be invoked on one of those variables.
+        # "PER ITEM" MEANS ANY ANCESTOR THAT RUNS ITS BODY ONCE PER ITEM: a loop statement; a `switch`, which
+        # iterates a collection but is NOT a LoopStatementAst (round 3 - measured, its body ran 3 times for 3
+        # items); a scriptblock literal, the body of ForEach-Object / Where-Object / .ForEach(); or a
+        # `process` block, which is also what a `filter` body parses to.
         #
         # THE HONEST LIMIT: GetCommandName() is the name as WRITTEN. An alias, or a call through a variable
-        # (`& $fn`), is invisible to it; so is a resolver built in a function that is itself called per file.
-        # A QUALIFIED name is not a hole: `path-lib\Get-RootRelativePath` and `.\Get-RootRelativePath` both
-        # throw CommandNotFoundException at runtime - MEASURED, round 3 - because path-lib is dot-sourced,
-        # not a module, so a gate written that way crashes rather than quietly paying the per-call cost.
+        # (`& $fn`), is invisible to it; so is either command inside a function that is itself called per
+        # item. A QUALIFIED name is not a hole: `path-lib\Get-RootRelativePath` and `.\Get-RootRelativePath`
+        # both throw CommandNotFoundException at runtime - MEASURED, round 3 - because path-lib is
+        # dot-sourced, not a module.
         $A = 'System.Management.Automation.Language'
+        $scripts = @(Get-ChildItem -LiteralPath (Join-Path $script:RepoRoot 'scripts') -Filter '*.ps1' -File)
+        $scripts.Count | Should -BeGreaterThan 0 -Because 'an empty glob would make this guard vacuous'
+
+        $users = 0
+        $problems = @(foreach ($s in $scripts) {
+            $tokens = $null; $errors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile($s.FullName, [ref]$tokens, [ref]$errors)
+            if ($errors) { "$($s.Name): does not parse, so its AST cannot be checked - $($errors[0].Message)"; continue }
+            $calls = @($ast.FindAll({ param($n)
+                $n -is [System.Management.Automation.Language.CommandAst] -and
+                $n.GetCommandName() -in 'New-RootRelativePathResolver', 'Get-RootRelativePath' }, $true))
+            if (-not $calls) { continue }
+            $users++
+            $dotSourced = $ast.Find({ param($n)
+                $n -is [System.Management.Automation.Language.CommandAst] -and $n.InvocationOperator -eq 'Dot' -and
+                $n.Extent.Text.Contains("'lib' 'path-lib.ps1'") }, $true)
+            if (-not $dotSourced) { "$($s.Name): calls $($calls[0].GetCommandName()) but never dot-sources scripts/lib/path-lib.ps1" }
+            foreach ($c in $calls) {
+                for ($p = $c.Parent; $p; $p = $p.Parent) {
+                    $per = if ($p -is "$A.LoopStatementAst") { 'a loop' }
+                           elseif ($p -is "$A.SwitchStatementAst") { 'a switch' }
+                           elseif ($p -is "$A.ScriptBlockExpressionAst") { 'a scriptblock literal (ForEach-Object / Where-Object)' }
+                           elseif ($p -is "$A.NamedBlockAst" -and $p.BlockKind -eq 'Process') { 'a process block or filter' }
+                    if ($per) { "$($s.Name) line $($c.Extent.StartLineNumber): $($c.GetCommandName()) inside $per runs Get-Item once per item"; break }
+                }
+            }
+        })
+        $users | Should -BeGreaterThan 0 -Because 'the four section 28 gates use path-lib, so finding no user at all means discovery is broken'
+        $problems | Should -BeNullOrEmpty -Because 'build the resolver ONCE, before the loop, and call .Resolve() inside it (scripts/README.md, path-lib)'
+    }
+
+    It 'the four gates section 28 migrated still build a resolver (the floor)' {
+        # THE FLOOR - the one hand list left, and it can only ADD checks, never skip a script the row above
+        # would see. The discovered row only sees a script that still calls path-lib; a migrated gate that
+        # dropped path-lib ENTIRELY and went back to path arithmetic the prohibition regex does not recognise
+        # would vanish from its population. These four walk the repository per file by construction, so for
+        # them "stopped building a resolver" IS the regression. Deliberately minimal - it asserts the build
+        # exists, nothing about how it is used - so no assignment walk and no .Resolve counting: the round-4
+        # objections to a fuller floor do not apply. Owner-ruled 2026-09-11.
         foreach ($g in @('check-injected-context', 'check-installer-ascii', 'check-dangling-consumers', 'check-plugin-drift')) {
             $tokens = $null; $errors = $null
             $ast = [System.Management.Automation.Language.Parser]::ParseFile(
                 (Join-Path $script:RepoRoot "scripts/$g.ps1"), [ref]$tokens, [ref]$errors)
-            $errors | Should -BeNullOrEmpty -Because "$g must parse, or everything read from its AST below is partial"
-            $commands = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true))
-
-            $dotSources = @($commands | Where-Object {
-                $_.InvocationOperator -eq 'Dot' -and $_.Extent.Text.Contains("'lib' 'path-lib.ps1'") })
-            $dotSources.Count | Should -BeGreaterThan 0 -Because "$g reports repo-relative paths"
-
-            $builds = @($commands | Where-Object { $_.GetCommandName() -eq 'New-RootRelativePathResolver' })
-            $builds.Count | Should -BeGreaterThan 0 -Because "$g must build a resolver once, not normalise per call"
-            $builtVars = @(foreach ($b in $builds) {
-                $at = "line $($b.Extent.StartLineNumber)"
-                $assignment = $null
-                for ($p = $b.Parent; $p; $p = $p.Parent) {
-                    $p -is "$A.LoopStatementAst" | Should -BeFalse -Because "$g builds its resolver inside a loop at $at, which re-runs Get-Item per item"
-                    $p -is "$A.SwitchStatementAst" | Should -BeFalse -Because "$g builds its resolver inside a switch at $at, which runs its body per item"
-                    $p -is "$A.ScriptBlockExpressionAst" | Should -BeFalse -Because "$g builds its resolver inside a scriptblock literal at $at, which ForEach-Object / Where-Object run per item"
-                    ($p -is "$A.NamedBlockAst" -and $p.BlockKind -eq 'Process') | Should -BeFalse -Because "$g builds its resolver inside a process block or filter at $at, which runs per pipeline item"
-                    if (-not $assignment -and $p -is "$A.AssignmentStatementAst") { $assignment = $p }
-                }
-                $assignment.Left -is "$A.VariableExpressionAst" | Should -BeTrue -Because "$g must assign the resolver it builds at $at to a variable, so its use can be checked"
-                $assignment.Left.VariablePath.UserPath
-            })
-
-            $resolves = @($ast.FindAll({ param($n)
-                $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
-                $n.Member -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
-                $n.Member.Value -eq 'Resolve' -and
-                $n.Expression -is [System.Management.Automation.Language.VariableExpressionAst] }, $true) |
-                Where-Object { $builtVars -contains $_.Expression.VariablePath.UserPath })
-            $resolves.Count | Should -BeGreaterThan 0 -Because "$g must call .Resolve() on the resolver it builds (`$$($builtVars -join ', $')), not merely call some Resolve method"
-
-            $oneOff = @($commands | Where-Object { $_.GetCommandName() -eq 'Get-RootRelativePath' })
-            $oneOff | ForEach-Object { "line $($_.Extent.StartLineNumber): $($_.Extent.Text)" } |
-                Should -BeNullOrEmpty -Because "$g must not call the one-off wrapper, which runs Get-Item on every call"
+            $errors | Should -BeNullOrEmpty -Because "$g must exist and parse; a renamed gate is renamed here too"
+            $builds = @($ast.FindAll({ param($n)
+                $n -is [System.Management.Automation.Language.CommandAst] -and
+                $n.GetCommandName() -eq 'New-RootRelativePathResolver' }, $true))
+            $builds.Count | Should -BeGreaterThan 0 -Because "$g walks the repository per file, so it must build a resolver once rather than normalise per call"
         }
     }
 }
