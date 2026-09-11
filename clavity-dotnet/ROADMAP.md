@@ -2601,7 +2601,18 @@ in the section-21 capstone because every rewording becomes a false RED.** This o
   scratch directory and anti-wrap-up clause - and requires every diagnostic. MEASURED: a `continue` after
   the first check of either loop, or after the scratch-directory check, now reddens it. (Owner-scoped
   2026-09-11 as the proportionate fold; planting every check was the rejected alternative, as a large
-  fixture brittle to any rewording.)
+  fixture brittle to any rewording.) **Round 3 found the fold's residual:** a `continue` after a check
+  the row does NOT plant (the marker constant) never fires in the fixture, and all 92 rows stayed green.
+  Owner-chosen close: a CONTROL-FLOW GUARD that reads the linter's AST - inside the three per-skill loops,
+  no `continue`, `break`, `return` or `exit` may follow a failure except a `continue` guarded by "the
+  skill file cannot be read", and `Fail` itself may hold none (a `break` there resolves dynamically into
+  the caller's loop). It has its own fixture row proving it fires. **It also found a real skip in the
+  linter:** after an unreadable SCHEMAS registry, a `continue` hid every later check for the skill,
+  including the ledger check; that branch is now an `else` around only the registry-dependent checks, and
+  the SCHEMAS-block row requires the ledger diagnostic too - RED before the linter fix, green after.
+  MEASURED: continue/break/exit mutants after planted and unplanted checks, inside a nested loop and
+  inside `Fail`, all redden the guard; mutants that widen the guard's allowlist or narrow its loop
+  discovery redden its fixture row.
 - **30c — NOT FIXED, by ruling.** Converged with the peer at AGY-FIRST and accepted by the owner on
   2026-09-08 (`.clavity/seams/agyfirst-phase3b.md`, question 3), on the section's own counter-argument:
   pinning a message suffix is pinning prose verbatim, which this repo folded twice in the section-21

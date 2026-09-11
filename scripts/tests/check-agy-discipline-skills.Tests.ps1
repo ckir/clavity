@@ -147,6 +147,60 @@ BeforeAll {
         return ($t -replace '\s+', ' ')
     }
 
+    # THE CONTROL-FLOW GUARD FOR ROADMAP SECTION 30b, read from the parser. The two-skill row proves the
+    # linter reports every PLANTED defect; it cannot see an early exit placed after a check it does not
+    # plant - AGY-CAPSTONE section 30 round 3 MEASURED a `continue` after the (unplanted) marker-constant
+    # check leaving all 92 rows green. Planting every check was rejected as a brittle fixture, so this pins
+    # the property directly: inside the linter's per-skill loops, no check may be skipped after a failure.
+    #
+    # The ONE allowed skip is a `continue` whose enclosing `if` tests that the skill FILE cannot be read -
+    # `-not (Test-Path ...)` or `[string]::IsNullOrEmpty(...)` - because nothing after it can run on a file
+    # that is not there. Every other `continue`, `break`, `return` or `exit` inside a per-skill loop is a
+    # violation, nested loops included (a `break` in the envelope-steps loop drops the remaining steps).
+    # And `Fail` itself may hold no `break`, `continue` or `exit`: PowerShell resolves a `break` DYNAMICALLY,
+    # so one inside Fail breaks whichever loop called it - the exact regression section 30b names.
+    #
+    # Returns @{ Loops = <the per-skill loop collections, in order>; Violations = <one line each> }.
+    function Find-SkippedCheckJump([string]$Source) {
+        $L = 'System.Management.Automation.Language'
+        $tokens = $null; $errors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseInput($Source, [ref]$tokens, [ref]$errors)
+        if ($errors) { throw "Find-SkippedCheckJump: the source does not parse - $($errors[0].Message)" }
+        $isJump = { param($n) $n -is "$L.ContinueStatementAst" -or $n -is "$L.BreakStatementAst" -or
+                              $n -is "$L.ReturnStatementAst" -or $n -is "$L.ExitStatementAst" }
+        $loops = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.ForEachStatementAst] -and
+            $n.Condition.Extent.Text -in '$skills', '$disciplineNames' }, $true))
+        $violations = @(
+            foreach ($lp in $loops) {
+                foreach ($j in @($lp.Body.FindAll($isJump, $true))) {
+                    $allowed = $false
+                    if ($j -is "$L.ContinueStatementAst") {
+                        # continue -> its StatementBlock -> the IfStatement that owns that block
+                        $owner = $j.Parent.Parent
+                        if ($owner -is "$L.IfStatementAst") {
+                            foreach ($clause in $owner.Clauses) {
+                                if ($clause.Item2 -eq $j.Parent -and
+                                    $clause.Item1.Extent.Text -match '^(-not \(Test-Path |\[string\]::IsNullOrEmpty\()') { $allowed = $true }
+                            }
+                        }
+                    }
+                    if (-not $allowed) {
+                        "$($j.GetType().Name -replace 'StatementAst$') at line $($j.Extent.StartLineNumber) inside the $($lp.Condition.Extent.Text) loop"
+                    }
+                }
+            }
+            $fail = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Fail' }, $true)
+            if ($fail) {
+                foreach ($j in @($fail.Body.FindAll({ param($n) $n -is [System.Management.Automation.Language.ContinueStatementAst] -or
+                        $n -is [System.Management.Automation.Language.BreakStatementAst] -or
+                        $n -is [System.Management.Automation.Language.ExitStatementAst] }, $true))) {
+                    "Fail contains a $($j.GetType().Name -replace 'StatementAst$') at line $($j.Extent.StartLineNumber)"
+                }
+            }
+        )
+        @{ Loops = @($loops | ForEach-Object { $_.Condition.Extent.Text }); Violations = $violations }
+    }
+
     # A skill file that satisfies EVERY invariant the linter checks, so a fixture built on it fails on
     # exactly the one thing the row perturbs. The previous phantom satisfied only the $skills-loop
     # invariants and silently failed six more in the $disciplineNames loop.
@@ -268,6 +322,41 @@ Describe 'check-agy-discipline-skills' {
             }
         }
         finally { Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue }
+    }
+
+    It 'no per-skill loop in the linter skips a check after a failure (ROADMAP section 30b, control-flow guard)' {
+        $r = Find-SkippedCheckJump (Get-Content -Raw $script:Lint)
+        # IDENTITY, not a count: the guard is vacuous if it stops finding the loops it guards.
+        $r.Loops | Should -Be @('$skills', '$disciplineNames', '$disciplineNames') -Because 'the three per-skill loops must be found, or this guard checks nothing'
+        $r.Violations | Should -BeNullOrEmpty -Because 'a skipped check hides every diagnostic after it; skip only when the skill file itself cannot be read'
+    }
+
+    It 'the control-flow guard FIRES on every forbidden jump and accepts only the unreadable-file skip' {
+        # The guard above reads the real linter, which is clean, so on its own it cannot show it fires -
+        # the lesson of the section 28 guards. Line numbers below are this fixture's own.
+        $fixture = @(
+            'function Fail($msg) { $script:fail = $true; break }'
+            'foreach ($skill in $skills) {'
+            '    if (-not (Test-Path $path)) { Fail "MISSING: $rel"; continue }'
+            '    if ($x) { Fail "x"; continue }'
+            '    foreach ($step in $steps) { if ($y) { Fail "y"; break } }'
+            '}'
+            'foreach ($skill in $disciplineNames) {'
+            '    if ([string]::IsNullOrEmpty($raw)) { Fail "EMPTY: $rel"; continue }'
+            '    if ($z) { exit 1 }'
+            '}'
+            'foreach ($d in $disciplineNames) { if ($w) { return } }'
+            'foreach ($other in $unrelated) { if ($q) { continue } }'
+        ) -join "`n"
+        $r = Find-SkippedCheckJump $fixture
+        $r.Loops | Should -Be @('$skills', '$disciplineNames', '$disciplineNames')
+        @($r.Violations | Sort-Object) | Should -Be @(
+            'Break at line 5 inside the $skills loop'
+            'Continue at line 4 inside the $skills loop'
+            'Exit at line 9 inside the $disciplineNames loop'
+            'Fail contains a Break at line 1'
+            'Return at line 11 inside the $disciplineNames loop'
+        ) -Because 'the two unreadable-file skips (lines 3 and 8) are allowed, and a loop that is not per-skill (line 12) is not judged'
     }
 
     Context 'rejection cases (each perturbs one skill; the other stays valid)' {
@@ -905,6 +994,14 @@ Describe 'check-agy-discipline-skills' {
             $noBlock = $py.Replace('SCHEMAS = {', 'SCHEMAS = dict(')
 
             $scratch = New-ScratchRoot
+            # AND IT MUST NOT HIDE THE CHECKS THAT DO NOT NEED THE REGISTRY. AGY-CAPSTONE section 30 round 3:
+            # this branch used to `continue`, skipping every later check for the skill - the ledger check
+            # included - so a skill with an unreadable registry AND a missing ledger path reported only the
+            # first. Strip the capstone's ledger path too, and require its diagnostic as well.
+            $cap = & $script:SkillPath $scratch 'agy-capstone'
+            $capRaw = Get-Content -Raw $cap
+            $capRaw.Contains('docs/agy-capstone-ledger.md') | Should -BeTrue -Because 'the ledger path must be present to be removed'
+            Set-Content -Path $cap -Value $capRaw.Replace('docs/agy-capstone-ledger.md', '') -NoNewline -Encoding utf8
             $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $noBlock
             try {
                 $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
@@ -912,6 +1009,7 @@ Describe 'check-agy-discipline-skills' {
                 $out | Should -Match "did not find exactly ONE 'SCHEMAS = \{' assignment"
                 $out | Should -Match 'unparseable' -Because 'this fixture removes the block entirely, so the diagnostic must name that cause alongside duplication'
                 $out | Should -Not -Match 'declares no SCHEMAS entry for:' -Because 'the block-not-found branch suppresses the second diagnostic deliberately; four phantom mismatches would bury the real cause'
+                $out | Should -Match ([regex]::Escape("never names 'docs/agy-capstone-ledger.md'")) -Because 'an unreadable registry must suppress only the checks that NEED it, never the ledger check after them'
             } finally {
                 Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
                 Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue

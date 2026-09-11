@@ -190,33 +190,39 @@ foreach ($skill in $skills) {
             # A silently-appended key going green is the exact defect capstone R2 of the previous range
             # folded, arriving by a different route.
             $py = Get-SchemasBlock $checkerPath
+            # NO `continue` HERE. It used to skip every LATER check for this skill - the claim-type pair
+            # and the ledger check included, none of which needs the registry - so a skill with an
+            # unreadable registry AND a missing ledger path reported only the first. AGY-CAPSTONE section
+            # 30 round 3 found it; a suite row now pins that no per-skill loop skips a check after a failure
+            # except where the skill FILE itself is missing or empty. Only the checks that NEED the
+            # registry sit in the `else`.
             if ($null -eq $py) {
                 Fail "$rel : did not find exactly ONE 'SCHEMAS = {' assignment in $checkerPath - it is missing, unparseable, or DUPLICATED - so the inline contract cannot be checked against it"
-                continue
-            }
-            $m  = [regex]::Match($py, '"' + [regex]::Escape($skill) + '":\s*\[(?<keys>[^\]]*)\]')
-            if (-not $m.Success) {
-                Fail "$rel : scripts/check-peer-reply-citations.py declares no SCHEMAS entry for '$skill', so its inline contract is unenforceable"
             } else {
-                $declared = [regex]::Matches($m.Groups['keys'].Value, '"([^"]+)"') | ForEach-Object { $_.Groups[1].Value }
-                # PIN THE LIST, NOT MERE MEMBERSHIP - and this is the second attempt, because the first
-                # was proven hollow by its own control. Asking whether each key appears SOMEWHERE in the
-                # blockquote passes when a key is dropped from the enumeration but still mentioned in the
-                # prose beneath it: deleting `trigger` from the key list left `Phrase `trigger` as a
-                # FALSIFIABLE PREDICTION` two lines below, the guard found it, and the drop went green.
-                # Matching the whole comma-separated sequence pins ORDER and MEMBERSHIP together.
-                # The separator tolerates the markdown wrap: the list spans several '> ' lines.
-                $seq = ($declared | ForEach-Object { '`' + [regex]::Escape($_) + '`' }) -join ',\s*(?:\r?\n>\s*)?'
-                # ANCHORED AT BOTH ENDS, and this is the THIRD version of this guard. Capstone R2
-                # measured what an unanchored sequence misses: it verifies the markdown is a SUPERSET
-                # of SCHEMAS, so appending `smuggled` to the key list left the linter GREEN - the skill
-                # would instruct the peer to emit a key the checker then rejects, which is exactly the
-                # drift this oracle exists to prevent, running in the one direction nobody had tested.
-                # The intro phrase and the closing period bound the list, so neither a prepended nor an
-                # appended key can hide outside the matched span.
-                $seq = 'and no others are accepted - ' + $seq + '\.'
-                if ($raw -notmatch $seq) {
-                    Fail "$rel : the inline contract's key list does not match SCHEMAS in scripts/check-peer-reply-citations.py - expected, in order: $($declared -join ', ')"
+                $m  = [regex]::Match($py, '"' + [regex]::Escape($skill) + '":\s*\[(?<keys>[^\]]*)\]')
+                if (-not $m.Success) {
+                    Fail "$rel : scripts/check-peer-reply-citations.py declares no SCHEMAS entry for '$skill', so its inline contract is unenforceable"
+                } else {
+                    $declared = [regex]::Matches($m.Groups['keys'].Value, '"([^"]+)"') | ForEach-Object { $_.Groups[1].Value }
+                    # PIN THE LIST, NOT MERE MEMBERSHIP - and this is the second attempt, because the first
+                    # was proven hollow by its own control. Asking whether each key appears SOMEWHERE in the
+                    # blockquote passes when a key is dropped from the enumeration but still mentioned in the
+                    # prose beneath it: deleting `trigger` from the key list left `Phrase `trigger` as a
+                    # FALSIFIABLE PREDICTION` two lines below, the guard found it, and the drop went green.
+                    # Matching the whole comma-separated sequence pins ORDER and MEMBERSHIP together.
+                    # The separator tolerates the markdown wrap: the list spans several '> ' lines.
+                    $seq = ($declared | ForEach-Object { '`' + [regex]::Escape($_) + '`' }) -join ',\s*(?:\r?\n>\s*)?'
+                    # ANCHORED AT BOTH ENDS, and this is the THIRD version of this guard. Capstone R2
+                    # measured what an unanchored sequence misses: it verifies the markdown is a SUPERSET
+                    # of SCHEMAS, so appending `smuggled` to the key list left the linter GREEN - the skill
+                    # would instruct the peer to emit a key the checker then rejects, which is exactly the
+                    # drift this oracle exists to prevent, running in the one direction nobody had tested.
+                    # The intro phrase and the closing period bound the list, so neither a prepended nor an
+                    # appended key can hide outside the matched span.
+                    $seq = 'and no others are accepted - ' + $seq + '\.'
+                    if ($raw -notmatch $seq) {
+                        Fail "$rel : the inline contract's key list does not match SCHEMAS in scripts/check-peer-reply-citations.py - expected, in order: $($declared -join ', ')"
+                    }
                 }
             }
             if ($raw -notmatch '(?m)^ {0,3}>.*and no others are accepted') {
