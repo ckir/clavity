@@ -67,9 +67,9 @@ Name: "install_bridge"; Flags: unchecked; \
   Description: "Install the Antigravity bridge — let Claude hand off a coding task for Antigravity to do autonomously in an isolated worktree (delegate_to_antigravity). Needs Python 3.10+ and uv."
 
 [Registry]
-; Per-user PATH APPEND (never prepend) when selected.
-Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
-  ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath('{app}')
+; NO PATH entry here. The per-user PATH append (never prepend) is done in CurStepChanged through
+; installer\_shared\user-path.iss: a [Registry] PATH entry appended a fresh copy on EVERY install, because Inno
+; does not expand constants in a Check function's parameters. That file carries the measurement.
 ; Mutual-exclusion marker the dotnet installer reads via RegKeyExists. uninsdeletekey removes it on uninstall.
 Root: HKCU; Subkey: "Software\clavity\classic"; ValueType: string; ValueName: "variant"; \
   ValueData: "classic"; Flags: uninsdeletekey
@@ -101,21 +101,10 @@ Type: filesandordirs; Name: "{app}\agy-mcp-bridge\.agent"
 #include "..\..\installer\_shared\register-plugin-hash.iss"
 #include "..\..\installer\_shared\register-invoke.iss"
 #include "..\..\installer\_shared\golden-header-data.iss"
+#include "..\..\installer\_shared\user-path.iss"
 
 var
   RemoveConfig: Boolean;
-
-function NeedsAddPath(Param: string): Boolean;
-var
-  OrigPath: string;
-begin
-  if not RegQueryStringValue(HKCU, 'Environment', 'Path', OrigPath) then
-  begin
-    Result := True;
-    exit;
-  end;
-  Result := Pos(';' + Param + ';', ';' + OrigPath + ';') = 0;
-end;
 
 { dotnet sets no HKCU self-marker, so detect it by its Inno ARP uninstall key (DisplayName like 'clavity-dotnet*'). }
 function DotnetArpPresent(): Boolean;
@@ -185,6 +174,9 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
+    { PATH: the shared entry-wise add, which also heals the duplicates an older build appended. }
+    if WizardIsTaskSelected('addtopath') then
+      AddDirToUserPath(ExpandConstant('{app}'));
     { C1/C9: register the clavity-classic plugin against every detected agent — classic has no
       own binary, so (unlike dotnet) it uses the shared Inno registration primitives directly. }
     RegisterMemberPlugin(ExpandConstant('{app}'), 'clavity', 'clavity-classic',
@@ -267,18 +259,6 @@ begin
   RemoveConfig := SuppressibleMsgBox(Prompt, mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES;
 end;
 
-procedure RemoveFromUserPath(const Dir: string);
-var
-  Path: string;
-begin
-  if not RegQueryStringValue(HKCU, 'Environment', 'Path', Path) then
-    exit;
-  StringChangeEx(Path, ';' + Dir, '', True);
-  StringChangeEx(Path, Dir + ';', '', True);
-  StringChangeEx(Path, Dir, '', True);
-  RegWriteExpandStringValue(HKCU, 'Environment', 'Path', Path);
-end;
-
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   BridgeDir, EnvFile, HeaderDir: string;
@@ -327,5 +307,5 @@ begin
     DeregisterMemberPluginOnUninstall('clavity', 'clavity-classic');
   end
   else if CurUninstallStep = usPostUninstall then
-    RemoveFromUserPath(ExpandConstant('{app}'));
+    RemoveDirFromUserPath(ExpandConstant('{app}'));   { entry-wise: a sibling or subdirectory entry survives }
 end;

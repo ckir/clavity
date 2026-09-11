@@ -53,29 +53,17 @@ Source: "..\plugin\*"; DestDir: "{app}\plugins\clavity"; Flags: ignoreversion re
 [Tasks]
 Name: "addtopath"; Description: "Add clavity-ls to PATH"; Flags: checkedonce
 
-[Registry]
-; Per-user PATH APPEND (never prepend) when the task is selected (security: PATH hygiene).
-Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
-  ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath('{app}')
+; NO [Registry] PATH entry. The per-user PATH append (never prepend) is done in CurStepChanged through
+; installer\_shared\user-path.iss: the [Registry] form appended a fresh copy on EVERY install, because Inno
+; does not expand constants in a Check function's parameters. That file carries the measurement.
 
 [Code]
 #include "..\..\installer\_shared\golden-header-data.iss"
 #include "..\..\installer\_shared\claude-running.iss"
+#include "..\..\installer\_shared\user-path.iss"
 
 var
   RemoveConfig: Boolean;
-
-function NeedsAddPath(Param: string): Boolean;
-var
-  OrigPath: string;
-begin
-  if not RegQueryStringValue(HKCU, 'Environment', 'Path', OrigPath) then
-  begin
-    Result := True;
-    exit;
-  end;
-  Result := Pos(';' + Param + ';', ';' + OrigPath + ';') = 0;
-end;
 
 { --- Component E: refuse to install if the CLASSIC variant is present (mutual exclusion). --- }
 
@@ -194,6 +182,9 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
+    { PATH: the shared entry-wise add, which also heals the duplicates an older build appended. }
+    if WizardIsTaskSelected('addtopath') then
+      AddDirToUserPath(ExpandConstant('{app}'));
     if not Exec(ExpandConstant('{app}\{#ExeName}'), 'install --agent all', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
       SuppressibleMsgBox('clavity-ls could not be launched to register the plugin. Finish manually by running:' + #13#10 +
         ExpandConstant('{app}\{#ExeName}') + ' install --agent all', mbError, MB_OK, IDOK)
@@ -267,18 +258,6 @@ begin
       'Uninstall anyway (the plugin stays registered in that agent)?', mbError, MB_YESNO or MB_DEFBUTTON2, IDYES) = IDYES;
 end;
 
-procedure RemoveFromUserPath(const Dir: string);
-var
-  Path: string;
-begin
-  if not RegQueryStringValue(HKCU, 'Environment', 'Path', Path) then
-    exit;
-  StringChangeEx(Path, ';' + Dir, '', True);
-  StringChangeEx(Path, Dir + ';', '', True);
-  StringChangeEx(Path, Dir, '', True);
-  RegWriteExpandStringValue(HKCU, 'Environment', 'Path', Path);
-end;
-
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ResultCode: Integer;
@@ -305,5 +284,5 @@ begin
     end;
   end
   else if CurUninstallStep = usPostUninstall then
-    RemoveFromUserPath(ExpandConstant('{app}'));
+    RemoveDirFromUserPath(ExpandConstant('{app}'));   { entry-wise: a sibling or subdirectory entry survives }
 end;

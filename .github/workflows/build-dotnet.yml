@@ -116,6 +116,12 @@ jobs:
           $ErrorActionPreference = "Stop"
           $setup = "dist/clavity-dotnet-setup-$env:CLAVITY_VER.exe"
           $app = "$env:LOCALAPPDATA\Programs\clavity-dotnet"
+          # PATH is COUNTED, entry by entry - never tested with -like, which a duplicated entry satisfies too.
+          # installer/_shared/user-path.iss has the measurement of the defect that hid behind that.
+          function Get-UserPathEntry([string]$Dir) {
+            $raw = (Get-Item 'HKCU:\Environment').GetValue('Path', '', 'DoNotExpandEnvironmentNames')
+            @($raw -split ';' | Where-Object { $_.Trim().Trim('"').TrimEnd('\') -ieq $Dir.TrimEnd('\') })
+          }
 
           Write-Host "[smoke] running silent install..."
           $p = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
@@ -147,8 +153,8 @@ jobs:
             Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "clavity-dotnet*" }
           if (-not $arp) { throw "Add/Remove Programs key not present after install" }
 
-          $userPath = (Get-ItemProperty "HKCU:\Environment" -Name Path -ErrorAction SilentlyContinue).Path
-          if ($userPath -notlike "*$app*") { throw "PATH entry not added after install" }
+          $n1 = @(Get-UserPathEntry $app).Count
+          if ($n1 -ne 1) { throw "PATH: expected the install dir exactly ONCE after install, found $n1" }
 
           $uninst = Get-ChildItem "$app" -Filter "unins*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $uninst) { throw "uninstaller (unins*.exe) not found under $app" }
@@ -162,8 +168,10 @@ jobs:
           $arp2 = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
             Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "clavity-dotnet*" }
           if ($arp2) { throw "Add/Remove Programs key still present after uninstall" }
-          $userPath2 = (Get-ItemProperty "HKCU:\Environment" -Name Path -ErrorAction SilentlyContinue).Path
-          if ($userPath2 -like "*$app*") { throw "PATH entry not removed after uninstall" }
+          $deadline = (Get-Date).AddSeconds(15)
+          while ((@(Get-UserPathEntry $app).Count -ne 0) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          $n2 = @(Get-UserPathEntry $app).Count
+          if ($n2 -ne 0) { throw "PATH: the install dir is still present $n2 time(s) after uninstall" }
           Write-Host "Install/uninstall smoke PASSED."
 
       - name: Smoke — C6 growth.md survives a keep-data uninstall + C1 idempotent re-run
@@ -174,22 +182,46 @@ jobs:
           $ErrorActionPreference = "Stop"
           $setup = "dist/clavity-dotnet-setup-$env:CLAVITY_VER.exe"
           $app = "$env:LOCALAPPDATA\Programs\clavity-dotnet"
+          function Get-UserPathEntry([string]$Dir) {
+            $raw = (Get-Item 'HKCU:\Environment').GetValue('Path', '', 'DoNotExpandEnvironmentNames')
+            @($raw -split ';' | Where-Object { $_.Trim().Trim('"').TrimEnd('\') -ieq $Dir.TrimEnd('\') })
+          }
+          function Add-UserPathEntryRaw([string]$Entry) {
+            if (-not $env:GITHUB_ACTIONS) { throw "REFUSING: this smoke step edits the user PATH. It is safe only on a throwaway CI runner." }
+            $raw = (Get-Item 'HKCU:\Environment').GetValue('Path', '', 'DoNotExpandEnvironmentNames')
+            Set-ItemProperty -Path 'HKCU:\Environment' -Name Path -Type ExpandString -Value ($(if ($raw) { "$raw;$Entry" } else { $Entry }))
+          }
 
           Write-Host "[smoke] first install..."
           $p1 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
           if ($p1.ExitCode -ne 0) { throw "first install exited $($p1.ExitCode)" }
+          # HEAL: plant the duplicate an older build would have left, so the re-run must collapse it.
+          Add-UserPathEntryRaw $app
 
           Write-Host "[smoke] re-running the SAME installer over the existing install (Acceptance #8)..."
           $p2 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
           if ($p2.ExitCode -ne 0) { throw "re-run install exited $($p2.ExitCode) — idempotent upgrade must not abort" }
           if (-not (Test-Path "$app\clavity-ls.exe")) { throw "clavity-ls.exe missing after re-run install" }
+          $n2 = @(Get-UserPathEntry $app).Count
+          if ($n2 -ne 1) { throw "PATH: expected the install dir exactly ONCE after a re-run over a duplicated PATH, found $n2 - the installer appended again or did not heal" }
+          Write-Host "[PATH] exactly one entry after install, re-run, and heal"
 
+          # BOUNDARY: a sibling entry that merely STARTS with the install dir must survive the uninstall.
+          $sibling = "$app-sibling"
+          Add-UserPathEntryRaw $sibling
           New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.clavity" | Out-Null
           Set-Content "$env:USERPROFILE\.clavity\golden-header.growth.md" "fake learned wisdom"
           $uninst = Get-ChildItem "$app" -Filter "unins*.exe" | Select-Object -First 1
           Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null
           Start-Sleep -Seconds 2
           if (-not (Test-Path "$env:USERPROFILE\.clavity\golden-header.growth.md")) { throw "C6 VIOLATION: growth.md deleted by a keep-data driver uninstall" }
+          $deadline = (Get-Date).AddSeconds(15)
+          while ((@(Get-UserPathEntry $app).Count -ne 0) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          $n3 = @(Get-UserPathEntry $app).Count
+          if ($n3 -ne 0) { throw "PATH: the install dir is still present $n3 time(s) after uninstall" }
+          $s3 = @(Get-UserPathEntry $sibling).Count
+          if ($s3 -ne 1) { throw "PATH BOUNDARY: the sibling entry $sibling should survive the uninstall exactly once, found $s3" }
+          Write-Host "[PATH] uninstall removed the dir and left the sibling intact"
           Write-Host "C6 growth-ownership + C1 idempotent-upgrade smoke PASSED"
 
       - name: Smoke — mutual-exclusion refusal (seeded fake classic)

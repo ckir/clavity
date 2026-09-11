@@ -45,6 +45,7 @@ $script:SharedPaths = @(
     [pscustomobject]@{ Path='installer/_shared/register-invoke.iss';       Provable=$true;  Members=@('classic','agy-autotrain','commonmemory','ghidrust') }
     [pscustomobject]@{ Path='installer/_shared/register-plugin-hash.iss';  Provable=$true;  Members=@('classic','agy-autotrain','commonmemory','ghidrust') }
     [pscustomobject]@{ Path='installer/_shared/path-scan.iss';             Provable=$true;  Members=@('classic') }
+    [pscustomobject]@{ Path='installer/_shared/user-path.iss';             Provable=$true;  Members=@('dotnet','classic','ghidrust') }
     [pscustomobject]@{ Path='seed/golden-header.md';                       Provable=$true;  Members=@('dotnet','classic') }
     # Not named by any installer: scripts/generate-scoped-manifest.ps1 reads it and GENERATES each member's
     # scoped 1-entry marketplace.json, so an edit here changes what every member ships.

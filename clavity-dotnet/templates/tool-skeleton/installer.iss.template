@@ -32,37 +32,24 @@ Source: "..\publish\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
 [Tasks]
 Name: "addtopath"; Description: "Add <TOOL-ID> to PATH"; Flags: checkedonce
 
-[Registry]
-Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
-  ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath('{app}')
+; NO [Registry] PATH entry - do not add one. PATH goes through installer\_shared\user-path.iss, called from
+; CurStepChanged below. A [Registry] entry guarded by a Check function appended a fresh copy on EVERY install,
+; because Inno does not expand constants in a Check function's parameters; that file carries the measurement.
 
 [Code]
-function NeedsAddPath(Param: string): Boolean;
-var
-  OrigPath: string;
-begin
-  if not RegQueryStringValue(HKCU, 'Environment', 'Path', OrigPath) then
-  begin
-    Result := True;
-    exit;
-  end;
-  Result := Pos(';' + Param + ';', ';' + OrigPath + ';') = 0;
-end;
+#include "..\..\installer\_shared\user-path.iss"
 
-procedure RemoveFromUserPath(const Dir: string);
-var
-  Path: string;
+procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if not RegQueryStringValue(HKCU, 'Environment', 'Path', Path) then
-    exit;
-  StringChangeEx(Path, ';' + Dir, '', True);
-  StringChangeEx(Path, Dir + ';', '', True);
-  StringChangeEx(Path, Dir, '', True);
-  RegWriteExpandStringValue(HKCU, 'Environment', 'Path', Path);
+  if CurStep = ssPostInstall then
+  begin
+    if WizardIsTaskSelected('addtopath') then
+      AddDirToUserPath(ExpandConstant('{app}'));
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
-    RemoveFromUserPath(ExpandConstant('{app}'));
+    RemoveDirFromUserPath(ExpandConstant('{app}'));
 end;

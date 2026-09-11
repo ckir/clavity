@@ -53,14 +53,15 @@ Source: "..\plugin\*"; DestDir: "{app}\plugins\ghidrust"; Flags: ignoreversion r
 [Tasks]
 Name: "addtopath"; Description: "Add ghidrust to PATH"; Flags: checkedonce
 
-[Registry]
-Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
-  ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath('{app}')
+; NO [Registry] PATH entry. The per-user PATH append (never prepend) is done in CurStepChanged through
+; installer\_shared\user-path.iss: the [Registry] form appended a fresh copy on EVERY install, because Inno
+; does not expand constants in a Check function's parameters. That file carries the measurement.
 
 [Code]
 #include "..\..\installer\_shared\claude-running.iss"
 #include "..\..\installer\_shared\register-plugin-hash.iss"
 #include "..\..\installer\_shared\register-invoke.iss"
+#include "..\..\installer\_shared\user-path.iss"
 
 var
   GhidraPage: TInputDirWizardPage;
@@ -110,30 +111,6 @@ begin
   Result := (PageID = GhidraPage.ID) and WizardSilent;
 end;
 
-function NeedsAddPath(Param: string): Boolean;
-var
-  OrigPath: string;
-begin
-  if not RegQueryStringValue(HKCU, 'Environment', 'Path', OrigPath) then
-  begin
-    Result := True;
-    exit;
-  end;
-  Result := Pos(';' + Param + ';', ';' + OrigPath + ';') = 0;
-end;
-
-procedure RemoveFromUserPath(const Dir: string);
-var
-  Path: string;
-begin
-  if not RegQueryStringValue(HKCU, 'Environment', 'Path', Path) then
-    exit;
-  StringChangeEx(Path, ';' + Dir, '', True);
-  StringChangeEx(Path, Dir + ';', '', True);
-  StringChangeEx(Path, Dir, '', True);
-  RegWriteExpandStringValue(HKCU, 'Environment', 'Path', Path);
-end;
-
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Dir: string;
@@ -142,6 +119,9 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
+    { PATH: the shared entry-wise add, which also heals the duplicates an older build appended. }
+    if WizardIsTaskSelected('addtopath') then
+      AddDirToUserPath(ExpandConstant('{app}'));
     { C1/C9: register the ghidrust plugin against every detected agent (ghidrust has no post-
       registration step like the golden-header seed, so there is nothing here to roll back on —
       see installer/_shared/register-invoke.iss's RollbackMemberPlugin comment). }
@@ -177,5 +157,5 @@ begin
   if CurUninstallStep = usUninstall then
     DeregisterMemberPluginOnUninstall('ghidrust', 'clavity-ghidrust');
   if CurUninstallStep = usPostUninstall then
-    RemoveFromUserPath(ExpandConstant('{app}'));
+    RemoveDirFromUserPath(ExpandConstant('{app}'));   { entry-wise: a sibling or subdirectory entry survives }
 end;

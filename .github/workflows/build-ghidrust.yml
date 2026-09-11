@@ -128,6 +128,18 @@ jobs:
           $ErrorActionPreference = "Stop"
           $setup = "dist/ghidrust-setup-$env:TOOL_VER.exe"
           $app = "$env:LOCALAPPDATA\Programs\ghidrust"
+          # PATH is COUNTED, entry by entry - never tested with -like. Every installer used to append a fresh
+          # copy on each install (installer/_shared/user-path.iss has the measurement), and this step installed
+          # twice and asserted `-like "*$app*"`, which two copies satisfy exactly as one does.
+          function Get-UserPathEntry([string]$Dir) {
+            $raw = (Get-Item 'HKCU:\Environment').GetValue('Path', '', 'DoNotExpandEnvironmentNames')
+            @($raw -split ';' | Where-Object { $_.Trim().Trim('"').TrimEnd('\') -ieq $Dir.TrimEnd('\') })
+          }
+          function Add-UserPathEntryRaw([string]$Entry) {
+            if (-not $env:GITHUB_ACTIONS) { throw "REFUSING: this smoke step edits the user PATH. It is safe only on a throwaway CI runner." }
+            $raw = (Get-Item 'HKCU:\Environment').GetValue('Path', '', 'DoNotExpandEnvironmentNames')
+            Set-ItemProperty -Path 'HKCU:\Environment' -Name Path -Type ExpandString -Value ($(if ($raw) { "$raw;$Entry" } else { $Entry }))
+          }
 
           $log = "$env:RUNNER_TEMP\ghidrust-install.log"
           $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/LOG=$log" -Wait -PassThru
@@ -136,9 +148,16 @@ jobs:
             if (Test-Path $log) { Get-Content $log } else { Write-Host "(no log produced)" }
             throw "install exit $($p.ExitCode)"
           }
+          $n1 = @(Get-UserPathEntry $app).Count
+          if ($n1 -ne 1) { throw "PATH: expected the install dir exactly ONCE after the first install, found $n1" }
+          # HEAL: plant the duplicate an older build would have left, so the re-run must collapse it.
+          Add-UserPathEntryRaw $app
           # Finding-5: re-run the SAME installer — idempotent upgrade (remove-then-add) must exit 0.
           $p2 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
           if ($p2.ExitCode -ne 0) { throw "re-run install exit $($p2.ExitCode) — idempotent upgrade must not abort" }
+          $n2 = @(Get-UserPathEntry $app).Count
+          if ($n2 -ne 1) { throw "PATH: expected the install dir exactly ONCE after a re-run over a duplicated PATH, found $n2 - the installer appended again or did not heal" }
+          Write-Host "[PATH] exactly one entry after install, re-run, and heal"
           if (-not (Test-Path "$app\ghidrust.exe")) { throw "ghidrust.exe missing" }
           if (-not (Test-Path "$app\.claude-plugin\marketplace.json")) { throw "marketplace.json not installed" }
           $manifest = Get-Content "$app\.claude-plugin\marketplace.json" -Raw | ConvertFrom-Json
@@ -173,16 +192,24 @@ jobs:
           }
           if ($srcHash -ne $instHash) { throw "T5 MANIFEST PARITY: installed manifest bytes differ from source (installed=$instHash source=$srcHash) - stale or rewritten plugin.json" }
           Write-Host "[T5] installed manifest parity OK ($instHash)"
-          $userPath = (Get-ItemProperty "HKCU:\Environment" -Name Path -ErrorAction SilentlyContinue).Path
-          if ($userPath -notlike "*$app*") { throw "PATH entry not added after install" }
 
+          # BOUNDARY: a sibling entry that merely STARTS with the install dir must survive the uninstall.
+          # The old substring strip left it as "-sibling" glued onto the entry before it.
+          $sibling = "$app-sibling"
+          Add-UserPathEntryRaw $sibling
           $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select-Object -First 1
           Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null
           $deadline = (Get-Date).AddSeconds(30)
           while ((Test-Path "$app\ghidrust.exe") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
           if (Test-Path "$app\ghidrust.exe") { throw "uninstall did not complete within 30s" }
-          $userPath2 = (Get-ItemProperty "HKCU:\Environment" -Name Path -ErrorAction SilentlyContinue).Path
-          if ($userPath2 -like "*$app*") { throw "PATH entry not removed after uninstall" }
+          # PATH is cleaned at usPostUninstall, AFTER the files go - poll rather than race it.
+          $deadline = (Get-Date).AddSeconds(15)
+          while ((@(Get-UserPathEntry $app).Count -ne 0) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          $n3 = @(Get-UserPathEntry $app).Count
+          if ($n3 -ne 0) { throw "PATH: the install dir is still present $n3 time(s) after uninstall" }
+          $s3 = @(Get-UserPathEntry $sibling).Count
+          if ($s3 -ne 1) { throw "PATH BOUNDARY: the sibling entry $sibling should survive the uninstall exactly once, found $s3" }
+          Write-Host "[PATH] uninstall removed the dir and left the sibling intact"
           "install/uninstall + namespace smoke PASSED"
 
       - name: Smoke — Bug 1 migration off the legacy 'clavity' marketplace (fake claude)

@@ -1076,6 +1076,15 @@ check-installer-ascii.Tests.ps1                   10,7s   4 tests   <- SLOW, ADD
                                                                       ~10s addition would have taken it to ~95%,
                                                                       and straddling that cap is the exact failure
                                                                       this whole split exists to prevent.
+installer-user-path.Tests.ps1                        ?    7 tests   <- SLOW, ADDED 2026-09-11 (installer
+                                                                      PATH duplication fix). NO SOLO TIME -
+                                                                      NOT MEASURED, and not to be derived. Its
+                                                                      cost is ONE ISCC compile of a probe
+                                                                      installer plus ONE silent run of it, on
+                                                                      top of pwsh startup; that shape, not a
+                                                                      number, is why it is SLOW. Where ISCC is
+                                                                      absent its four behavioural rows SKIP
+                                                                      and the three structural rows still run.
 clavity-install.Tests.ps1                         7,9s   12 tests   <- SLOW, ADDED 2026-08-27. The one
                                                                       suite `test-scripts-slow` names from
                                                                       OUTSIDE scripts/tests, so it sat
