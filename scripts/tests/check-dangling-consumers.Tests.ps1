@@ -68,6 +68,12 @@ BeforeAll {
     # bitten section 28 once (Task 5 had to reword a comment). The parser's own Comment tokens are cut out
     # by offset; code and strings are matched exactly as before. STRINGS ARE NOT BLANKED, on purpose: an
     # interpolated "$(...)" string is one token whose $() EXECUTES.
+    #
+    # A COMMENT IS CUT OUT, NOT REPLACED BY A SPACE (AGY-TEST-AUDIT section 28, round 2). MEASURED:
+    # `$f.FullName<#c#>.Substring(3)` parses as a real Substring call, and a space in the comment's place
+    # turned it into `$f.FullName .Substring(`, which the regex does not match - an inline comment hid the
+    # idiom. Cutting it out rejoins the two halves. Measured the same day against all 39 scripts of the real
+    # population: none reddens, so no comment there glues two unrelated tokens into the idiom.
     function Find-HandRolledRelativePath([System.IO.FileInfo[]]$Files) {
         foreach ($s in $Files) {
             $tokens = $null; $errors = $null
@@ -76,7 +82,7 @@ BeforeAll {
             $code = [System.Text.StringBuilder]::new()
             $at = 0
             foreach ($c in @($tokens | Where-Object Kind -eq 'Comment')) {
-                [void]$code.Append($text, $at, $c.Extent.StartOffset - $at).Append(' ')
+                [void]$code.Append($text, $at, $c.Extent.StartOffset - $at)
                 $at = $c.Extent.EndOffset
             }
             [void]$code.Append($text, $at, $text.Length - $at)
@@ -437,13 +443,15 @@ Describe 'check-dangling-consumers' {
                 New-Fixture 'parenthesised.ps1' @('$rel = ($f.FullName).Substring($root.Length)')
                 # An interpolated "$(...)" EXECUTES its contents, so strings must stay matched.
                 New-Fixture 'in-a-string.ps1'   @('Write-Host "rel: $($f.FullName.Substring($root.Length))"')
+                # Still a real Substring call with an inline comment inside it - the comment must not hide it.
+                New-Fixture 'comment-split.ps1' @('$rel = $f.FullName<#why#>.Substring($root.Length)')
                 # The two comment forms: spelling the idiom to warn a reader off it is correct code.
                 New-Fixture 'line-comment.ps1'  @('# never write $f.FullName.Substring($root.Length) here', '$rel = $r.Resolve($f.FullName)')
                 New-Fixture 'block-comment.ps1' @('<# $f.FullName.Substring($root.Length) #>', '$rel = $r.Resolve($f.FullName)')
                 New-Fixture 'clean.ps1'         @('$rel = $r.Resolve($f.FullName).Replace(''\'', ''/'')')
             )
             @(Find-HandRolledRelativePath $files | Sort-Object) |
-                Should -Be @('hand-rolled.ps1', 'in-a-string.ps1', 'parenthesised.ps1')
+                Should -Be @('comment-split.ps1', 'hand-rolled.ps1', 'in-a-string.ps1', 'parenthesised.ps1')
         }
 
         It 'the positive guard names each violation: a missing dot-source, its look-alikes, every per-item construct, and a file that does not parse' {

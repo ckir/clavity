@@ -18,18 +18,25 @@ Describe 'check-installer-ascii.ps1' {
     # changed to `exit 0`, and separately with its empty-domain check switched off, both rows above and below
     # stayed GREEN - the only offender row asserted the printed path, never that the gate FAILED, and it
     # skips wherever 8.3 names are off. These two need no 8.3 volume, so they run everywhere.
-    It 'FAILS with exit 1 and names the offender when the 5.1 domain carries a non-ASCII byte' {
+    It 'FAILS with exit 1 and names EVERY offender when the 5.1 domain carries non-ASCII bytes' {
+        # TWO OFFENDERS, NOT ONE (AGY-TEST-AUDIT section 28, round 2). MEASURED: with a `break` after the first
+        # report line - a truncated report that hides every later offender - a one-offender fixture stayed
+        # GREEN. Distinct byte counts (1 and 2) make each line identify its own file.
         $root = Join-Path ([IO.Path]::GetTempPath()) ("s28ib-" + [guid]::NewGuid().ToString('N'))
-        New-Item -ItemType Directory -Force -Path (Join-Path $root 'installer') | Out-Null
-        [IO.File]::WriteAllBytes((Join-Path $root 'installer/offender.ps1'),
-            [byte[]](0x57,0x72,0x69,0x74,0x65,0x2D,0x48,0x6F,0x73,0x74,0x20,0x27,0xE9,0x27,0x0A))
         try {
+            New-Item -ItemType Directory -Force -Path (Join-Path $root 'installer/sub') | Out-Null
+            [IO.File]::WriteAllBytes((Join-Path $root 'installer/offender.ps1'),
+                [byte[]](0x57,0x72,0x69,0x74,0x65,0x2D,0x48,0x6F,0x73,0x74,0x20,0x27,0xE9,0x27,0x0A))
+            [IO.File]::WriteAllBytes((Join-Path $root 'installer/sub/second.ps1'),
+                [byte[]](0x23,0x20,0xE9,0xE8,0x0A))
             $out = & pwsh -NoProfile -File $script:Gate -RepoRoot $root 2>&1 | Out-String
             $LASTEXITCODE | Should -Be 1 -Because "a non-ASCII byte in the 5.1 domain must fail the build; output was:`n$out"
-            # The whole report line, anchored at both ends: the path, then the byte count, nothing else. ANSI
+            # Each whole report line, anchored at both ends: the path, then the byte count, nothing else. ANSI
             # colour codes are stripped first - Fail writes in red, and a host that renders colour into
             # redirected output would put an escape sequence where the anchor expects the line to end.
-            ($out -replace "`e\[[0-9;]*m", '') | Should -Match '(?m)^  installer\\offender\.ps1 - 1 non-ASCII byte\(s\)\r?$'
+            $plain = $out -replace "`e\[[0-9;]*m", ''
+            $plain | Should -Match '(?m)^  installer\\offender\.ps1 - 1 non-ASCII byte\(s\)\r?$'
+            $plain | Should -Match '(?m)^  installer\\sub\\second\.ps1 - 2 non-ASCII byte\(s\)\r?$'
         }
         finally { Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -38,8 +45,8 @@ Describe 'check-installer-ascii.ps1' {
         # A root that exists but holds neither installer/ nor the registration suite - what a wrong -RepoRoot
         # looks like. Without the check, the loop runs zero times and the gate prints OK for zero files.
         $root = Join-Path ([IO.Path]::GetTempPath()) ("s28ie-" + [guid]::NewGuid().ToString('N'))
-        New-Item -ItemType Directory -Force -Path $root | Out-Null
         try {
+            New-Item -ItemType Directory -Force -Path $root | Out-Null
             $out = & pwsh -NoProfile -File $script:Gate -RepoRoot $root 2>&1 | Out-String
             $LASTEXITCODE | Should -Be 1 -Because "an empty domain is never legitimate; output was:`n$out"
             $out | Should -Match 'found no \.ps1 in the 5\.1 domain'
