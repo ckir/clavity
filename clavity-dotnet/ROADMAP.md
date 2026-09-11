@@ -2646,6 +2646,18 @@ in the section-21 capstone because every rewording becomes a false RED.** This o
   The runner is what makes a skip unwritable; the guard catches a check written outside it by habit.
   MEASURED: two runner mutants and eight guard mutants, one per fold, each redden their row, and the four
   linter mutants above still redden the widened guard.
+  **Round 6, the cap, found two more in the runner, both MEASURED.** (1) The barrier HELD a `break` in a
+  Check but HID it: a rule that reported one failure and then broke dropped its second check without a
+  trace. A jump out of a Check is now reported, as one out of an `AppliesTo` already was; `return` is
+  how a rule finishes and is not. (2) The rule table was shared by every context, so a rule that
+  reassigned its own `AppliesTo` while checking the first skill ran for none of the later ones. Each
+  invocation now gets its own copy of the rule as well as of the context. A third finding - the guard
+  does not notice a context builder that DROPS a skill - was REJECTED by measurement: a body `continue`
+  dropping each discipline in turn reddens behaviour rows (agy-first 5, agy-capstone 5, agy-test-audit
+  1, adversarial-panel-review 1), and the peer's own trigger, a `Where-Object` in the builder's header,
+  reddens 9. The suite catches the drop; the guard does not have to. Owner-ruled: round 6 breached
+  review-only (a probe file in the repo root, deleted) and the breach was waived; the owner then ruled to
+  fold the findings and run a round 7 past the cap. Two runner mutants, one per fold, redden their rows.
 - **30c — NOT FIXED, by ruling.** Converged with the peer at AGY-FIRST and accepted by the owner on
   2026-09-08 (`.clavity/seams/agyfirst-phase3b.md`, question 3), on the section's own counter-argument:
   pinning a message suffix is pinning prose verbatim, which this repo folded twice in the section-21

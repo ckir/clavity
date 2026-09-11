@@ -48,8 +48,13 @@ Describe 'Invoke-Rules' {
 
     It 'returns every reported diagnostic, in context then rule order, and a crash in place of a throw' {
         $got = @(Invoke-Rules -Rules $script:Rules -Contexts $script:Contexts)
+        # A break or continue that leaves a Check is reported (round 6, MEASURED: it silently dropped the rest
+        # of the rule). A `return` is how a rule finishes, so it is not.
         $expected = @(foreach ($c in 'one', 'two', 'three') {
-            "$($c):A"; "$($c):B"; "$($c):C"; "$($c):R"; "$($c):T"
+            "$($c):A"
+            "$($c):B"; "$c : rule 'breaks' crashed - its Check jumped out with break or continue, so the rest of it went unchecked"
+            "$($c):C"; "$c : rule 'continues' crashed - its Check jumped out with break or continue, so the rest of it went unchecked"
+            "$($c):R"; "$($c):T"
             "$c : rule 'throws' crashed - boom"
             "$($c):M1"; "$($c):M2"; "$($c):Z"
         })
@@ -115,6 +120,18 @@ Describe 'Invoke-Rules' {
         )
         @(Invoke-Rules -Rules $rules -Contexts $ctxs) | Should -Be @('mutated', 'later saw N=1')
         $ctxs[0].Skill | Should -Be 'agy-first' -Because 'the caller''s own object is never the one a rule writes to'
+    }
+
+    It 'gives every invocation its OWN copy of the rule, so a rule cannot turn itself off for later skills' {
+        # AGY-CAPSTONE section 30 round 6, MEASURED: the rule table was shared by every context, so a rule
+        # that reassigned its own AppliesTo while checking the first skill ran for none of the later ones -
+        # with no diagnostic. Control in the same row: the same rule without the edit runs for all three.
+        $mk = { param([bool]$Edit) @{ Name = 'self'; Data = 'orig'; Edit = $Edit; AppliesTo = { param($ctx, $rule) $true }
+            Check = { param($ctx, $rule) $ctx.Report("$($ctx.Rel):$($rule.Data)"); if ($rule.Edit) { $rule.AppliesTo = { param($c, $r) $false }; $rule.Data = 'corrupted' } } } }
+        @(Invoke-Rules -Rules @(& $mk $false) -Contexts $script:Contexts) | Should -Be @('one:orig', 'two:orig', 'three:orig')
+        $rules = @(& $mk $true)
+        @(Invoke-Rules -Rules $rules -Contexts $script:Contexts) | Should -Be @('one:orig', 'two:orig', 'three:orig')
+        $rules[0].Data | Should -Be 'orig' -Because 'the caller''s own rule table is never the one a rule writes to'
     }
 
     It 'leaves the caller''s context objects untouched' {
