@@ -235,6 +235,31 @@ BeforeAll {
         )
     }
 
+    # THE LINTER'S OWN ROSTER, read from its source. AGY-TEST-AUDIT section 30 round 2: the exact-set row below
+    # staged a hardcoded four disciplines, so a FIFTH added to the linter would be enrolled by it and silently
+    # skipped here - its verdict forms and envelope steps unchecked, every row still green. The POPULATION is
+    # derived; the EXPECTATIONS stay written out, because an expectation derived from the linter narrows with it.
+    function Get-DisciplineNames {
+        $t = $null; $e = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($script:Lint, [ref]$t, [ref]$e)
+        if ($e) { throw "the linter does not parse, so its roster cannot be read - $($e[0].Message)" }
+        $rhsOf = {
+            param($name)
+            $a = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                $n.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+                $n.Left.VariablePath.UserPath -eq $name }, $true))
+            if ($a.Count -ne 1) { throw "expected exactly ONE `$$name assignment in the linter, found $($a.Count) - a miscount would silently shrink the population" }
+            $a[0].Right
+        }
+        $strings = { param($rhs) @($rhs.FindAll({ param($n) $n -is [System.Management.Automation.Language.StringConstantExpressionAst] }, $true) | ForEach-Object { $_.Value }) }
+        $skills = & $strings (& $rhsOf 'skills')
+        $extra  = & $strings (& $rhsOf 'disciplineNames')
+        if ($skills.Count -lt 1 -or $extra.Count -lt 1) {
+            throw "read $($skills.Count) skill(s) and $($extra.Count) extra roster name(s); a short read would quietly shrink what this suite checks"
+        }
+        return @($skills + $extra)
+    }
+
     # A skill file that satisfies EVERY invariant the linter checks, so a fixture built on it fails on
     # exactly the one thing the row perturbs. The previous phantom satisfied only the $skills-loop
     # invariants and silently failed six more in the $disciplineNames loop.
@@ -382,9 +407,13 @@ Describe 'check-agy-discipline-skills' {
                 foreach ($step in 'Snapshot before', 'Forbidden-actions banner', 'Permission to pass', 'Point at files', 'Diff after') { "$s|$step" }
             }
         )
+        # THE POPULATION COMES FROM THE LINTER, the expectation from the two lists above. A fifth discipline
+        # enrolled in the linter lands here as an unexpected name (round 2: it used to be skipped in silence).
+        $staged = Get-DisciplineNames
+        @($staged | Sort-Object) | Should -Be @('adversarial-panel-review', 'agy-capstone', 'agy-first', 'agy-test-audit') -Because 'a discipline added to the linter must be given its lines above too, or its forms and steps go unchecked here'
         $scratch = New-ScratchRoot
         try {
-            foreach ($s in 'agy-first', 'agy-capstone', 'agy-test-audit', 'adversarial-panel-review') {
+            foreach ($s in $staged) {
                 Set-Content -Path (& $script:SkillPath $scratch $s) -Value "---`nname: $s`n---`nA body carrying none of the checked text.`n" -NoNewline -Encoding utf8
             }
             $out = & $script:Lint -Root $scratch 2>&1
@@ -1118,6 +1147,18 @@ Describe 'check-agy-discipline-skills' {
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match "did not find exactly ONE 'SCHEMAS = \{' assignment"
                 $out | Should -Match 'unparseable' -Because 'this fixture removes the block entirely, so the diagnostic must name that cause alongside duplication'
+                # THE RULE'S OWN DIAGNOSTIC, PER SKILL - not just the roster reconciliation's. AGY-TEST-AUDIT
+                # section 30 round 2, MEASURED: the two needles above are BOTH emitted by the roster
+                # reconciliation at the end of the linter, so deleting the rule's `if ($null -eq $py)` branch
+                # outright left all 107 rows green. There is no crash when it goes: [regex]::Match treats the
+                # null registry as an empty string, so each skill reports the WRONG cause instead - "declares no
+                # SCHEMAS entry for 'agy-capstone'", the entry-missing branch - which is precisely the confusion
+                # ("a true red for a false reason") this branch exists to prevent. Anchor to the Rel prefix, so
+                # the reconciliation's copy of the same sentence cannot stand in for it.
+                foreach ($s in 'agy-capstone', 'agy-test-audit') {
+                    $out | Should -Match ([regex]::Escape("clavity-dotnet/plugin/skills/$s/SKILL.md : did not find exactly ONE 'SCHEMAS = {' assignment")) -Because "the rule must tell $s WHY its contract could not be checked"
+                    $out | Should -Not -Match ([regex]::Escape("clavity-dotnet/plugin/skills/$s/SKILL.md : scripts/check-peer-reply-citations.py declares no SCHEMAS entry")) -Because "an unreadable registry must not be reported to $s as a missing ENTRY - that sends the reader after the wrong cause"
+                }
                 $out | Should -Not -Match 'declares no SCHEMAS entry for:' -Because 'the block-not-found branch suppresses the second diagnostic deliberately; four phantom mismatches would bury the real cause'
                 $out | Should -Match ([regex]::Escape("never names 'docs/agy-capstone-ledger.md'")) -Because 'an unreadable registry must suppress only the checks that NEED it, never the ledger check after them'
             } finally {
@@ -1410,14 +1451,17 @@ Describe 'AGY-NEGOTIATE is pinned across all four disciplines' {
         } finally { Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue }
     }
 
-    It 'FAILS when the round cap is named only OUTSIDE the AGY-NEGOTIATE section' {
+    It 'FAILS when <skill> names the round cap only OUTSIDE its AGY-NEGOTIATE section' -ForEach @(
+        @{ skill = 'agy-first' }, @{ skill = 'agy-capstone' }, @{ skill = 'agy-test-audit' }, @{ skill = 'adversarial-panel-review' }
+    ) {
         # THE ROUND-CAP BRANCH, which no row reached. AGY-TEST-AUDIT section 30, MEASURED: reverting it to the
         # file-wide scan capstone R8 folded left all 94 rows green, and so would deleting it. The fixture MOVES
         # the constant out of the section rather than deleting it, because only a mention elsewhere in the file
         # tells a section-scoped check from a file-wide one - with no mention at all, both fire.
+        # ALL FOUR since round 2: planted in one discipline, a cap check narrowed to skip any OTHER stayed green.
         $scratch = New-ScratchRoot
         try {
-            $target = & $script:SkillPath $scratch 'agy-test-audit'
+            $target = & $script:SkillPath $scratch $skill
             $real = Get-Content -Raw $target
             $real.Contains('MAX_NEGOTIATE_ROUNDS') | Should -BeTrue -Because 'the fixture needs the cap constant present before it can be moved'
             $body = $real.Replace('MAX_NEGOTIATE_ROUNDS', '') + "`n## An unrelated section`n`nMAX_NEGOTIATE_ROUNDS is named here, outside the section.`n"
@@ -1426,7 +1470,7 @@ Describe 'AGY-NEGOTIATE is pinned across all four disciplines' {
             Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
             $out = & $script:Lint -Root $scratch 2>&1
             $LASTEXITCODE | Should -Be 1
-            (Get-LintText $out) | Should -Match ([regex]::Escape("'agy-test-audit' has an AGY-NEGOTIATE section with no round cap constant"))
+            (Get-LintText $out) | Should -Match ([regex]::Escape("'$skill' has an AGY-NEGOTIATE section with no round cap constant"))
         } finally { Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue }
     }
 }
