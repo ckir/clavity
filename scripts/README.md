@@ -85,6 +85,14 @@ because the check is worth re-running by hand when that area changes.
     before a loop, never inside one.** `Get-RootRelativePath -Root -Path` is a one-off convenience that
     builds a fresh resolver per call; in a per-file loop that re-runs `Get-Item` every time, which a
     capstone measured at ~64 s per gate run. ROADMAP section 28; `scripts/tests/path-lib.Tests.ps1` pins it.
+  - `rule-runner.ps1` — `Invoke-Rules -Rules -Contexts` runs every rule against every context, and nothing
+    a rule does can stop it quietly: each rule runs behind a `do { } while ($false)` barrier, because
+    PowerShell resolves `break`/`continue` dynamically and one inside a rule would otherwise end the
+    runner's own loop. A rule **reports** through `$ctx.Report(...)`; its pipeline output is discarded; a
+    throw becomes a `crashed` diagnostic. An `exit`, which nothing can catch, still ends the run, but the
+    runner names the rule and forces exit code 1. Used by `check-agy-discipline-skills.ps1`, whose
+    per-skill checks are rules.
+    ROADMAP section 30b; `scripts/tests/rule-runner.Tests.ps1` pins it.
 - `tests/` — Pester suites covering the scripts in this folder (count via `ls scripts/tests/*.Tests.ps1`), run via `just test-scripts`.
 - `ci/fake-claude/` — a stub `claude` CLI (`claude.cmd` + `fake-claude.ps1`) simulating `plugin
   marketplace add/remove`, `plugin install/uninstall`, and `plugin list`; used by the ghidrust

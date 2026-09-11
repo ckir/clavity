@@ -120,6 +120,10 @@ BeforeAll {
         New-Item -ItemType Directory -Path $dir | Out-Null
         $lint = Join-Path $dir 'lint-copy.ps1'
         Set-Content -Path $lint -Value $Source -NoNewline -Encoding utf8
+        # The linter dot-sources its rule runner from $PSScriptRoot/lib, exactly as it finds the checker
+        # beside itself, so a copy must carry the runner too - or every row using a copy would die loading it.
+        New-Item -ItemType Directory -Path (Join-Path $dir 'lib') | Out-Null
+        Copy-Item (Join-Path $script:RepoRoot 'scripts/lib/rule-runner.ps1') (Join-Path $dir 'lib/rule-runner.ps1')
         if ($Checker -eq 'real') {
             Copy-Item (Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py') `
                       (Join-Path $dir 'check-peer-reply-citations.py')
@@ -147,58 +151,56 @@ BeforeAll {
         return ($t -replace '\s+', ' ')
     }
 
-    # THE CONTROL-FLOW GUARD FOR ROADMAP SECTION 30b, read from the parser. The two-skill row proves the
-    # linter reports every PLANTED defect; it cannot see an early exit placed after a check it does not
-    # plant - AGY-CAPSTONE section 30 round 3 MEASURED a `continue` after the (unplanted) marker-constant
-    # check leaving all 92 rows green. Planting every check was rejected as a brittle fixture, so this pins
-    # the property directly: inside the linter's per-skill loops, no check may be skipped after a failure.
+    # EVERY PER-SKILL CHECK IS A RULE THE RUNNER RUNS - read from the parser. ROADMAP section 30b.
     #
-    # The ONE allowed skip is a `continue` whose enclosing `if` tests that the skill FILE cannot be read -
-    # `-not (Test-Path ...)` or `[string]::IsNullOrEmpty(...)` - because nothing after it can run on a file
-    # that is not there. Every other `continue`, `break`, `return` or `exit` inside a per-skill loop is a
-    # violation, nested loops included (a `break` in the envelope-steps loop drops the remaining steps).
-    # And `Fail` itself may hold no `break`, `continue` or `exit`: PowerShell resolves a `break` DYNAMICALLY,
-    # so one inside Fail breaks whichever loop called it - the exact regression section 30b names.
+    # WHY THIS REPLACED THE OLD CONTROL-FLOW GUARD. That guard read the linter's three hand-written loops
+    # and forbade jump statements inside them; AGY-CAPSTONE section 30 round 4 showed an `else`-wrap skips
+    # checks with no jump at all, so no syntax rule over hand-written loops could close the class. The
+    # owner chose to remove the loops instead: every per-skill check is now a rule, and
+    # scripts/lib/rule-runner.ps1 - the only loop - is pinned to run every rule for every skill by
+    # scripts/tests/rule-runner.Tests.ps1. What is left to guard here is the ARCHITECTURE: that nobody adds
+    # a check back as a hand-written loop the runner never sees.
     #
-    # Returns @{ Loops = <the per-skill loop collections, in order>; Violations = <one line each> }.
-    function Find-SkippedCheckJump([string]$Source) {
+    # Violations: a per-skill loop (a foreach over $skills or $disciplineNames) other than the ONE that
+    # builds the contexts; a Fail in that builder other than for a MISSING or EMPTY file; a Fail called from
+    # inside the rules table (a rule REPORTS); and anything but exactly one Invoke-Rules call.
+    function Find-HandRolledCheck([string]$Source) {
         $L = 'System.Management.Automation.Language'
         $tokens = $null; $errors = $null
         $ast = [System.Management.Automation.Language.Parser]::ParseInput($Source, [ref]$tokens, [ref]$errors)
-        if ($errors) { throw "Find-SkippedCheckJump: the source does not parse - $($errors[0].Message)" }
-        $isJump = { param($n) $n -is "$L.ContinueStatementAst" -or $n -is "$L.BreakStatementAst" -or
-                              $n -is "$L.ReturnStatementAst" -or $n -is "$L.ExitStatementAst" }
-        $loops = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.ForEachStatementAst] -and
-            $n.Condition.Extent.Text -in '$skills', '$disciplineNames' }, $true))
-        $violations = @(
-            foreach ($lp in $loops) {
-                foreach ($j in @($lp.Body.FindAll($isJump, $true))) {
-                    $allowed = $false
-                    if ($j -is "$L.ContinueStatementAst") {
-                        # continue -> its StatementBlock -> the IfStatement that owns that block
-                        $owner = $j.Parent.Parent
-                        if ($owner -is "$L.IfStatementAst") {
-                            foreach ($clause in $owner.Clauses) {
-                                if ($clause.Item2 -eq $j.Parent -and
-                                    $clause.Item1.Extent.Text -match '^(-not \(Test-Path |\[string\]::IsNullOrEmpty\()') { $allowed = $true }
-                            }
+        if ($errors) { throw "Find-HandRolledCheck: the source does not parse - $($errors[0].Message)" }
+        $isFail = { param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Fail' }
+        $builder = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+            $n.Left.Extent.Text -eq '$contexts' }, $true)
+        # Every place rule code lives: each assignment to $skillRules (the table, and each `+=` that stamps
+        # rules out of a list), and each scriptblock held in a `$...Check` / `$...Applies` variable for those.
+        $ruleCode = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+            ($n.Left.Extent.Text -eq '$skillRules' -or $n.Left.Extent.Text -match '^\$\w+(Check|Applies)$') }, $true))
+        $rulesTable = $ruleCode | Where-Object { $_.Left.Extent.Text -eq '$skillRules' -and $_.Operator -eq 'Equals' } | Select-Object -First 1
+        @(
+            foreach ($lp in @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.ForEachStatementAst] -and
+                    $n.Condition.Extent.Text -in '$skills', '$disciplineNames' }, $true))) {
+                $inBuilder = $false
+                for ($p = $lp.Parent; $p; $p = $p.Parent) { if ($builder -and $p -eq $builder) { $inBuilder = $true; break } }
+                if (-not $inBuilder) {
+                    "a hand-written per-skill loop over $($lp.Condition.Extent.Text) at line $($lp.Extent.StartLineNumber) - add a rule instead"
+                } else {
+                    foreach ($f in @($lp.Body.FindAll($isFail, $true))) {
+                        if ($f.Extent.Text -notmatch '^Fail "(MISSING|EMPTY): ') {
+                            "the contexts builder checks something at line $($f.Extent.StartLineNumber) - only a MISSING or EMPTY file belongs there"
                         }
                     }
-                    if (-not $allowed) {
-                        "$($j.GetType().Name -replace 'StatementAst$') at line $($j.Extent.StartLineNumber) inside the $($lp.Condition.Extent.Text) loop"
-                    }
                 }
             }
-            $fail = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Fail' }, $true)
-            if ($fail) {
-                foreach ($j in @($fail.Body.FindAll({ param($n) $n -is [System.Management.Automation.Language.ContinueStatementAst] -or
-                        $n -is [System.Management.Automation.Language.BreakStatementAst] -or
-                        $n -is [System.Management.Automation.Language.ExitStatementAst] }, $true))) {
-                    "Fail contains a $($j.GetType().Name -replace 'StatementAst$') at line $($j.Extent.StartLineNumber)"
+            if (-not $rulesTable) { 'no $skillRules table' }
+            foreach ($code in $ruleCode) {
+                foreach ($f in @($code.FindAll($isFail, $true))) {
+                    "a rule calls Fail at line $($f.Extent.StartLineNumber) - a rule must REPORT through `$ctx.Report"
                 }
             }
+            $runs = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Invoke-Rules' }, $true))
+            if ($runs.Count -ne 1) { "expected exactly ONE Invoke-Rules call, found $($runs.Count)" }
         )
-        @{ Loops = @($loops | ForEach-Object { $_.Condition.Extent.Text }); Violations = $violations }
     }
 
     # A skill file that satisfies EVERY invariant the linter checks, so a fixture built on it fails on
@@ -255,25 +257,24 @@ Describe 'check-agy-discipline-skills' {
         }
     }
 
-    It 'reports EVERY failing skill and every failing check, in EVERY per-skill loop (ROADMAP section 30b)' {
+    It 'reports EVERY failing skill and every failing check (ROADMAP section 30b)' {
+        # THE INTEGRATION HALF OF 30b. The runner's own suite (scripts/tests/rule-runner.Tests.ps1) proves the
+        # runner makes every rule x skill invocation whatever a rule does; this row proves the LINTER feeds it
+        # the right skills and that the rules are wired to real file content - the peer's split, AGY-FIRST.
+        #
         # Each other row here perturbs ONE skill, so all of them are blind to an early exit: make the linter
         # halt after its first failure and every single-perturbation row stays green. This row breaks TWO
-        # skills and requires BOTH diagnostics, which is the only shape that can see the difference.
+        # skills, several ways each, and requires every diagnostic, each naming its skill.
         #
-        # IN EVERY LOOP, NOT JUST THE FIRST. The linter checks skills in THREE separate loops - the $skills
-        # loop (ledger), the $disciplineNames envelope loop (scratch dir), and the AGY-NEGOTIATE loop - and an
-        # early exit can be added to any one of them. The first version of this row broke only the ledger
-        # path, so it pinned only the first loop: AGY-CAPSTONE section 30 round 1 MEASURED an early exit in
-        # the envelope loop leaving all 92 rows GREEN. So each skill is broken in every loop, and every
-        # diagnostic is required, each naming its skill.
-        #
-        # AND ACROSS CHECKS, NOT ONLY ACROSS SKILLS. Round 2 MEASURED the same blindness one level down: a
-        # `continue` after the scratch-dir failure skips that skill's REMAINING checks in the loop, and all
-        # 92 rows stayed green, because one planted defect per loop leaves nothing after it to lose. So each
-        # loop that has more than one check gets its FIRST and its LAST check broken as well: a `continue`
-        # after any planted failure then skips a later planted one, and its diagnostic goes missing. (The
-        # AGY-NEGOTIATE loop needs only its heading: with the heading gone, its only other check - the round
-        # cap - sits in the `else` and cannot run.)
+        # HOW IT GREW, because each step was a measured miss. The linter used to check skills in THREE
+        # hand-written loops. Round 1 of AGY-CAPSTONE section 30: this row broke only the ledger path, and an
+        # early exit in the second loop left all 92 rows green - so it broke each skill in every loop. Round 2:
+        # a `continue` after one check skipped the skill's later checks, 92/92 green - so it broke the FIRST and
+        # LAST check of each loop. Rounds 3 and 4 found what no fixture can close (an exit after a check it does
+        # not plant; an `else`-wrap with no jump at all), and the owner replaced the loops with rules and one
+        # runner. The plants below are the ones those rounds chose, and they still span every family of
+        # checks: frontmatter name and ledger path, discipline mandate, scratch directory and anti-wrap-up
+        # clause, and the AGY-NEGOTIATE heading (whose round-cap check sits in the same rule's `else`).
         #
         # It uses the SAME two disciplines the ledger roster names - both are also in $disciplineNames -
         # and DELETES rather than substitutes, for the reason recorded on the ledger rows: a fixture that
@@ -324,39 +325,35 @@ Describe 'check-agy-discipline-skills' {
         finally { Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue }
     }
 
-    It 'no per-skill loop in the linter skips a check after a failure (ROADMAP section 30b, control-flow guard)' {
-        $r = Find-SkippedCheckJump (Get-Content -Raw $script:Lint)
-        # IDENTITY, not a count: the guard is vacuous if it stops finding the loops it guards.
-        $r.Loops | Should -Be @('$skills', '$disciplineNames', '$disciplineNames') -Because 'the three per-skill loops must be found, or this guard checks nothing'
-        $r.Violations | Should -BeNullOrEmpty -Because 'a skipped check hides every diagnostic after it; skip only when the skill file itself cannot be read'
+    It 'every per-skill check in the linter is a rule the runner runs (ROADMAP section 30b)' {
+        $src = Get-Content -Raw $script:Lint
+        # PRECONDITION: the one sanctioned per-skill loop is present, or the guard below has nothing to judge.
+        $src | Should -Match ([regex]::Escape('$contexts = @(foreach ($skill in $disciplineNames) {')) -Because 'the contexts builder is the one per-skill loop the architecture allows'
+        Find-HandRolledCheck $src | Should -BeNullOrEmpty -Because 'a check outside the rules table is a check the runner never protects'
     }
 
-    It 'the control-flow guard FIRES on every forbidden jump and accepts only the unreadable-file skip' {
-        # The guard above reads the real linter, which is clean, so on its own it cannot show it fires -
-        # the lesson of the section 28 guards. Line numbers below are this fixture's own.
+    It 'the architecture guard FIRES on every way a check can escape the runner' {
+        # The row above reads the real linter, which is clean, so on its own it cannot show it fires - the
+        # lesson of the section 28 guards. Line numbers below are this fixture's own.
         $fixture = @(
-            'function Fail($msg) { $script:fail = $true; break }'
-            'foreach ($skill in $skills) {'
-            '    if (-not (Test-Path $path)) { Fail "MISSING: $rel"; continue }'
-            '    if ($x) { Fail "x"; continue }'
-            '    foreach ($step in $steps) { if ($y) { Fail "y"; break } }'
-            '}'
-            'foreach ($skill in $disciplineNames) {'
-            '    if ([string]::IsNullOrEmpty($raw)) { Fail "EMPTY: $rel"; continue }'
-            '    if ($z) { exit 1 }'
-            '}'
-            'foreach ($d in $disciplineNames) { if ($w) { return } }'
-            'foreach ($other in $unrelated) { if ($q) { continue } }'
+            '$contexts = @(foreach ($skill in $disciplineNames) {'
+            '    if (-not (Test-Path $p)) { Fail "MISSING: $rel" }'
+            '    if ($raw -notmatch ''x'') { Fail "$rel : sneaked in" }'
+            '})'
+            '$skillRules = @('
+            '    @{ Name = ''bad''; AppliesTo = { $true }; Check = { param($ctx) Fail ''direct'' } }'
+            ')'
+            '$extraCheck = { param($ctx) Fail ''also direct'' }'
+            'foreach ($skill in $skills) { if ($x) { Fail "x" } }'
+            'foreach ($other in $unrelated) { Fail ''not per-skill, so not judged'' }'
         ) -join "`n"
-        $r = Find-SkippedCheckJump $fixture
-        $r.Loops | Should -Be @('$skills', '$disciplineNames', '$disciplineNames')
-        @($r.Violations | Sort-Object) | Should -Be @(
-            'Break at line 5 inside the $skills loop'
-            'Continue at line 4 inside the $skills loop'
-            'Exit at line 9 inside the $disciplineNames loop'
-            'Fail contains a Break at line 1'
-            'Return at line 11 inside the $disciplineNames loop'
-        ) -Because 'the two unreadable-file skips (lines 3 and 8) are allowed, and a loop that is not per-skill (line 12) is not judged'
+        @(Find-HandRolledCheck $fixture | Sort-Object) | Should -Be @(
+            'a hand-written per-skill loop over $skills at line 9 - add a rule instead'
+            'a rule calls Fail at line 6 - a rule must REPORT through $ctx.Report'
+            'a rule calls Fail at line 8 - a rule must REPORT through $ctx.Report'
+            'expected exactly ONE Invoke-Rules call, found 0'
+            'the contexts builder checks something at line 3 - only a MISSING or EMPTY file belongs there'
+        ) -Because 'the MISSING skip (line 2) is allowed, and a loop that is not per-skill (line 10) is not judged'
     }
 
     Context 'rejection cases (each perturbs one skill; the other stays valid)' {
@@ -1267,6 +1264,9 @@ Describe 'AGY-NEGOTIATE is pinned across all four disciplines' {
             }
             New-Item -ItemType Directory -Path (Join-Path $sandbox 'scripts') -Force | Out-Null
             Copy-Item (Join-Path $script:RepoRoot 'scripts/check-agy-discipline-skills.ps1') (Join-Path $sandbox 'scripts') -Force
+            # ...and the rule runner it dot-sources from beside itself.
+            New-Item -ItemType Directory -Path (Join-Path $sandbox 'scripts/lib') -Force | Out-Null
+            Copy-Item (Join-Path $script:RepoRoot 'scripts/lib/rule-runner.ps1') (Join-Path $sandbox 'scripts/lib') -Force
             $victim = Join-Path $sandbox 'clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md'
             (Get-Content $victim -Raw).Replace('## AGY-NEGOTIATE', '## Something Else Entirely') |
                 Set-Content $victim -NoNewline

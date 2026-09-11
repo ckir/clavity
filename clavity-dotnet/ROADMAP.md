@@ -2603,16 +2603,35 @@ in the section-21 capstone because every rewording becomes a false RED.** This o
   2026-09-11 as the proportionate fold; planting every check was the rejected alternative, as a large
   fixture brittle to any rewording.) **Round 3 found the fold's residual:** a `continue` after a check
   the row does NOT plant (the marker constant) never fires in the fixture, and all 92 rows stayed green.
-  Owner-chosen close: a CONTROL-FLOW GUARD that reads the linter's AST - inside the three per-skill loops,
-  no `continue`, `break`, `return` or `exit` may follow a failure except a `continue` guarded by "the
-  skill file cannot be read", and `Fail` itself may hold none (a `break` there resolves dynamically into
-  the caller's loop). It has its own fixture row proving it fires. **It also found a real skip in the
+  The round-3 close, owner-chosen, was an AST guard banning `continue`/`break`/`return`/`exit` after a
+  failure inside the three loops. **Round 4 showed it pinned jump SYNTAX, not the property:** wrapping
+  the later checks in an `else` skips them with no jump at all. Owner-chosen close, agreed with the peer
+  at AGY-FIRST (`.clavity/seams/agyfirst-s30-runner.md`): **the linter was rebuilt so a skip cannot be
+  written.** Every per-skill check is now a rule, and ONE runner, `scripts/lib/rule-runner.ps1`
+  (`Invoke-Rules`), runs every rule against every skill. A rule reports through `$ctx.Report(...)` and
+  its pipeline output is discarded, so no return value can stop anything. Each rule runs behind a
+  `do { } while ($false)` barrier, because PowerShell resolves `break`/`continue` dynamically; MEASURED
+  without it, a `break` in one rule ended the whole run. A throw becomes a `crashed` diagnostic naming the
+  skill file and the rule. **`exit` is the one jump nothing holds:** MEASURED, `catch`, a typed catch on
+  `ExitException` and `trap` all miss it, and before the fix a rule's `exit 0` ended the run with exit
+  code 0 and every later rule unrun - a false GREEN. The runner cannot stop it, but a `finally` makes it LOUD: it names
+  the rule and forces exit code 1. The runner's property is pinned by `scripts/tests/rule-runner.Tests.ps1`:
+  every rule runs for every context whatever a rule does, short of an `exit`, and an `exit` fails the
+  run. The `exit` row runs the runner in a child process, with a control child that runs clean. An
+  ARCHITECTURE GUARD pins that the linter still
+  uses it: no per-skill loop outside the context builder, no `Fail` inside rule code, and exactly one
+  `Invoke-Rules` call. It has its own fixture row proving it fires. It REPLACED the round-3 guard, so the
+  row count stayed at 94. **Round 3 also found a real skip in the
   linter:** after an unreadable SCHEMAS registry, a `continue` hid every later check for the skill,
   including the ledger check; that branch is now an `else` around only the registry-dependent checks, and
   the SCHEMAS-block row requires the ledger diagnostic too - RED before the linter fix, green after.
-  MEASURED: continue/break/exit mutants after planted and unplanted checks, inside a nested loop and
-  inside `Fail`, all redden the guard; mutants that widen the guard's allowlist or narrow its loop
-  discovery redden its fixture row.
+  MEASURED on the redesign: seven runner mutants each redden `rule-runner.Tests.ps1`. They drop the
+  barrier around a rule, drop the barrier around its `AppliesTo`, rethrow a throw instead of reporting
+  it, collect pipeline output, stay silent when an `AppliesTo` jumps out without answering, attach
+  `Report` to the caller's own object, and let an `exit` through quietly. The `Report` one survived at
+  first because the test looked for the method among the PROPERTIES, and it was fixed. Four linter mutants each redden the architecture guard: a
+  per-skill loop written back, a rule that calls `Fail`, the runner never called, and a check smuggled
+  into the context builder. Two guard mutants that loosen the guard redden its fixture row.
 - **30c — NOT FIXED, by ruling.** Converged with the peer at AGY-FIRST and accepted by the owner on
   2026-09-08 (`.clavity/seams/agyfirst-phase3b.md`, question 3), on the section's own counter-argument:
   pinning a message suffix is pinning prose verbatim, which this repo folded twice in the section-21

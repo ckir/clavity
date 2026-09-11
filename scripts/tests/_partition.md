@@ -738,8 +738,10 @@ check-agy-discipline-skills.Tests.ps1            43,2s   94 tests   <- FAST, re-
   linter source) and the two-skill row (ONE scratch root, ONE in-process linter run). The ledger rows
   stayed at six - their roster is now DERIVED, not restated. Runtime NOT re-measured, and this is the
   fast half, which sits near its 600s cap: the two rows add roughly one row's worth of existing cost.
-  92 -> 94 the same day (AGY-CAPSTONE section 30 round 3): the control-flow guard and its fixture row,
-  both a single in-process parse - milliseconds, no linter run.
+  92 -> 94 the same day (AGY-CAPSTONE section 30 round 3): a control-flow guard and its fixture row.
+  Round 4 RETIRED that guard when the owner had the linter rebuilt as rules + one runner; its two rows
+  were REPLACED by the architecture guard and its fixture row, so the count stayed 94. Both are a single
+  in-process parse - milliseconds, no linter run. The runner's own property lives in rule-runner below.
   Re-measured 2026-09-03 for ROADMAP section 23, count 75 -> 82 (five section-23 ledger pins, then two
   more from the AGY-CAPSTONE R1 fold that pinned -PathType Leaf). RUNTIME IS UNRELIABLE HERE: THREE
   observations the same afternoon gave 43,2s, 76,8s and 143,4s - a 3,3x spread - with at most two rows
@@ -1054,6 +1056,15 @@ plugin-hooks-payload.Tests.ps1                    3,4s    5 tests   <- FAST. COU
                                                                       2026-08-05 figure, taken at 2 tests.
 register-plugin.Tests.ps1                         6,6s   18 tests   <- FAST, re-measured 2026-08-05
 release-lib.Tests.ps1                             5,5s   23 tests   <- FAST, re-measured 2026-08-05
+rule-runner.Tests.ps1                                ?    8 tests   <- FAST, ADDED 2026-09-11 (ROADMAP section 30b,
+                                                                      AGY-CAPSTONE section 30 round 4). NO SOLO
+                                                                      TIME - NOT MEASURED. Seven rows are pure
+                                                                      in-process scriptblock calls: no file I/O,
+                                                                      no linter run. The eighth spawns TWO child
+                                                                      pwsh processes - `exit` ends the process it
+                                                                      runs in, so it cannot be tested in-process.
+                                                                      Those two process starts are the suite's
+                                                                      whole cost, and they are NOT timed.
 path-lib.Tests.ps1                                9,5s   18 tests   <- FAST, ADDED 2026-09-08 (section 28). This is
                                                                       the WARM figure; the cold first run
                                                                       measured 27,1s. THE FAST HALF WAS NOT
