@@ -46,6 +46,18 @@ Describe 'Get-RootRelativePath' {
             Should -Be 'installer\probe.ps1'
     }
 
+    It 'accepts a PATH spelled in different casing from the disk, because NTFS is case-insensitive' {
+        # THE ROW ABOVE CANNOT PIN THIS. Get-Item normalises the ROOT to its on-disk casing, and
+        # $script:Child comes from Get-ChildItem, which also returns on-disk casing - MEASURED, even when the
+        # enumeration starts from a mis-cased root. Both sides already agree, so a case-SENSITIVE prefix test
+        # passes them: AGY-CAPSTONE round 6 deleted 'OrdinalIgnoreCase' and all 16 rows stayed green. Only a
+        # PATH built by hand - joined onto the root as a caller typed it - differs in case from the
+        # normalised root, and on NTFS that path IS under the root, so it must resolve rather than throw
+        # "escaped root". The gates never build such a path today; the library's contract still covers it.
+        Get-RootRelativePath -Root $script:Root -Path $script:Child.ToUpperInvariant() |
+            Should -Be 'INSTALLER\PROBE.PS1'
+    }
+
     It 'normalises a root carrying a trailing separator' {
         Get-RootRelativePath -Root ($script:Root + [char]92) -Path $script:Child |
             Should -Be 'installer\probe.ps1'
