@@ -2595,7 +2595,13 @@ in the section-21 capstone because every rewording becomes a false RED.** This o
   first loop: AGY-CAPSTONE round 1 MEASURED an early exit in the envelope loop leaving all 92 rows green.
   MEASURED after the fold, with an early exit added to each loop in turn: this row reddens every time,
   and for the first two loops it is the ONLY row that does (for the AGY-NEGOTIATE loop, that loop's own
-  row catches it too).
+  row catches it too). **Round 2 found the same blindness across CHECKS:** a `continue` after one failure
+  skipped that skill's remaining checks in the loop, and all 92 rows stayed green. So the row also breaks
+  the FIRST and LAST check of each multi-check loop - frontmatter name and ledger path; discipline mandate,
+  scratch directory and anti-wrap-up clause - and requires every diagnostic. MEASURED: a `continue` after
+  the first check of either loop, or after the scratch-directory check, now reddens it. (Owner-scoped
+  2026-09-11 as the proportionate fold; planting every check was the rejected alternative, as a large
+  fixture brittle to any rewording.)
 - **30c — NOT FIXED, by ruling.** Converged with the peer at AGY-FIRST and accepted by the owner on
   2026-09-08 (`.clavity/seams/agyfirst-phase3b.md`, question 3), on the section's own counter-argument:
   pinning a message suffix is pinning prose verbatim, which this repo folded twice in the section-21

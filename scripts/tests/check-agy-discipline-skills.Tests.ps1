@@ -201,7 +201,7 @@ Describe 'check-agy-discipline-skills' {
         }
     }
 
-    It 'reports EVERY failing skill, not just the first, in EVERY per-skill loop (ROADMAP section 30b)' {
+    It 'reports EVERY failing skill and every failing check, in EVERY per-skill loop (ROADMAP section 30b)' {
         # Each other row here perturbs ONE skill, so all of them are blind to an early exit: make the linter
         # halt after its first failure and every single-perturbation row stays green. This row breaks TWO
         # skills and requires BOTH diagnostics, which is the only shape that can see the difference.
@@ -210,8 +210,16 @@ Describe 'check-agy-discipline-skills' {
         # loop (ledger), the $disciplineNames envelope loop (scratch dir), and the AGY-NEGOTIATE loop - and an
         # early exit can be added to any one of them. The first version of this row broke only the ledger
         # path, so it pinned only the first loop: AGY-CAPSTONE section 30 round 1 MEASURED an early exit in
-        # the envelope loop leaving all 92 rows GREEN. So each skill is broken once per loop, and all six
-        # diagnostics are required, each naming its skill.
+        # the envelope loop leaving all 92 rows GREEN. So each skill is broken in every loop, and every
+        # diagnostic is required, each naming its skill.
+        #
+        # AND ACROSS CHECKS, NOT ONLY ACROSS SKILLS. Round 2 MEASURED the same blindness one level down: a
+        # `continue` after the scratch-dir failure skips that skill's REMAINING checks in the loop, and all
+        # 92 rows stayed green, because one planted defect per loop leaves nothing after it to lose. So each
+        # loop that has more than one check gets its FIRST and its LAST check broken as well: a `continue`
+        # after any planted failure then skips a later planted one, and its diagnostic goes missing. (The
+        # AGY-NEGOTIATE loop needs only its heading: with the heading gone, its only other check - the round
+        # cap - sits in the `else` and cannot run.)
         #
         # It uses the SAME two disciplines the ledger roster names - both are also in $disciplineNames -
         # and DELETES rather than substitutes, for the reason recorded on the ledger rows: a fixture that
@@ -225,9 +233,12 @@ Describe 'check-agy-discipline-skills' {
                 $target = & $script:SkillPath $scratch $entry.skill
                 $real   = Get-Content -Raw $target
                 $body   = $real
-                # One break per loop: the ledger path ($skills loop), the sanctioned scratch directory (the
-                # envelope loop), and the AGY-NEGOTIATE heading (the negotiation loop).
-                foreach ($needle in @($entry.ledger, '.clavity/scratch/', '## AGY-NEGOTIATE')) {
+                # $skills loop: its FIRST check (the frontmatter name) and its LAST (the ledger path).
+                # Envelope loop: its FIRST (the discipline mandate), a MIDDLE one (the scratch directory) and
+                # its LAST (the anti-wrap-up clause). AGY-NEGOTIATE loop: the heading.
+                foreach ($needle in @("name: $($entry.skill)", $entry.ledger,
+                                      "discipline: `"$($entry.skill)`"", '.clavity/scratch/', '> Put nothing after the terminal token.',
+                                      '## AGY-NEGOTIATE')) {
                     $body.Contains($needle) | Should -BeTrue -Because "the fixture needs '$needle' present in $($entry.skill) before it can be removed"
                     $body = $body.Replace($needle, '')
                     $body.Contains($needle) | Should -BeFalse -Because "every '$needle' must be gone from $($entry.skill), not just the first"
@@ -239,14 +250,21 @@ Describe 'check-agy-discipline-skills' {
             $LASTEXITCODE | Should -Be 1
             $text = Get-LintText $out
 
-            # THE ASSERTION IS THAT ALL SIX APPEAR. Asserting a COUNT would be weaker: a count is invariant
-            # under reporting the same skill twice, which is exactly the confusion an early-exit bug
-            # creates. Name each one, with the skill it belongs to.
+            # THE ASSERTION IS THAT EVERY ONE APPEARS. Asserting a COUNT would be weaker: a count is
+            # invariant under reporting the same skill twice, which is exactly the confusion an early-exit
+            # bug creates. Name each one, with the skill it belongs to.
             foreach ($entry in $roster) {
                 $rel = "clavity-dotnet/plugin/skills/$($entry.skill)/SKILL.md"
-                $text | Should -Match ([regex]::Escape("never names '$($entry.ledger)'")) -Because "the `$skills loop must report $($entry.skill) even when it is not the first failure"
-                $text | Should -Match ([regex]::Escape("$rel : names no sanctioned scratch directory")) -Because "the envelope loop must report $($entry.skill) even when it is not the first failure"
-                $text | Should -Match ([regex]::Escape("'$($entry.skill)' has no '## AGY-NEGOTIATE' section")) -Because "the AGY-NEGOTIATE loop must report $($entry.skill) even when it is not the first failure"
+                foreach ($expected in @(
+                    "$rel : frontmatter 'name:' must equal '$($entry.skill)'"
+                    "$rel : never names '$($entry.ledger)'"
+                    "$rel : does not instruct the caller to pass discipline: `"$($entry.skill)`""
+                    "$rel : names no sanctioned scratch directory"
+                    "$rel : missing the anti-wrap-up clause as PAYLOAD text"
+                    "'$($entry.skill)' has no '## AGY-NEGOTIATE' section"
+                )) {
+                    $text | Should -Match ([regex]::Escape($expected)) -Because "$($entry.skill) must be reported for EVERY planted defect, not just the first in its loop or the first skill"
+                }
             }
         }
         finally { Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue }
