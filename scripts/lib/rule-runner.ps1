@@ -29,10 +29,11 @@
 # argument, so one scriptblock can be stamped out once per item of a list (a verdict form, an envelope
 # step) without a closure: a GetNewClosure'd block gets a scope of its own, and `$script:` inside it would
 # silently stop meaning the calling script.
-# A context: any object; Invoke-Rules adds a Report method to its own copy of it.
+# A context: any object; Invoke-Rules hands each rule its own copy of it, with a Report method added.
 #
-# Returns every diagnostic, in context order then rule order. A rule whose AppliesTo throws is reported as
-# crashed too - a predicate that cannot answer is a rule that did not run, and that must be loud.
+# Returns every diagnostic, in context order then rule order. A rule whose AppliesTo throws, jumps out, or
+# answers with anything but one boolean is reported as crashed too - a predicate that cannot answer is a
+# rule that did not run, and that must be loud.
 function Invoke-Rules {
     [CmdletBinding()]
     param(
@@ -42,12 +43,15 @@ function Invoke-Rules {
     $diagnostics = [System.Collections.Generic.List[string]]::new()
     foreach ($context in $Contexts) {
         $label = if ($context.PSObject.Properties['Rel']) { $context.Rel } else { '<context>' }
-        # One Report per context, closing over the shared list. The context is COPIED so the method is
-        # never attached to an object the caller still holds.
-        $ctx = $context.PSObject.Copy()
         $sink = $diagnostics
-        $ctx | Add-Member -Force -MemberType ScriptMethod -Name Report -Value ({ param([string]$Message) $sink.Add($Message) }.GetNewClosure())
         foreach ($rule in $Rules) {
+            # EVERY RULE GETS ITS OWN COPY of the context, with a Report closing over the shared list. Not one
+            # copy per context: AGY-CAPSTONE section 30 round 5 MEASURED that a rule renaming $ctx.Skill made a
+            # later rule's AppliesTo answer $false, and that rule vanished with no diagnostic - a quiet skip.
+            # Never the caller's own object either, so the method is not attached to anything it still holds.
+            # A shallow copy is enough: a context's values are strings, which nothing can edit in place.
+            $ctx = $context.PSObject.Copy()
+            $ctx | Add-Member -Force -MemberType ScriptMethod -Name Report -Value ({ param([string]$Message) $sink.Add($Message) }.GetNewClosure())
             # `exit` IS THE ONE JUMP NO BARRIER HOLDS. MEASURED: catch, a typed catch on ExitException and
             # trap all miss it, and it ends the whole process - the rules after it, and every later context,
             # never run. The finally below cannot stop that, but it can make it LOUD: it names the rule and
@@ -56,12 +60,19 @@ function Invoke-Rules {
             try {
                 # A predicate that jumps out before answering would otherwise SKIP its rule in silence -
                 # the very thing this runner exists to prevent - so an unanswered AppliesTo is reported.
-                $applies = $false; $answered = $false
-                do { $applies = [bool](& $rule.AppliesTo $ctx $rule); $answered = $true } while ($false)
+                # And the answer must be ONE boolean, never cast from whatever came back. MEASURED in round 5:
+                # a predicate that leaked a value before answering $false returned a two-element array, [bool]
+                # of which is $true, so its check ran where it was told not to.
+                $answer = @(); $answered = $false
+                do { $answer = @(& $rule.AppliesTo $ctx $rule); $answered = $true } while ($false)
                 if (-not $answered) {
                     $diagnostics.Add("$label : rule '$($rule.Name)' crashed - its AppliesTo jumped out without answering")
                 }
-                elseif ($applies) {
+                elseif ($answer.Count -ne 1 -or $answer[0] -isnot [bool]) {
+                    $got = if ($answer.Count -eq 0) { 'nothing' } else { @($answer | ForEach-Object { if ($null -eq $_) { 'null' } else { $_.GetType().Name } }) -join ', ' }
+                    $diagnostics.Add("$label : rule '$($rule.Name)' crashed - its AppliesTo must answer with exactly one boolean, not: $got")
+                }
+                elseif ($answer[0]) {
                     do { $null = & $rule.Check $ctx $rule } while ($false)
                 }
                 $returned = $true

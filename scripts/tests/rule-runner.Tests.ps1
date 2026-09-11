@@ -83,6 +83,40 @@ Describe 'Invoke-Rules' {
         )
     }
 
+    It 'reports an AppliesTo that answers with anything but ONE boolean, instead of guessing' {
+        # AGY-CAPSTONE section 30 round 5, MEASURED: a predicate that leaked a value before answering $false
+        # came back as a two-element array, [bool] of that is $true, and the check ran where it was told not
+        # to. A single non-boolean ('no', 1) is just as much a guess, so it is reported too.
+        $check = { param($ctx) $ctx.Report("RAN:$($ctx.Rel)") }
+        $rules = @(
+            @{ Name = 'leaks';  AppliesTo = { param($ctx) Write-Output 'leaked'; $false }; Check = $check }
+            @{ Name = 'adds';   AppliesTo = { param($ctx) [System.Collections.ArrayList]::new().Add(1); $false }; Check = $check }
+            @{ Name = 'string'; AppliesTo = { param($ctx) 'no' }; Check = $check }
+            @{ Name = 'silent'; AppliesTo = { param($ctx) }; Check = $check }
+            @{ Name = 'plain';  AppliesTo = { param($ctx) $true }; Check = $check }
+        )
+        @(Invoke-Rules -Rules $rules -Contexts @($script:Contexts[0])) | Should -Be @(
+            "one : rule 'leaks' crashed - its AppliesTo must answer with exactly one boolean, not: String, Boolean"
+            "one : rule 'adds' crashed - its AppliesTo must answer with exactly one boolean, not: Int32, Boolean"
+            "one : rule 'string' crashed - its AppliesTo must answer with exactly one boolean, not: String"
+            "one : rule 'silent' crashed - its AppliesTo must answer with exactly one boolean, not: nothing"
+            'RAN:one'
+        )
+    }
+
+    It 'gives every rule its OWN copy of the context, so no rule can hide another' {
+        # AGY-CAPSTONE section 30 round 5, MEASURED: with one copy per context, a rule that renamed
+        # $ctx.Skill made a later rule's AppliesTo answer $false - the later rule vanished with no
+        # diagnostic at all, the exact quiet skip this runner exists to prevent.
+        $ctxs = @([pscustomobject]@{ Rel = 'one'; Skill = 'agy-first'; N = 1 })
+        $rules = @(
+            @{ Name = 'mutates'; AppliesTo = { param($ctx) $true }; Check = { param($ctx) $ctx.Skill = 'renamed'; $ctx.N = 99; $ctx.Report('mutated') } }
+            @{ Name = 'later';   AppliesTo = { param($ctx) $ctx.Skill -eq 'agy-first' }; Check = { param($ctx) $ctx.Report("later saw N=$($ctx.N)") } }
+        )
+        @(Invoke-Rules -Rules $rules -Contexts $ctxs) | Should -Be @('mutated', 'later saw N=1')
+        $ctxs[0].Skill | Should -Be 'agy-first' -Because 'the caller''s own object is never the one a rule writes to'
+    }
+
     It 'leaves the caller''s context objects untouched' {
         $null = @(Invoke-Rules -Rules $script:Rules -Contexts $script:Contexts)
         # PSObject.METHODS, not .Properties: Report is a ScriptMethod, and a ScriptMethod never appears in

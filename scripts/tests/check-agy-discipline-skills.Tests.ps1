@@ -161,15 +161,31 @@ BeforeAll {
     # scripts/tests/rule-runner.Tests.ps1. What is left to guard here is the ARCHITECTURE: that nobody adds
     # a check back as a hand-written loop the runner never sees.
     #
-    # Violations: a per-skill loop (a foreach over $skills or $disciplineNames) other than the ONE that
-    # builds the contexts; a Fail in that builder other than for a MISSING or EMPTY file; a Fail called from
-    # inside the rules table (a rule REPORTS); and anything but exactly one Invoke-Rules call.
+    # Violations: a per-skill loop other than the ONE that builds the contexts; a Fail in that builder
+    # other than the two sanctioned ones; a Fail called from inside the rules table (a rule REPORTS); and
+    # anything but exactly one Invoke-Rules call.
+    #
+    # A PER-SKILL LOOP is any loop whose HEADER names $skills or $disciplineNames - foreach, for, while, do -
+    # plus a pipeline that starts from one and runs ForEach-Object (or `%`, or `foreach`) or holds a Fail,
+    # and a .ForEach() / .Where() on one. AGY-CAPSTONE section 30 round 5 MEASURED that
+    # `$disciplineNames | ForEach-Object { ... Fail ... }` passed the first version, which knew only
+    # `foreach` statements. A plain `Where-Object` filter with no Fail is not a check and is not judged
+    # (the roster reconciliation uses one). This is still SYNTAX: a loop over a COPY of a list escapes it.
+    # The runner is what makes a skip unwritable; this only catches a check written outside it by habit.
+    #
+    # THE BUILDER'S TWO FAILS ARE MATCHED EXACTLY, each at most once. Round 5 MEASURED that a prefix match
+    # let `Fail "MISSING: transport in $rel"` - a real check with a borrowed prefix - through.
     function Find-HandRolledCheck([string]$Source) {
         $L = 'System.Management.Automation.Language'
         $tokens = $null; $errors = $null
         $ast = [System.Management.Automation.Language.Parser]::ParseInput($Source, [ref]$tokens, [ref]$errors)
         if ($errors) { throw "Find-HandRolledCheck: the source does not parse - $($errors[0].Message)" }
         $isFail = { param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Fail' }
+        # UserPath, scope prefix stripped: `$script:skills` is 'script:skills'. (VariablePath has no
+        # UnqualifiedPath property - MEASURED, reading one returns $null and matched nothing, silently.)
+        $isSkillList = { param($n) $n -is [System.Management.Automation.Language.VariableExpressionAst] -and
+            ($n.VariablePath.UserPath -replace '^\w+:', '') -in 'skills', 'disciplineNames' }
+        $names = { param($a) [bool]($a -and $a.Find($isSkillList, $true)) }
         $builder = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
             $n.Left.Extent.Text -eq '$contexts' }, $true)
         # Every place rule code lives: each assignment to $skillRules (the table, and each `+=` that stamps
@@ -177,19 +193,32 @@ BeforeAll {
         $ruleCode = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
             ($n.Left.Extent.Text -eq '$skillRules' -or $n.Left.Extent.Text -match '^\$\w+(Check|Applies)$') }, $true))
         $rulesTable = $ruleCode | Where-Object { $_.Left.Extent.Text -eq '$skillRules' -and $_.Operator -eq 'Equals' } | Select-Object -First 1
+        $loops = @($ast.FindAll({ param($n)
+            ($n -is [System.Management.Automation.Language.ForEachStatementAst] -and (& $names $n.Condition)) -or
+            ($n -is [System.Management.Automation.Language.ForStatementAst] -and ((& $names $n.Initializer) -or (& $names $n.Condition) -or (& $names $n.Iterator))) -or
+            ($n -is [System.Management.Automation.Language.LoopStatementAst] -and $n -isnot [System.Management.Automation.Language.ForEachStatementAst] -and
+                $n -isnot [System.Management.Automation.Language.ForStatementAst] -and (& $names $n.Condition)) -or
+            ($n -is [System.Management.Automation.Language.PipelineAst] -and $n.PipelineElements.Count -gt 1 -and (& $names $n.PipelineElements[0]) -and
+                ($n.Find({ param($c) $c -is [System.Management.Automation.Language.CommandAst] -and $c.GetCommandName() -in 'ForEach-Object', '%', 'foreach' }, $true) -or
+                 $n.Find($isFail, $true))) -or
+            ($n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and $n.Member.Extent.Text -in 'ForEach', 'Where' -and (& $names $n.Expression))
+        }, $true))
         @(
-            foreach ($lp in @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.ForEachStatementAst] -and
-                    $n.Condition.Extent.Text -in '$skills', '$disciplineNames' }, $true))) {
+            foreach ($lp in $loops) {
                 $inBuilder = $false
                 for ($p = $lp.Parent; $p; $p = $p.Parent) { if ($builder -and $p -eq $builder) { $inBuilder = $true; break } }
                 if (-not $inBuilder) {
-                    "a hand-written per-skill loop over $($lp.Condition.Extent.Text) at line $($lp.Extent.StartLineNumber) - add a rule instead"
-                } else {
-                    foreach ($f in @($lp.Body.FindAll($isFail, $true))) {
-                        if ($f.Extent.Text -notmatch '^Fail "(MISSING|EMPTY): ') {
-                            "the contexts builder checks something at line $($f.Extent.StartLineNumber) - only a MISSING or EMPTY file belongs there"
-                        }
+                    "a hand-written per-skill loop at line $($lp.Extent.StartLineNumber) - add a rule instead"
+                }
+            }
+            if ($builder) {
+                $seen = @{}
+                foreach ($f in @($builder.FindAll($isFail, $true))) {
+                    $t = $f.Extent.Text
+                    if ($t -notin 'Fail "MISSING: $rel"', 'Fail "EMPTY: $rel"' -or $seen.ContainsKey($t)) {
+                        "the contexts builder checks something at line $($f.Extent.StartLineNumber) - only a MISSING or EMPTY file belongs there"
                     }
+                    $seen[$t] = $true
                 }
             }
             if (-not $rulesTable) { 'no $skillRules table' }
@@ -339,6 +368,9 @@ Describe 'check-agy-discipline-skills' {
             '$contexts = @(foreach ($skill in $disciplineNames) {'
             '    if (-not (Test-Path $p)) { Fail "MISSING: $rel" }'
             '    if ($raw -notmatch ''x'') { Fail "$rel : sneaked in" }'
+            '    if (-not $raw.Contains(''agy_ask'')) { Fail "MISSING: transport in $rel" }'
+            '    if ($raw -notmatch ''y'') { Fail "MISSING: $rel" }'
+            '    if ([string]::IsNullOrEmpty($raw)) { Fail "EMPTY: $rel" }'
             '})'
             '$skillRules = @('
             '    @{ Name = ''bad''; AppliesTo = { $true }; Check = { param($ctx) Fail ''direct'' } }'
@@ -346,14 +378,29 @@ Describe 'check-agy-discipline-skills' {
             '$extraCheck = { param($ctx) Fail ''also direct'' }'
             'foreach ($skill in $skills) { if ($x) { Fail "x" } }'
             'foreach ($other in $unrelated) { Fail ''not per-skill, so not judged'' }'
+            '$disciplineNames | ForEach-Object { if ($_ -eq ''x'') { Fail "x" } }'
+            '$script:skills.ForEach({ param($s) if ($s) { Fail "x" } })'
+            'for ($i = 0; $i -lt $skills.Count; $i++) { Fail "x" }'
+            '$disciplineNames | Where-Object { if ($_) { Fail "x" } }'
+            '$onlyInRoster = @($disciplineNames | Where-Object { $_ -notin $registry })'
+            'while ($i -lt $disciplineNames.Count) { Fail "x"; $i++ }'
         ) -join "`n"
         @(Find-HandRolledCheck $fixture | Sort-Object) | Should -Be @(
-            'a hand-written per-skill loop over $skills at line 9 - add a rule instead'
-            'a rule calls Fail at line 6 - a rule must REPORT through $ctx.Report'
-            'a rule calls Fail at line 8 - a rule must REPORT through $ctx.Report'
+            'a hand-written per-skill loop at line 12 - add a rule instead'
+            'a hand-written per-skill loop at line 14 - add a rule instead'
+            'a hand-written per-skill loop at line 15 - add a rule instead'
+            'a hand-written per-skill loop at line 16 - add a rule instead'
+            'a hand-written per-skill loop at line 17 - add a rule instead'
+            'a hand-written per-skill loop at line 19 - add a rule instead'
+            'a rule calls Fail at line 11 - a rule must REPORT through $ctx.Report'
+            'a rule calls Fail at line 9 - a rule must REPORT through $ctx.Report'
             'expected exactly ONE Invoke-Rules call, found 0'
             'the contexts builder checks something at line 3 - only a MISSING or EMPTY file belongs there'
-        ) -Because 'the MISSING skip (line 2) is allowed, and a loop that is not per-skill (line 10) is not judged'
+            'the contexts builder checks something at line 4 - only a MISSING or EMPTY file belongs there'
+            'the contexts builder checks something at line 5 - only a MISSING or EMPTY file belongs there'
+        ) -Because ('the first MISSING and the EMPTY skip (lines 2 and 6) are allowed; a borrowed MISSING: prefix ' +
+            '(line 4) and a second exact MISSING (line 5) are not; a loop that is not per-skill (line 13) and a ' +
+            'Where-Object filter holding no Fail (line 18) are not judged')
     }
 
     Context 'rejection cases (each perturbs one skill; the other stays valid)' {

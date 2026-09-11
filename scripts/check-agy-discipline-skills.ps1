@@ -140,7 +140,8 @@ $checkerPath = Join-Path $PSScriptRoot 'check-peer-reply-citations.py'
 #
 # HOW TO ADD A CHECK: add a rule. One check per rule, so nothing a check does can reach another. A rule
 # REPORTS through `$ctx.Report(...)` - its pipeline output is discarded - and reads the skill from the
-# context: Skill, Rel, Raw. Script-level settings are read as `$script:...`, never bare, so a local name in
+# context: Skill, Rel, Raw. Its AppliesTo answers with exactly ONE boolean - anything else is reported as a
+# crash, never guessed at. Script-level settings are read as `$script:...`, never bare, so a local name in
 # the runner can never shadow them. A rule stamped out once per item of a list reads its item from
 # `$rule.Data`. Only where checks genuinely DEPEND on one another (the SCHEMAS lookup and its key list; a
 # ledger clause and its file; the AGY-NEGOTIATE heading and its cap) do they share a rule.

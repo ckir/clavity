@@ -2632,6 +2632,20 @@ in the section-21 capstone because every rewording becomes a false RED.** This o
   first because the test looked for the method among the PROPERTIES, and it was fixed. Four linter mutants each redden the architecture guard: a
   per-skill loop written back, a rule that calls `Fail`, the runner never called, and a check smuggled
   into the context builder. Two guard mutants that loosen the guard redden its fixture row.
+  **Round 5 found four more, all MEASURED before folding.** (1) An `AppliesTo` that leaked a value
+  before answering `$false` came back as a two-element array; `[bool]` of that is `$true`, so its check
+  ran where it was told not to. An `AppliesTo` must now answer with exactly ONE boolean, or the rule is
+  reported as crashed. (2) Every rule shared one copy of the context, so a rule that renamed
+  `$ctx.Skill` made a later rule's `AppliesTo` answer `$false`, and that rule vanished with no diagnostic
+  - a quiet skip. Each rule now gets its own copy. (3) The guard matched the builder's `Fail` calls by
+  PREFIX, so `Fail "MISSING: transport in $rel"` - a real check with a borrowed prefix - passed it. The
+  two sanctioned calls are now matched exactly, each at most once. (4) The guard knew only `foreach`
+  statements, so `$disciplineNames | ForEach-Object { ... Fail ... }` passed it. It now also judges
+  `for`, `while` and `do` loops, `.ForEach()` / `.Where()`, and a pipeline from a skill list that runs
+  `ForEach-Object` or holds a `Fail`. That is still SYNTAX: a loop over a COPY of a list escapes it.
+  The runner is what makes a skip unwritable; the guard catches a check written outside it by habit.
+  MEASURED: two runner mutants and eight guard mutants, one per fold, each redden their row, and the four
+  linter mutants above still redden the widened guard.
 - **30c — NOT FIXED, by ruling.** Converged with the peer at AGY-FIRST and accepted by the owner on
   2026-09-08 (`.clavity/seams/agyfirst-phase3b.md`, question 3), on the section's own counter-argument:
   pinning a message suffix is pinning prose verbatim, which this repo folded twice in the section-21

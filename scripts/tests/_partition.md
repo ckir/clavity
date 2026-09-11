@@ -1056,11 +1056,11 @@ plugin-hooks-payload.Tests.ps1                    3,4s    5 tests   <- FAST. COU
                                                                       2026-08-05 figure, taken at 2 tests.
 register-plugin.Tests.ps1                         6,6s   18 tests   <- FAST, re-measured 2026-08-05
 release-lib.Tests.ps1                             5,5s   23 tests   <- FAST, re-measured 2026-08-05
-rule-runner.Tests.ps1                                ?    8 tests   <- FAST, ADDED 2026-09-11 (ROADMAP section 30b,
-                                                                      AGY-CAPSTONE section 30 round 4). NO SOLO
-                                                                      TIME - NOT MEASURED. Seven rows are pure
+rule-runner.Tests.ps1                                ?   10 tests   <- FAST, ADDED 2026-09-11 (ROADMAP section 30b,
+                                                                      AGY-CAPSTONE section 30 rounds 4-5). NO SOLO
+                                                                      TIME - NOT MEASURED. Nine rows are pure
                                                                       in-process scriptblock calls: no file I/O,
-                                                                      no linter run. The eighth spawns TWO child
+                                                                      no linter run. The `exit` row spawns TWO child
                                                                       pwsh processes - `exit` ends the process it
                                                                       runs in, so it cannot be tested in-process.
                                                                       Those two process starts are the suite's
