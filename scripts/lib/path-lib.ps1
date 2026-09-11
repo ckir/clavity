@@ -16,9 +16,11 @@ Set-StrictMode -Version Latest
 #
 # NOT [IO.Path]::GetRelativePath, and NOT because of PowerShell 5.1 - that argument was checked and does
 # not bind these files (ci-scripts.yml:75 runs the gate under pwsh). It is rejected because it FAILS OPEN:
-# it is pure string math that never touches the filesystem, so a path outside the root returns a
-# well-formed `..\..\other\x.md` and a non-existent root returns confident fiction. For a gate whose
-# output a human reads and whose ignore globs are prefix-matched, a plausible lie is worse than garbage.
+# a path outside the root returns a well-formed `..\..\other\x.md` and a non-existent root returns
+# confident fiction, where this library throws. For a gate whose output a human reads and whose ignore globs
+# are prefix-matched, a plausible lie is worse than garbage. (An earlier version of this comment also said it
+# "never touches the filesystem". MEASURED false at AGY-CAPSTONE round 8: it goes through GetFullPath, which
+# expands an 8.3 short root, so it gets the SHORT-ROOT case right. Failing open is the whole objection.)
 
 # THE FACTORY. Normalise the root ONCE, then resolve any number of paths against it with pure string math.
 #

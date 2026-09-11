@@ -261,13 +261,33 @@ Describe 'check-dangling-consumers' {
         # THE HONEST LIMIT OF THIS GUARD, stated because a guard that fails open certifies exactly what it
         # stopped checking: it matches the IDIOM all eight migrated sites used. It does NOT catch a split
         # form -- `$p = $_.FullName` on one line and `$p.Substring($root.Length)` on the next -- nor
-        # `.Remove(0, $root.Length)`. It raises the cost of reintroducing the defect; it does not make it
-        # impossible. Do not let a future reader mistake it for exhaustive.
+        # `.Remove(0, $root.Length)`, nor - AGY-CAPSTONE round 8, MEASURED - a string REPLACE of the root:
+        # `$_.FullName.Replace($root, '')` and `$_.FullName -replace "^$([regex]::Escape($root))", ''` both
+        # return the whole absolute path unchanged when the root is short and the child long. Matching `.Replace(`
+        # is not the answer: `$_.FullName.Replace('\', '/')` is everywhere and correct. For the FOUR MIGRATED
+        # GATES there is a behavioural backstop - reverting any one of them to either replace form reddens that
+        # gate's own 8.3 integration row (measured, round 8) - but a NEW script has only this regex. It raises
+        # the cost of reintroducing the defect; it does not make it impossible. Do not mistake it for exhaustive.
+        #
+        # COMMENTS ARE BLANKED BEFORE MATCHING. Round 8: matching raw text meant a comment that SPELLED the
+        # idiom - the natural way to warn a reader off it - reddened the row on correct code. That had already
+        # bitten section 28 once (Task 5 had to reword a comment). The parser's own Comment tokens are cut out
+        # by offset; code and strings are matched exactly as before.
         $scripts = @(Get-Section28Population)
         $scripts.Count | Should -BeGreaterThan 0 -Because 'an empty glob would make this guard vacuous'
 
         $bad = foreach ($s in $scripts) {
-            if ([IO.File]::ReadAllText($s.FullName) -match '\.FullName\)?\.Substring\(') { $s.Name }
+            $tokens = $null; $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($s.FullName, [ref]$tokens, [ref]$errors)
+            $text = [IO.File]::ReadAllText($s.FullName)
+            $code = [System.Text.StringBuilder]::new()
+            $at = 0
+            foreach ($c in @($tokens | Where-Object Kind -eq 'Comment')) {
+                [void]$code.Append($text, $at, $c.Extent.StartOffset - $at).Append(' ')
+                $at = $c.Extent.EndOffset
+            }
+            [void]$code.Append($text, $at, $text.Length - $at)
+            if ($code.ToString() -match '\.FullName\)?\.Substring\(') { $s.Name }
         }
         $bad | Should -BeNullOrEmpty -Because 'build a resolver with New-RootRelativePathResolver from scripts/lib/path-lib.ps1, ONCE, before the loop, and call .Resolve(): it normalises an 8.3 short root, strips a trailing separator, and throws when the path is not under the root'
     }
