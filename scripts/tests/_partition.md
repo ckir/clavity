@@ -19,10 +19,14 @@ one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm
 load once and accumulates across files.
 
 - `just test-scripts-fast` — the agent inner-loop gate. **LAST MEASURED 2026-09-09 at `b2f4955`: 494 passed /
-  0 failed / 1 skipped in 480,5s** (the section 28 closing sweep, contended - an upper bound). Seven rows added
-  since, NOT re-measured: five `New-RootRelativePathResolver` rows (`bb64f73`), one case-insensitivity row
-  (AGY-CAPSTONE round 6) and one PSDrive row (AGY-TEST-AUDIT section 28), all in `path-lib.Tests.ps1`, now 18
-  rows, each sub-second and in-process. (This line used to read
+  0 failed / 1 skipped in 480,5s** (the section 28 closing sweep, contended - an upper bound). THIRTY-FIVE rows
+  added since, NOT re-measured: seven in `path-lib.Tests.ps1` (five `New-RootRelativePathResolver` rows
+  `bb64f73`, one case-insensitivity row from AGY-CAPSTONE round 6, one PSDrive row from AGY-TEST-AUDIT section
+  28), all sub-second and in-process; four in `check-agy-discipline-skills.Tests.ps1` and the whole 11-row
+  `rule-runner.Tests.ps1` (ROADMAP section 30, whose `exit` row starts two child pwsh processes); and 13 more in
+  `check-agy-discipline-skills.Tests.ps1` (AGY-TEST-AUDIT section 30), each one in-process linter run. This
+  line said "seven" until 2026-09-12 - section 30's fifteen had never been added to it. **Re-measure before
+  adding more.** (This line used to read
   "26 suites, 423 tests", derived as 411 measured 2026-08-26 by
   running the recipe, plus the one row the consent-dialog pin added that day, plus the 11 rows
   `path-lib.Tests.ps1` brought on 2026-09-08 - a derived count that went stale with the next row; the 492,9s warm / 550,4s cold
@@ -733,7 +737,12 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
-check-agy-discipline-skills.Tests.ps1            43,2s   94 tests   <- FAST, re-measured 2026-09-03
+check-agy-discipline-skills.Tests.ps1            43,2s  107 tests   <- FAST, re-measured 2026-09-03
+  94 -> 107 on 2026-09-12 (AGY-TEST-AUDIT section 30): the transport/marker row now plants every skill the
+  rules admit (3 -> 9), the checker-invocation row both directions (1 -> 2), an in-process AGY-NEGOTIATE
+  heading row for all four disciplines (+4), a round-cap row (+1) and one exact-set row for the verdict
+  forms and envelope steps (+1). Every added row is ONE in-process linter run (~0,5s); nothing spawns a
+  child pwsh. Runtime NOT re-measured: roughly +6s on the fast half, which sits near its 600s cap.
   90 -> 92 on 2026-09-11 (ROADMAP section 30): the roster-derivation row (in-process, an AST read of the
   linter source) and the two-skill row (ONE scratch root, ONE in-process linter run). The ledger rows
   stayed at six - their roster is now DERIVED, not restated. Runtime NOT re-measured, and this is the

@@ -165,9 +165,11 @@ BeforeAll {
     # other than the two sanctioned ones; a Fail called from inside the rules table (a rule REPORTS); and
     # anything but exactly one Invoke-Rules call.
     #
-    # A PER-SKILL LOOP is any loop whose HEADER names $skills or $disciplineNames - foreach, for, while, do -
-    # plus a pipeline that starts from one and runs ForEach-Object (or `%`, or `foreach`) or holds a Fail,
-    # and a .ForEach() / .Where() on one. AGY-CAPSTONE section 30 round 5 MEASURED that
+    # A PER-SKILL LOOP is any loop whose HEADER names $skills or $disciplineNames - foreach, for, while, do,
+    # and `switch`, which iterates an array it is handed - plus a pipeline that starts from one and runs
+    # ForEach-Object (or `%`, or `foreach`) or holds a Fail, and a .ForEach() / .Where() on one. `switch` was
+    # added by AGY-TEST-AUDIT section 30, MEASURED: `switch ($skills) { default { Fail ... } }` passed this
+    # guard, because a SwitchStatementAst is not a LoopStatementAst. AGY-CAPSTONE section 30 round 5 MEASURED that
     # `$disciplineNames | ForEach-Object { ... Fail ... }` passed the first version, which knew only
     # `foreach` statements. A plain `Where-Object` filter with no Fail is not a check and is not judged
     # (the roster reconciliation uses one). This is still SYNTAX: a loop over a COPY of a list escapes it.
@@ -198,6 +200,7 @@ BeforeAll {
             ($n -is [System.Management.Automation.Language.ForStatementAst] -and ((& $names $n.Initializer) -or (& $names $n.Condition) -or (& $names $n.Iterator))) -or
             ($n -is [System.Management.Automation.Language.LoopStatementAst] -and $n -isnot [System.Management.Automation.Language.ForEachStatementAst] -and
                 $n -isnot [System.Management.Automation.Language.ForStatementAst] -and (& $names $n.Condition)) -or
+            ($n -is [System.Management.Automation.Language.SwitchStatementAst] -and (& $names $n.Condition)) -or
             ($n -is [System.Management.Automation.Language.PipelineAst] -and $n.PipelineElements.Count -gt 1 -and (& $names $n.PipelineElements[0]) -and
                 ($n.Find({ param($c) $c -is [System.Management.Automation.Language.CommandAst] -and $c.GetCommandName() -in 'ForEach-Object', '%', 'foreach' }, $true) -or
                  $n.Find($isFail, $true))) -or
@@ -354,6 +357,49 @@ Describe 'check-agy-discipline-skills' {
         finally { Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue }
     }
 
+    It 'requires EXACTLY the verdict forms and envelope steps each skill must carry - no entry dropped, none added untested' {
+        # AGY-TEST-AUDIT section 30, MEASURED: four of the five envelope steps and five of the verdict forms were
+        # never planted by any row, so deleting 'Snapshot before' from $envelopeSteps, or '[VERDICT: GAPS FOUND]'
+        # from $requiredVerdicts, left all 94 rows green - the linter would stop requiring them and say nothing.
+        #
+        # THE LINTER'S OWN BEHAVIOUR READS ITS LISTS. Every skill is cut down to bare frontmatter, so every
+        # verdict-form and envelope-step rule that applies to it must fire, whatever those lists hold. The SET
+        # of (skill, item) pairs reported is then compared with the set written out below - which is the
+        # independent half: derive it from the linter and a dropped entry drops out of both sides. A dropped
+        # entry is MISSING from what is reported; an entry added to the linter with no line here is EXTRA; a
+        # rule narrowed to skip a skill loses that skill's pairs. All three go red.
+        $expectedForms = @(
+            foreach ($f in '[VERDICT: ALIGNED]', '[VERDICT: REJECTED - ', '[VERDICT: NEGOTIATE - ', '[VERDICT: SKIPPED-UNREACHABLE]') {
+                "agy-first|$f"; "agy-capstone|$f"
+            }
+            foreach ($f in '[VERDICT: EXHAUSTIVE]', '[VERDICT: GAPS FOUND]', '[VERDICT: agy-required-but-unreachable]') { "agy-test-audit|$f" }
+            foreach ($f in 'FOLDED: ', 'REJECTED: ', 'DISCARDED-BELOW-FLOOR: ', 'DEFERRED-TO-ANOMALIES: ', 'UNVERIFIED-ACCEPTED: ') {
+                "agy-capstone|$f"; "agy-test-audit|$f"
+            }
+        )
+        $expectedSteps = @(
+            foreach ($s in 'agy-first', 'agy-capstone', 'agy-test-audit', 'adversarial-panel-review') {
+                foreach ($step in 'Snapshot before', 'Forbidden-actions banner', 'Permission to pass', 'Point at files', 'Diff after') { "$s|$step" }
+            }
+        )
+        $scratch = New-ScratchRoot
+        try {
+            foreach ($s in 'agy-first', 'agy-capstone', 'agy-test-audit', 'adversarial-panel-review') {
+                Set-Content -Path (& $script:SkillPath $scratch $s) -Value "---`nname: $s`n---`nA body carrying none of the checked text.`n" -NoNewline -Encoding utf8
+            }
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            $text = Get-LintText $out
+            $forms = @([regex]::Matches($text, "clavity-dotnet/plugin/skills/(?<s>[^/ ]+)/SKILL\.md : missing required verdict form '(?<f>[^']*)'") |
+                ForEach-Object { "$($_.Groups['s'].Value)|$($_.Groups['f'].Value)" })
+            $steps = @([regex]::Matches($text, "clavity-dotnet/plugin/skills/(?<s>[^/ ]+)/SKILL\.md : missing review-only safety-envelope step '(?<f>[^']*)'") |
+                ForEach-Object { "$($_.Groups['s'].Value)|$($_.Groups['f'].Value)" })
+            @($forms | Sort-Object) | Should -Be @($expectedForms | Sort-Object) -Because 'every required verdict form must be required of every skill that carries it - no more, no fewer'
+            @($steps | Sort-Object) | Should -Be @($expectedSteps | Sort-Object) -Because 'every envelope step must be required of all four disciplines - no more, no fewer'
+        }
+        finally { Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue }
+    }
+
     It 'every per-skill check in the linter is a rule the runner runs (ROADMAP section 30b)' {
         $src = Get-Content -Raw $script:Lint
         # PRECONDITION: the one sanctioned per-skill loop is present, or the guard below has nothing to judge.
@@ -384,6 +430,8 @@ Describe 'check-agy-discipline-skills' {
             '$disciplineNames | Where-Object { if ($_) { Fail "x" } }'
             '$onlyInRoster = @($disciplineNames | Where-Object { $_ -notin $registry })'
             'while ($i -lt $disciplineNames.Count) { Fail "x"; $i++ }'
+            'switch ($skills) { default { Fail "x" } }'
+            'switch ($unrelated) { default { Fail ''not per-skill, so not judged'' } }'
         ) -join "`n"
         @(Find-HandRolledCheck $fixture | Sort-Object) | Should -Be @(
             'a hand-written per-skill loop at line 12 - add a rule instead'
@@ -392,6 +440,7 @@ Describe 'check-agy-discipline-skills' {
             'a hand-written per-skill loop at line 16 - add a rule instead'
             'a hand-written per-skill loop at line 17 - add a rule instead'
             'a hand-written per-skill loop at line 19 - add a rule instead'
+            'a hand-written per-skill loop at line 20 - add a rule instead'
             'a rule calls Fail at line 11 - a rule must REPORT through $ctx.Report'
             'a rule calls Fail at line 9 - a rule must REPORT through $ctx.Report'
             'expected exactly ONE Invoke-Rules call, found 0'
@@ -399,8 +448,8 @@ Describe 'check-agy-discipline-skills' {
             'the contexts builder checks something at line 4 - only a MISSING or EMPTY file belongs there'
             'the contexts builder checks something at line 5 - only a MISSING or EMPTY file belongs there'
         ) -Because ('the first MISSING and the EMPTY skip (lines 2 and 6) are allowed; a borrowed MISSING: prefix ' +
-            '(line 4) and a second exact MISSING (line 5) are not; a loop that is not per-skill (line 13) and a ' +
-            'Where-Object filter holding no Fail (line 18) are not judged')
+            '(line 4) and a second exact MISSING (line 5) are not; a loop that is not per-skill (line 13), a ' +
+            'Where-Object filter holding no Fail (line 18) and a switch over an unrelated list (line 21) are not judged')
     }
 
     Context 'rejection cases (each perturbs one skill; the other stays valid)' {
@@ -564,21 +613,28 @@ Describe 'check-agy-discipline-skills' {
             Remove-Item -Recurse -Force $scratch
         }
 
-        It 'fails with a "<diagnostic>" diagnostic when <needle> is stripped from the skill' -ForEach @(
-            @{ needle = 'agy_ask';                   diagnostic = 'missing dotnet transport' },
-            @{ needle = 'clavity ask --review-only'; diagnostic = 'missing classic transport' },
-            @{ needle = '.clavity/agy-marks/';       diagnostic = 'missing marker-contract constant' }
+        # EVERY SKILL EACH RULE ADMITS, not one. AGY-TEST-AUDIT section 30, MEASURED: this row planted all three
+        # defects in agy-test-audit alone, and since the rules redesign each rule decides its own AppliesTo - so
+        # a transport rule quietly narrowed to skip agy-first left all 94 rows green. The skill list is written
+        # out here on purpose, independent of the linter's: an expectation derived from the linter would narrow
+        # along with it. The needle is prefixed with the skill's own path, so a report for a sibling cannot pass.
+        It 'fails with a "<diagnostic>" diagnostic when <needle> is stripped from <skill>' -ForEach @(
+            foreach ($s in @('agy-first', 'agy-capstone', 'agy-test-audit')) {
+                @{ skill = $s; needle = 'agy_ask';                   diagnostic = 'missing dotnet transport' }
+                @{ skill = $s; needle = 'clavity ask --review-only'; diagnostic = 'missing classic transport' }
+                @{ skill = $s; needle = '.clavity/agy-marks/';       diagnostic = 'missing marker-contract constant' }
+            }
         ) {
             $scratch = New-ScratchRoot
-            $target  = & $script:SkillPath $scratch 'agy-test-audit'
+            $target  = & $script:SkillPath $scratch $skill
             $real = Get-Content -Raw $target
-            $real.Contains($needle) | Should -BeTrue -Because "the fixture needs '$needle' present to strip"
+            $real.Contains($needle) | Should -BeTrue -Because "the fixture needs '$needle' present in $skill to strip"
             $body = $real.Replace($needle, '')
             $body | Should -Not -Be $real -Because 'the strip must take effect'
             Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
             $out = & $script:Lint -Root $scratch 2>&1
             $LASTEXITCODE | Should -Be 1
-            ($out -join "`n") | Should -Match $diagnostic
+            (Get-LintText $out) | Should -Match ([regex]::Escape("clavity-dotnet/plugin/skills/$skill/SKILL.md : $diagnostic"))
             Remove-Item -Recurse -Force $scratch
         }
 
@@ -676,7 +732,12 @@ Describe 'check-agy-discipline-skills' {
             Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
             $out = & $script:Lint -Root $scratch 2>&1
             $LASTEXITCODE | Should -Be 1
-            ($out -join "`n") | Should -Match 'claim-type'
+            # THE NEGATIVE RULE'S OWN TEXT, not the bare word. AGY-TEST-AUDIT section 30, MEASURED: this row
+            # matched 'claim-type', and the rename also removes the positive sentence, so the POSITIVE rule's
+            # message ("missing the claim-type sentence - ... must be named claim-type") satisfied it on its own.
+            # Deleting the negative rule outright left all 94 rows green. Only the negative rule says "not
+            # disposition".
+            (Get-LintText $out) | Should -Match ([regex]::Escape('must be named claim-type, not disposition'))
             Remove-Item -Recurse -Force $scratch
         }
 
@@ -746,20 +807,25 @@ Describe 'check-agy-discipline-skills' {
             Remove-Item -Recurse -Force $scratch
         }
 
-        It 'REJECTS a skill that names ANOTHER discipline in its checker invocation' {
+        It 'REJECTS <skill> when its checker invocation names <other> instead' -ForEach @(
+            @{ skill = 'agy-test-audit'; other = 'agy-capstone' },
+            @{ skill = 'agy-capstone';   other = 'agy-test-audit' }
+        ) {
             # THE COPY-PASTE ROW. The two contracts differ in three places and this is the difference that
             # fails silently: an audit brief naming agy-capstone has its rows validated against the
             # CAPSTONE's keys, so `missing_test` is rejected and `trigger` waved through, and no output
             # anywhere says the wrong schema was used.
+            # BOTH DIRECTIONS since AGY-TEST-AUDIT section 30: the rule admits both disciplines, and a version
+            # that planted only agy-test-audit left a rule narrowed to skip agy-capstone green (cell matrix).
             $scratch = New-ScratchRoot
-            $target  = & $script:SkillPath $scratch 'agy-test-audit'
+            $target  = & $script:SkillPath $scratch $skill
             $real = Get-Content -Raw $target
-            $body = $real.Replace('<reply.json> <sha> agy-test-audit', '<reply.json> <sha> agy-capstone')
+            $body = $real.Replace("<reply.json> <sha> $skill", "<reply.json> <sha> $other")
             $body | Should -Not -Be $real -Because 'the cross-wire must take effect'
             Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
             $out = & $script:Lint -Root $scratch 2>&1
             $LASTEXITCODE | Should -Be 1
-            ($out -join "`n") | Should -Match 'does not name its OWN checker invocation'
+            (Get-LintText $out) | Should -Match ([regex]::Escape("clavity-dotnet/plugin/skills/$skill/SKILL.md : does not name its OWN checker invocation"))
             Remove-Item -Recurse -Force $scratch
         }
 
@@ -1322,6 +1388,46 @@ Describe 'AGY-NEGOTIATE is pinned across all four disciplines' {
             $out | Should -Match 'agy-test-audit'
             $out | Should -Match 'AGY-NEGOTIATE'
         } finally { Remove-Item $sandbox -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'FAILS, naming <skill>, when <skill> loses its AGY-NEGOTIATE section' -ForEach @(
+        @{ skill = 'agy-first' }, @{ skill = 'agy-capstone' }, @{ skill = 'agy-test-audit' }, @{ skill = 'adversarial-panel-review' }
+    ) {
+        # ALL FOUR, in-process. AGY-TEST-AUDIT section 30, MEASURED: the rows above reached this rule only for
+        # agy-capstone and agy-test-audit, so the rule narrowed to skip agy-first or adversarial-panel-review
+        # would have left every row green.
+        $scratch = New-ScratchRoot
+        try {
+            $target = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $real.Contains('## AGY-NEGOTIATE') | Should -BeTrue -Because "the fixture needs the heading present in $skill before it can be renamed"
+            $body = $real.Replace('## AGY-NEGOTIATE', '## Something Else Entirely')
+            $body.Contains('## AGY-NEGOTIATE') | Should -BeFalse -Because 'every occurrence must be gone'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            (Get-LintText $out) | Should -Match ([regex]::Escape("'$skill' has no '## AGY-NEGOTIATE' section"))
+        } finally { Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue }
+    }
+
+    It 'FAILS when the round cap is named only OUTSIDE the AGY-NEGOTIATE section' {
+        # THE ROUND-CAP BRANCH, which no row reached. AGY-TEST-AUDIT section 30, MEASURED: reverting it to the
+        # file-wide scan capstone R8 folded left all 94 rows green, and so would deleting it. The fixture MOVES
+        # the constant out of the section rather than deleting it, because only a mention elsewhere in the file
+        # tells a section-scoped check from a file-wide one - with no mention at all, both fire.
+        $scratch = New-ScratchRoot
+        try {
+            $target = & $script:SkillPath $scratch 'agy-test-audit'
+            $real = Get-Content -Raw $target
+            $real.Contains('MAX_NEGOTIATE_ROUNDS') | Should -BeTrue -Because 'the fixture needs the cap constant present before it can be moved'
+            $body = $real.Replace('MAX_NEGOTIATE_ROUNDS', '') + "`n## An unrelated section`n`nMAX_NEGOTIATE_ROUNDS is named here, outside the section.`n"
+            $section = (($body -split '(?m)^##\s+AGY-NEGOTIATE')[1] -split '(?m)^##\s+')[0]
+            $section.Contains('MAX_NEGOTIATE_ROUNDS') | Should -BeFalse -Because 'the section must no longer carry the cap'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            (Get-LintText $out) | Should -Match ([regex]::Escape("'agy-test-audit' has an AGY-NEGOTIATE section with no round cap constant"))
+        } finally { Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue }
     }
 }
 
