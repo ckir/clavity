@@ -1,32 +1,61 @@
 # scripts/tests/check-agy-discipline-skills.Tests.ps1
 
-# PARSE THE LINTER'S MAP RATHER THAN RESTATING IT. ROADMAP section 30a. Reading the source is deliberate:
+# READ THE LINTER'S MAP RATHER THAN RESTATING IT. ROADMAP section 30a. Reading the source is deliberate:
 # dot-sourcing the linter would EXECUTE it, and it exits non-zero by design.
 #
 # THIS MUST BE BeforeDiscovery, NOT BeforeAll. MEASURED: `-ForEach` is evaluated at DISCOVERY, while
 # BeforeAll runs at RUN time - a roster built there is $null when -ForEach reads it, and Pester then
 # discovers ZERO rows WITHOUT erroring. The suite stays green having tested nothing.
+#
+# READ WITH THE POWERSHELL PARSER, NOT A REGEX. The first version (d1f9559) matched
+# `'key' = 'value'` pairs inside `$ledgerFor = @{ ... }` with a regex, and AGY-CAPSTONE section 30 MEASURED
+# three ordinary edits it silently missed while every row stayed green: a key written in DOUBLE quotes, a
+# `}` inside a comment in the map, and a BAREWORD key. Each dropped a third discipline from the roster -
+# the exact silent under-coverage this section exists to end. The AST reads the keys PowerShell itself
+# builds, and anything it cannot read as a constant THROWS rather than being skipped.
+#
+# The BeforeAll block below holds a second, IDENTICAL copy for run time; a row asserts the two agree.
 BeforeDiscovery {
     $lintPath = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'scripts/check-agy-discipline-skills.ps1'
-    $lintSrc  = [IO.File]::ReadAllText($lintPath)
-    $mapBlock = [regex]::Match($lintSrc, '(?s)\$ledgerFor\s*=\s*@\{(.*?)\}')
-    if (-not $mapBlock.Success) { throw 'section 30a: the $ledgerFor literal was not found - the roster would be empty and every ledger row would silently vanish' }
-    $ledgerRoster = @(foreach ($m in [regex]::Matches($mapBlock.Groups[1].Value, "'([^']+)'\s*=\s*'([^']+)'")) {
-        @{ skill = $m.Groups[1].Value; ledger = $m.Groups[2].Value }
+    $tokens = $null; $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($lintPath, [ref]$tokens, [ref]$errors)
+    if ($errors) { throw "section 30a: the linter does not parse, so its `$ledgerFor map cannot be read - $($errors[0].Message)" }
+    $maps = @($ast.FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $n.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+        $n.Left.VariablePath.UserPath -eq 'ledgerFor' }, $true))
+    if ($maps.Count -ne 1 -or $maps[0].Right.Expression -isnot [System.Management.Automation.Language.HashtableAst]) {
+        throw "section 30a: expected exactly ONE `$ledgerFor = @{...} literal in the linter, found $($maps.Count) assignment(s) - without it the roster is empty or wrong and every ledger row silently vanishes"
+    }
+    $ledgerRoster = @(foreach ($kv in $maps[0].Right.Expression.KeyValuePairs) {
+        $value = $kv.Item2
+        if ($value -is [System.Management.Automation.Language.PipelineAst]) { $value = $value.GetPureExpression() }
+        @{ skill = [string]$kv.Item1.SafeGetValue(); ledger = [string]$value.SafeGetValue() }
     })
-    if ($ledgerRoster.Count -lt 2) { throw "section 30a: parsed only $($ledgerRoster.Count) ledger discipline(s); a zero-or-one roster silently disables the rows it feeds" }
+    if ($ledgerRoster.Count -lt 2) { throw "section 30a: read only $($ledgerRoster.Count) ledger discipline(s); a zero-or-one roster silently disables the rows it feeds" }
 }
 
 BeforeAll {
     $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
     $script:Lint     = Join-Path $script:RepoRoot 'scripts/check-agy-discipline-skills.ps1'
 
-    # The RUN-TIME copy, for the two-skill row in Task 2. Same parse, different phase - see the
-    # BeforeDiscovery block at the top of this file for why one cannot serve both.
-    $mapBlockRun = [regex]::Match([IO.File]::ReadAllText($script:Lint), '(?s)\$ledgerFor\s*=\s*@\{(.*?)\}')
-    $mapBlockRun.Success | Should -BeTrue -Because 'the $ledgerFor literal must be findable, or the two-skill row silently perturbs nothing'
-    $script:LedgerRoster = @(foreach ($m in [regex]::Matches($mapBlockRun.Groups[1].Value, "'([^']+)'\s*=\s*'([^']+)'")) {
-        @{ skill = $m.Groups[1].Value; ledger = $m.Groups[2].Value }
+    # The RUN-TIME copy, for the two-skill row and the parse-guard row. IDENTICAL to the BeforeDiscovery
+    # read at the top of this file - see it for why a regex will not do and why one copy cannot serve both
+    # phases. The parse-guard row asserts the two copies read the same roster.
+    $tokens = $null; $errors = $null
+    $lintAst = [System.Management.Automation.Language.Parser]::ParseFile($script:Lint, [ref]$tokens, [ref]$errors)
+    if ($errors) { throw "section 30a: the linter does not parse, so its `$ledgerFor map cannot be read - $($errors[0].Message)" }
+    $maps = @($lintAst.FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $n.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+        $n.Left.VariablePath.UserPath -eq 'ledgerFor' }, $true))
+    if ($maps.Count -ne 1 -or $maps[0].Right.Expression -isnot [System.Management.Automation.Language.HashtableAst]) {
+        throw "section 30a: expected exactly ONE `$ledgerFor = @{...} literal in the linter, found $($maps.Count) assignment(s)"
+    }
+    $script:LedgerRoster = @(foreach ($kv in $maps[0].Right.Expression.KeyValuePairs) {
+        $value = $kv.Item2
+        if ($value -is [System.Management.Automation.Language.PipelineAst]) { $value = $value.GetPureExpression() }
+        @{ skill = [string]$kv.Item1.SafeGetValue(); ledger = [string]$value.SafeGetValue() }
     })
     $script:LedgerKeys = @($script:LedgerRoster.skill)
     $script:LedgerRoster.Count | Should -BeGreaterThan 1 -Because 'the two-skill row needs at least two ledger-owning disciplines'
@@ -148,7 +177,12 @@ Describe 'check-agy-discipline-skills' {
         ($out -join "`n") | Should -Match 'agy-discipline skills OK'
     }
 
-    It 'derives the ledger roster from the linter source, and the parse still finds the map' {
+    It 'derives the ledger roster from the linter source, and the parse still finds the map' -ForEach @(@{ Discovered = $ledgerRoster }) {
+        # The two copies of the read - discovery time, which feeds -ForEach, and run time, which feeds the
+        # two-skill row - must see the SAME roster. If they drifted, one half of this suite would be testing
+        # a different set of disciplines from the other, and both halves would stay green.
+        @($Discovered | ForEach-Object { "$($_.skill)=$($_.ledger)" }) |
+            Should -Be @($script:LedgerRoster | ForEach-Object { "$($_.skill)=$($_.ledger)" })
         # ROADMAP section 30a. The three rosters below are DERIVED from $ledgerFor rather than restating
         # it, so coverage of every ledger-owning discipline is structural - there is nothing left to
         # reconcile, and a row asserting "the roster covers the keys" would compare the parse to itself.
