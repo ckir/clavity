@@ -3,9 +3,11 @@
 # READ THE LINTER'S MAP RATHER THAN RESTATING IT. ROADMAP section 30a. Reading the source is deliberate:
 # dot-sourcing the linter would EXECUTE it, and it exits non-zero by design.
 #
-# THIS MUST BE BeforeDiscovery, NOT BeforeAll. MEASURED: `-ForEach` is evaluated at DISCOVERY, while
-# BeforeAll runs at RUN time - a roster built there is $null when -ForEach reads it, and Pester then
-# discovers ZERO rows WITHOUT erroring. The suite stays green having tested nothing.
+# THIS MUST BE BeforeDiscovery, NOT BeforeAll. `-ForEach` is evaluated at DISCOVERY, while BeforeAll runs
+# at RUN time, so a roster built there is $null when -ForEach reads it. MEASURED on Pester 6.1.0: that FAILS
+# the container ("Value can not be null or empty array"), loudly - not silently, as the plan and the first
+# version of this comment claimed; AGY-CAPSTONE section 30 round 1 caught the claim. It would be silent only
+# with Run.FailOnNullOrEmptyForEach turned off, or on a Pester old enough not to have that check.
 #
 # READ WITH THE POWERSHELL PARSER, NOT A REGEX. The first version (d1f9559) matched
 # `'key' = 'value'` pairs inside `$ledgerFor = @{ ... }` with a regex, and AGY-CAPSTONE section 30 MEASURED
@@ -187,10 +189,9 @@ Describe 'check-agy-discipline-skills' {
         # it, so coverage of every ledger-owning discipline is structural - there is nothing left to
         # reconcile, and a row asserting "the roster covers the keys" would compare the parse to itself.
         #
-        # What CAN still break is the parse: rename the variable, reformat the hashtable, or move it, and
-        # the regex finds nothing. That yields an EMPTY roster, `-ForEach` discovers ZERO rows, and this
-        # suite reports green having tested nothing. This row is the guard against that, and it names the
-        # disciplines explicitly so an empty or truncated parse cannot satisfy it.
+        # What CAN still break is the read. A missing or reshaped map THROWS at discovery, loudly. This row
+        # guards the quieter case - a read that succeeds but returns a TRUNCATED roster - by naming the two
+        # disciplines explicitly, and checking every entry carries a ledger path rather than a fragment.
         $script:LedgerRoster.Count | Should -BeGreaterThan 1 -Because 'a zero-or-one roster silently disables the ledger rows it feeds'
         $script:LedgerRoster.skill | Should -Contain 'agy-capstone'
         $script:LedgerRoster.skill | Should -Contain 'agy-test-audit'
@@ -200,15 +201,21 @@ Describe 'check-agy-discipline-skills' {
         }
     }
 
-    It 'reports EVERY failing skill, not just the first (ROADMAP section 30b)' {
-        # Each other row here perturbs ONE skill, so all of them are blind to an early exit: replace
-        # Fail's `$script:fail = $true` with a `break` and the linter halts after the first failure while
-        # every single-perturbation row stays green. This row breaks TWO skills and requires BOTH
-        # diagnostics, which is the only shape that can see the difference.
+    It 'reports EVERY failing skill, not just the first, in EVERY per-skill loop (ROADMAP section 30b)' {
+        # Each other row here perturbs ONE skill, so all of them are blind to an early exit: make the linter
+        # halt after its first failure and every single-perturbation row stays green. This row breaks TWO
+        # skills and requires BOTH diagnostics, which is the only shape that can see the difference.
         #
-        # It uses the SAME two disciplines the ledger roster names, and deletes rather than substitutes,
-        # for the reason recorded on the ledger rows: a fixture that INJECTS a decoy lets a guard keyed
-        # on the decoy pass while proving nothing.
+        # IN EVERY LOOP, NOT JUST THE FIRST. The linter checks skills in THREE separate loops - the $skills
+        # loop (ledger), the $disciplineNames envelope loop (scratch dir), and the AGY-NEGOTIATE loop - and an
+        # early exit can be added to any one of them. The first version of this row broke only the ledger
+        # path, so it pinned only the first loop: AGY-CAPSTONE section 30 round 1 MEASURED an early exit in
+        # the envelope loop leaving all 92 rows GREEN. So each skill is broken once per loop, and all six
+        # diagnostics are required, each naming its skill.
+        #
+        # It uses the SAME two disciplines the ledger roster names - both are also in $disciplineNames -
+        # and DELETES rather than substitutes, for the reason recorded on the ledger rows: a fixture that
+        # INJECTS a decoy lets a guard keyed on the decoy pass while proving nothing.
         $roster = @($script:LedgerRoster)
         $roster.Count | Should -BeGreaterThan 1 -Because 'this row needs at least two ledger-owning disciplines to perturb'
 
@@ -217,9 +224,14 @@ Describe 'check-agy-discipline-skills' {
             foreach ($entry in $roster) {
                 $target = & $script:SkillPath $scratch $entry.skill
                 $real   = Get-Content -Raw $target
-                $real.Contains($entry.ledger) | Should -BeTrue -Because "the fixture needs $($entry.ledger) present in $($entry.skill) before it can be removed"
-                $body = $real.Replace($entry.ledger, '')
-                $body | Should -Not -Be $real -Because "the strip must take effect for $($entry.skill)"
+                $body   = $real
+                # One break per loop: the ledger path ($skills loop), the sanctioned scratch directory (the
+                # envelope loop), and the AGY-NEGOTIATE heading (the negotiation loop).
+                foreach ($needle in @($entry.ledger, '.clavity/scratch/', '## AGY-NEGOTIATE')) {
+                    $body.Contains($needle) | Should -BeTrue -Because "the fixture needs '$needle' present in $($entry.skill) before it can be removed"
+                    $body = $body.Replace($needle, '')
+                    $body.Contains($needle) | Should -BeFalse -Because "every '$needle' must be gone from $($entry.skill), not just the first"
+                }
                 Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
             }
 
@@ -227,11 +239,14 @@ Describe 'check-agy-discipline-skills' {
             $LASTEXITCODE | Should -Be 1
             $text = Get-LintText $out
 
-            # THE ASSERTION IS THAT BOTH APPEAR. Asserting a COUNT would be weaker: a count is invariant
+            # THE ASSERTION IS THAT ALL SIX APPEAR. Asserting a COUNT would be weaker: a count is invariant
             # under reporting the same skill twice, which is exactly the confusion an early-exit bug
-            # creates. Name each one.
+            # creates. Name each one, with the skill it belongs to.
             foreach ($entry in $roster) {
-                $text | Should -Match ([regex]::Escape("never names '$($entry.ledger)'")) -Because "$($entry.skill) must be reported even when it is not the first failure"
+                $rel = "clavity-dotnet/plugin/skills/$($entry.skill)/SKILL.md"
+                $text | Should -Match ([regex]::Escape("never names '$($entry.ledger)'")) -Because "the `$skills loop must report $($entry.skill) even when it is not the first failure"
+                $text | Should -Match ([regex]::Escape("$rel : names no sanctioned scratch directory")) -Because "the envelope loop must report $($entry.skill) even when it is not the first failure"
+                $text | Should -Match ([regex]::Escape("'$($entry.skill)' has no '## AGY-NEGOTIATE' section")) -Because "the AGY-NEGOTIATE loop must report $($entry.skill) even when it is not the first failure"
             }
         }
         finally { Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue }

@@ -2579,14 +2579,23 @@ in the section-21 capstone because every rewording becomes a false RED.** This o
 `scripts/tests/check-agy-discipline-skills.Tests.ps1:103,177`.
 
 **SHIPPED 2026-09-11 — `d1f9559`, per `docs/superpowers/plans/2026-09-08-s30-ledger-suite-coverage-gaps.md`.**
-- **30a.** The ledger rows read ONE roster parsed from the linter's `$ledgerFor` literal, in
-  `BeforeDiscovery` — a `BeforeAll` roster is `$null` when `-ForEach` reads it, and Pester then discovers
-  ZERO rows without erroring. MEASURED: a third key in the map grows the ledger rows to three disciplines
-  and the new ones go red; a renamed map makes discovery THROW, which the justfile's `-CI` run turns into
-  exit 1 ("Container failed: 1") and CI's container sweep catches too. A broken parse is loud.
-- **30b.** One row strips the ledger path from BOTH ledger-owning skills and requires BOTH diagnostics.
-  MEASURED: a linter that breaks out of its skill loop after the first failure reddens exactly that row,
-  while every single-perturbation row stays green.
+- **30a.** The ledger rows read ONE roster from the linter's `$ledgerFor` literal, in `BeforeDiscovery`
+  — `-ForEach` is evaluated at discovery, so a `BeforeAll` roster is `$null` there. (The plan said Pester
+  then SILENTLY discovers zero rows. MEASURED FALSE on Pester 6.1.0 at AGY-CAPSTONE round 1: it FAILS the
+  container, "Value can not be null or empty array". BeforeDiscovery is still required - the other form
+  errors instead of testing.) The read walks the POWERSHELL AST, not a regex: the first version's regex
+  (`d1f9559`) silently dropped a double-quoted key, a key after a `}` in a comment, and a bareword key,
+  and was replaced before the capstone's first round (`10e4a98`). MEASURED: a third key in the map, in
+  any of those shapes, grows the ledger rows to three disciplines and the new ones go red; a renamed map
+  makes discovery THROW, which the justfile's `-CI` run turns into exit 1 ("Container failed: 1") and
+  CI's container sweep catches too.
+- **30b.** One row breaks BOTH ledger-owning skills in EACH of the linter's three per-skill loops - the
+  ledger path, the sanctioned scratch directory, the AGY-NEGOTIATE heading - and requires all six
+  diagnostics, each naming its skill. The first version broke only the ledger path, so it pinned only the
+  first loop: AGY-CAPSTONE round 1 MEASURED an early exit in the envelope loop leaving all 92 rows green.
+  MEASURED after the fold, with an early exit added to each loop in turn: this row reddens every time,
+  and for the first two loops it is the ONLY row that does (for the AGY-NEGOTIATE loop, that loop's own
+  row catches it too).
 - **30c — NOT FIXED, by ruling.** Converged with the peer at AGY-FIRST and accepted by the owner on
   2026-09-08 (`.clavity/seams/agyfirst-phase3b.md`, question 3), on the section's own counter-argument:
   pinning a message suffix is pinning prose verbatim, which this repo folded twice in the section-21
