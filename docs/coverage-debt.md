@@ -214,6 +214,12 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
   going on while the entry sat open, which is the strongest argument available for closing it.
 - **Deferred by the owner:** 2026-08-25, AGY-CAPSTONE round 7 on `f29cd42..a1ad1d1`. Verified by
   sandboxed mutation with a passing and a failing control.
+- 🔴 **IT DECAYED A FOURTH TIME, found 2026-09-11 (AGY-CAPSTONE section 28, round 6).** The fast bullet
+  still read "26 suites, 423 tests", derived as a 2026-08-26 measurement plus the rows added since - and it
+  had counted `path-lib.Tests.ps1` at 11 rows, which went stale the moment `bb64f73` added five. The last
+  real measurement, 2026-09-09, was 494. Nothing went red at 423, at 428, or now. The bullet was rewritten
+  to quote that MEASURED run plus the rows added since, which is a better convention than a derived total -
+  but it is still prose, and still unguarded.
 
 ### 9. The migration's ENCODING fix has only a structural pin, never a behavioural one
 
@@ -274,6 +280,33 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
   fall back to a marker anyway. Reconsider when the live count stops being zero.
 - **Raised:** 2026-08-28, AGY-CAPSTONE round 6, after the round-5 redesign; the peer named the direction
   and the driver measured the live count.
+
+### 12. A NEW script's only guard against repo-relative arithmetic is one text regex, with named holes
+
+- **Where:** `scripts/tests/check-dangling-consumers.Tests.ps1`, the row `no script outside scripts/lib and
+  scripts/tests computes a repo-relative path by hand (ROADMAP section 28 guard)` - it matches
+  `\.FullName\)?\.Substring\(` against each script's code, comments blanked.
+- **The gap:** four 8.3-vulnerable ways to strip a root pass it, and pass the two AST rows beside it:
+  the split form (`$p = $_.FullName` then `$p.Substring($root.Length)`), `.Remove(0, $root.Length)`,
+  `$_.FullName.Replace($root, '')`, and `$_.FullName -replace "^$([regex]::Escape($root))", ''`. MEASURED
+  (round 8): with a short root and a long child, both replace forms return the whole absolute path.
+- **Compensation - for the four migrated gates only:** each gate's OWN 8.3 integration row. MEASURED
+  (round 8): reverting `check-installer-ascii` to the `.Replace` form, and `check-injected-context` to the
+  `-replace` form, reddens that gate's 8.3 row while all three guard rows stay green. A NEW script has no
+  such row, so for it the regex is the whole guard.
+- **The regression that would slip through:** a new gate that strips its root by string replace. On a
+  runner handing out 8.3 temp paths (GitHub's `windows-latest` does), it reports absolute paths as if they
+  were relative, and nothing is red.
+- **The cheapest partial close, not taken:** the peer proposed `\.Replace\([^,]+,\s*''\)`. MEASURED
+  (round 9): zero hits in the 39 scripts of today's population, and it matches `.Replace($root, '')` without
+  matching the ubiquitous correct `.Replace('\', '/')`. It still misses `""` and the `-replace` form, and
+  it is new executable guard code that would need its own review round. Owner-accepted as debt at the
+  section 28 GREEN adjudication.
+- **Anchor (its disappearance voids this entry):** the row's HONEST LIMIT comment, which names all four
+  forms, and the 8.3 integration rows in `check-installer-ascii.Tests.ps1` and
+  `check-injected-context.Tests.ps1`.
+- **Raised:** 2026-09-11, AGY-CAPSTONE section 28, rounds 8-9 (Bypass Census + Driver Critic); every
+  claim re-measured by the driver.
 
 ## Accepted-boundary ledger - deliberately uncovered, do NOT re-raise
 

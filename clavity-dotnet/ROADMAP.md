@@ -2407,7 +2407,7 @@ GATE IS — the panel is PAUSED for owner rulings, and no line-level plan may be
 Two findings were killed by measurement and are recorded in the spec's `## Stand-downs`, including the
 peer's own retraction of "the write path is the wrong chokepoint".
 
-### §28 — Eight sites repeated the 8.3 prefix-arithmetic shape that `41eef75` fixed once — ✅ **SHIPPED 2026-09-08**, `734b30b..48da086` (`734b30b` the helper + suite · `332e729` `2365847` `6f12052` `5bd268a` the four migrations · `48da086` the guard)
+### §28 — Eight sites repeated the 8.3 prefix-arithmetic shape that `41eef75` fixed once — ✅ **SHIPPED 2026-09-08**, `734b30b..48da086` (`734b30b` the helper + suite · `332e729` `2365847` `6f12052` `5bd268a` the four migrations · `48da086` the guard) — ✅ **AGY-CAPSTONE GREEN 2026-09-11, owner-adjudicated after 9 rounds** (folds `bb64f73` the factory · `095ac89` `87be2ac` `fabe1ea` `9f1839b` `18286d0` the guard · `73f73e1` a case row; reviewed tip `18286d0`; row in `docs/agy-capstone-ledger.md`, debt as entry 12 in `docs/coverage-debt.md`)
 
 **The shape.** Each script resolved a root with `Resolve-Path ... .Path`/`.ProviderPath`, which
 **PRESERVES an 8.3 short path**, then computed a relative path by `Substring(<root>.Length)` against a
