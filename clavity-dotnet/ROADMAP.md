@@ -2551,7 +2551,7 @@ round is flagged every time, and the flag tells the driver to discard its findin
 
 ---
 
-### §30 — Three coverage gaps in the section-23 ledger suite, owner-deferred at audit — ▶ **PROMOTED 2026-09-03, SEQUENCED as Phase 3b with §28, not yet planned**
+### §30 — Three coverage gaps in the section-23 ledger suite, owner-deferred at audit — ✅ **30a + 30b SHIPPED 2026-09-11 (`d1f9559`); 30c NOT FIXED, by ruling (below)**
 
 Raised and VERIFIED by AGY-TEST-AUDIT over `73efca8..eba63a8`; the owner scoped that run to gap 1 (folded
 in `65b889a`) and deferred these three. Recorded here as tracked debt, which is where the audit
@@ -2577,6 +2577,29 @@ than the gap: pinning message suffixes is pinning prose verbatim, the anti-patte
 in the section-21 capstone because every rewording becomes a false RED.** This one may resolve as
 `DISCARDED-BELOW-FLOOR` rather than a fix.
 `scripts/tests/check-agy-discipline-skills.Tests.ps1:103,177`.
+
+**SHIPPED 2026-09-11 — `d1f9559`, per `docs/superpowers/plans/2026-09-08-s30-ledger-suite-coverage-gaps.md`.**
+- **30a.** The ledger rows read ONE roster parsed from the linter's `$ledgerFor` literal, in
+  `BeforeDiscovery` — a `BeforeAll` roster is `$null` when `-ForEach` reads it, and Pester then discovers
+  ZERO rows without erroring. MEASURED: a third key in the map grows the ledger rows to three disciplines
+  and the new ones go red; a renamed map makes discovery THROW, which the justfile's `-CI` run turns into
+  exit 1 ("Container failed: 1") and CI's container sweep catches too. A broken parse is loud.
+- **30b.** One row strips the ledger path from BOTH ledger-owning skills and requires BOTH diagnostics.
+  MEASURED: a linter that breaks out of its skill loop after the first failure reddens exactly that row,
+  while every single-perturbation row stays green.
+- **30c — NOT FIXED, by ruling.** Converged with the peer at AGY-FIRST and accepted by the owner on
+  2026-09-08 (`.clavity/seams/agyfirst-phase3b.md`, question 3), on the section's own counter-argument:
+  pinning a message suffix is pinning prose verbatim, which this repo folded twice in the section-21
+  capstone because every rewording becomes a false RED. It was recorded as `DISCARDED-BELOW-FLOOR`. Said
+  precisely: that token's bar is a cited guard that makes the gap UNREACHABLE, and truncating a suffix is
+  reachable — this is an owner-accepted residual, not an unreachable one.
+
+🔴 **CITATION CORRECTION.** All three of this section's line references had drifted by 2026-09-08: `Fail`
+is at `scripts/check-agy-discipline-skills.ps1:10`, not `:76`; the rosters were at
+`scripts/tests/check-agy-discipline-skills.Tests.ps1:124`, `:152` and `:168`, not `:87,144`. **And 30a was
+understated — there were THREE identical hardcoded rosters, not one two-element array.** A fourth copy of
+the same two names, the ledger stand-ins `New-ScratchRoot` stages, was left alone on purpose: it fails
+CLOSED, because the scratch-root positive controls expect exit 0 and redden on a missing stand-in.
 
 ### §31 — Two shipped SessionStart hooks misbehave in repositories that are not clavity — ✅ **SHIPPED 2026-09-08** (`2808ede`). 🔴 **31a WAS ALREADY FIXED ON 2026-09-04 and this section was never updated** - `agy-anomaly-reminder.sh` moved to a `systemMessage` envelope at exit 0 the day AFTER this section was promoted; re-measured 2026-09-08 on both `compact` and `startup`, exit 0 and empty stderr. **31b is fixed here**: `agy-discipline-reaching.sh` now records ONLY where `.clavity/` already exists, so a globally registered hook leaves no trace in a repository that never asked for the plugin. **A THIRD DEFECT, of 31a CLASS, was found and fixed in the same pass and this section never named it:** `agy-liveness-check.sh` had SIX `exit 2` statements on the same matcher, and its worst instance was the kill-switch - `.no-agy` is how you ask for quiet, and asking is what produced the red hook error. Only the channel and exit code changed; every message still fires under the same condition. ⚠ **OPEN, deliberately not decided here: whether `.no-agy` should make this hook SILENT rather than announce its suppression.** ⚠ §22 still shares `agy-discipline-reaching.sh` and must re-derive its line numbers against post-§31 code.
 
