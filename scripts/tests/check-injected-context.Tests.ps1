@@ -1367,22 +1367,23 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
     It 'computes a sane relative path when -RepoRoot is an 8.3 SHORT path' {
         # THE FIXTURE RULE, AND IT BIT THIS ROW TWICE. Three hurdles stand between a temp directory and a
         # single executed line of the code under test, and each one was found by RUNNING the row:
-        #   1. :204 throws `ignorelist missing: <path>` before the walk if
+        # (Named, not numbered: the line numbers first written here had all gone stale by the next audit.)
+        #   1. Get-IgnoreGlobs throws `ignorelist missing: <path>` before the walk if
         #      scripts/injected-context-ignore.txt is absent - and that message CONTAINS the root, so an
         #      absence-based oracle flips fail->pass on the fix without executing the subtraction.
-        #   2. :253 THROWS `domain root missing` if ANY of $script:DomainRoots (:44) is absent. Every one
-        #      must exist, even empty.
-        #   3. :773 reads scripts/injected-context-exemptions.json unguarded, so an absent file dies in
-        #      Get-Content. It must exist and parse, with an `exemptions` array.
+        #   2. The domain-root check THROWS `domain root missing` if ANY of $script:DomainRoots is absent.
+        #      Every one must exist, even empty.
+        #   3. The exemptions load reads scripts/injected-context-exemptions.json unguarded, so an absent
+        #      file dies in Get-Content. It must exist and parse, with an `exemptions` array.
         #   4. The gate prints a relative path only when it reports a VIOLATION. MEASURED: with a clean
         #      fixture this row PASSED against the UNMIGRATED gate - "the root does not appear in the
         #      output" is trivially true of output containing no paths at all.
-        # `dist` is in $script:PrunedSegments (:91), so a dist/ inside a domain root is reported by
-        # Get-UnexpectedBuildDirs - the :186 subtraction this task migrates.
+        # `dist` is in $script:PrunedSegments, so a dist/ inside a domain root is reported by
+        # Get-UnexpectedBuildDirs - the subtraction this task migrated.
         #
         # THE ROOT LIST IS COPIED, AND THAT IS SAFE ONLY BECAUSE DRIFT FAILS LOUDLY: if a root is added to
-        # the gate and not here, :253 throws, no 'build-output' line is emitted, and PRECONDITION 2 below
-        # reddens this row. Do not replace that precondition with a softer check.
+        # the gate and not here, the domain-root check throws, no 'build-output' line is emitted, and
+        # PRECONDITION 2 below reddens this row. Do not replace that precondition with a softer check.
         $domainRoots = @(
             'clavity-dotnet/plugin', 'clavity-classic/plugin', 'clavity-classic/agy_skills',
             'clavity-classic/agy-mcp-bridge', 'seed', 'agy-autotrain', 'ghidrust/plugin',

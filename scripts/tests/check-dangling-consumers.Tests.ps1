@@ -44,11 +44,98 @@ BeforeAll {
     # wrapper inside a scriptblock literal). AGY-CAPSTONE round 5: both rows used a NON-recursive glob, so a
     # gate added in a subdirectory such as scripts/ci/ was never seen. Directories are excluded by NAME, one
     # level down, rather than by path arithmetic - which is the very thing section 28 exists to avoid.
-    function Get-Section28Population {
-        $dir = Join-Path $script:RepoRoot 'scripts'
+    #
+    # -Root EXISTS ONLY SO A FIXTURE TREE CAN BE FED IN (AGY-TEST-AUDIT section 28, G2). Against the real
+    # tree the subdirectory half contributes ONE file that uses path-lib not at all, so MEASURED, dropping
+    # -Recurse or that whole half left every row green. The rows below default to the real repository.
+    function Get-Section28Population([string]$Root = $script:RepoRoot) {
+        $dir = Join-Path $Root 'scripts'
         @(Get-ChildItem -LiteralPath $dir -Filter '*.ps1' -File) +
         @(Get-ChildItem -LiteralPath $dir -Directory | Where-Object Name -NotIn 'lib', 'tests' |
             ForEach-Object { Get-ChildItem -LiteralPath $_.FullName -Filter '*.ps1' -File -Recurse })
+    }
+
+    # THE TWO SECTION 28 GUARDS, lifted out of their It blocks so a FIXTURE can be fed to them
+    # (AGY-TEST-AUDIT section 28, G1). Inline, they could only ever read the real tree - which is clean - so
+    # nothing in the suite could show they fire. MEASURED: making the prohibition regex unmatchable, or
+    # switching off either half of the positive guard, left all three guard rows GREEN. The fixture rows in
+    # 'the section 28 guards can FAIL' are what now go red instead.
+
+    # Returns the NAME of every file whose code computes a repo-relative path by hand.
+    #
+    # COMMENTS ARE BLANKED BEFORE MATCHING. Round 8: matching raw text meant a comment that SPELLED the
+    # idiom - the natural way to warn a reader off it - reddened the row on correct code. That had already
+    # bitten section 28 once (Task 5 had to reword a comment). The parser's own Comment tokens are cut out
+    # by offset; code and strings are matched exactly as before. STRINGS ARE NOT BLANKED, on purpose: an
+    # interpolated "$(...)" string is one token whose $() EXECUTES.
+    function Find-HandRolledRelativePath([System.IO.FileInfo[]]$Files) {
+        foreach ($s in $Files) {
+            $tokens = $null; $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($s.FullName, [ref]$tokens, [ref]$errors)
+            $text = [IO.File]::ReadAllText($s.FullName)
+            $code = [System.Text.StringBuilder]::new()
+            $at = 0
+            foreach ($c in @($tokens | Where-Object Kind -eq 'Comment')) {
+                [void]$code.Append($text, $at, $c.Extent.StartOffset - $at).Append(' ')
+                $at = $c.Extent.EndOffset
+            }
+            [void]$code.Append($text, $at, $text.Length - $at)
+            if ($code.ToString() -match '\.FullName\)?\.Substring\(') { $s.Name }
+        }
+    }
+
+    # Returns @{ Users = <files that call path-lib>; Problems = <one line per violation> }.
+    #
+    # READ FROM THE PARSER, NOT THE TEXT. Round 2 on bb64f73: the text form forbade the literal
+    # 'Get-RootRelativePath -Root', so a POSITIONAL call passed it - MEASURED. Text also reads COMMENTS.
+    # The AST sees commands whatever their argument form, and never sees a comment.
+    #
+    # "PER ITEM" MEANS ANY ANCESTOR THAT RUNS ITS BODY ONCE PER ITEM: a loop statement; a `switch`, which
+    # iterates a collection but is NOT a LoopStatementAst (round 3 - measured, its body ran 3 times for 3
+    # items); a scriptblock literal, the body of ForEach-Object / Where-Object / .ForEach(); or a
+    # `process` block, which is also what a `filter` body parses to.
+    #
+    # THE HONEST LIMIT: GetCommandName() is the name as WRITTEN. An alias, or a call through a variable
+    # (`& $fn`), is invisible to it; so is either command inside a function that is itself called per
+    # item. A QUALIFIED name is not a hole: `path-lib\Get-RootRelativePath` and `.\Get-RootRelativePath`
+    # both throw CommandNotFoundException at runtime - MEASURED, round 3 - because path-lib is
+    # dot-sourced, not a module.
+    #
+    # A DOT-SOURCE IS RECOGNISED BY THE STRING IT LOADS, NOT BY HOW IT IS SPELLED. Round 5: matching the
+    # literal text `'lib' 'path-lib.ps1'` false-REDded three legitimate forms - double quotes, a single
+    # backslash path, an expandable "$PSScriptRoot\lib\path-lib.ps1" - MEASURED. So a dot-sourced command
+    # counts when any string inside it ends in path-lib.ps1 at a path boundary; the measured distractors
+    # (release-lib.ps1, mypath-lib.ps1, and `&` instead of `.`) are all rejected.
+    function Find-PathLibProblem([System.IO.FileInfo[]]$Files) {
+        $A = 'System.Management.Automation.Language'
+        $users = 0
+        $problems = @(foreach ($s in $Files) {
+            $tokens = $null; $errors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile($s.FullName, [ref]$tokens, [ref]$errors)
+            if ($errors) { "$($s.Name): does not parse, so its AST cannot be checked - $($errors[0].Message)"; continue }
+            $calls = @($ast.FindAll({ param($n)
+                $n -is [System.Management.Automation.Language.CommandAst] -and
+                $n.GetCommandName() -in 'New-RootRelativePathResolver', 'Get-RootRelativePath' }, $true))
+            if (-not $calls) { continue }
+            $users++
+            $dotSourced = $ast.Find({ param($n)
+                $n -is [System.Management.Automation.Language.CommandAst] -and $n.InvocationOperator -eq 'Dot' -and
+                $n.Find({ param($v)
+                    ($v -is [System.Management.Automation.Language.StringConstantExpressionAst] -or
+                     $v -is [System.Management.Automation.Language.ExpandableStringExpressionAst]) -and
+                    $v.Value -match '(^|[\\/])path-lib\.ps1$' }, $true) }, $true)
+            if (-not $dotSourced) { "$($s.Name): calls $($calls[0].GetCommandName()) but never dot-sources scripts/lib/path-lib.ps1" }
+            foreach ($c in $calls) {
+                for ($p = $c.Parent; $p; $p = $p.Parent) {
+                    $per = if ($p -is "$A.LoopStatementAst") { 'a loop' }
+                           elseif ($p -is "$A.SwitchStatementAst") { 'a switch' }
+                           elseif ($p -is "$A.ScriptBlockExpressionAst") { 'a scriptblock literal (ForEach-Object / Where-Object)' }
+                           elseif ($p -is "$A.NamedBlockAst" -and $p.BlockKind -eq 'Process') { 'a process block or filter' }
+                    if ($per) { "$($s.Name) line $($c.Extent.StartLineNumber): $($c.GetCommandName()) inside $per runs Get-Item once per item"; break }
+                }
+            }
+        })
+        @{ Users = $users; Problems = $problems }
     }
 }
 
@@ -269,26 +356,11 @@ Describe 'check-dangling-consumers' {
         # gate's own 8.3 integration row (measured, round 8) - but a NEW script has only this regex. It raises
         # the cost of reintroducing the defect; it does not make it impossible. Do not mistake it for exhaustive.
         #
-        # COMMENTS ARE BLANKED BEFORE MATCHING. Round 8: matching raw text meant a comment that SPELLED the
-        # idiom - the natural way to warn a reader off it - reddened the row on correct code. That had already
-        # bitten section 28 once (Task 5 had to reword a comment). The parser's own Comment tokens are cut out
-        # by offset; code and strings are matched exactly as before.
+        # The matching itself is Find-HandRolledRelativePath, in BeforeAll, where it can be fed a fixture.
         $scripts = @(Get-Section28Population)
         $scripts.Count | Should -BeGreaterThan 0 -Because 'an empty glob would make this guard vacuous'
 
-        $bad = foreach ($s in $scripts) {
-            $tokens = $null; $errors = $null
-            [void][System.Management.Automation.Language.Parser]::ParseFile($s.FullName, [ref]$tokens, [ref]$errors)
-            $text = [IO.File]::ReadAllText($s.FullName)
-            $code = [System.Text.StringBuilder]::new()
-            $at = 0
-            foreach ($c in @($tokens | Where-Object Kind -eq 'Comment')) {
-                [void]$code.Append($text, $at, $c.Extent.StartOffset - $at).Append(' ')
-                $at = $c.Extent.EndOffset
-            }
-            [void]$code.Append($text, $at, $text.Length - $at)
-            if ($code.ToString() -match '\.FullName\)?\.Substring\(') { $s.Name }
-        }
+        $bad = @(Find-HandRolledRelativePath $scripts)
         $bad | Should -BeNullOrEmpty -Because 'build a resolver with New-RootRelativePathResolver from scripts/lib/path-lib.ps1, ONCE, before the loop, and call .Resolve(): it normalises an 8.3 short root, strips a trailing separator, and throws when the path is not under the root'
     }
 
@@ -310,59 +382,14 @@ Describe 'check-dangling-consumers' {
         # resolves through a helper's parameter and was satisfiable by one dead call. The next row is the
         # floor that keeps the four migrated gates pinned.
         #
-        # READ FROM THE PARSER, NOT THE TEXT. Round 2 on bb64f73: the text form forbade the literal
-        # 'Get-RootRelativePath -Root', so a POSITIONAL call passed it - MEASURED. Text also reads COMMENTS.
-        # The AST sees commands whatever their argument form, and never sees a comment.
-        #
-        # "PER ITEM" MEANS ANY ANCESTOR THAT RUNS ITS BODY ONCE PER ITEM: a loop statement; a `switch`, which
-        # iterates a collection but is NOT a LoopStatementAst (round 3 - measured, its body ran 3 times for 3
-        # items); a scriptblock literal, the body of ForEach-Object / Where-Object / .ForEach(); or a
-        # `process` block, which is also what a `filter` body parses to.
-        #
-        # THE HONEST LIMIT: GetCommandName() is the name as WRITTEN. An alias, or a call through a variable
-        # (`& $fn`), is invisible to it; so is either command inside a function that is itself called per
-        # item. A QUALIFIED name is not a hole: `path-lib\Get-RootRelativePath` and `.\Get-RootRelativePath`
-        # both throw CommandNotFoundException at runtime - MEASURED, round 3 - because path-lib is
-        # dot-sourced, not a module.
-        $A = 'System.Management.Automation.Language'
-        #
-        # A DOT-SOURCE IS RECOGNISED BY THE STRING IT LOADS, NOT BY HOW IT IS SPELLED. Round 5: matching the
-        # literal text `'lib' 'path-lib.ps1'` false-REDded three legitimate forms - double quotes, a single
-        # backslash path, an expandable "$PSScriptRoot\lib\path-lib.ps1" - MEASURED. So a dot-sourced command
-        # counts when any string inside it ends in path-lib.ps1 at a path boundary; the measured distractors
-        # (release-lib.ps1, mypath-lib.ps1, and `&` instead of `.`) are all rejected.
+        # The AST walk itself - what counts as a call, a dot-source and "per item", and its honest limit - is
+        # Find-PathLibProblem, in BeforeAll, where it can be fed a fixture.
         $scripts = @(Get-Section28Population)
         $scripts.Count | Should -BeGreaterThan 0 -Because 'an empty glob would make this guard vacuous'
 
-        $users = 0
-        $problems = @(foreach ($s in $scripts) {
-            $tokens = $null; $errors = $null
-            $ast = [System.Management.Automation.Language.Parser]::ParseFile($s.FullName, [ref]$tokens, [ref]$errors)
-            if ($errors) { "$($s.Name): does not parse, so its AST cannot be checked - $($errors[0].Message)"; continue }
-            $calls = @($ast.FindAll({ param($n)
-                $n -is [System.Management.Automation.Language.CommandAst] -and
-                $n.GetCommandName() -in 'New-RootRelativePathResolver', 'Get-RootRelativePath' }, $true))
-            if (-not $calls) { continue }
-            $users++
-            $dotSourced = $ast.Find({ param($n)
-                $n -is [System.Management.Automation.Language.CommandAst] -and $n.InvocationOperator -eq 'Dot' -and
-                $n.Find({ param($v)
-                    ($v -is [System.Management.Automation.Language.StringConstantExpressionAst] -or
-                     $v -is [System.Management.Automation.Language.ExpandableStringExpressionAst]) -and
-                    $v.Value -match '(^|[\\/])path-lib\.ps1$' }, $true) }, $true)
-            if (-not $dotSourced) { "$($s.Name): calls $($calls[0].GetCommandName()) but never dot-sources scripts/lib/path-lib.ps1" }
-            foreach ($c in $calls) {
-                for ($p = $c.Parent; $p; $p = $p.Parent) {
-                    $per = if ($p -is "$A.LoopStatementAst") { 'a loop' }
-                           elseif ($p -is "$A.SwitchStatementAst") { 'a switch' }
-                           elseif ($p -is "$A.ScriptBlockExpressionAst") { 'a scriptblock literal (ForEach-Object / Where-Object)' }
-                           elseif ($p -is "$A.NamedBlockAst" -and $p.BlockKind -eq 'Process') { 'a process block or filter' }
-                    if ($per) { "$($s.Name) line $($c.Extent.StartLineNumber): $($c.GetCommandName()) inside $per runs Get-Item once per item"; break }
-                }
-            }
-        })
-        $users | Should -BeGreaterThan 0 -Because 'the four section 28 gates use path-lib, so finding no user at all means discovery is broken'
-        $problems | Should -BeNullOrEmpty -Because 'build the resolver ONCE, before the loop, and call .Resolve() inside it (scripts/README.md, path-lib)'
+        $r = Find-PathLibProblem $scripts
+        $r.Users | Should -BeGreaterThan 0 -Because 'the four section 28 gates use path-lib, so finding no user at all means discovery is broken'
+        $r.Problems | Should -BeNullOrEmpty -Because 'build the resolver ONCE, before the loop, and call .Resolve() inside it (scripts/README.md, path-lib)'
     }
 
     It 'the four gates section 28 migrated still build a resolver (the floor)' {
@@ -382,6 +409,87 @@ Describe 'check-dangling-consumers' {
                 $n -is [System.Management.Automation.Language.CommandAst] -and
                 $n.GetCommandName() -eq 'New-RootRelativePathResolver' }, $true))
             $builds.Count | Should -BeGreaterThan 0 -Because "$g walks the repository per file, so it must build a resolver once rather than normalise per call"
+        }
+    }
+
+    # AGY-TEST-AUDIT section 28, G1 and G2. The three guard rows above read the REAL tree, which is clean, so
+    # on their own they cannot show that they fire. These rows feed the SAME functions a fixture and assert
+    # WHICH file is flagged - never how many - including files that must NOT be flagged, so a guard that
+    # over-matches reddens as surely as one that under-matches. Everything here parses in-process; no child
+    # pwsh, so the rows cost milliseconds.
+    Context 'the section 28 guards can FAIL' {
+        BeforeAll {
+            $script:G = Join-Path ([IO.Path]::GetTempPath()) ("s28g-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path $script:G | Out-Null
+            function New-Fixture([string]$Name, [string[]]$Lines) {
+                $p = Join-Path $script:G $Name
+                [IO.File]::WriteAllLines($p, $Lines)
+                Get-Item -LiteralPath $p
+            }
+            $script:Dot = ". (Join-Path `$PSScriptRoot 'lib' 'path-lib.ps1')"
+        }
+        AfterAll { Remove-Item -LiteralPath $script:G -Recurse -Force -ErrorAction SilentlyContinue }
+
+        It 'the prohibition flags the idiom in CODE and inside an interpolated string, and nothing in a comment' {
+            $files = @(
+                New-Fixture 'hand-rolled.ps1'   @('Get-ChildItem $root -Recurse -File | ForEach-Object { $_.FullName.Substring($root.Length) }')
+                # The optional `\)?` in the regex: the parenthesised form must be caught too.
+                New-Fixture 'parenthesised.ps1' @('$rel = ($f.FullName).Substring($root.Length)')
+                # An interpolated "$(...)" EXECUTES its contents, so strings must stay matched.
+                New-Fixture 'in-a-string.ps1'   @('Write-Host "rel: $($f.FullName.Substring($root.Length))"')
+                # The two comment forms: spelling the idiom to warn a reader off it is correct code.
+                New-Fixture 'line-comment.ps1'  @('# never write $f.FullName.Substring($root.Length) here', '$rel = $r.Resolve($f.FullName)')
+                New-Fixture 'block-comment.ps1' @('<# $f.FullName.Substring($root.Length) #>', '$rel = $r.Resolve($f.FullName)')
+                New-Fixture 'clean.ps1'         @('$rel = $r.Resolve($f.FullName).Replace(''\'', ''/'')')
+            )
+            @(Find-HandRolledRelativePath $files | Sort-Object) |
+                Should -Be @('hand-rolled.ps1', 'in-a-string.ps1', 'parenthesised.ps1')
+        }
+
+        It 'the positive guard names each violation: a missing dot-source, its look-alikes, every per-item construct, and a file that does not parse' {
+            $files = @(
+                # A user doing everything right, including a legitimate top-level ONE-OFF.
+                New-Fixture 'good.ps1'              @($script:Dot, '$r = New-RootRelativePathResolver -Root $root', 'foreach ($f in $files) { $r.Resolve($f.FullName) }', 'Get-RootRelativePath -Root $root -Path $x')
+                New-Fixture 'no-dot-source.ps1'     @('$r = New-RootRelativePathResolver -Root $root')
+                # The two measured look-alikes: a name that merely ENDS in path-lib.ps1, and `&` instead of `.`.
+                New-Fixture 'wrong-lib.ps1'         @(". (Join-Path `$PSScriptRoot 'lib' 'mypath-lib.ps1')", '$r = New-RootRelativePathResolver -Root $root')
+                New-Fixture 'call-operator.ps1'     @("& (Join-Path `$PSScriptRoot 'lib' 'path-lib.ps1')", '$r = New-RootRelativePathResolver -Root $root')
+                New-Fixture 'in-loop.ps1'           @($script:Dot, 'foreach ($f in $files) { Get-RootRelativePath -Root $root -Path $f }')
+                New-Fixture 'in-switch.ps1'         @($script:Dot, 'switch ($files) { default { New-RootRelativePathResolver -Root $_ } }')
+                New-Fixture 'in-foreach-object.ps1' @($script:Dot, '$files | ForEach-Object { Get-RootRelativePath -Root $root -Path $_ }')
+                New-Fixture 'in-process.ps1'        @($script:Dot, 'function f { process { New-RootRelativePathResolver -Root $_ } }')
+                New-Fixture 'in-filter.ps1'         @($script:Dot, 'filter g { Get-RootRelativePath -Root $root -Path $_ }')
+                New-Fixture 'not-a-user.ps1'        @('$x = 1')
+                New-Fixture 'broken.ps1'            @('function f {')
+            )
+            $r = Find-PathLibProblem $files
+            $unparsed = @($r.Problems | Where-Object { $_ -like 'broken.ps1: does not parse*' })
+            $unparsed.Count | Should -Be 1 -Because 'a file that does not parse must be reported, never silently skipped'
+            @($r.Problems | Where-Object { $_ -notlike 'broken.ps1: *' } | Sort-Object) | Should -Be @(
+                'call-operator.ps1: calls New-RootRelativePathResolver but never dot-sources scripts/lib/path-lib.ps1'
+                'in-filter.ps1 line 2: Get-RootRelativePath inside a process block or filter runs Get-Item once per item'
+                'in-foreach-object.ps1 line 2: Get-RootRelativePath inside a scriptblock literal (ForEach-Object / Where-Object) runs Get-Item once per item'
+                'in-loop.ps1 line 2: Get-RootRelativePath inside a loop runs Get-Item once per item'
+                'in-process.ps1 line 2: New-RootRelativePathResolver inside a process block or filter runs Get-Item once per item'
+                'in-switch.ps1 line 2: New-RootRelativePathResolver inside a switch runs Get-Item once per item'
+                'no-dot-source.ps1: calls New-RootRelativePathResolver but never dot-sources scripts/lib/path-lib.ps1'
+                'wrong-lib.ps1: calls New-RootRelativePathResolver but never dot-sources scripts/lib/path-lib.ps1'
+            )
+            # good, no-dot-source, wrong-lib, call-operator and the five per-item files. not-a-user calls
+            # nothing; broken never reaches the count.
+            $r.Users | Should -Be 9
+        }
+
+        It 'the population is every .ps1 under scripts/ at ANY depth, except the lib and tests subtrees' {
+            $t = Join-Path $script:G 'tree'
+            foreach ($rel in 'scripts/top.ps1', 'scripts/not-a-script.txt', 'scripts/ci/shallow.ps1',
+                             'scripts/ci/deep/nested.ps1', 'scripts/other/lib/inner.ps1', 'scripts/lib/libfile.ps1',
+                             'scripts/tests/t.Tests.ps1', 'scripts/tests/sub/deeper.ps1') {
+                New-Item -ItemType File -Force -Path (Join-Path $t $rel) | Out-Null
+            }
+            # 'lib' and 'tests' are excluded by name ONE LEVEL DOWN only, so scripts/other/lib/ is IN.
+            @(Get-Section28Population -Root $t | ForEach-Object Name | Sort-Object) |
+                Should -Be @('inner.ps1', 'nested.ps1', 'shallow.ps1', 'top.ps1')
         }
     }
 }

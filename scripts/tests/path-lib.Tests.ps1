@@ -79,6 +79,25 @@ Describe 'Get-RootRelativePath' {
             Should -Be 'installer\probe.ps1'
     }
 
+    It 'normalises a root addressed through a PSDRIVE to its real filesystem path' {
+        # THE HEADER CLAIMS THIS AND NO ROW FED IT (AGY-TEST-AUDIT section 28, G4). The children a gate
+        # resolves come from Get-ChildItem .FullName, which is always the REAL path, while the root can be
+        # the drive spelling - so the raw arithmetic cut the drive spelling's length off an unrelated string.
+        # MEASURED: normalising with `(Resolve-Path).Path` with the provider prefix stripped passed every
+        # other row here except the 8.3 one, which SKIPS wherever 8.3 names are off. This row does not skip.
+        #
+        # IN-PROCESS, AND THAT IS WHY IT CAN EXIST HERE AND NOT IN A GATE SUITE: those spawn a child pwsh,
+        # where a PSDrive created by the test does not exist (docs/coverage-debt.md, boundary L).
+        $drive = 's28psd' + [guid]::NewGuid().ToString('N').Substring(0, 8)
+        New-PSDrive -Name $drive -PSProvider FileSystem -Root $script:Root | Out-Null
+        try {
+            $r = New-RootRelativePathResolver -Root "${drive}:\"
+            $r.Root | Should -Be ((Get-Item -LiteralPath $script:Root).FullName)
+            $r.Resolve($script:Child) | Should -Be 'installer\probe.ps1'
+        }
+        finally { Remove-PSDrive -Name $drive -ErrorAction SilentlyContinue }
+    }
+
     It 'returns the empty string when the path IS the root' {
         Get-RootRelativePath -Root $script:Root -Path ((Get-Item -LiteralPath $script:Root).FullName) |
             Should -Be ''

@@ -19,9 +19,10 @@ one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm
 load once and accumulates across files.
 
 - `just test-scripts-fast` — the agent inner-loop gate. **LAST MEASURED 2026-09-09 at `b2f4955`: 494 passed /
-  0 failed / 1 skipped in 480,5s** (the section 28 closing sweep, contended - an upper bound). Six rows added
-  since, NOT re-measured: five `New-RootRelativePathResolver` rows (`bb64f73`) and one case-insensitivity row
-  (AGY-CAPSTONE round 6), all in `path-lib.Tests.ps1`, now 17 rows, each sub-second. (This line used to read
+  0 failed / 1 skipped in 480,5s** (the section 28 closing sweep, contended - an upper bound). Seven rows added
+  since, NOT re-measured: five `New-RootRelativePathResolver` rows (`bb64f73`), one case-insensitivity row
+  (AGY-CAPSTONE round 6) and one PSDrive row (AGY-TEST-AUDIT section 28), all in `path-lib.Tests.ps1`, now 18
+  rows, each sub-second and in-process. (This line used to read
   "26 suites, 423 tests", derived as 411 measured 2026-08-26 by
   running the recipe, plus the one row the consent-dialog pin added that day, plus the 11 rows
   `path-lib.Tests.ps1` brought on 2026-09-08 - a derived count that went stale with the next row; the 492,9s warm / 550,4s cold
@@ -845,7 +846,7 @@ check-knowledge-store.Tests.ps1              163-252s  21 tests   <- SLOW. Each 
                                                                       Two rows CLONE (shallow + full), which
                                                                       is the bulk of the cost.
                                                                       RE-MEASURED 2026-08-28.
-check-dangling-consumers.Tests.ps1                58,4s  15 tests   <- SLOW. Each case builds a THROWAWAY
+check-dangling-consumers.Tests.ps1                58,4s  18 tests   <- SLOW. Each case builds a THROWAWAY
                                                                       SOURCE TREE, and one row walks the REAL
                                                                       repository, so the cost is a full
                                                                       recursive read per case. MEASURED
@@ -856,7 +857,13 @@ check-dangling-consumers.Tests.ps1                58,4s  15 tests   <- SLOW. Eac
                                                                       when the gate was redesigned around an
                                                                       explicit producer marker and four
                                                                       heuristic rows were deleted WITH the
-                                                                      heuristics they tested.
+                                                                      heuristics they tested. 15 -> 18 on
+                                                                      2026-09-11 (AGY-TEST-AUDIT section 28):
+                                                                      three fixture rows for the section 28
+                                                                      guards, parsed IN-PROCESS - no child
+                                                                      pwsh, milliseconds each. The 58,4s
+                                                                      figure predates them and was NOT re-
+                                                                      measured.
   the single largest suite in that half, moved to buy back cap headroom. Figure measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file
@@ -1041,7 +1048,7 @@ plugin-hooks-payload.Tests.ps1                    3,4s    5 tests   <- FAST. COU
                                                                       2026-08-05 figure, taken at 2 tests.
 register-plugin.Tests.ps1                         6,6s   18 tests   <- FAST, re-measured 2026-08-05
 release-lib.Tests.ps1                             5,5s   23 tests   <- FAST, re-measured 2026-08-05
-path-lib.Tests.ps1                                9,5s   17 tests   <- FAST, ADDED 2026-09-08 (section 28). This is
+path-lib.Tests.ps1                                9,5s   18 tests   <- FAST, ADDED 2026-09-08 (section 28). This is
                                                                       the WARM figure; the cold first run
                                                                       measured 27,1s. THE FAST HALF WAS NOT
                                                                       RE-MEASURED for this addition, and its
@@ -1049,7 +1056,13 @@ path-lib.Tests.ps1                                9,5s   17 tests   <- FAST, ADD
                                                                       600s foreground cap - so this row is
                                                                       the first thing to revisit if that
                                                                       half starts straddling it again.
-check-installer-ascii.Tests.ps1                   10,7s   2 tests   <- SLOW, ADDED 2026-09-08 (section 28).
+check-installer-ascii.Tests.ps1                   10,7s   4 tests   <- SLOW, ADDED 2026-09-08 (section 28).
+                                                                      2 -> 4 on 2026-09-11 (AGY-TEST-AUDIT
+                                                                      section 28): two rows pinning that the
+                                                                      gate FAILS, each spawning a child pwsh
+                                                                      like the first two - so the 10,7s
+                                                                      figure is now roughly half the cost and
+                                                                      was NOT re-measured. SLOW is still right.
                                                                       THE PLAN SAID FAST; THIS ROW DEVIATES, and
                                                                       the reason is measurement. The plan argued
                                                                       FAST from "the gate runs in ~6s", but the

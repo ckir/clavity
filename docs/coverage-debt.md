@@ -572,7 +572,23 @@ here, because it needs a new registered suite and this batch's scope is the seve
   mockable clock (`TimeProvider`) in `AgyView`, which would make the case constructible and retire this
   entry outright.
 
-### L. The PSDrive-rooted repository root cannot cross the test harness's process boundary (AGY-TEST-AUDIT 2026-08-28)
+### L. RETIRED 2026-09-11 - the PSDrive-rooted repository root is now pinned in-process (was: cannot cross the test harness's process boundary, AGY-TEST-AUDIT 2026-08-28)
+
+- 🔴 **RETIRED BY AGY-TEST-AUDIT section 28 (G4). Its compensation had silently vanished, so it was no longer
+  a satisfied boundary but a live gap.** ROADMAP section 28 moved every repo-relative subtraction in the gate
+  into `scripts/lib/path-lib.ps1`, which normalises the root with `Get-Item .FullName` - and that maps a
+  PSDrive to its real path on its own. So `.ProviderPath` on the `$repo` assignment is no longer the guard,
+  and the mutant the paragraphs below rely on - `.ProviderPath` reverted to `.Path` - no longer reddens the
+  provider-prefix row. The gate's own comment says so (`scripts/check-dangling-consumers.ps1`, the
+  `.ProviderPath` block), and the row's comment says so too. The entry below was never updated to match.
+- **What pins it now:** `'normalises a root addressed through a PSDRIVE to its real filesystem path'` in
+  `scripts/tests/path-lib.Tests.ps1`. The unit suite dot-sources the library IN-PROCESS, so the drive
+  exists where the code runs, and the case this entry called unconstructible is constructed directly.
+  MEASURED 2026-09-11: normalising with `(Resolve-Path).Path` with the provider prefix stripped reddens that
+  row and the 8.3 row and nothing else. The 8.3 row SKIPS wherever 8.3 names are off, so on such a volume
+  the PSDrive row is the only one that sees the mutant.
+- **Kept, not deleted,** because the letter is the citation key (see the note at the top of this ledger).
+  The original entry follows, unedited, as the record of why it was accepted at the time.
 
 - **Behaviour:** `scripts/check-dangling-consumers.ps1` resolves its root with
   `(Resolve-Path -LiteralPath $RepoRoot).ProviderPath`. `.ProviderPath` rather than `.Path` matters for two
