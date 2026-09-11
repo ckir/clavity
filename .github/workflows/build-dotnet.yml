@@ -202,6 +202,10 @@ jobs:
           $p2 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
           if ($p2.ExitCode -ne 0) { throw "re-run install exited $($p2.ExitCode) — idempotent upgrade must not abort" }
           if (-not (Test-Path "$app\clavity-ls.exe")) { throw "clavity-ls.exe missing after re-run install" }
+          # EVIDENCE, not an assertion: which tasks did this silent re-run select? The PATH task is
+          # `checkedonce`, and the heal must work whether or not it was selected (DEDUPE otherwise).
+          $arpKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{B7E4B2A1-9C3D-4F5E-8A1B-2C3D4E5F6A7B}_is1'
+          Write-Host "[PATH] tasks the re-run recorded: [$((Get-ItemProperty $arpKey -ErrorAction SilentlyContinue).'Inno Setup: Selected Tasks')]"
           $n2 = @(Get-UserPathEntry $app).Count
           if ($n2 -ne 1) { throw "PATH: expected the install dir exactly ONCE after a re-run over a duplicated PATH, found $n2 - the installer appended again or did not heal" }
           Write-Host "[PATH] exactly one entry after install, re-run, and heal"

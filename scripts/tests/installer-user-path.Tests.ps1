@@ -46,13 +46,13 @@ Describe 'installer user PATH handling' {
             )
         }
 
-        It 'each one includes the shared file, adds on the task, and removes on uninstall' {
+        It 'each one includes the shared file, adds on the task, dedupes otherwise, and removes on uninstall' {
             $problems = @(foreach ($f in $script:AllIss) {
                 $t = Get-Content -Raw -LiteralPath $f
                 if ($t -notmatch 'Name:\s*"addtopath"') { continue }
                 $n = Split-Path -Leaf $f
                 if ($t -notmatch '(?m)^#include\s+"[^"]*installer\\_shared\\user-path\.iss"') { "$n does not #include installer\_shared\user-path.iss" }
-                if ($t -notmatch "if WizardIsTaskSelected\('addtopath'\) then\s+AddDirToUserPath\(ExpandConstant\('\{app\}'\)\)") { "$n never calls AddDirToUserPath(ExpandConstant('{app}')) under the addtopath task" }
+                if ($t -notmatch "if WizardIsTaskSelected\('addtopath'\) then\s+AddDirToUserPath\(ExpandConstant\('\{app\}'\)\)\s+else\s+DedupeDirInUserPath\(ExpandConstant\('\{app\}'\)\)") { "$n does not add under the addtopath task and DEDUPE otherwise" }
                 if ($t -notmatch "RemoveDirFromUserPath\(ExpandConstant\('\{app\}'\)\)") { "$n never calls RemoveDirFromUserPath(ExpandConstant('{app}'))" }
             })
             $problems | Should -BeNullOrEmpty
@@ -92,6 +92,10 @@ Describe 'installer user PATH handling' {
                 @{ Id = 'add does not mistake a SIBLING for it';     Mode = 'add';    Path = "C:\W;$d-old";                             Expected = "C:\W;$d-old;$d" }
                 @{ Id = 'add recognises a QUOTED entry';             Mode = 'add';    Path = "C:\W;`"$d`"";                             Expected = "C:\W;`"$d`"" }
                 @{ Id = 'add keeps other %VARIABLE% entries raw';    Mode = 'add';    Path = '%USERPROFILE%\bin;C:\W';                  Expected = "%USERPROFILE%\bin;C:\W;$d" }
+                # DEDUPE is what an install runs when the PATH task is NOT ticked - on an upgrade, usually.
+                @{ Id = 'dedupe HEALS duplicates';                   Mode = 'dedupe'; Path = "C:\W;$d;C:\T;$d;$d";                      Expected = "C:\W;$d;C:\T" }
+                @{ Id = 'dedupe NEVER appends when absent';          Mode = 'dedupe'; Path = 'C:\W;C:\T';                               Expected = 'C:\W;C:\T' }
+                @{ Id = 'dedupe keeps a single entry in place';      Mode = 'dedupe'; Path = "$d;C:\W";                                 Expected = "$d;C:\W" }
                 @{ Id = 'remove the single entry';                   Mode = 'remove'; Path = "C:\W;$d;C:\T";                            Expected = 'C:\W;C:\T' }
                 @{ Id = 'remove EVERY duplicate';                    Mode = 'remove'; Path = "$d;C:\W;$d";                              Expected = 'C:\W' }
                 @{ Id = 'remove leaves a SIBLING intact';            Mode = 'remove'; Path = "C:\W;$d;$d-old;C:\T";                     Expected = "C:\W;$d-old;C:\T" }
@@ -140,6 +144,14 @@ begin
   if P > 0 then Result := Copy(Rest, 1, P - 1) else Result := Rest;
 end;
 
+function ModeOf(const S: string): Integer;
+begin
+  if S = 'add' then Result := UP_ADD
+  else if S = 'dedupe' then Result := UP_DEDUPE
+  else if S = 'remove' then Result := UP_REMOVE
+  else Result := -1;
+end;
+
 function InitializeSetup(): Boolean;
 var
   Cases, Output: TArrayOfString;
@@ -151,19 +163,22 @@ begin
   N := GetArrayLength(Cases);
   SetArrayLength(Output, N + 5);
   for I := 0 to N - 1 do
-    Output[I] := RebuildUserPath(Field(Cases[I], 1), Field(Cases[I], 2), Field(Cases[I], 0) = 'add');
+    if ModeOf(Field(Cases[I], 0)) < 0 then
+      Output[I] := 'BAD-MODE ' + Field(Cases[I], 0)
+    else
+      Output[I] := RebuildUserPath(Field(Cases[I], 1), Field(Cases[I], 2), ModeOf(Field(Cases[I], 0)));
   SubKey := ExpandConstant('{param:REGKEY}');
   Dir := ExpandConstant('{param:REGDIR}');
-  Output[N] := 'ADD-WROTE=' + IntToStr(Ord(UpdateUserPathValue(SubKey, 'Path', Dir, True)));
-  Output[N + 1] := 'ADD-AGAIN-WROTE=' + IntToStr(Ord(UpdateUserPathValue(SubKey, 'Path', Dir, True)));
+  Output[N] := 'ADD-WROTE=' + IntToStr(Ord(UpdateUserPathValue(SubKey, 'Path', Dir, UP_ADD)));
+  Output[N + 1] := 'ADD-AGAIN-WROTE=' + IntToStr(Ord(UpdateUserPathValue(SubKey, 'Path', Dir, UP_ADD)));
   V := '<absent>';
   RegQueryStringValue(HKCU, SubKey, 'Path', V);
   Output[N + 2] := 'AFTER-ADD=' + V;
-  UpdateUserPathValue(SubKey, 'Path', Dir, False);
+  UpdateUserPathValue(SubKey, 'Path', Dir, UP_REMOVE);
   V := '<absent>';
   RegQueryStringValue(HKCU, SubKey, 'Path', V);
   Output[N + 3] := 'AFTER-REMOVE=' + V;
-  Output[N + 4] := 'CREATE-WROTE=' + IntToStr(Ord(UpdateUserPathValue(SubKey, 'Fresh', Dir, True)));
+  Output[N + 4] := 'CREATE-WROTE=' + IntToStr(Ord(UpdateUserPathValue(SubKey, 'Fresh', Dir, UP_ADD)));
   SaveStringsToUTF8File(ExpandConstant('{param:OUT}'), Output, False);
 end;
 '@

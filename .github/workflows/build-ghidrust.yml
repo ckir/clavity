@@ -155,6 +155,10 @@ jobs:
           # Finding-5: re-run the SAME installer — idempotent upgrade (remove-then-add) must exit 0.
           $p2 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
           if ($p2.ExitCode -ne 0) { throw "re-run install exit $($p2.ExitCode) — idempotent upgrade must not abort" }
+          # EVIDENCE, not an assertion: which tasks did this silent re-run select? The PATH task is
+          # `checkedonce`, and the heal must work whether or not it was selected (DEDUPE otherwise).
+          $arpKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{270CC1D9-B3CF-4CD2-B9A4-738C99CE7397}_is1'
+          Write-Host "[PATH] tasks the re-run recorded: [$((Get-ItemProperty $arpKey -ErrorAction SilentlyContinue).'Inno Setup: Selected Tasks')]"
           $n2 = @(Get-UserPathEntry $app).Count
           if ($n2 -ne 1) { throw "PATH: expected the install dir exactly ONCE after a re-run over a duplicated PATH, found $n2 - the installer appended again or did not heal" }
           Write-Host "[PATH] exactly one entry after install, re-run, and heal"

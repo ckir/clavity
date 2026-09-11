@@ -119,9 +119,12 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
-    { PATH: the shared entry-wise add, which also heals the duplicates an older build appended. }
+    { PATH: the shared entry-wise add when the task is ticked, and a dedupe on EVERY other install, so the
+      duplicates an older build appended heal on upgrade even when the box was left unticked. }
     if WizardIsTaskSelected('addtopath') then
-      AddDirToUserPath(ExpandConstant('{app}'));
+      AddDirToUserPath(ExpandConstant('{app}'))
+    else
+      DedupeDirInUserPath(ExpandConstant('{app}'));
     { C1/C9: register the ghidrust plugin against every detected agent (ghidrust has no post-
       registration step like the golden-header seed, so there is nothing here to roll back on —
       see installer/_shared/register-invoke.iss's RollbackMemberPlugin comment). }

@@ -44,7 +44,9 @@ begin
   if CurStep = ssPostInstall then
   begin
     if WizardIsTaskSelected('addtopath') then
-      AddDirToUserPath(ExpandConstant('{app}'));
+      AddDirToUserPath(ExpandConstant('{app}'))
+    else
+      DedupeDirInUserPath(ExpandConstant('{app}'));
   end;
 end;
 

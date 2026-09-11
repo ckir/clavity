@@ -22,6 +22,14 @@
 // including empty ones and unexpanded %VARIABLES% - is written back byte-for-byte and in its original order.
 //   ADD    keeps the FIRST entry that names the directory and drops every later one, which also HEALS a PATH
 //          the old installers had already bloated; if none names it, it is appended once. Never prepended.
+//   DEDUPE keeps the first and drops the rest exactly like ADD, but NEVER appends. The installers run it on
+//          EVERY install where the PATH task is not selected. MEASURED in CI on the first build of this file:
+//          dotnet and ghidrust re-run silently with no /TASKS, and a planted duplicate SURVIVED the re-run,
+//          while classic - whose re-run passes /TASKS=addtopath - healed it, with identical code. The likely
+//          reason, INFERRED and not separately measured: the task is `checkedonce`, which Inno leaves
+//          unchecked when a previous version is installed (the smoke steps now print the tasks a re-run
+//          recorded). Either way, healing only when the task was ticked would leave exactly the users the
+//          old installers damaged still damaged after they upgrade.
 //   REMOVE drops every entry that names the directory, and nothing else.
 // KNOWN AND ACCEPTED: an entry that names the directory through an environment variable is not recognised
 // as the same directory, because Pascal Script has no general expansion call. The installers only ever
@@ -44,8 +52,14 @@ begin
   Result := AnsiUppercase(S);
 end;
 
-// Rebuild a PATH value with Dir added (AddMode) or removed. Pure: no registry, no environment.
-function RebuildUserPath(const PathValue, Dir: string; const AddMode: Boolean): string;
+// The three modes, as named constants so no call site passes a bare number.
+const
+  UP_REMOVE = 0;
+  UP_ADD    = 1;
+  UP_DEDUPE = 2;
+
+// Rebuild a PATH value in one of the three modes above. Pure: no registry, no environment.
+function RebuildUserPath(const PathValue, Dir: string; const Mode: Integer): string;
 var
   Rest, Entry, Key: string;
   SemiPos, Kept: Integer;
@@ -69,8 +83,8 @@ begin
       Rest := '';
     end;
     Matches := (Key <> '') and (UserPathKey(Entry) = Key);
-    // Keep every non-matching entry, and in ADD mode the first matching one. Drop the rest.
-    if (not Matches) or (AddMode and (not Seen)) then
+    // Keep every non-matching entry, and in ADD or DEDUPE mode the first matching one. Drop the rest.
+    if (not Matches) or ((Mode <> UP_REMOVE) and (not Seen)) then
     begin
       if Matches then
         Seen := True;
@@ -81,7 +95,7 @@ begin
     end;
   until SemiPos = 0;
 
-  if AddMode and (not Seen) and (Key <> '') then
+  if (Mode = UP_ADD) and (not Seen) and (Key <> '') then
   begin
     // Reuse a trailing ';' rather than writing an empty entry before the directory.
     if (Result = '') or (Copy(Result, Length(Result), 1) = ';') then
@@ -93,29 +107,38 @@ end;
 
 // Apply RebuildUserPath to a per-user registry value. Writes ONLY when the value changes, and always as
 // REG_EXPAND_SZ so the other entries' %VARIABLES% keep expanding. Returns True when it wrote.
-function UpdateUserPathValue(const SubKey, ValueName, Dir: string; const AddMode: Boolean): Boolean;
+function UpdateUserPathValue(const SubKey, ValueName, Dir: string; const Mode: Integer): Boolean;
 var
   OldValue, NewValue: string;
 begin
   Result := False;
   if not RegQueryStringValue(HKCU, SubKey, ValueName, OldValue) then
   begin
-    if not AddMode then
+    // Only ADD may create the value; there is nothing to remove from, or dedupe in, a value that is absent.
+    if Mode <> UP_ADD then
       exit;
     OldValue := '';
   end;
-  NewValue := RebuildUserPath(OldValue, Dir, AddMode);
+  NewValue := RebuildUserPath(OldValue, Dir, Mode);
   if NewValue <> OldValue then
     Result := RegWriteExpandStringValue(HKCU, SubKey, ValueName, NewValue);
 end;
 
 // What the installers call. ChangesEnvironment=yes in each member's [Setup] broadcasts the change.
+// Install:   if the PATH task is selected, AddDirToUserPath, else DedupeDirInUserPath - so a bloated PATH
+//            heals on every install, whether or not the user ticked the box this time.
+// Uninstall: RemoveDirFromUserPath.
 procedure AddDirToUserPath(const Dir: string);
 begin
-  UpdateUserPathValue('Environment', 'Path', Dir, True);
+  UpdateUserPathValue('Environment', 'Path', Dir, UP_ADD);
+end;
+
+procedure DedupeDirInUserPath(const Dir: string);
+begin
+  UpdateUserPathValue('Environment', 'Path', Dir, UP_DEDUPE);
 end;
 
 procedure RemoveDirFromUserPath(const Dir: string);
 begin
-  UpdateUserPathValue('Environment', 'Path', Dir, False);
+  UpdateUserPathValue('Environment', 'Path', Dir, UP_REMOVE);
 end;

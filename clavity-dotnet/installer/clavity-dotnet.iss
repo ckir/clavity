@@ -182,9 +182,12 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
-    { PATH: the shared entry-wise add, which also heals the duplicates an older build appended. }
+    { PATH: the shared entry-wise add when the task is ticked, and a dedupe on EVERY other install, so the
+      duplicates an older build appended heal on upgrade even when the box was left unticked. }
     if WizardIsTaskSelected('addtopath') then
-      AddDirToUserPath(ExpandConstant('{app}'));
+      AddDirToUserPath(ExpandConstant('{app}'))
+    else
+      DedupeDirInUserPath(ExpandConstant('{app}'));
     if not Exec(ExpandConstant('{app}\{#ExeName}'), 'install --agent all', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
       SuppressibleMsgBox('clavity-ls could not be launched to register the plugin. Finish manually by running:' + #13#10 +
         ExpandConstant('{app}\{#ExeName}') + ' install --agent all', mbError, MB_OK, IDOK)
