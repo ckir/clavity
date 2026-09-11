@@ -733,7 +733,11 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
-check-agy-discipline-skills.Tests.ps1            43,2s   90 tests   <- FAST, re-measured 2026-09-03
+check-agy-discipline-skills.Tests.ps1            43,2s   92 tests   <- FAST, re-measured 2026-09-03
+  90 -> 92 on 2026-09-11 (ROADMAP section 30): the roster-derivation row (in-process, a regex over the
+  linter source) and the two-skill row (ONE scratch root, ONE in-process linter run). The ledger rows
+  stayed at six - their roster is now DERIVED, not restated. Runtime NOT re-measured, and this is the
+  fast half, which sits near its 600s cap: the two rows add roughly one row's worth of existing cost.
   Re-measured 2026-09-03 for ROADMAP section 23, count 75 -> 82 (five section-23 ledger pins, then two
   more from the AGY-CAPSTONE R1 fold that pinned -PathType Leaf). RUNTIME IS UNRELIABLE HERE: THREE
   observations the same afternoon gave 43,2s, 76,8s and 143,4s - a 3,3x spread - with at most two rows

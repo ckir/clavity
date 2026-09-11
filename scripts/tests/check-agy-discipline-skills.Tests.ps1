@@ -1,7 +1,35 @@
 # scripts/tests/check-agy-discipline-skills.Tests.ps1
+
+# PARSE THE LINTER'S MAP RATHER THAN RESTATING IT. ROADMAP section 30a. Reading the source is deliberate:
+# dot-sourcing the linter would EXECUTE it, and it exits non-zero by design.
+#
+# THIS MUST BE BeforeDiscovery, NOT BeforeAll. MEASURED: `-ForEach` is evaluated at DISCOVERY, while
+# BeforeAll runs at RUN time - a roster built there is $null when -ForEach reads it, and Pester then
+# discovers ZERO rows WITHOUT erroring. The suite stays green having tested nothing.
+BeforeDiscovery {
+    $lintPath = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'scripts/check-agy-discipline-skills.ps1'
+    $lintSrc  = [IO.File]::ReadAllText($lintPath)
+    $mapBlock = [regex]::Match($lintSrc, '(?s)\$ledgerFor\s*=\s*@\{(.*?)\}')
+    if (-not $mapBlock.Success) { throw 'section 30a: the $ledgerFor literal was not found - the roster would be empty and every ledger row would silently vanish' }
+    $ledgerRoster = @(foreach ($m in [regex]::Matches($mapBlock.Groups[1].Value, "'([^']+)'\s*=\s*'([^']+)'")) {
+        @{ skill = $m.Groups[1].Value; ledger = $m.Groups[2].Value }
+    })
+    if ($ledgerRoster.Count -lt 2) { throw "section 30a: parsed only $($ledgerRoster.Count) ledger discipline(s); a zero-or-one roster silently disables the rows it feeds" }
+}
+
 BeforeAll {
     $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
     $script:Lint     = Join-Path $script:RepoRoot 'scripts/check-agy-discipline-skills.ps1'
+
+    # The RUN-TIME copy, for the two-skill row in Task 2. Same parse, different phase - see the
+    # BeforeDiscovery block at the top of this file for why one cannot serve both.
+    $mapBlockRun = [regex]::Match([IO.File]::ReadAllText($script:Lint), '(?s)\$ledgerFor\s*=\s*@\{(.*?)\}')
+    $mapBlockRun.Success | Should -BeTrue -Because 'the $ledgerFor literal must be findable, or the two-skill row silently perturbs nothing'
+    $script:LedgerRoster = @(foreach ($m in [regex]::Matches($mapBlockRun.Groups[1].Value, "'([^']+)'\s*=\s*'([^']+)'")) {
+        @{ skill = $m.Groups[1].Value; ledger = $m.Groups[2].Value }
+    })
+    $script:LedgerKeys = @($script:LedgerRoster.skill)
+    $script:LedgerRoster.Count | Should -BeGreaterThan 1 -Because 'the two-skill row needs at least two ledger-owning disciplines'
 
     # Stage a scratch -Root containing a VALID copy of EVERY shipped discipline skill, so a rejection
     # test that perturbs ONE skill fails on THAT defect, not on a MISSING sibling (SP-B: once
@@ -120,11 +148,63 @@ Describe 'check-agy-discipline-skills' {
         ($out -join "`n") | Should -Match 'agy-discipline skills OK'
     }
 
+    It 'derives the ledger roster from the linter source, and the parse still finds the map' {
+        # ROADMAP section 30a. The three rosters below are DERIVED from $ledgerFor rather than restating
+        # it, so coverage of every ledger-owning discipline is structural - there is nothing left to
+        # reconcile, and a row asserting "the roster covers the keys" would compare the parse to itself.
+        #
+        # What CAN still break is the parse: rename the variable, reformat the hashtable, or move it, and
+        # the regex finds nothing. That yields an EMPTY roster, `-ForEach` discovers ZERO rows, and this
+        # suite reports green having tested nothing. This row is the guard against that, and it names the
+        # disciplines explicitly so an empty or truncated parse cannot satisfy it.
+        $script:LedgerRoster.Count | Should -BeGreaterThan 1 -Because 'a zero-or-one roster silently disables the ledger rows it feeds'
+        $script:LedgerRoster.skill | Should -Contain 'agy-capstone'
+        $script:LedgerRoster.skill | Should -Contain 'agy-test-audit'
+        # Every entry must carry a ledger path, or a half-parsed pair would feed a row with $null.
+        foreach ($e in $script:LedgerRoster) {
+            $e.ledger | Should -Match '^docs/.+-ledger\.md$' -Because "the parsed ledger for $($e.skill) must look like a ledger path, not a fragment"
+        }
+    }
+
+    It 'reports EVERY failing skill, not just the first (ROADMAP section 30b)' {
+        # Each other row here perturbs ONE skill, so all of them are blind to an early exit: replace
+        # Fail's `$script:fail = $true` with a `break` and the linter halts after the first failure while
+        # every single-perturbation row stays green. This row breaks TWO skills and requires BOTH
+        # diagnostics, which is the only shape that can see the difference.
+        #
+        # It uses the SAME two disciplines the ledger roster names, and deletes rather than substitutes,
+        # for the reason recorded on the ledger rows: a fixture that INJECTS a decoy lets a guard keyed
+        # on the decoy pass while proving nothing.
+        $roster = @($script:LedgerRoster)
+        $roster.Count | Should -BeGreaterThan 1 -Because 'this row needs at least two ledger-owning disciplines to perturb'
+
+        $scratch = New-ScratchRoot
+        try {
+            foreach ($entry in $roster) {
+                $target = & $script:SkillPath $scratch $entry.skill
+                $real   = Get-Content -Raw $target
+                $real.Contains($entry.ledger) | Should -BeTrue -Because "the fixture needs $($entry.ledger) present in $($entry.skill) before it can be removed"
+                $body = $real.Replace($entry.ledger, '')
+                $body | Should -Not -Be $real -Because "the strip must take effect for $($entry.skill)"
+                Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            }
+
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            $text = Get-LintText $out
+
+            # THE ASSERTION IS THAT BOTH APPEAR. Asserting a COUNT would be weaker: a count is invariant
+            # under reporting the same skill twice, which is exactly the confusion an early-exit bug
+            # creates. Name each one.
+            foreach ($entry in $roster) {
+                $text | Should -Match ([regex]::Escape("never names '$($entry.ledger)'")) -Because "$($entry.skill) must be reported even when it is not the first failure"
+            }
+        }
+        finally { Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue }
+    }
+
     Context 'rejection cases (each perturbs one skill; the other stays valid)' {
-        It 'REJECTS <skill> when its ledger path is stripped' -ForEach @(
-            @{ skill = 'agy-capstone';   ledger = 'docs/agy-capstone-ledger.md' },
-            @{ skill = 'agy-test-audit'; ledger = 'docs/agy-test-audit-ledger.md' }
-        ) {
+        It 'REJECTS <skill> when its ledger path is stripped' -ForEach $ledgerRoster {
             # Both disciplines own a ledger and both REQUIRE a row before a completing verdict. The
             # capstone's clause shipped unpinned for weeks; this row closes the SET, not the instance.
             $scratch = New-ScratchRoot
@@ -149,10 +229,7 @@ Describe 'check-agy-discipline-skills' {
             Remove-Item -Recurse -Force $scratch
         }
 
-        It 'REJECTS <skill> when its ledger FILE is absent' -ForEach @(
-            @{ skill = 'agy-capstone';   ledger = 'docs/agy-capstone-ledger.md' },
-            @{ skill = 'agy-test-audit'; ledger = 'docs/agy-test-audit-ledger.md' }
-        ) {
+        It 'REJECTS <skill> when its ledger FILE is absent' -ForEach $ledgerRoster {
             # Naming a ledger that does not exist is the False Safety Promise shape: the skill's clause
             # reads as enforced while the file it points at is gone.
             $scratch = New-ScratchRoot
@@ -165,10 +242,7 @@ Describe 'check-agy-discipline-skills' {
             Remove-Item -Recurse -Force $scratch
         }
 
-        It 'REJECTS <skill> when its ledger is a DIRECTORY rather than a file' -ForEach @(
-            @{ skill = 'agy-capstone';   ledger = 'docs/agy-capstone-ledger.md' },
-            @{ skill = 'agy-test-audit'; ledger = 'docs/agy-test-audit-ledger.md' }
-        ) {
+        It 'REJECTS <skill> when its ledger is a DIRECTORY rather than a file' -ForEach $ledgerRoster {
             # AGY-CAPSTONE 2026-09-03 R1: a bare Test-Path returns $true for a directory, so the
             # existence guard could be satisfied by `mkdir docs/<x>-ledger.md` with no record present.
             # This row pins -PathType Leaf; delete that switch and it goes red while every sibling row
