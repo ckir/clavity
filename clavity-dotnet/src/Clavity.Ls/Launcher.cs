@@ -29,6 +29,9 @@ public sealed class LaunchOptions
     /// true (user decision 2026-06-30) so unattended consults don't stall on agy approval prompts; the field
     /// stays here so the Launcher itself remains policy-free and unit-testable both ways.</summary>
     public bool SkipPermissions { get; init; }
+    /// <summary>If set, agy is launched with <c>-i "Fetch and follow the instructions at &lt;path&gt;"</c> so it
+    /// self-publishes its LS endpoint (port + CSRF token) at session start. Null → no acquire prompt.</summary>
+    public string? AgyInstallDocPath { get; init; }
 }
 
 /// <summary>
@@ -53,7 +56,7 @@ public static class Launcher
         if (options.ProjectId is { Length: > 0 } projectId)
             agyEnv["ANTIGRAVITY_PROJECT_ID"] = projectId;
 
-        var script = BuildAgyTabScript(agyEnv, options.AgyLogFilePath, options.SkipPermissions);
+        var script = BuildAgyTabScript(agyEnv, options.AgyLogFilePath, options.SkipPermissions, options.AgyInstallDocPath);
 
         // Windows Terminal treats ';' in its command line as a tab/pane separator and re-parses GetCommandLineW
         // itself, so a structured-argv inline `-Command "...; ...; agy ..."` is still shattered into broken
@@ -89,7 +92,7 @@ public static class Launcher
     }
 
     private static string BuildAgyTabScript(
-        IReadOnlyDictionary<string, string> env, string logFilePath, bool skipPermissions)
+        IReadOnlyDictionary<string, string> env, string logFilePath, bool skipPermissions, string? installDocPath)
     {
         var sb = new StringBuilder();
         foreach (var (key, value) in env)
@@ -97,6 +100,8 @@ public static class Launcher
         sb.Append("agy --log-file ").Append(PwshSingleQuote(logFilePath));
         if (skipPermissions)
             sb.Append(" --dangerously-skip-permissions");
+        if (!string.IsNullOrEmpty(installDocPath))
+            sb.Append(" -i ").Append(PwshSingleQuote($"Fetch and follow the instructions at {installDocPath}"));
         return sb.ToString();
     }
 

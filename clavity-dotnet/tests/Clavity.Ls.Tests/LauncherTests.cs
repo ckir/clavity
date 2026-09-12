@@ -79,6 +79,37 @@ public class LauncherTests
     }
 
     [Fact]
+    public void AgyTab_script_injects_the_fetch_and_follow_prompt_when_an_install_doc_is_given()
+    {
+        var plan = Launcher.Build(new LaunchOptions
+        {
+            Folder = "C:\\proj",
+            SessionId = "sid",
+            AgyLogFilePath = "C:\\logs\\agy.log",
+            SkipPermissions = true,
+            AgyInstallDocPath = "C:\\install\\agy-pairing-INSTALL.md",
+        });
+
+        var script = DecodeScript(plan);
+
+        Assert.Contains("--dangerously-skip-permissions", script);
+        Assert.Contains("-i 'Fetch and follow the instructions at C:\\install\\agy-pairing-INSTALL.md'", script);
+        Assert.True(script.IndexOf("--dangerously-skip-permissions", StringComparison.Ordinal)
+                    < script.IndexOf(" -i '", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AgyTab_script_omits_the_prompt_when_no_install_doc_is_given()
+    {
+        var plan = Launcher.Build(new LaunchOptions
+        {
+            Folder = "C:\\proj", SessionId = "sid", AgyLogFilePath = "C:\\logs\\agy.log", SkipPermissions = true,
+        });
+        var script = DecodeScript(plan);
+        Assert.DoesNotContain(" -i '", script);
+    }
+
+    [Fact]
     public void ClaudeLaunch_threads_session_identity_and_drops_legacy_marker()
     {
         var plan = Launcher.Build(Opts(claudeArgs: new[] { "--model", "opus" }));
