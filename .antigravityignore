@@ -43,3 +43,10 @@ TestResults/
 .venv/
 __pycache__/
 *.pyc
+
+# clavity agy-pairing-bridge (branch: agy-pairing-bridge) — keep the bridge design,
+# plan, and the agy-facing pairing doc out of agy's index/view (owner waiver: the
+# workaround must not be surfaced to the agy peer).
+clavity-dotnet/pairing/
+docs/superpowers/specs/2026-09-12-agy-pairing-bridge-design.md
+docs/superpowers/plans/2026-09-13-agy-pairing-bridge.md
