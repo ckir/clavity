@@ -49,6 +49,7 @@ Source: "..\..\seed\golden-header.md"; DestDir: "{app}\seed"; Flags: ignoreversi
 Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
 Source: "..\..\installer\_shared\register-plugin.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\plugin\*"; DestDir: "{app}\plugins\clavity"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\pairing\agy-pairing-INSTALL.md"; DestDir: "{app}\plugins\clavity\pairing"; Flags: ignoreversion
 
 [Tasks]
 Name: "addtopath"; Description: "Add clavity-ls to PATH"; Flags: checkedonce
