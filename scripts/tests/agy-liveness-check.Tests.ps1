@@ -46,6 +46,49 @@ Describe 'agy-liveness-check.sh' {
             $r.StdErr   | Should -BeNullOrEmpty -Because 'ROADMAP section 31: this hook must never write to stderr again - stderr plus a non-zero exit is what rendered a routine notice as a red hook error'
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
+    It 'stays SILENT on stderr when PATH carries no external tools at all' {
+        # ANOMALY TRIAGE 2026-09-12. MEASURED before the fix, with bash invoked by ABSOLUTE path so the
+        # shell itself still starts: `input=$(cat)` leaked `cat: command not found` - 83 bytes of stderr on
+        # an otherwise clean exit 0, which Claude Code renders as a red hook error naming a hook that did
+        # its job. That is the cries-wolf class ROADMAP section 31 exists to end, arriving through an
+        # unredirected EXTERNAL command rather than through an exit code.
+        #
+        # THE ASSERTION IS THE BEHAVIOUR, NOT THE REDIRECT'S TEXT. A row grepping the source for
+        # `2>/dev/null` would pass over any future unredirected call; this one runs the hook with nothing
+        # on PATH and reads what it actually wrote. Everything else in the hook is broken in this state -
+        # that is the point: it must be SILENT about it rather than crying wolf.
+        # THE SHELL MUST BE THE RAW MSYS ONE, and that is the whole difficulty of this row. MEASURED:
+        # `Git\bin\bash.exe` - what Get-GitBashOrThrow returns, correctly, for every other row - puts its
+        # own /usr/bin back on PATH at startup, so `command -v cat` succeeds there no matter what PATH is
+        # set to, and a row driven through it passes with the redirect REMOVED. `Git\usr\bin\bash.exe` does
+        # not. Two earlier versions of this row were vacuous for that reason, and one of them for a second:
+        # bare `bash` on this box is the System32 WSL shim, which cannot read Windows-form paths at all.
+        #
+        # The command is assembled INSIDE a .sh file rather than as Start-Process arguments, because the
+        # interpreter lives under "C:\Program Files" and the space defeats argument quoting through env.exe.
+        $rawBash = Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin\bash.exe'
+        if (-not (Test-Path -LiteralPath $rawBash)) {
+            Set-ItResult -Skipped -Because 'the raw MSYS shell is not present; the wrapper always restores /usr/bin, so the empty-PATH case cannot be reproduced through it'
+            return
+        }
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $w = Join-Path ([IO.Path]::GetTempPath()) ("lv-nopath-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $w -Force | Out-Null
+        try {
+            $posix = { param($p) ($p -replace '\\', '/') -replace '^([A-Za-z]):', '/$1' }
+            $pf  = Join-Path $w 'payload.json'; Set-Content -LiteralPath $pf -Value (Payload) -NoNewline -Encoding ascii
+            $sh  = Join-Path $w 'run.sh'
+            $out = Join-Path $w 'out.txt'; $err = Join-Path $w 'err.txt'
+            Set-Content -LiteralPath $sh -NoNewline -Encoding ascii -Value (
+                "exec env -i PATH=/nonexistent HOME='$(& $posix $h)' CLAUDE_CONFIG_DIR='$(& $posix $cfg)' " +
+                "'$(& $posix $rawBash)' '$(& $posix $script:Hook)'")
+            $p = Start-Process -FilePath (Get-GitBashOrThrow) -ArgumentList @((& $posix $sh)) -NoNewWindow -Wait -PassThru `
+                    -RedirectStandardInput $pf -RedirectStandardOutput $out -RedirectStandardError $err
+            $p.ExitCode | Should -Be 0 -Because 'a hook that cannot reach its tools must still fail open'
+            (Get-Item -LiteralPath $out).Length | Should -BeGreaterThan 0 -Because 'the hook must still run and answer, or an empty stderr proves only that nothing happened'
+            (Get-Content -LiteralPath $err -Raw) | Should -BeNullOrEmpty -Because 'an unredirected external command turns a working hook into a red hook error'
+        } finally { Remove-Item $cfg,$h,$w -Recurse -Force -ErrorAction SilentlyContinue }
+    }
     It 'ADVISES (systemMessage + exit 0) when superpowers is disabled' {
         $cfg = New-ConfigFixture $false; $h = New-CleanHome
         try {

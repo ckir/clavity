@@ -601,6 +601,41 @@ jq -nc --arg m "[TAG] $msg" '{}'
             }
         }
 
+        It 'does NOT report build output that GIT ignores, and DOES report the same directory when it is not ignored' {
+            # ANOMALY TRIAGE 2026-09-12. MEASURED before the fix: any maintainer who had run the python tests
+            # saw 2 violations on every local run (.pytest_cache and tests/__pycache__ under
+            # clavity-classic/agy-mcp-bridge) while `git ls-files` showed 0 such paths TRACKED - so CI, which
+            # starts from a fresh checkout, had never seen them. A gate that is red on a clean tree for
+            # reasons the operator cannot fix teaches people to skip it.
+            #
+            # THE CONTROL IS THE FIRST HALF OF THIS ROW, and it is what makes the second half mean anything:
+            # the fixture differs only by the ABSENCE of a .gitignore, so a filter that simply stopped
+            # reporting build output would fail here rather than pass quietly.
+            $d = Join-Path ([IO.Path]::GetTempPath()) ("icg-" + [guid]::NewGuid().ToString('N'))
+            try {
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+                Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Encoding ascii -Value '{ "exemptions": [] }'
+                $rel   = "$($script:DomainRoots[0])/tests/__pycache__"
+                $cache = Join-Path $d $rel
+                New-Item -ItemType Directory -Force -Path $cache | Out-Null
+                Set-Content -LiteralPath (Join-Path $cache 'x.pyc') -Value 'x' -Encoding ascii
+                & git -C $d init -q 2>&1 | Out-Null
+                (Test-Path (Join-Path $d '.git')) | Should -BeTrue -Because 'the fixture must be a git repository, or check-ignore can answer nothing and the filter fails open'
+
+                # ForEach-Object rather than @(...).File: under Set-StrictMode a property read on an EMPTY
+                # array throws PropertyNotFound, which is how the passing half of this row first reported
+                # itself as a RuntimeException rather than as the green it actually was.
+                $before = @(Get-InjectedContextViolations -RepoRoot $d | Where-Object { $_.Invariant -eq 'build-output' } | ForEach-Object { $_.File })
+                $before | Should -Contain $rel -Because 'with nothing ignoring it, this IS unexpected build output and must be reported'
+
+                Set-Content -LiteralPath (Join-Path $d '.gitignore') -Value '__pycache__/' -Encoding ascii
+                $after = @(Get-InjectedContextViolations -RepoRoot $d | Where-Object { $_.Invariant -eq 'build-output' } | ForEach-Object { $_.File })
+                $after | Should -Not -Contain $rel -Because 'a directory git ignores is not shipped content, so it is not this gate''s business'
+            } finally { Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue }
+        }
+
         It 'ENFORCES the blocklist - an exemption naming a blocklisted anomaly is refused' {
             # Capstone round 7, and the peer was RIGHT where I was wrong. I had rated this below the floor
             # on the grounds that $script:AnomalyBlocklist is deliberately empty, so the throw is

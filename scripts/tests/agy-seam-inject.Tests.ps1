@@ -63,6 +63,52 @@ Describe 'agy-seam-inject.sh' {
             $r.StdOut | Should -Match 'AGY-FIRST auto-fire' -Because 'without the opt-out it must still inject - otherwise the silence test proves nothing'
         } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
     }
+    # --- cwd that is a FILE, not a directory -----------------------------------------------------
+    # AGY-TEST-AUDIT anomaly triage 2026-09-12. MEASURED before the fix, with these same controls: a file
+    # cwd made the hook SPEAK (1189 bytes) while the directory holding the same .no-agy was silent. The
+    # walk is gated on `[ -d "$cwd_path" ]`, so a file skipped it, and the fallback check is
+    # `$cwd_path/.no-agy` - `<file>/.no-agy`, which cannot exist. Both transports had the same hole.
+    It 'is SILENT when cwd is a FILE inside the directory holding .no-agy' {
+        $repo = New-TempRepo
+        try {
+            $f = Join-Path $repo 'afile.txt'
+            New-Item -ItemType File -Path $f -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
+            $r = Invoke-HookRaw -Skill 'superpowers:brainstorming' -Cwd $f
+            $r.StdOut   | Should -BeNullOrEmpty -Because 'an opt-out must hold when the session reports a FILE as its cwd'
+            $r.ExitCode | Should -Be 0
+        } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'DOES inject for that same FILE cwd when .no-agy is absent (positive control)' {
+        $repo = New-TempRepo
+        try {
+            $f = Join-Path $repo 'afile.txt'
+            New-Item -ItemType File -Path $f -Force | Out-Null
+            $r = Invoke-HookRaw -Skill 'superpowers:brainstorming' -Cwd $f
+            $r.StdOut | Should -Match 'AGY-FIRST auto-fire' -Because 'a file cwd must still reach the seam, or the silence above proves only that the hook is broken'
+        } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'is SILENT for a FILE cwd on the DEGRADED (no jq) path too' {
+        $repo = New-TempRepo
+        try {
+            $f = Join-Path $repo 'afile.txt'
+            New-Item -ItemType File -Path $f -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
+            $r = Invoke-HookRaw -Skill 'superpowers:brainstorming' -Cwd $f -NoJq
+            $r.StdOut   | Should -BeNullOrEmpty -Because 'the degraded path carries its own copy of the walk, so it needs its own row'
+            $r.ExitCode | Should -Be 0
+        } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'DOES warn for that FILE cwd on the degraded path when .no-agy is absent (positive control)' {
+        $repo = New-TempRepo
+        try {
+            $f = Join-Path $repo 'afile.txt'
+            New-Item -ItemType File -Path $f -Force | Out-Null
+            $r = Invoke-HookRaw -Skill 'superpowers:brainstorming' -Cwd $f -NoJq
+            $r.StdOut | Should -Match 'guard inactive' -Because 'without the opt-out the degraded path must still announce itself'
+        } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'honours a root .no-agy from a subdirectory on the DEGRADED (no jq) path too' {
         # This path used to test "./.no-agy" - the PROCESS cwd, not the session workspace.
         $repo = New-TempRepo

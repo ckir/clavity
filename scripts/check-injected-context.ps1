@@ -196,7 +196,57 @@ function Get-UnexpectedBuildDirs {
             }
         }
     }
+    # GIT'S OWN IGNORE RULES, ASKED ONCE PER CALL. A directory git ignores is not shipped content by
+    # definition - it is not in the repository at all - so reporting it as "build output inside a domain
+    # root" is a violation about something this gate does not govern. MEASURED 2026-09-12 before this
+    # filter: any maintainer who had run the python tests saw 2 violations (`.pytest_cache` and
+    # `tests/__pycache__` under clavity-classic/agy-mcp-bridge) on every local run, while `git ls-files`
+    # showed 0 such paths TRACKED, so CI - which starts from a fresh checkout - had never once seen them.
+    # A gate that is red on a clean tree for reasons the operator cannot fix is a gate people learn to skip.
+    #
+    # ONE process for the whole batch, not one per candidate: `--stdin` takes the list on stdin.
+    # TRACKED PATHS STAY REPORTED, which is the safe direction and is why plain `check-ignore` is right
+    # here rather than `--no-index`: for a path that is tracked, git answers NOT ignored (tracking wins),
+    # so shipped content cannot be filtered out of this report by adding a line to .gitignore.
+    $ignored = Get-GitIgnoredPathSet -RepoRoot $RepoRoot -RelPaths $out.ToArray()
+    if ($ignored.Count -gt 0) { return @($out | Where-Object { -not $ignored.Contains($_) }) }
     $out.ToArray()
+}
+
+# The candidates git IGNORES, as a set. FAILS OPEN - if git is absent, the root is not a repository, or the
+# call errors, the set comes back EMPTY and the gate reports exactly what it reported before this filter
+# existed. A filter that silences the gate when it cannot answer would be the fail-open this whole script
+# exists to prevent, so the failure direction is deliberate and stated.
+#
+# `return ,$set` - the leading comma is load-bearing. PowerShell ENUMERATES a returned collection, so
+# `return $set` hands the caller loose strings instead of the set (and an empty set becomes nothing at
+# all). MEASURED 2026-09-12: the first version of this filter returned a List that way, `$out.ToArray()`
+# then failed on the unrolled value, and the gate threw where it promises a violation report - 29 rows
+# red, most of them nowhere near this code.
+function Get-GitIgnoredPathSet {
+    param([string]$RepoRoot, [string[]]$RelPaths)
+    $set = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    if (-not $RelPaths -or $RelPaths.Count -eq 0) { return ,$set }
+    try {
+        # ARGUMENTS, NOT `--stdin`, and this was MEASURED rather than chosen. Piping the paths into
+        # `git check-ignore --stdin` from PowerShell answers "nothing is ignored" (rc=1, no output) for a
+        # path git matches perfectly well when it is passed as an argument - PowerShell terminates pipeline
+        # lines with CRLF and the trailing `\r` becomes part of the pathname git looks up. The first version
+        # of this filter used `--stdin`, and its row failed with the candidate still reported. The candidate
+        # list is bounded by construction - it holds only unexpected build directories inside domain roots.
+        #
+        # 2>$null, and $LASTEXITCODE read immediately: check-ignore exits 0 when something matched, 1 when
+        # nothing did, and 128 on a real error (not a repository, no git). Only 0 and 1 are answers.
+        $answer = @(& git -C $RepoRoot check-ignore -- $RelPaths 2>$null)
+        if ($LASTEXITCODE -le 1) {
+            foreach ($line in $answer) {
+                if ($line) { [void]$set.Add(($line -replace '\\', '/').TrimEnd('/')) }
+            }
+        }
+    } catch {
+        return ,([System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase))
+    }
+    return ,$set
 }
 
 function Get-IgnoreGlobs {

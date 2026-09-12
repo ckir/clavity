@@ -43,7 +43,13 @@
 # `trap ... ERR` -- it would swallow the settings-parse path and drop the advisory. The ONLY silent outcome is (1).
 # Byte-identical across both driver plugins (kept honest by the seed-sync gate).
 set +e
-input=$(cat)
+# 2>/dev/null, because `cat` is EXTERNAL and this hook's contract is that it never writes to stderr
+# (ROADMAP section 31, the cries-wolf class). MEASURED 2026-09-12 with an empty PATH: this line leaked
+# `cat: command not found` - 83 bytes of stderr on an otherwise clean exit 0 - which Claude Code renders
+# as a red hook error naming a hook that did its job. The same shape as the `dirname` sites in
+# agy-mark.sh, fixed there the same way. An empty PATH breaks everything else here too; the point is that
+# the hook stays SILENT about it rather than crying wolf.
+input=$(cat 2>/dev/null)
 
 # --- jq guard. jq is needed to merge settings. Without it, honor the kill-switch (global + the session's
 # REAL workspace, recovered from the raw payload) then emit ONE loud dep warning (never silent; we cannot
@@ -180,7 +186,7 @@ done
 # independently: an unreadable one is named and the sweep CONTINUES, so a typo in a project file cannot mask
 # a real duplicate in the user file. A settings file with no .hooks node is normal (fresh install) and silent.
 ownership_note=""
-shipped_json="$(dirname "$0")/hooks.json"
+shipped_json="$(dirname "$0" 2>/dev/null)/hooks.json"
 # Tokenizing happens INSIDE jq, which is already parsing the file. A printf|grep|tr|sort pipeline costs
 # four extra processes, and this hook runs on every SessionStart: measured on Windows, bash itself is
 # ~455ms and each additional fork ~126ms, so the pipeline form cost ~440ms EVERY time it ran -- once for

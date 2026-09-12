@@ -685,7 +685,11 @@ agy-autotrain-installer.Tests.ps1                 1,3s   17 tests   <- FAST, new
 agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new 2026-08-24. 6,4s WARM on an
                                                                       idle CPU; 11,1s cold. It will not be the
                                                                       cold-start absorber in this half
-agy-liveness-check.Tests.ps1                     56,4s   32 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-liveness-check.Tests.ps1                     56,4s   33 tests   <- SLOW, re-measured 2026-08-06 (+4)
+  32 -> 33 on 2026-09-12 (anomaly triage): one row proving the hook stays SILENT on stderr when PATH holds
+  no external tools. It drives the RAW msys shell through a generated .sh - Git\bin\bash.exe restores its
+  own /usr/bin, so a row driven through the usual wrapper cannot see the defect. SKIPS where that shell is
+  absent. Runtime NOT re-measured; one more child process on an already-SLOW suite.
 agy-mark.Tests.ps1                               93,0s   47 tests   <- SLOW, NEW 2026-08-16. Task 6 (14c):
                                                                       agy-mark.sh, the sanctioned .clavity writer for the
                                                                       skills. Bash + git subprocess spawns across 26 Its; the
@@ -699,7 +703,10 @@ agy-mark-stamp.Tests.ps1                         24,4s  11 tests    <- SLOW, NEW
                                                                       Two runs at the top level: 27,4s cold / 24,4s warm. Background
                                                                       load uncontrolled - four long-lived pwsh processes were present
                                                                       and are not this session's to stop.
-agy-seam-inject.Tests.ps1                        39,4s   24 tests   <- SLOW, re-measured 2026-08-06 (+5:
+agy-seam-inject.Tests.ps1                        39,4s   28 tests   <- SLOW, re-measured 2026-08-06 (+5:
+  24 -> 28 on 2026-09-12 (anomaly triage): a cwd that is a FILE defeated the .no-agy kill-switch on BOTH
+  transports, so each path gets a silence row and its own positive control - four rows, each one hook run.
+  Runtime NOT re-measured. (the original note follows)
                                                                       four root-walk cases plus the marker
                                                                       cwd-relative contract, which had
                                                                       been comment-only). Time had said
@@ -841,7 +848,10 @@ check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 check-growth-budget.Tests.ps1                    15,3s   15 tests   <- FAST, re-measured 2026-08-05
-check-injected-context.Tests.ps1                 91,5s  154 tests   <- SLOW as of 2026-08-24; was FAST -
+check-injected-context.Tests.ps1                 91,5s  155 tests   <- SLOW as of 2026-08-24; was FAST -
+  154 -> 155 on 2026-09-12 (anomaly triage): one row pinning that build output GIT ignores is not reported,
+  with the not-ignored control in the same row. It stages a real `git init` fixture and runs the gate twice.
+  Runtime NOT re-measured. (the original note follows)
 check-knowledge-store.Tests.ps1              163-252s  21 tests   <- SLOW. Each case builds a THROWAWAY
                                                                       GIT REPO: the deletion check compares
                                                                       against the ref's HISTORY and cannot be

@@ -34,6 +34,12 @@ if ! command -v jq >/dev/null 2>&1; then
   [[ $input =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && cwd=${BASH_REMATCH[1]}
   cwd_path=${cwd//\\\\//}
   [ -z "$cwd_path" ] && cwd_path="."
+  # A FILE as cwd is resolved to its DIRECTORY, or the kill-switch does not fire. MEASURED 2026-09-12 with
+  # both controls in a throwaway repo: the walk below is gated on `[ -d ]`, so a file cwd skipped it, and
+  # `$cwd_path/.no-agy` is `<file>/.no-agy`, which never exists - the hook spoke (1189 bytes) where the
+  # directory and a subdirectory were both correctly silent. Parameter expansion, not `dirname`: an empty
+  # PATH must not turn an opt-out into a leak. `%/*` leaves nothing for a path at the root, hence the guard.
+  [ -f "$cwd_path" ] && { cwd_path=${cwd_path%/*}; [ -z "$cwd_path" ] && cwd_path="/"; }
   [ -f "$HOME/.claude/.no-agy" ] && exit 0
   root=$cwd_path
   # ONE stat gates the walk. On an unreachable share EVERY level pays an SMB timeout - MEASURED
@@ -73,6 +79,9 @@ cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
 # exactly like a working fix. Do NOT unify the two spellings.
 cwd_path=${cwd//\\//}
 [ -z "$cwd_path" ] && cwd_path="."
+# A FILE as cwd is resolved to its DIRECTORY - see the note on the degraded path above; the `[ -d ]` gate
+# below is the same shape, so this path had the same hole and both were measured on 2026-09-12.
+[ -f "$cwd_path" ] && { cwd_path=${cwd_path%/*}; [ -z "$cwd_path" ] && cwd_path="/"; }
 
 # Opt-out kill-switch (mirrors agy-after-reminder.sh): .no-agy in the repo root, the session cwd, or
 # ~/.claude. Global first - it needs no root.

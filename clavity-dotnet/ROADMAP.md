@@ -3089,6 +3089,87 @@ alleged here; the finding is that nothing *looked*.
 
 ---
 
+### §39 — The marker path is built from `$discipline` on both sides, and nothing pins that they agree — ▶ **PROMOTED 2026-09-12 from the anomalies conveyor, not yet planned**
+
+The writer builds `rel=".clavity/agy-marks/$discipline.head"` (`clavity-dotnet/plugin/hooks/agy-mark.sh:337`)
+and the reader builds `marker="$cwd_path/.clavity/agy-marks/$discipline.head"`
+(`clavity-dotnet/plugin/hooks/agy-seam-inject.sh:124`). The invariant is that both derive the filename from
+the SAME string, unmodified. **Nothing asserts it** — re-measured 2026-09-12, no row in
+`scripts/tests/agy-mark.Tests.ps1` names the case of a discipline.
+
+**The underlying defect was REJECTED by the section 27 capstone, by measurement** — a mis-cased marker lands
+where no reader looks, so the behaviour is settled. What is unguarded is the invariant itself, against a
+future one-sided refactor (a writer that lowercases, a reader that does not).
+
+⚠️ **PLATFORM-DEPENDENT, and this is why it stayed small.** On Windows the filesystem is case-insensitive, so
+`Agy-Capstone.head` and `agy-capstone.head` ARE the same file and the defect cannot occur. It can occur only
+where the audit already says a second platform lives — WSL and Linux
+(`reference-wsl-second-platform`, and CI runs there). **Measure the filesystem's case behaviour before
+writing any test here**, or the row passes on the dev box for a reason unrelated to what it claims.
+
+**Blast radius:** one test row. No source change, no plugin pair, no installer payload — class 1.
+
+---
+
+### §40 — The ledger endpoint's 7-character lower bound has no boundary row on either side — ▶ **PROMOTED 2026-09-12 from the anomalies conveyor, not yet planned**
+
+`clavity-dotnet/plugin/hooks/agy-ledger-lib.sh:106-111` builds the match alternation from **every prefix of
+the query from 7 characters to its full length**, and `:126` requires the row's token to be one of them. Seven
+is therefore the shortest abbreviation a ledger row may carry and still authenticate a sha.
+
+**Nothing tests that boundary.** Re-measured 2026-09-12: `scripts/tests/agy-ledger-lib.Tests.ps1` carries many
+range SHAPES (`<<SHORT>>..b`, `a^..<<SHORT>>`, bracketed and backticked forms) but no row on either side of the
+7-character edge — no 6-character token that must be REFUSED, no 7-character token that must be ACCEPTED.
+
+**This replaces a conveyor entry that named a construct which no longer exists.** That entry cited
+`length(tok) >= 16` at `agy-ledger-lib.sh:282`; the endpoint logic was rewritten to the prefix alternation
+above, so the bound it described is gone while the CLASS of gap — an unpinned endpoint bound — survived the
+rewrite. Recorded here rather than silently dropped, because the rewrite is exactly when such a row is lost.
+
+**Blast radius:** two test rows. No source change — class 1.
+
+---
+
+### §41 — The shield's PREPEND fallback is a non-atomic read-modify-write — ▶ **PROMOTED 2026-09-12, OWNER-RULED 2026-09-08 to defer the fix**
+
+`clavity-dotnet/plugin/hooks/agy-shield-lib.sh:221-222` writes `*` to a temp file, `cat`s the existing shield
+in after it, then `mv`s the temp over the original. A human edit landing between the read and the rename is
+lost silently.
+
+**RAISED by AGY-CAPSTONE round 2b and VERIFIED BY READING, not by racing it** — no deterministic race was
+constructed, and none is claimed. All four conditions must hold: the shield must BEGIN WITH A NEGATION (only
+then is the prepend branch taken at all, `:196-198`), a human or tool must edit it, inside a sub-millisecond
+window, concurrently with a hook run.
+
+🔴 **THE OWNER RULED DEFER, and the reason is the durable part:** there is no portable locking primitive here —
+`flock` is absent on Git Bash and macOS — so a fix would be invented machinery on a contrived edge, which is
+the pattern that carried its own defect four rounds running in this same file. **A fix must arrive with a
+failing control that demonstrates the loss**, or it is unfalsifiable by construction.
+
+**Blast radius:** one hook in the shipped plugin pair (dotnet + classic must stay byte-identical) — class 2.
+
+---
+
+### §42 — A repository root that IS a drive root trims to a bare `C:`, which resolves to that drive's CURRENT directory — ▶ **PROMOTED 2026-09-12 from the anomalies conveyor, not yet planned**
+
+`scripts/check-injected-context.ps1` strips a trailing separator with `-replace '[\\/]+$', ''` at **three**
+sites (`:164`, `:229`, `:457`, re-measured 2026-09-12). Given `-RepoRoot C:\` that yields the bare `C:`, and
+PowerShell resolves a bare drive letter to that drive's **current directory**, not its root.
+
+**MEASURED** (AGY-CAPSTONE round 1a over section 28, peer finding confirmed by the driver): with the working
+directory at `C:\Windows\System32`, `Get-ChildItem 'C:'` lists System32 while `Get-ChildItem 'C:\'` lists the
+root. The gate would then walk the wrong tree and report violations — or silence — for a directory nobody asked
+about.
+
+**PRE-EXISTING, and deliberately untouched by section 28**, which migrated the SUBTRACTION sites to the shared
+path helper and left these three trims alone because one of them feeds a module-scope cache key. Reachable
+only when the repository root is itself a drive root, which no checkout here is.
+
+**Blast radius:** one gate script and its suite (`scripts/tests/check-injected-context.Tests.ps1`, 154 rows).
+No plugin pair, no installer payload — class 1.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
