@@ -9,6 +9,11 @@ public sealed class AgyViewOptions
     /// <summary>The cli.log to discover the LS port from — per-session (CLAVITY_AGY_LOG) or the global default.</summary>
     public required string CliLogPath { get; init; }
 
+    /// <summary>Path to agy's self-published endpoint file (port + CSRF token). When set and the file is
+    /// present + valid + its port is listening, the client connects there and sends the token. Null (tests /
+    /// pre-1.2.2 fallback) → cli.log discovery only, no token.</summary>
+    public string? EndpointPath { get; init; }
+
     /// <summary>Total time to keep retrying connection + conversation resolution during the agy boot race.</summary>
     public TimeSpan BootRaceTimeout { get; init; } = TimeSpan.FromSeconds(10);
 
@@ -331,6 +336,10 @@ public sealed class AgyView
             {
                 probe = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
             }
+            catch (RpcException ex) when (ex.StatusCode is StatusCode.Unauthenticated or StatusCode.PermissionDenied)
+            {
+                throw;   // an auth refusal mid-wait (LS rotated the token) is not a hang; let ChannelDown classify it.
+            }
             catch (RpcException) when (!cancellationToken.IsCancellationRequested)
             {
                 // F2 (agy panel R4): fail-toward possible_modal(stall) with a NULL diagnostic and NO second network
@@ -457,7 +466,7 @@ public sealed class AgyView
             LsClient? client = null;
             try
             {
-                client = LsClient.Connect(LsDiscovery.ReadCliLogText(_options.CliLogPath), _listening);
+                client = ConnectPreferringEndpoint();
                 // Bound THIS call to the boot race's REMAINING budget — otherwise a connected-but-hung peer would
                 // block on the client's default 30s deadline and blow past the (shorter) boot-race budget. The
                 // resulting DeadlineExceeded flows through the RpcException catch below; the returned client keeps
@@ -482,6 +491,14 @@ public sealed class AgyView
             }
             catch (LsDiscoveryException) { }  // log/port not ready, or port not listening yet.
             catch (IOException) { }           // cli.log not present yet.
+            // A CSRF/auth refusal is DEFINITIVE, not a transient boot-race miss: retrying every poll until the
+            // deadline only delays a wrong "not reachable" verdict, and folding it into sawChannelDeath hides the
+            // real status. Let it propagate so ChannelDown reports auth_failed (endpoint stale/missing), not
+            // channel_down.
+            catch (RpcException ex) when (ex.StatusCode is StatusCode.Unauthenticated or StatusCode.PermissionDenied)
+            {
+                throw;
+            }
             // A caller-cancel surfaces as RpcException{Cancelled}; do NOT swallow it — otherwise a cancel that
             // coincides with boot-race deadline expiry falls through to the LsDiscoveryException throw below and is
             // mis-reported as channel_down (capstone F1). A real boot-race timeout is DeadlineExceeded, not Cancelled.
@@ -514,6 +531,21 @@ public sealed class AgyView
 
             await Task.Delay(_options.BootRacePollInterval, cancellationToken);
         }
+    }
+
+    /// <summary>Prefer agy's self-published endpoint (port + CSRF token, 1.2.2+): use it when the file is present,
+    /// valid, and its port is currently listening. Otherwise fall back to cli.log discovery with no token
+    /// (pre-1.2.2 / not-yet-published). The listening check keeps a STALE endpoint (LS restarted → old port dead)
+    /// from being dialed; a fresh publish or a relaunch refreshes it.</summary>
+    private LsClient ConnectPreferringEndpoint()
+    {
+        if (_options.EndpointPath is { Length: > 0 } epPath
+            && AgyEndpoint.TryRead(epPath) is { } ep
+            && _listening.IsListening(ep.Port))
+        {
+            return LsClient.ConnectToEndpoint(ep);
+        }
+        return LsClient.Connect(LsDiscovery.ReadCliLogText(_options.CliLogPath), _listening);
     }
 
     /// <summary>The instance's most-recently-active conversation. Protobuf maps are UNORDERED on the wire, so the

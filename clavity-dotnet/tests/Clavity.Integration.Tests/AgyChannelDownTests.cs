@@ -355,6 +355,32 @@ public class AgyChannelDownTests
         }
     }
 
+    // Auth-refusal fake: GetAllCascadeTrajectories throws Unauthenticated (a CSRF/auth refusal is definitive, not a
+    // transient boot-race miss) so ConnectAndResolveAsync's new Unauthenticated/PermissionDenied catch must
+    // propagate it — landing in StatusAsync's ChannelDown catch as "auth_failed", never latched into
+    // sawChannelDeath/"channel_down".
+    private sealed class UnauthLs : LanguageServerService.LanguageServerServiceBase
+    {
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+            => throw new RpcException(new Status(StatusCode.Unauthenticated, "missing CSRF token"));
+    }
+
+    [Fact]
+    public async Task Dead_channel_agy_status_reports_auth_failed_not_channel_down_on_unauthenticated()
+    {
+        var fake = new UnauthLs();
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog); // no endpoint file -> cli.log path, no token.
+        try
+        {
+            var json = await McpTools.AgyStatus(ViewFor(cliLog));
+            using var doc = JsonDocument.Parse(json);
+            Assert.Equal("auth_failed", doc.RootElement.GetProperty("State").GetString());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     [Fact]
     public async Task Boot_race_transient_death_then_reached_empty_reports_waiting_for_human_not_channel_down()
     {
