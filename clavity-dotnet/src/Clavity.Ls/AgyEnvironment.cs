@@ -22,6 +22,17 @@ public static class AgyEnvironment
     /// <summary>Env var: absolute max total idle-wait (seconds) regardless of progress; 0 = unbounded.</summary>
     public const string IdleMaxSecondsVar = "CLAVITY_AGY_IDLE_MAX_SECONDS";
 
+    /// <summary>Env var overriding where agy's self-published endpoint file is read from.</summary>
+    public const string EndpointPathVar = "CLAVITY_AGY_ENDPOINT";
+
+    /// <summary>The endpoint file to read the LS port + CSRF token from: the <paramref name="envPath"/> override
+    /// when set and non-empty, else <c>&lt;userProfile&gt;/.clavity/agy-endpoint.json</c> (where the pairing
+    /// INSTALL.md tells agy to publish it).</summary>
+    public static string ResolveEndpointPath(string? envPath, string userProfileDir)
+        => string.IsNullOrEmpty(envPath)
+            ? Path.Combine(userProfileDir, ".clavity", "agy-endpoint.json")
+            : envPath;
+
     /// <summary>Parse a positive-seconds env value to a TimeSpan. Unset/blank/non-numeric/negative -> <paramref
     /// name="fallback"/>. Zero -> fallback UNLESS <paramref name="allowZero"/> (the absolute-max "unbounded"
     /// sentinel), in which case "0" -> <see cref="TimeSpan.Zero"/>.</summary>

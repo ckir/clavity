@@ -46,4 +46,18 @@ public class AgyEnvironmentTests
         Assert.Equal(TimeSpan.FromSeconds(600), AgyEnvironment.ResolveSeconds("0", TimeSpan.FromSeconds(600)));
         Assert.Equal(TimeSpan.Zero, AgyEnvironment.ResolveSeconds("0", TimeSpan.FromSeconds(600), allowZero: true));
     }
+
+    [Fact]
+    public void ResolveEndpointPath_defaults_under_clavity_when_unset()
+    {
+        var expected = Path.Combine("C:\\Users\\x", ".clavity", "agy-endpoint.json");
+        Assert.Equal(expected, AgyEnvironment.ResolveEndpointPath(null, "C:\\Users\\x"));
+        Assert.Equal(expected, AgyEnvironment.ResolveEndpointPath("", "C:\\Users\\x"));
+    }
+
+    [Fact]
+    public void ResolveEndpointPath_honors_the_override()
+    {
+        Assert.Equal("D:\\ep.json", AgyEnvironment.ResolveEndpointPath("D:\\ep.json", "C:\\Users\\x"));
+    }
 }
