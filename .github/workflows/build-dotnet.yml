@@ -162,12 +162,19 @@ jobs:
           $u = Start-Process -FilePath $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
           Write-Host "[smoke] uninstall process exited: $($u.ExitCode)"
           if ($u.ExitCode -ne 0) { throw "uninstall exited $($u.ExitCode)" }
-          Start-Sleep -Seconds 2
 
+          # POLL, DO NOT SLEEP-THEN-ASSERT. An Inno uninstaller copies itself to %TEMP% and the process we
+          # waited on RETURNS BEFORE the copy finishes deleting the install directory, so a fixed 2-second
+          # sleep is a race this step lost on 2026-09-12 ("clavity-ls.exe still present after uninstall")
+          # with nothing wrong in the installer - the preceding run of the same commit range passed. The
+          # PATH assertion below has polled with a deadline since the PATH work landed; these two never did.
+          $deadline = (Get-Date).AddSeconds(30)
+          while ((Test-Path "$app\clavity-ls.exe") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
           if (Test-Path "$app\clavity-ls.exe") { throw "clavity-ls.exe still present after uninstall" }
-          $arp2 = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
-            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "clavity-dotnet*" }
-          if ($arp2) { throw "Add/Remove Programs key still present after uninstall" }
+          $arpGone = { @(Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
+            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "clavity-dotnet*" }).Count -eq 0 }
+          while (-not (& $arpGone) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          if (-not (& $arpGone)) { throw "Add/Remove Programs key still present after uninstall" }
           $deadline = (Get-Date).AddSeconds(15)
           while ((@(Get-UserPathEntry $app).Count -ne 0) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
           $n2 = @(Get-UserPathEntry $app).Count

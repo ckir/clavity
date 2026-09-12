@@ -168,11 +168,23 @@ jobs:
         # too, then assert `rg` actually resolves: a silent install failure must fail HERE and by name,
         # not resurface later as five unrelated-looking assertion failures.
         run: |
-          choco install ripgrep -y --no-progress
+          # RETRIED, because the failure mode is the PACKAGE FEED and not this repository. MEASURED
+          # 2026-09-12: community.chocolatey.org answered 503 Service Unavailable for the ripgrep package,
+          # choco installed 0/0 packages, and the whole scripts job went red on a commit that touched no
+          # script. A transient dependency outage must cost a retry, not a red main.
+          $ok = $false
+          foreach ($attempt in 1..3) {
+            choco install ripgrep -y --no-progress
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+            Write-Host "::warning::ripgrep install attempt $attempt failed (choco exit $LASTEXITCODE); retrying"
+            Start-Sleep -Seconds (10 * $attempt)
+          }
           "C:\ProgramData\chocolatey\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           $env:PATH = "C:\ProgramData\chocolatey\bin;$env:PATH"
+          # The ORACLE IS `rg` ON PATH, not choco's exit code: a cached-but-unlinked install would satisfy
+          # the loop above and still leave the gate unable to run.
           rg --version
-          if ($LASTEXITCODE -ne 0) { throw "ripgrep install failed: rg is not on PATH" }
+          if ($LASTEXITCODE -ne 0) { throw "ripgrep install failed after $(if ($ok) { 'a successful install' } else { '3 attempts' }): rg is not on PATH" }
 
       - name: Install lefthook
         shell: pwsh
