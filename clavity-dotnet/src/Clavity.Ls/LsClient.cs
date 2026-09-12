@@ -1,5 +1,6 @@
 using Clavity.Ls.Proto;
 using Grpc.Core;
+using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
 
 namespace Clavity.Ls;
@@ -22,10 +23,13 @@ public sealed class LsClient : IDisposable
     private readonly LanguageServerService.LanguageServerServiceClient _client;
     private readonly TimeSpan _callDeadline;
 
-    public LsClient(GrpcChannel channel, TimeSpan? callDeadline = null)
+    public LsClient(GrpcChannel channel, TimeSpan? callDeadline = null, string? csrfToken = null)
     {
         _channel = channel;
-        _client = new LanguageServerService.LanguageServerServiceClient(channel);
+        Grpc.Core.CallInvoker invoker = string.IsNullOrEmpty(csrfToken)
+            ? channel.CreateCallInvoker()
+            : channel.Intercept(new CsrfInterceptor(csrfToken!));
+        _client = new LanguageServerService.LanguageServerServiceClient(invoker);
         _callDeadline = callDeadline ?? TimeSpan.FromSeconds(DefaultCallDeadlineSeconds);
     }
 
@@ -34,12 +38,18 @@ public sealed class LsClient : IDisposable
     /// changing the client-wide default.</summary>
     private DateTime NextCallDeadline(TimeSpan? over = null) => DateTime.UtcNow + (over ?? _callDeadline);
 
-    /// <summary>Discover the active LS from cli.log text (liveness-checked) and open an h2c channel to it.</summary>
+    /// <summary>Discover the active LS from cli.log text (liveness-checked) and open an h2c channel to it.
+    /// No CSRF token — the pre-1.2.2 / no-endpoint-file fallback path.</summary>
     public static LsClient Connect(string cliLogText, IListeningPorts listening, TimeSpan? callDeadline = null)
     {
         var endpoint = LsDiscovery.DiscoverActive(cliLogText, listening);
         return new LsClient(LsChannel.ForHttpPort(endpoint.HttpPort), callDeadline);
     }
+
+    /// <summary>Connect to agy's self-published endpoint (port + CSRF token from agy-endpoint.json), sending
+    /// the token on every call. The 1.2.2+ path.</summary>
+    public static LsClient ConnectToEndpoint(AgyEndpoint endpoint, TimeSpan? callDeadline = null)
+        => new LsClient(LsChannel.ForHttpPort(endpoint.Port), callDeadline, endpoint.Csrf);
 
     /// <summary>Read a conversation's metadata (workspaces, repo/branch, ids).</summary>
     public async Task<Clavity.Ls.Proto.Metadata> GetConversationMetadataAsync(string conversationId, CancellationToken cancellationToken = default)

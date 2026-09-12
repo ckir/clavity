@@ -2,10 +2,6 @@ using Clavity.Ls;
 using Clavity.Ls.Proto;
 using Grpc.Core;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Server.Kestrel.Core;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 namespace Clavity.Integration.Tests;
 
@@ -148,22 +144,11 @@ public class AgyViewIntegrationTests : IDisposable
         }
     }
 
-    private static async Task<WebApplication> StartFakeAsync<T>(T fake)
+    private static Task<WebApplication> StartFakeAsync<T>(T fake)
         where T : LanguageServerService.LanguageServerServiceBase
-    {
-        var builder = WebApplication.CreateBuilder();
-        builder.WebHost.ConfigureKestrel(o => o.ConfigureEndpointDefaults(lo => lo.Protocols = HttpProtocols.Http2));
-        builder.WebHost.UseUrls("http://127.0.0.1:0");
-        builder.Logging.ClearProviders();
-        builder.Services.AddGrpc();
-        builder.Services.AddSingleton(fake);
-        var app = builder.Build();
-        app.MapGrpcService<T>();
-        await app.StartAsync();
-        return app;
-    }
+        => FakeLsHost.StartAsync(fake);
 
-    private static int PortOf(WebApplication app) => new Uri(app.Urls.Single()).Port;
+    private static int PortOf(WebApplication app) => FakeLsHost.PortOf(app);
 
     private readonly List<string> _tempDirs = new();
 
