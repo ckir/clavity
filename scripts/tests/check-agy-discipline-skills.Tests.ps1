@@ -1008,7 +1008,13 @@ Describe 'check-agy-discipline-skills' {
             try {
                 $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
-                $out | Should -Match 'declares no SCHEMAS entry'
+                # ANCHORED TO THE RULE'S OWN, SKILL-SCOPED DIAGNOSTIC. AGY-TEST-AUDIT section 30, branch census:
+                # the bare phrase is ALSO emitted by the roster reconciliation at the end of the linter ("this
+                # linter checks disciplines the checker declares no SCHEMAS entry for: ..."), which fires on the
+                # same fixture - so this rule's branch could be silenced outright with all 110 rows green. Same
+                # shape as the unreadable-registry branch one Context below. The Rel prefix is what separates the
+                # per-skill rule from the roster's summary.
+                $out | Should -Match ([regex]::Escape("clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md : scripts/check-peer-reply-citations.py declares no SCHEMAS entry for 'agy-test-audit'")) -Because 'the RULE must tell the skill its entry is missing; the roster summary is a different check'
                 $out | Should -Not -Match 'names a checker that is not there' -Because 'the registry must be PRESENT for this row to reach the entry check'
             } finally {
                 Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
