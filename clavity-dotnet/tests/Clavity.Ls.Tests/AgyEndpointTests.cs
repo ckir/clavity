@@ -53,4 +53,19 @@ public class AgyEndpointTests
         }
         finally { File.Delete(noCsrf); File.Delete(noPort); File.Delete(blank); }
     }
+
+    [Fact]
+    public void TryRead_takes_the_port_after_the_LAST_colon()
+    {
+        // Pins the "port = digits after the last ':'" rule so a regression to first-colon parsing (IndexOf)
+        // fails here: with IndexOf, the port span would be ":1]:8080", which does not parse -> null.
+        var path = WriteTemp("""{"csrf":"t","addr":"[::1]:8080"}""");
+        try
+        {
+            var ep = AgyEndpoint.TryRead(path);
+            Assert.NotNull(ep);
+            Assert.Equal(8080, ep!.Port);
+        }
+        finally { File.Delete(path); }
+    }
 }
