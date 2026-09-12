@@ -138,3 +138,17 @@ public class ChannelDownTests
         Assert.Contains("shut down or restarted", ChannelDown.Hint(dead));
     }
 }
+
+public class ChannelDownAuthHintTests
+{
+    [Fact]
+    public void AuthFailed_hint_names_the_endpoint_refresh_remedy_and_not_the_keyring()
+    {
+        var d = new ChannelDiagnostic(nameof(Grpc.Core.StatusCode.Unauthenticated), "missing CSRF token");
+        Assert.Equal("auth_failed", ChannelDown.StatusFor(d));
+        var hint = ChannelDown.Hint(d);
+        Assert.Contains("agy-endpoint.json", hint);
+        Assert.Contains("relaunch", hint, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("keyring", hint, StringComparison.OrdinalIgnoreCase);
+    }
+}

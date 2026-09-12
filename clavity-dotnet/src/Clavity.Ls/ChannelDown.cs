@@ -94,8 +94,11 @@ public static class ChannelDown
                 "retry, or check quota; raising the receive limit will not help.",
 
             Fault.AuthFailed =>
-                prefix + "The channel is UP and agy answered — it refused the credentials. Restarting the session " +
-                "will NOT fix an auth refusal. Check the keyring entry and agy's authentication state, then retry.",
+                prefix + "The channel is UP and agy answered — it REFUSED the credential (CSRF token). agy 1.2.2+ " +
+                "mints a new per-session token on each Language Server (re)start, so a published endpoint goes " +
+                "stale; the token in ~/.clavity/agy-endpoint.json is stale or the file is missing. Relaunch agy " +
+                "(clavity start) so it republishes its endpoint, then retry. Restarting the Claude session alone " +
+                "will NOT fix a token refusal.",
 
             Fault.InvalidRequest =>
                 prefix + "The channel is UP and agy answered — it rejected the REQUEST, not the connection. " +
