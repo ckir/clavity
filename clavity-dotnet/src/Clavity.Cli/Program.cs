@@ -29,6 +29,9 @@ if (args.Contains("--mcp"))
         IdleAbsoluteMax = AgyEnvironment.ResolveSeconds(
             Environment.GetEnvironmentVariable(AgyEnvironment.IdleMaxSecondsVar),
             TimeSpan.FromSeconds(600), allowZero: true),
+        EndpointPath = AgyEnvironment.ResolveEndpointPath(
+            Environment.GetEnvironmentVariable(AgyEnvironment.EndpointPathVar),
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
     };
 
     var ghOverride = Environment.GetEnvironmentVariable(GoldenHeader.PathVar);
@@ -98,6 +101,7 @@ if (args.Length > 0 && args[0] == "start")
     LogRetention.Prune(logsDir, LogRetention.DefaultMaxAge, DateTime.UtcNow);
     var agyLogPath = Path.Combine(logsDir, $"clavity-{sessionId}.log");
 
+    var installRoot = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
     var plan = Launcher.Build(new LaunchOptions
     {
         Folder = folder,
@@ -108,6 +112,8 @@ if (args.Length > 0 && args[0] == "start")
         // User decision 2026-06-30: agy ALWAYS launches with --dangerously-skip-permissions so unattended
         // bus/LS consults never stall on per-tool approval prompts. (Supersedes spec §4 "NOT default".)
         SkipPermissions = true,
+        AgyInstallDocPath = Path.Combine(
+            installRoot, "plugins", Clavity.Ls.Install.PluginInstaller.PluginName, "pairing", "agy-pairing-INSTALL.md"),
     });
 
     Spawn(plan.AgyTab, wait: false);    // agy tab boots asynchronously; human owns it.
