@@ -1241,7 +1241,7 @@ documents, recurring one section later. Re-measure against the REPO file, never 
 | `agy-first/SKILL.md` (234 lines) | **NO** | `:54-56` — "Default persona: bold inventive systems-designer; override when a sharper lens fits (security-auditor, perf-skeptic, API-contract-pedant)". Singular, and the three alternatives are ad-hoc, not palette seats. |
 | `agy-test-audit/SKILL.md` (447 lines) | **NO** | `:216` is the ONLY lens language in the file: "Optional per-run mitigation: rotate the audit's lens". Optional, and singular. **The fix is NOT confined to `:216`:** that line sits in the "Stated limitation - false negatives" section at the foot of the file, so replacing it alone would bury a framing instruction in a footer. The seat instruction belongs where the consult is framed - **insert at `:59`, immediately after the `## The audit round` heading and before its numbered item 1** - and `:216-217` is then reworded to point at it. |
 | `agy-capstone/SKILL.md` (531 lines) | **YES — not defective** | `:89` reads, literally and in ASCII: `- **Seats (defect-class lenses).** Seat the proven adversarial-panel-review personas - Axiom Breaker`. `:92` seats those whose trigger the diff meets; `:103` rotates seats across rounds. **Quoted verbatim so it can be grepped:** an earlier version of this row rendered that line with an em-dash and an ellipsis, neither of which the file contains - it is ASCII-gated - so the "quote" matched nothing. |
-| `adversarial-panel-review/SKILL.md` (418 lines) | **YES** | the palette, selection rule, and anti-gaming guard live here. |
+| `adversarial-panel-review/SKILL.md` (438 lines) | **YES** | the palette, selection rule, and anti-gaming guard live here. |
 
 **Blast radius: 4 files** — `agy-first` and `agy-test-audit` in `clavity-dotnet/plugin/skills/` and
 `clavity-classic/plugin/skills/`. Byte-identical pair, so both variants change together and
@@ -1291,30 +1291,31 @@ dependency on that skill.
 **This remains the same "one shared review-core" question already open as the AGY-* family-coherence
 fork**, so the two should be decided together, not separately.
 
-### §15 — Workflow-position resilience — **SECOND PRIORITY FOR A FUTURE RELEASE** (owner, 2026-08-13)
+### §15 — Workflow-position resilience → shipped as **consult-recovery** — ✅ **IMPLEMENTED 2026-09-13** (pending post-implementation AGY-CAPSTONE)
 
-**Spec:** `docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md` (committed `4adab8b`,
-tracked — note `docs/superpowers/*` is gitignored, so it needed `git add -f`).
+**Spec:** `docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md` (committed `4adab8b`).
+**Plan:** `docs/superpowers/plans/2026-09-13-consult-recovery.md` (AGY-FIRST-consulted, AGY-AFTER round-1 folded).
 
-**Status: deferred, not cancelled.** The spec is complete and has been through **six adversarial panel
-rounds, all folded**. It is not blocked on quality; it is deprioritised behind the policy gate, which is
-the approved deliverable. Do not restart the design — read the spec.
+**Status: IMPLEMENTED (subagent-driven, owner-directed 2026-09-13).** A fail-open SessionStart hook
+`agy-consult-recovery.sh` (both products, byte-identical, registered `startup|resume|clear|compact`,
+`timeout:10`) surfaces UNCONCLUDED consult seams — 5-branch vocabulary, rank-1-first, `-nt` marker
+conclusion, lazy commit-age, reads existence+age never content, writes nothing. 29-test suite (slow half).
+Plus the panel debounce-marker contract (`agy-panel.head`). Commits `1e307c3`→`7a37820`.
 
-**What it would build:** a single SessionStart reader (registered `startup|resume|clear|compact`) that
-surfaces unconcluded consult seams so a session that dies leaves its successor able to resume, plus a
-seam naming convention. Explicitly no resume file, no WAL, no decisions index.
+**The four plan-time forks, RESOLVED (owner rulings 2026-09-13):**
+- **NAME:** the `sync`-flush probe was **DROPPED** — power-loss conceded on two legs (a real flush is
+  near-unprovable from userspace Windows, AND a system-wide `sync` per agent-edit is prohibitively costly;
+  spec §3f). Named **`consult-recovery`** (spec §3g's accurate descriptor). No `PostToolUse` flush hook.
+- **Host:** a NEW dedicated hook (not extending `agy-anomaly-reminder.sh`, which single-emits; matches the
+  `agy-discipline-reaching.sh` new-script-on-matcher precedent).
+- **Windows casing:** the whole basename is lowercased before matching, keeping the regex AND the marker
+  lookup case-consistent across Windows/Linux.
+- **Panel marker (was owner-gated):** **APPROVED** — `adversarial-panel-review/SKILL.md` now writes
+  `agy-panel.head` (both products); pinned in `check-agy-discipline-skills.Tests.ps1`.
 
-**Two things it inherits unresolved, and the first is a gate on the name:**
-- **The discipline's NAME is deferred pending a measurement** — does bare `sync` actually flush on this
-  platform, and at what cost under concurrent load. **Not "does it exit 0"** — that was measured and
-  proved nothing. Probe passes → a power-failure name is defensible *with a scope note*. Probe fails →
-  the name must change. **Two of the three overclaims (implementation coverage, decision retention) are
-  settled against the mechanism either way**, so even the best outcome yields a narrower name.
-- A Windows-path casing case in the filename match.
-
-**One scope item needs owner confirmation before it is built:** the spec adds a debounce-marker contract
-to `adversarial-panel-review/SKILL.md` (writing `agy-panel.head`). Everything else is additive; that one
-edits a shipped skill.
+**One minor open owner item:** a spec-internal §3b-vs-§6 tension (§3b templates put the seam path before
+the directive; §6/§7 say directive ahead of path). The build follows §3b's verbatim templates and adds the
+§6 length cap; resolving the ordering means editing the 6-round-reviewed spec — deferred to the owner.
 
 **Honest scope, recorded so a later reader does not over-read the name:** it recovers interrupted
 *consults*. It does not cover implementation work (435 of 435 agent-written seams are consult payloads),

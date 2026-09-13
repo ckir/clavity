@@ -613,7 +613,7 @@ discipline-reaching-report.Tests.ps1              6,2s   31 tests   <- FAST. Was
                                                                       capstone tests are not in it.
 scripts-readme-inventory.Tests.ps1                0,1s    3 tests   <- FAST, re-measured 2026-08-05
 gitignore-policy.Tests.ps1                        6,6s    4 tests   <- FAST, added 2026-09-02
-check-peer-reply-citations.Tests.ps1             49,2s   34 tests   <- SLOW, added 2026-09-02
+check-peer-reply-citations.Tests.ps1             49,2s   39 tests   <- SLOW, added 2026-09-02 (34 -> 39 on 2026-09-13, §21 citation-checker gaps: empty-quote, NUL-in-file, schema-boundary rows)
   COUNT RAISED 2026-09-02 by AGY-CAPSTONE R8, 32 -> 34, the last round. The dash pin added one commit
   earlier was itself fooled by a docstring decoy - MEASURED, it passed while certifying a broken
   runtime value - so it now counts the assignments and refuses to guess, the same answer the owner
@@ -685,6 +685,7 @@ agy-autotrain-installer.Tests.ps1                 1,3s   17 tests   <- FAST, new
 agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new 2026-08-24. 6,4s WARM on an
                                                                       idle CPU; 11,1s cold. It will not be the
                                                                       cold-start absorber in this half
+agy-consult-recovery.Tests.ps1                  280,0s   29 tests   <- SLOW, ADDED 2026-09-13 (section 15 consult-recovery). Time is spawn-latency-dominated (~6s/hook: this box AV-scans each bash/git/date) and MEASURED ONLY UNDER CONTENTION - NOT a clean idle figure; re-measure idle before trusting it. Count 29 is reliable. Slow-half by design: cannot fit the fast cap at this per-call cost.
 agy-liveness-check.Tests.ps1                     56,4s   33 tests   <- SLOW, re-measured 2026-08-06 (+4)
   32 -> 33 on 2026-09-12 (anomaly triage): one row proving the hook stays SILENT on stderr when PATH holds
   no external tools. It drives the RAW msys shell through a generated .sh - Git\bin\bash.exe restores its
@@ -744,7 +745,7 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
-check-agy-discipline-skills.Tests.ps1            43,2s  110 tests   <- FAST, re-measured 2026-09-03
+check-agy-discipline-skills.Tests.ps1            43,2s  112 tests   <- FAST, re-measured 2026-09-13 (+2, section-15 panel-marker rows; was 110)
   94 -> 107 on 2026-09-12 (AGY-TEST-AUDIT section 30 round 1): the transport/marker row now plants every
   skill the rules admit (3 -> 9), the checker-invocation row both directions (1 -> 2), an in-process
   AGY-NEGOTIATE heading row for all four disciplines (+4), a round-cap row (+1) and one exact-set row for
@@ -1066,7 +1067,7 @@ generate-cheatsheet-literals.Tests.ps1           41,6s   18 tests   <- SLOW, NEW
                                                                       command: "Tests completed in 41,57s",
                                                                       12 passed / 0 failed.
 generate-scoped-manifest.Tests.ps1                2,1s    2 tests   <- FAST, re-measured 2026-08-05
-plugin-hooks-registration.Tests.ps1               0,6s   33 tests   <- FAST, re-measured 2026-08-05 (was
+plugin-hooks-registration.Tests.ps1               0,6s   35 tests   <- FAST, re-measured 2026-09-13 (+2 since; +1 for the section-15 consult-recovery registration row; was
                                                                       0,5s / 18 tests; +4 for the recorder's
                                                                       SessionStart registration, which this
                                                                       suite had never covered)
@@ -1142,7 +1143,8 @@ change edited — so what decays here is TIMES, which is exactly why the section
 **2026-09-13 — `agy-consult-recovery.Tests.ps1` joined SLOW (section 15 consult-recovery).** 29 tests,
 registered in `test-scripts-slow`. Its runtime is dominated by ~6s-per-hook-invocation process-spawn
 latency (this box appears to AV-scan each spawned `bash`/`git`/`date`/`ls`), so a full run measured
-~240-320s — but ONLY UNDER CONTENTION; per the timing discipline that is not a clean figure and no table
-row asserts a time until a clean idle two-run measurement exists. The COUNT (29) is reliable. It is in the
+~240-320s — but ONLY UNDER CONTENTION; per the timing discipline that is not a clean figure. Its table row
+carries that contended number, explicitly flagged; replace it with a clean idle two-run measurement when
+the box is idle. The COUNT (29) is reliable. It is in the
 SLOW half deliberately: it can never join `test-scripts-fast` at this per-call cost without blowing the
 ~600s fast cap.
