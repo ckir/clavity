@@ -52,6 +52,18 @@ Describe 'shipped plugin hook registration' {
         $matchers[0]    | Should -BeExactly 'startup|resume|clear|compact'
     }
 
+    It 'registers agy-consult-recovery.sh in its OWN SessionStart object on startup|resume|clear|compact - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        # section 15 consult-recovery reader: MUST fire after a /compact, so it lives on the widened matcher
+        # (registering it under 'startup' alone is the mutant that reds this - the post-compact case then
+        # never runs, defeating the whole feature).
+        $m = $script:Manifests[$Driver]
+        $matchers = @(Get-OwningMatchers -Manifest $m -Event 'SessionStart' -Script 'agy-consult-recovery.sh')
+        $matchers.Count | Should -Be 1
+        $matchers[0]    | Should -BeExactly 'startup|resume|clear|compact'
+    }
+
     It 'keeps agy-liveness-check.sh on startup ALONE - <Driver>' -ForEach @(
         @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
     ) {
