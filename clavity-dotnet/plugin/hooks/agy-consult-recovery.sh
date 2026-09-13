@@ -113,6 +113,13 @@ done
 _r1_sorted=(); if [ ${#_r1_paths[@]} -gt 0 ]; then while IFS= read -r _l; do _r1_sorted+=( "$_l" ); done < <(_sort_by_mtime "${_r1_paths[@]}"); fi
 _r2_sorted=(); if [ ${#rank2[@]} -gt 0 ]; then while IFS= read -r _l; do _r2_sorted+=( "$_l" ); done < <(_sort_by_mtime "${rank2[@]}"); fi
 
+# Degrade, never drop (capstone r1, F1): if the external `ls` sort emitted nothing while candidates
+# exist (e.g. it hit ARG_MAX on an enormous seams dir), fall back to the UNSORTED source. Otherwise the
+# remainder math below reads an empty array (0 - 0 = 0) and the hook goes SILENT on open seams - the one
+# outcome this reader exists to prevent.
+[ ${#_r1_sorted[@]} -eq 0 ] && [ ${#_r1_paths[@]} -gt 0 ] && _r1_sorted=( "${_r1_paths[@]}" )
+[ ${#_r2_sorted[@]} -eq 0 ] && [ ${#rank2[@]} -gt 0 ] && _r2_sorted=( "${rank2[@]}" )
+
 CAP=3
 LINECAP=240
 _lines=(); _shown=0; _shown_r1=0; _shown_r2=0
@@ -132,7 +139,11 @@ for _p in "${_r1_sorted[@]}"; do
   [ "$_shown" -ge "$CAP" ] && break
   _tok=${_meta["$_p"]%%|*}; _rnd=${_meta["$_p"]#*|}
   _age=$(_age_of "$_p")
-  if [ -f "${_p%.md}-REPLY.md" ]; then
+  # Case-robust extension strip (capstone r1, F2): nocaseglob (line 68) admits a .MD-cased seam, but a
+  # case-SENSITIVE ${_p%.md} then fails to strip it and the probe looks for "...MD-REPLY.md", missing the
+  # reply even on Windows (MEASURED). Replies are always uppercase -REPLY.md (129 exist under seams/), so
+  # only the extension needs case-folding; keep the quoted [ -f ] so a '[' in the repo path is never a glob.
+  if [ -f "${_p%.[Mm][Dd]}-REPLY.md" ]; then
     _lines+=( "$(_cap_line "workflow position: $_tok r$_rnd ($_p)$_age. A -REPLY EXISTS on disk. It may or may not have been folded already - check before re-folding it. Read that seam and its -REPLY before starting new work, or say why you are not resuming it.")" )
   else
     _lines+=( "$(_cap_line "workflow position: $_tok r$_rnd ($_p)$_age. Read that seam before starting new work, or say why you are not resuming it.")" )

@@ -131,11 +131,14 @@ Describe 'agy-consult-recovery output vocabulary' {
     (Run $r) | Should -Match 'more open seams are not shown\. List \.clavity/seams/'
     Remove-Item -Recurse -Force $r
   }
-  It 'branch 5: an allowlist-failing name is a bare count, its name NOT echoed' {
-    $r = New-Repo; Seam $r 'agy-capstone-r5-ignore me.md'
+  It 'branch 5: an allowlist-failing name is a bare count (the ACTUAL count), its name NOT echoed' {
+    # Two bad seams so the count is asserted, not just the phrase (capstone F4: a hardcoded "1" survived
+    # the single-seam fixture because only 'could not be named' was matched).
+    $r = New-Repo; Seam $r 'agy-capstone-r5-ignore me.md'; Seam $r 'agy-capstone-r6-bad name.md'
     $out = Run $r
-    $out | Should -Match 'could not be named'
+    $out | Should -Match '2 unrecognised seams could not be named'
     $out | Should -Not -Match 'ignore me'
+    $out | Should -Not -Match 'bad name'
     Remove-Item -Recurse -Force $r
   }
   It 'no candidates at all -> NOTHING' {
@@ -233,6 +236,13 @@ Describe 'agy-consult-recovery section-7 matrix (representative fixtures; each r
     $out = Run $r
     $out | Should -Match 'agy-capstone-r5-x'                 # the on-convention seam (rank 1)
     $out | Should -Match 'unrecognised seams are not shown'  # 4 off-conv > cap -> remainder proves none were dropped
+    Remove-Item -Recurse -Force $r
+  }
+  It 'a .MD-cased seam extension still flags an existing -REPLY (case-robust extension strip; capstone F2)' {
+    # Mutant: revert the strip to ${_p%.md} (case-SENSITIVE) -> a .MD seam probes "...MD-REPLY.md",
+    # misses the reply, and the "A -REPLY EXISTS" note vanishes even on Windows -> reds. MEASURED.
+    $r = New-Repo; Seam $r 'agy-capstone-r5-x.MD'; Seam $r 'agy-capstone-r5-x-REPLY.md'
+    (Run $r) | Should -Match 'A -REPLY EXISTS on disk'
     Remove-Item -Recurse -Force $r
   }
 }
