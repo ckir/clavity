@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -158,7 +159,7 @@ public static class SemanticEcho
     /// a weak expectation - failing consults over a bad ECHO TARGET would be punishing the wrong thing -
     /// but a caller that asked for an echo it cannot verify deserves to be told, or it will read an
     /// unchecked consult as a checked one.</summary>
-    public static bool IsUsableExpectation(string? expectedEcho)
+    public static bool IsUsableExpectation([NotNullWhen(true)] string? expectedEcho)
     {
         if (string.IsNullOrWhiteSpace(expectedEcho)) return false;
         var substantive = 0;
