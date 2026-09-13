@@ -64,5 +64,104 @@ fi
 seams_dir="$root/.clavity/seams"
 [ -d "$seams_dir" ] || exit 0
 
-# ... Stage 2 (Task 2) and Stage 3 (Task 3) go here ...
+# ENUMERATE with nullglob so an absent/empty seams dir yields an empty array and no subprocess cost.
+shopt -s nullglob nocaseglob 2>/dev/null
+_seams=( "$seams_dir"/*.md )
+shopt -u nocaseglob 2>/dev/null
+[ ${#_seams[@]} -eq 0 ] && exit 0
+
+# The token list is the LITERAL closed table (spec §3a) - never derived from agy-marks/.
+_tokens='agy-capstone|agy-panel|agy-test-audit|agy-first'
+
+# rank1[] = on-convention unconcluded "path|token|round"; rank2[] = off-convention paths;
+# bad[]   = basenames failing the allowlist (reported as a bare count only).
+rank1=(); rank2=(); bad=()
+for _s in "${_seams[@]}"; do
+  _base=${_s##*/}
+  # PURE-BASH lowercase (bash 4+); NOT $(... | tr ...) which forks per seam in this hot loop.
+  _lc=${_base,,}
+  # Rule 1: a -REPLY file is never a candidate of its own.
+  case "$_lc" in *-reply.md) continue ;; esac
+  # FORMATTING allowlist (spec §6): keep the startup line bounded/parseable. NOT a security boundary.
+  case "$_base" in
+    *[!A-Za-z0-9._-]*) bad+=( "$_base" ); continue ;;
+  esac
+  # Anchored FULL match against the lowercased basename; token from the literal alternation.
+  if [[ $_lc =~ ^(${_tokens})-r([0-9]+)(-.+)?\.md$ ]]; then
+    _tok=${BASH_REMATCH[1]}; _rnd=${BASH_REMATCH[2]}
+    _marker="$root/.clavity/agy-marks/$_tok.head"
+    # Concluded iff the seam's OWN marker is newer than it.
+    if [ -e "$_marker" ] && [ "$_marker" -nt "$_s" ]; then
+      continue
+    fi
+    rank1+=( "$_s|$_tok|$_rnd" )
+  else
+    rank2+=( "$_s" )
+  fi
+done
+
+# Sort each rank most-recent-first by mtime. `ls -t` orders by mtime desc; feed it the paths.
+_sort_by_mtime() { # prints most-recent-first
+  ls -t -d "$@" 2>/dev/null
+}
+
+declare -A _meta   # path -> "token|round"
+_r1_paths=()
+for _e in "${rank1[@]}"; do
+  _p=${_e%%|*}; _meta["$_p"]=${_e#*|}; _r1_paths+=( "$_p" )
+done
+_r1_sorted=(); if [ ${#_r1_paths[@]} -gt 0 ]; then while IFS= read -r _l; do _r1_sorted+=( "$_l" ); done < <(_sort_by_mtime "${_r1_paths[@]}"); fi
+_r2_sorted=(); if [ ${#rank2[@]} -gt 0 ]; then while IFS= read -r _l; do _r2_sorted+=( "$_l" ); done < <(_sort_by_mtime "${rank2[@]}"); fi
+
+CAP=3
+LINECAP=240
+_lines=(); _shown=0; _shown_r1=0; _shown_r2=0
+_age_of() { # $1 = seam path; echoes ", written N commits ago" or "" on failure (degrade, never drop)
+  local _epoch _n
+  _epoch=$(date -r "$1" +%s 2>/dev/null) || return 0
+  [ -n "$_epoch" ] || return 0
+  _n=$(git -C "$root" rev-list --count --since="@$_epoch" HEAD 2>/dev/null) || return 0
+  [ -n "$_n" ] && printf ', written %s commits ago' "$_n"
+}
+_cap_line() { # $1 = line; truncate to LINECAP
+  local _l=$1
+  [ ${#_l} -le "$LINECAP" ] && { printf '%s' "$_l"; return 0; }
+  printf '%s...(truncated)' "${_l:0:$LINECAP}"
+}
+for _p in "${_r1_sorted[@]}"; do
+  [ "$_shown" -ge "$CAP" ] && break
+  _tok=${_meta["$_p"]%%|*}; _rnd=${_meta["$_p"]#*|}
+  _age=$(_age_of "$_p")
+  if [ -f "${_p%.md}-REPLY.md" ]; then
+    _lines+=( "$(_cap_line "workflow position: $_tok r$_rnd ($_p)$_age. A -REPLY EXISTS on disk. It may or may not have been folded already - check before re-folding it. Read that seam and its -REPLY before starting new work, or say why you are not resuming it.")" )
+  else
+    _lines+=( "$(_cap_line "workflow position: $_tok r$_rnd ($_p)$_age. Read that seam before starting new work, or say why you are not resuming it.")" )
+  fi
+  _shown=$((_shown+1)); _shown_r1=$((_shown_r1+1))
+done
+for _p in "${_r2_sorted[@]}"; do
+  [ "$_shown" -ge "$CAP" ] && break
+  _age=$(_age_of "$_p")
+  _lines+=( "$(_cap_line "an unrecognised seam exists ($_p)$_age. Read it before starting new work, or say why you are not resuming it.")" )
+  _shown=$((_shown+1)); _shown_r2=$((_shown_r2+1))
+done
+
+_r1_rest=$(( ${#_r1_sorted[@]} - _shown_r1 ))
+_r2_rest=$(( ${#_r2_sorted[@]} - _shown_r2 ))
+[ "$_r1_rest" -gt 0 ] && _lines+=( "$_r1_rest more open seams are not shown. List .clavity/seams/ yourself before starting new work." )
+[ "$_r2_rest" -gt 0 ] && _lines+=( "$_r2_rest unrecognised seams are not shown. If you are resuming work you cannot see listed above, list .clavity/seams/ yourself before starting." )
+[ ${#bad[@]} -gt 0 ] && _lines+=( "${#bad[@]} unrecognised seams could not be named. If you are resuming work you cannot see listed above, list .clavity/seams/ yourself before starting." )
+
+# Nothing to say -> print NOTHING (spec §3b: not a header, not an empty section).
+[ ${#_lines[@]} -eq 0 ] && exit 0
+_msg=$(printf '%s\n' "${_lines[@]}")
+
+# jq owns the escaping ($_msg carries agent-authored PATHS). If jq is ABSENT, do NOT go silently mute:
+# emit a FIXED-literal notice with NO interpolated path, mirroring agy-anomaly-reminder.sh:73-74.
+if command -v jq >/dev/null 2>&1; then
+  jq -nc --arg m "$_msg" '{systemMessage:$m,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+else
+  _nm="[consult-recovery] guard inactive: missing jq - cannot list open consult seams; list .clavity/seams/ yourself before starting new work"
+  printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$_nm" "$_nm"
+fi
 exit 0
