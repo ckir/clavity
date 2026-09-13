@@ -43,16 +43,10 @@ public sealed class LaunchOptions
 /// </summary>
 public static class Launcher
 {
-    /// <summary>A known, harmless CSRF token — agy does NOT enforce it (spec §12 T1); set to future-proof.</summary>
-    public const string CsrfToken = "clavity";
-
     public static LaunchPlan Build(LaunchOptions options)
     {
         // Deterministic order (Ordinal) so the emitted script is stable for unit tests.
-        var agyEnv = new SortedDictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["ANTIGRAVITY_CSRF_TOKEN"] = CsrfToken,
-        };
+        var agyEnv = new SortedDictionary<string, string>(StringComparer.Ordinal);
         if (options.ProjectId is { Length: > 0 } projectId)
             agyEnv["ANTIGRAVITY_PROJECT_ID"] = projectId;
 

@@ -49,7 +49,7 @@ public class LauncherTests
 
         var script = DecodeScript(plan);
         Assert.Equal(
-            "$env:ANTIGRAVITY_CSRF_TOKEN='clavity'; $env:ANTIGRAVITY_PROJECT_ID='proj-123'; " +
+            "$env:ANTIGRAVITY_PROJECT_ID='proj-123'; " +
             @"agy --log-file 'C:\Users\u\.gemini\antigravity-cli\logs\clavity-11111111-2222-3333-4444-555555555555.log'",
             script);
     }
@@ -61,7 +61,7 @@ public class LauncherTests
 
         var script = DecodeScript(plan);
         Assert.DoesNotContain("ANTIGRAVITY_PROJECT_ID", script);
-        Assert.StartsWith("$env:ANTIGRAVITY_CSRF_TOKEN='clavity'; agy --log-file ", script);
+        Assert.StartsWith("agy --log-file ", script);
     }
 
     [Fact]
