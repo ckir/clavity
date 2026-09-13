@@ -79,7 +79,13 @@ public static class TerminalToken
             // did not end where it claims to.
             if (raw.TrimStart(SkipIfLineIsOnlyThese).Length == 0) continue;
 
-            return raw.TrimStart(StripFromFrontBeforeMatching).StartsWith(expected, StringComparison.Ordinal);
+            // ORDINAL-IGNORE-CASE, matching how DisciplineContract LOCATES the token. The token is a
+            // natural-language key ("VERDICT:", "PANEL VERDICT") and LLMs drift its case; under a
+            // case-SENSITIVE match a complete "[Verdict: ALIGNED]" was falsely flagged as truncated
+            // (AGY-CAPSTONE round 2, MEASURED). Folding case cannot false-PASS for the real tokens:
+            // STARTS-WITH plus the token's own punctuation still require the line to actually LEAD with
+            // the verdict, not merely mention the word. Nothing stated case-sensitivity was intended.
+            return raw.TrimStart(StripFromFrontBeforeMatching).StartsWith(expected, StringComparison.OrdinalIgnoreCase);
         }
         return false;
     }

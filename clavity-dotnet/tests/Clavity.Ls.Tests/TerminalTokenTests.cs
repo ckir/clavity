@@ -115,6 +115,24 @@ public class TerminalTokenTests
     }
 
     [Fact]
+    public void A_case_drifted_token_still_counts_as_compliance()
+    {
+        // AGY-CAPSTONE round 2, Mechanism Gamer. The match against the reply used StringComparison.Ordinal
+        // (case-sensitive) while DisciplineContract LOCATES the token OrdinalIgnoreCase - two different
+        // strictnesses for the same token. LLMs drift the case of natural-language keys, so a complete
+        // "[Verdict: ALIGNED]" was falsely flagged as truncated, redding the consult over a stylistic
+        // variation. MEASURED: under Ordinal both rows below were RED. Nothing states case-sensitivity is
+        // intended - no comment, no test - so the match now folds case, matching how the token is located.
+        Assert.True(TerminalToken.IsSatisfied("x\n\n[Verdict: ALIGNED]\n", "VERDICT:"));
+        Assert.True(TerminalToken.IsSatisfied("panel ran\n\npanel verdict: green\n", "PANEL VERDICT"));
+
+        // CONTROL, and it is what stops this passing on a too-loose change: STARTS-WITH plus the token's
+        // own punctuation still discriminate, so a line that merely OPENS with the word but is not the
+        // verdict line stays rejected regardless of case.
+        Assert.False(TerminalToken.IsSatisfied("x\n\nverdict pending, more to follow\n", "VERDICT:"));
+    }
+
+    [Fact]
     public void A_line_that_is_ONLY_decoration_does_not_mask_a_truncated_reply()
     {
         // AGY-CAPSTONE round 1, BLOCKING, and introduced by adding '[' to the strip set: a line
