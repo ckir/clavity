@@ -185,11 +185,23 @@ for idx, row in enumerate(rows, 1):
         # Replacing undecodable bytes rather than raising is the right answer, not a workaround: a
         # binary file HAS no verbatim line to cite, so the citation should be REPORTED as unresolved -
         # which is exactly what a blob of replacement characters produces.
-        r = subprocess.run(["git", "show", "%s:%s" % (sha, row["file"])],
-                           capture_output=True, text=True, encoding="utf-8", errors="replace")
-        # `r.stdout is None` is belt-and-braces against the same shape returning by another route: it
-        # is precisely the value that turned a decode failure into a second, unrelated traceback.
-        ok = r.returncode == 0 and r.stdout is not None
+        # SIXTH LAYER of the disguised-crash class, and the first that guards the SPAWN rather than the
+        # RESULT. subprocess.run can raise BEFORE it ever returns: FileNotFoundError when git is absent
+        # from PATH (MEASURED - a minimal env with git off PATH crashed this script with an unhandled
+        # WinError 2 traceback, exit 1, no problem list, the identical shape the five guards above fight),
+        # or an OSError on a fork/resource failure. The five guards above all inspect the RESULT, so none
+        # of them could reach this. git-on-PATH is a caller precondition here, but the module's contract
+        # is that no input OR environment makes it crash instead of report, so a failed spawn degrades to
+        # the same "cannot read" path as a non-zero exit.
+        try:
+            r = subprocess.run(["git", "show", "%s:%s" % (sha, row["file"])],
+                               capture_output=True, text=True, encoding="utf-8", errors="replace")
+        except OSError:
+            r = None
+        # `r is None` (the spawn itself failed) and `r.stdout is None` (a decode failure in subprocess's
+        # reader thread) are both belt-and-braces against a crash arriving by another route instead of as
+        # a clean non-zero exit.
+        ok = r is not None and r.returncode == 0 and r.stdout is not None
         blobs[row["file"]] = [norm(l) for l in r.stdout.splitlines()] if ok else None
     if blobs[row["file"]] is None:
         problems.append("row %d: cannot read %s at %s" % (idx, ascii(row["file"]), sha))
