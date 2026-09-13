@@ -698,6 +698,13 @@ git commit -m "build(installer): ship the agy pairing INSTALL.md into the plugin
 
 ## Task 9: End-to-end verification (manual, live agy)
 
+> 🔴 **DO NOT AUTOMATE. OWNER-RUN ONLY.** This is a human checklist the OWNER runs by hand against their
+> own live agy, at their discretion — it is NOT a task for an executing agent or subagent to run, and it
+> must NEVER be wired into `dotnet test`, CI, or any script. No automated test may connect to a live agy:
+> the `Clavity.Live.Acceptance` suite stays `[Fact(Skip=…)]` + `[Trait("Category","LiveAgy")]` +
+> `CLAVITY_LIVE_AGY` env-gated (triple-gated, opt-in only). An agent finishing this plan treats Task 9 as
+> already-delegated-to-the-owner and does nothing here. (Owner instruction, 2026-09-13.)
+
 **Not a unit test — a documented manual check, since it needs a live agy 1.2.2.**
 
 - [ ] **Step 1:** Build + install the updated clavity-dotnet (or run `clavity start` from the build output).
