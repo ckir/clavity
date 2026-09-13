@@ -115,21 +115,28 @@ public class TerminalTokenTests
     }
 
     [Fact]
-    public void A_case_drifted_token_still_counts_as_compliance()
+    public void The_token_match_stays_case_SENSITIVE_because_folding_case_false_passes_a_punctuationless_token()
     {
-        // AGY-CAPSTONE round 2, Mechanism Gamer. The match against the reply used StringComparison.Ordinal
-        // (case-sensitive) while DisciplineContract LOCATES the token OrdinalIgnoreCase - two different
-        // strictnesses for the same token. LLMs drift the case of natural-language keys, so a complete
-        // "[Verdict: ALIGNED]" was falsely flagged as truncated, redding the consult over a stylistic
-        // variation. MEASURED: under Ordinal both rows below were RED. Nothing states case-sensitivity is
-        // intended - no comment, no test - so the match now folds case, matching how the token is located.
-        Assert.True(TerminalToken.IsSatisfied("x\n\n[Verdict: ALIGNED]\n", "VERDICT:"));
-        Assert.True(TerminalToken.IsSatisfied("panel ran\n\npanel verdict: green\n", "PANEL VERDICT"));
+        // AGY-CAPSTONE round 3, Fold Auditor - REVERSING a round-2 fold that was a regressive
+        // over-correction. Round 2 folded the reply match to OrdinalIgnoreCase to tolerate a case-drifted
+        // "[Verdict: ALIGNED]" - but that is a SAFE-direction false-FLAG (a complete reply flagged as
+        // truncated is recovered by one re-ask). "PANEL VERDICT" carries NO trailing punctuation, so
+        // case-folding let StartsWith accept ordinary prose that merely OPENS with those words - a
+        // DANGEROUS-direction false-PASS in the completeness gate itself. MEASURED: under OrdinalIgnoreCase
+        // the first row below was a false PASS. Trading a recoverable false-flag for a truncation that
+        // slips through is the wrong trade, so the match stays case-SENSITIVE (Ordinal): the peer is
+        // instructed to emit the exact token, and a case drift is a flag-and-re-ask, never an accepted
+        // truncation. (This row is the regression guard against re-introducing OrdinalIgnoreCase.)
 
-        // CONTROL, and it is what stops this passing on a too-loose change: STARTS-WITH plus the token's
-        // own punctuation still discriminate, so a line that merely OPENS with the word but is not the
-        // verdict line stays rejected regardless of case.
-        Assert.False(TerminalToken.IsSatisfied("x\n\nverdict pending, more to follow\n", "VERDICT:"));
+        // THE FALSE-PASS THAT CASE-FOLDING INTRODUCED - a lowercase prose line must NOT read as a verdict.
+        Assert.False(TerminalToken.IsSatisfied("panel ran\n\npanel verdict is still pending\n", "PANEL VERDICT"));
+
+        // A case-drifted VERDICT: is FLAGGED (the safe direction), not accepted.
+        Assert.False(TerminalToken.IsSatisfied("x\n\n[Verdict: ALIGNED]\n", "VERDICT:"));
+
+        // The exact-case tokens still pass - the reversal is not a regression the other way.
+        Assert.True(TerminalToken.IsSatisfied("x\n\n[VERDICT: ALIGNED]\n", "VERDICT:"));
+        Assert.True(TerminalToken.IsSatisfied("panel ran\n\nPANEL VERDICT: GREEN\n", "PANEL VERDICT"));
     }
 
     [Fact]

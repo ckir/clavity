@@ -79,13 +79,17 @@ public static class TerminalToken
             // did not end where it claims to.
             if (raw.TrimStart(SkipIfLineIsOnlyThese).Length == 0) continue;
 
-            // ORDINAL-IGNORE-CASE, matching how DisciplineContract LOCATES the token. The token is a
-            // natural-language key ("VERDICT:", "PANEL VERDICT") and LLMs drift its case; under a
-            // case-SENSITIVE match a complete "[Verdict: ALIGNED]" was falsely flagged as truncated
-            // (AGY-CAPSTONE round 2, MEASURED). Folding case cannot false-PASS for the real tokens:
-            // STARTS-WITH plus the token's own punctuation still require the line to actually LEAD with
-            // the verdict, not merely mention the word. Nothing stated case-sensitivity was intended.
-            return raw.TrimStart(StripFromFrontBeforeMatching).StartsWith(expected, StringComparison.OrdinalIgnoreCase);
+            // CASE-SENSITIVE (Ordinal), DELIBERATELY - and this comment exists because it was tried the
+            // other way and measured worse. AGY-CAPSTONE round 2 folded this to OrdinalIgnoreCase to
+            // tolerate a case-drifted "[Verdict: ALIGNED]"; round 3's fold-auditor caught the regression:
+            // "PANEL VERDICT" carries NO trailing punctuation, so case-folding let StartsWith accept
+            // ordinary prose that merely opens with those words ("panel verdict is still pending") - a
+            // false-PASS in the completeness gate. A case drift is only a SAFE-direction false-FLAG (a
+            // complete reply flagged as truncated is recovered by one re-ask); an accepted truncation is
+            // not recoverable. The peer is told to emit the exact token, so enforce it exactly rather than
+            // trade a recoverable flag for a truncation that slips through. Pinned by
+            // TerminalTokenTests.The_token_match_stays_case_SENSITIVE_...
+            return raw.TrimStart(StripFromFrontBeforeMatching).StartsWith(expected, StringComparison.Ordinal);
         }
         return false;
     }
