@@ -150,3 +150,89 @@ Describe 'agy-consult-recovery output vocabulary' {
     Remove-Item -Recurse -Force $r
   }
 }
+
+Describe 'agy-consult-recovery section-7 matrix (representative fixtures; each row names its mutant)' {
+  BeforeAll {
+    . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
+    $script:bash = Get-GitBashOrThrow
+    $script:hook = Join-Path $PSScriptRoot '..\..\clavity-dotnet\plugin\hooks\agy-consult-recovery.sh'
+    function New-Repo { $t = Join-Path ([IO.Path]::GetTempPath()) ("cr-" + [guid]::NewGuid()); New-Item -ItemType Directory $t | Out-Null; & git -C $t init -q; & git -C $t commit -q --allow-empty -m init; New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null; New-Item -ItemType Directory (Join-Path $t '.clavity\agy-marks') -Force | Out-Null; $t }
+    function Seam($repo,$name){ Set-Content (Join-Path $repo ".clavity\seams\$name") 'body' }
+    function Marker($repo,$tok,$sha='0000000000000000000000000000000000000000'){ Set-Content (Join-Path $repo ".clavity\agy-marks\$tok.head") $sha -NoNewline }
+    function Run($repo){ (@{cwd=$repo;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & $script:bash $script:hook 2>$null }
+  }
+  It 'NOTHING is excluded: an old live on-convention seam survives 8 newer off-convention seams (representative of "400 historical do not flood")' {
+    # Mutant: add ANY exclusion rule (marker recency, seam-count window, commit-age window, an epoch) -> the live seam vanishes -> reds.
+    $r = New-Repo; Seam $r 'agy-capstone-r5-live.md'; Start-Sleep -Milliseconds 1100
+    1..8 | ForEach-Object { Seam $r "historical-note-$_.md" }
+    $out = Run $r
+    $out | Should -Match 'agy-capstone-r5-live'          # rank 1 shown
+    $out | Should -Match 'unrecognised seams are not shown'  # the 8 are COUNTED, not dropped
+    Remove-Item -Recurse -Force $r
+  }
+  It 'a seam is STILL reported after HEAD has moved 3 commits (no HEAD-based TTL; pins section 3c)' {
+    # Mutant: add a HEAD-based TTL / expire once HEAD moves past the seam -> reds.
+    $r = New-Repo; Seam $r 'agy-capstone-r5-x.md'
+    1..3 | ForEach-Object { & git -C $r commit -q --allow-empty -m "c$_" }
+    (Run $r) | Should -Match 'agy-capstone-r5-x'
+    Remove-Item -Recurse -Force $r
+  }
+  It 'with .clavity/agy-marks ABSENT and a seam present, the seam is reported and the hook exits 0' {
+    # Mutant: query agy-marks without an existence check / pass the dir to -newer -> day-zero error -> reds.
+    $r = New-Repo; Remove-Item -Recurse -Force (Join-Path $r '.clavity\agy-marks'); Seam $r 'agy-capstone-r5-x.md'
+    (Run $r) | Should -Match 'agy-capstone-r5-x'
+    Remove-Item -Recurse -Force $r
+  }
+  It 'with agy-marks EMPTY (dir exists, no markers) an on-convention seam is UNconcluded and reported' {
+    # Mutant: treat an empty marker dir / missing marker as "concluded" -> reds.
+    $r = New-Repo; Seam $r 'agy-capstone-r5-x.md'
+    (Run $r) | Should -Match 'agy-capstone-r5-x'
+    Remove-Item -Recurse -Force $r
+  }
+  It 'a panel seam IS concluded once agy-panel.head is written (end-to-end Fork D)' {
+    # Mutant: omit agy-panel from the token table, or the panel skill omits the marker write -> the seam is reported forever -> reds.
+    $r = New-Repo; Seam $r 'agy-panel-r3-audit.md'; Start-Sleep -Milliseconds 1100; Marker $r 'agy-panel'
+    (Run $r) | Should -Not -Match 'agy-panel-r3-audit'
+    Remove-Item -Recurse -Force $r
+  }
+  It 'a panel seam with NO agy-panel.head on disk is recognized on-convention (token list is the LITERAL table, not agy-marks contents)' {
+    # Mutant: derive the token list from what is IN agy-marks/ -> agy-panel absent on a fresh install -> the seam takes the off-convention branch -> reds.
+    $r = New-Repo; Seam $r 'agy-panel-r3-audit.md'
+    (Run $r) | Should -Match 'agy-panel r3'
+    Remove-Item -Recurse -Force $r
+  }
+  It 'appending to skipped.log concludes NOTHING (conclusion reads only the discipline head marker)' {
+    # Mutant: let the conclusion test read ANY file in agy-marks/ -> a recorded NON-completion concludes a live seam -> reds.
+    $r = New-Repo; Seam $r 'agy-capstone-r5-x.md'; Start-Sleep -Milliseconds 1100; Set-Content (Join-Path $r '.clavity\agy-marks\skipped.log') 'WAIVED'
+    (Run $r) | Should -Match 'agy-capstone-r5-x'
+    Remove-Item -Recurse -Force $r
+  }
+  It 'branch 4: MORE THAN 3 off-convention seams emit the off-convention remainder line' {
+    # Mutant: reuse the on-convention overflow text, or drop the per-rank count -> reds.
+    $r = New-Repo; 1..4 | ForEach-Object { Seam $r "loose-note-$_.md" }
+    (Run $r) | Should -Match 'unrecognised seams are not shown'
+    Remove-Item -Recurse -Force $r
+  }
+  It 'a very long line is length-capped (spec section 6)' {
+    # Mutant: drop the LINECAP truncation -> an unbounded line floods startup -> reds.
+    $r = New-Repo; Seam $r ("agy-capstone-r5-" + ('x' * 160) + ".md")
+    (Run $r) | Should -Match 'truncated'
+    Remove-Item -Recurse -Force $r
+  }
+  It 'a concluded seam that is EDITED newer than its marker is reported AGAIN (resurrection is reversible; pins section 3b-i)' {
+    # Mutant: make conclusion sticky (record the seam in the marker) -> the edited seam stays concluded -> reds.
+    $r = New-Repo; Seam $r 'agy-capstone-r5-x.md'; Start-Sleep -Milliseconds 1100; Marker $r 'agy-capstone'
+    (Run $r) | Should -Not -Match 'agy-capstone-r5-x'   # concluded
+    Start-Sleep -Milliseconds 1100; Seam $r 'agy-capstone-r5-x.md'   # human edits the seam -> newer than marker
+    (Run $r) | Should -Match 'agy-capstone-r5-x'         # resurrected
+    Remove-Item -Recurse -Force $r
+  }
+  It 'writing an on-convention seam does not drop pre-existing off-convention seams (no boundary derived from repo state)' {
+    # Mutant: derive an epoch/boundary from repo state (e.g. oldest on-convention seam) -> the older off-convention seams drop the moment a well-named one appears -> reds.
+    $r = New-Repo; 1..4 | ForEach-Object { Seam $r "loose-note-$_.md" }; Start-Sleep -Milliseconds 1100; Seam $r 'agy-capstone-r5-x.md'
+    $out = Run $r
+    $out | Should -Match 'agy-capstone-r5-x'                 # the on-convention seam (rank 1)
+    $out | Should -Match 'unrecognised seams are not shown'  # 4 off-conv > cap -> remainder proves none were dropped
+    Remove-Item -Recurse -Force $r
+  }
+}

@@ -1138,3 +1138,11 @@ clavity-install.Tests.ps1                         7,9s   12 tests   <- SLOW, ADD
 Every FAST row above was re-measured in ONE sweep on 2026-08-05 (the 292,09s sample below). The SLOW rows
 were not touched and carry their older figures. Test COUNTS were all correct except the three suites this
 change edited — so what decays here is TIMES, which is exactly why the section header calls them indicative.
+
+**2026-09-13 — `agy-consult-recovery.Tests.ps1` joined SLOW (section 15 consult-recovery).** 29 tests,
+registered in `test-scripts-slow`. Its runtime is dominated by ~6s-per-hook-invocation process-spawn
+latency (this box appears to AV-scan each spawned `bash`/`git`/`date`/`ls`), so a full run measured
+~240-320s — but ONLY UNDER CONTENTION; per the timing discipline that is not a clean figure and no table
+row asserts a time until a clean idle two-run measurement exists. The COUNT (29) is reliable. It is in the
+SLOW half deliberately: it can never join `test-scripts-fast` at this per-call cost without blowing the
+~600s fast cap.
