@@ -1772,21 +1772,25 @@ pattern, not the instance, is the problem. **Do not do it as a standalone commit
 
 ---
 
-### §21 — Ship the peer REPLY CONTRACT: disposition labels + the dual prose/JSON output — ▶ **OPEN (owner-confirmed 2026-09-08); CODE SHIPPED to main 2026-09-02, closure pending its capstone**
+### §21 — Ship the peer REPLY CONTRACT: disposition labels + the dual prose/JSON output — ✅ **DONE (capstone GREEN, owner-adjudicated 2026-09-13)**
 
-> **STATUS NOTE (2026-09-13) — reconciling the header with the tree.** The header above dated
-> `2026-08-30` and read *"owner leans SHIP"*, i.e. as if nothing were built yet. That is stale: the §21
-> CODE shipped to `main` on **2026-09-02** and is live in the installed plugin —
-> `a72f618` (21.1, put nothing after the terminal token) · `06bc5e0` (21.2, the peer-side axis is
-> `claim-type`, not `disposition`) · `b577298` (21.4, JSON inline with a schema-validating reader). The
-> plan doc marked *"Phase 1 (§21) complete"* the same day (`0d575a4`).
+> **CLOSED 2026-09-13.** The §21 CODE shipped to `main` on **2026-09-02** (`a72f618` 21.1 · `06bc5e0`
+> 21.2 · `b577298` 21.4) and is live in the plugin. Its original Phase-1 capstone (`d528328..13ad80e`,
+> 8 rounds) was overtaken without a clean round, so §21 stayed OPEN pending closure. The owner ordered a
+> **fresh capstone** (2026-09-13), scoped to §21's live contract surface at HEAD — `check-peer-reply-citations.py`
+> + the four `Clavity.Ls` enforcement files. It ran **4 rounds** (`9612700..d6ba445`) and reached a clean
+> terminal round; the owner adjudicated **GREEN**. Ledger row `6d996e4`; completion marker
+> `.clavity/agy-marks/agy-capstone.head` = `d6ba445` (the reviewed tip). The fresh capstone folded a real
+> defect (an unguarded `git show` spawn crash) and caught + reverted a regressive case-fold; see the
+> ledger row and [[project_s21-capstone_execution]].
 >
-> **What keeps §21 OPEN is CLOSURE, not code.** Its Phase 1 AGY-CAPSTONE ran **8 rounds**
-> (`d528328..13ad80e`, 2026-09-02 evening, r1–r8) and was **overtaken without a GREEN round**, so no
-> completion marker was ever written and the gate stays armed (see [[project_phase-1-execution]]).
-> Closing §21 is the **owner's call**: a round-cap waiver writes the marker, or a fresh capstone now that
-> agy is reachable again (2026-09-13). This note corrects only the "nothing built yet" reading — it does
-> **not** overturn the owner's 2026-09-08 OPEN verdict.
+> **OWNER RULING (Part B), 2026-09-13:** the ROADMAP Part B design below says *"exactly ten keys, every
+> one present"*; the shipped impl requires only `file`+`quoted_line` (a deliberate row-267 relaxation,
+> "DECLARED means allowed"). The owner **accepted two-required** as the settled §21 contract. The Part B
+> text below is retained as design history; the shipped two-required contract is authoritative.
+>
+> ▶ **Remaining discipline:** AGY-TEST-AUDIT of §21's test suites (coverage exhaustiveness) — the
+> post-capstone step, to run leaner in a fresh session.
 
 **Why this is here and not in a seam.** Both halves of this contract have been in active use for months
 in `.clavity/seams/*.md` briefs and in nothing else. They were never shipped and never written to memory,
