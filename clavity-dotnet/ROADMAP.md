@@ -1772,7 +1772,21 @@ pattern, not the instance, is the problem. **Do not do it as a standalone commit
 
 ---
 
-### §21 — Ship the peer REPLY CONTRACT: disposition labels + the dual prose/JSON output — ▶ **OPEN, owner leans SHIP (2026-08-30)**
+### §21 — Ship the peer REPLY CONTRACT: disposition labels + the dual prose/JSON output — ▶ **OPEN (owner-confirmed 2026-09-08); CODE SHIPPED to main 2026-09-02, closure pending its capstone**
+
+> **STATUS NOTE (2026-09-13) — reconciling the header with the tree.** The header above dated
+> `2026-08-30` and read *"owner leans SHIP"*, i.e. as if nothing were built yet. That is stale: the §21
+> CODE shipped to `main` on **2026-09-02** and is live in the installed plugin —
+> `a72f618` (21.1, put nothing after the terminal token) · `06bc5e0` (21.2, the peer-side axis is
+> `claim-type`, not `disposition`) · `b577298` (21.4, JSON inline with a schema-validating reader). The
+> plan doc marked *"Phase 1 (§21) complete"* the same day (`0d575a4`).
+>
+> **What keeps §21 OPEN is CLOSURE, not code.** Its Phase 1 AGY-CAPSTONE ran **8 rounds**
+> (`d528328..13ad80e`, 2026-09-02 evening, r1–r8) and was **overtaken without a GREEN round**, so no
+> completion marker was ever written and the gate stays armed (see [[project_phase-1-execution]]).
+> Closing §21 is the **owner's call**: a round-cap waiver writes the marker, or a fresh capstone now that
+> agy is reachable again (2026-09-13). This note corrects only the "nothing built yet" reading — it does
+> **not** overturn the owner's 2026-09-08 OPEN verdict.
 
 **Why this is here and not in a seam.** Both halves of this contract have been in active use for months
 in `.clavity/seams/*.md` briefs and in nothing else. They were never shipped and never written to memory,
