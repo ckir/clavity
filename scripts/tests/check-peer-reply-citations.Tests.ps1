@@ -489,4 +489,60 @@ print(",".join(str(ord(c)) for c in ast.literal_eval(vals[0])))
         $out | Should -Match '1 problem\(s\) across 1 row\(s\)' -Because 'the problem LIST must be reached and printed, which is the half the crash destroyed'
         $out | Should -Not -Match 'Traceback' -Because 'an undecodable blob must be REPORTED, never raised'
     }
+
+    It 'REJECTS an empty or whitespace-only quoted_line instead of matching a blank line - <label>' -ForEach @(
+        @{ label = 'empty';           quoted = '' },
+        @{ label = 'whitespace-only'; quoted = '   ' }
+    ) {
+        # AGY-TEST-AUDIT 2026-09-13 (Boundary Smuggler), MEASURED as a live citation-gate BYPASS: norm('')
+        # is '' and `git show`'s splitlines() yields '' for any file containing a blank line, so an empty
+        # quoted_line "resolved" against essentially every file and the checker exited 0 having cited
+        # NOTHING. A peer could defeat the whole citation check by quoting the empty string.
+        # THE CITED FILE MUST CONTAIN A BLANK LINE, or the vacuous match cannot happen and this row would
+        # pass against the unfixed code for the wrong reason - the checker's own source has blank lines.
+        # Non-vacuous: with the fix both arms exit 1 naming the empty citation; remove the `if not claimed`
+        # guard and both exit 0 (the bypass), reddening this row.
+        $r = New-Reply ('[{"file":"scripts/check-peer-reply-citations.py","quoted_line":"' + $quoted + '"}]')
+        $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
+        $LASTEXITCODE | Should -Be 1 -Because "a nothing-citation must be REJECTED, not matched against a blank line; it said: $out"
+        $out | Should -Match 'quoted_line is empty or whitespace-only'
+        $out | Should -Not -Match 'Traceback' -Because 'an empty citation is a REPORTED problem, never a crash'
+    }
+
+    It 'REPORTS a NUL byte embedded in row["file"] instead of crashing at subprocess spawn' {
+        # AGY-TEST-AUDIT 2026-09-13 (Mechanism Gamer). The spawn guard is `except (OSError, ValueError)`:
+        # subprocess.run raises ValueError - which is NOT an OSError - when an argument holds an embedded
+        # NUL, and row["file"] is peer-supplied JSON in which a NUL is legal. Capstone R1's c5e220a
+        # broadened the guard to catch it, but NO fixture pinned the ValueError arm: MEASURED, narrowing
+        # the guard back to `except OSError:` leaves the whole suite green while a NUL-bearing path crashes
+        # with an unhandled "ValueError: embedded null byte" traceback. This row is that missing pin.
+        # THE NUL MUST REACH subprocess.run AS A DECODED STRING, which means the JSON on disk must carry the
+        # ESCAPE  , not a raw NUL byte: a raw control char is REJECTED by json.load first ("Invalid
+        # control character") and never reaches the spawn. ConvertTo-Json escapes a real [char]0 to  
+        # for us (as Python's json.dump does), so json.load decodes it back to a NUL string at the spawn -
+        # the path this guard exists for. Building the literal ' ' by hand is brittle across shells.
+        $nul = [char]0
+        $row = [ordered]@{ file = "no/such${nul}file.md"; quoted_line = 'anything' } | ConvertTo-Json -Compress
+        $r = New-Reply ("[$row]")
+        $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'cannot read'
+        $out | Should -Not -Match 'Traceback' -Because 'an embedded NUL must degrade to cannot-read, never a spawn crash'
+    }
+
+    It 'REJECTS a key declared for a SIBLING discipline, not merely an invented one - <discipline> rejects <key>' -ForEach @(
+        @{ discipline = 'agy-capstone';   key = 'missing_test' },
+        @{ discipline = 'agy-test-audit'; key = 'trigger' }
+    ) {
+        # AGY-TEST-AUDIT 2026-09-13 (Protocol Pedant). agy-capstone declares `trigger` (NOT `missing_test`);
+        # agy-test-audit declares `missing_test` (NOT `trigger`). Every existing rejection row uses a key
+        # declared NOWHERE (smuggled/confidence) or pins agy-first/panel-review, so a mutant MERGING
+        # agy-capstone and agy-test-audit into one permissive UNION schema would pass all of them. These two
+        # rows pin the exact cross-boundary: each discipline must reject the OTHER's exclusive key.
+        # Non-vacuous: adding the sibling key to this discipline's SCHEMAS entry turns the matching row green.
+        $r = New-Reply ('[{"file":"justfile","quoted_line":"test-scripts-fast:","' + $key + '":"x"}]')
+        $out = ((& $script:Py $script:Checker $r HEAD $discipline 2>&1) -join "`n")
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match $key -Because "$key is declared for a SIBLING discipline, not $discipline, and must be rejected"
+    }
 }

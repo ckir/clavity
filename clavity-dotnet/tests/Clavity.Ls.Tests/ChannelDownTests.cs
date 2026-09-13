@@ -123,6 +123,14 @@ public class ChannelDownTests
 
             Assert.Equal("invalid_request", ChannelDown.StatusFor(d));
             Assert.DoesNotContain("shut down or restarted", ChannelDown.Hint(d));
+
+            // POSITIVELY pin the remedy, not only the absence of the wrong one. AGY-TEST-AUDIT 2026-09-13:
+            // the AuthFailed and ResourceExhausted hints assert their own guidance, but InvalidRequest
+            // asserted only what it must NOT say - so a reword of this arm to something generic (but still
+            // not "shut down") would pass the negative alone, silently dropping the actionable guidance.
+            // "rejected the REQUEST" is unique to this arm (AuthFailed says "REFUSED the credential",
+            // ResourceExhausted names size/quota), so it also proves the InvalidRequest arm actually fired.
+            Assert.Contains("rejected the REQUEST", ChannelDown.Hint(d));
         }
     }
 

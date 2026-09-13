@@ -168,6 +168,15 @@ for idx, row in enumerate(rows, 1):
     if not check_row_schema(row, idx, declared, problems):
         continue        # record it and move on - never index a key just reported missing
     claimed = norm(row["quoted_line"])
+    # A peer that quotes NOTHING satisfies the citation gate vacuously: norm("") == "", and git show's
+    # splitlines() yields "" for any file containing a blank line, so an empty quoted_line "resolves"
+    # against essentially every file. AGY-TEST-AUDIT 2026-09-13 (Boundary Smuggler), MEASURED: an empty
+    # OR whitespace-only quoted_line exited 0 - the citation gate fully bypassed. The contract requires a
+    # VERBATIM NON-EMPTY line; enforce it BEFORE the blob lookup, so a nothing-citation is REJECTED rather
+    # than matched against a blank line. norm() has already stripped, so a whitespace-only value is "" here.
+    if not claimed:
+        problems.append("row %d: quoted_line is empty or whitespace-only - it must be a verbatim non-empty line" % idx)
+        continue
     # ONE `git show` PER FILE, NOT PER ROW. Capstone R3: every row citing the same file spawned its own
     # identical subprocess and re-normalised the same blob, so a reply citing twenty lines of one file
     # paid twenty process launches for one distinct read. Keyed on the file alone - `sha` is fixed for
