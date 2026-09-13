@@ -1,9 +1,14 @@
 Describe 'agy-consult-recovery guard prologue' {
   BeforeAll {
+    # Resolve Git Bash EXPLICITLY, never bare `bash`: Get-Command bash is NON-DETERMINISTIC and locally
+    # resolves to WSL's System32 bash.exe, which cannot run a Windows-path hook - matches every sibling
+    # hook suite (BashHookHelpers.ps1 / agy-discipline-reaching.Tests.ps1).
+    . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
+    $script:bash = Get-GitBashOrThrow
     $script:hook = Join-Path $PSScriptRoot '..\..\clavity-dotnet\plugin\hooks\agy-consult-recovery.sh'
     function Invoke-Hook([string]$cwd) {
       $payload = @{ cwd = $cwd; session_id = 's1'; source = 'compact' } | ConvertTo-Json -Compress
-      $out = $payload | & bash $script:hook 2>$null
+      $out = $payload | & $script:bash $script:hook 2>$null
       $script:LastRc = $LASTEXITCODE
       $out
     }
@@ -42,11 +47,13 @@ Describe 'agy-consult-recovery guard prologue' {
 }
 Describe 'agy-consult-recovery candidate model' {
   BeforeAll {
+    . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
+    $script:bash = Get-GitBashOrThrow
     $script:hook = Join-Path $PSScriptRoot '..\..\clavity-dotnet\plugin\hooks\agy-consult-recovery.sh'
     function New-Repo { $t = Join-Path ([IO.Path]::GetTempPath()) ("cr-" + [guid]::NewGuid()); New-Item -ItemType Directory $t | Out-Null; & git -C $t init -q; & git -C $t commit -q --allow-empty -m init; New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null; New-Item -ItemType Directory (Join-Path $t '.clavity\agy-marks') -Force | Out-Null; $t }
     function Seam($repo,$name,$body='body'){ Set-Content (Join-Path $repo ".clavity\seams\$name") $body }
     function Marker($repo,$tok,$sha='0000000000000000000000000000000000000000'){ Set-Content (Join-Path $repo ".clavity\agy-marks\$tok.head") $sha -NoNewline }
-    function Run($repo){ (@{cwd=$repo;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & bash $script:hook 2>$null }
+    function Run($repo){ (@{cwd=$repo;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & $script:bash $script:hook 2>$null }
   }
   It 'reports an on-convention unconcluded seam, naming discipline and round' {
     $r = New-Repo; Seam $r 'agy-capstone-r5-audit.md'
@@ -92,10 +99,12 @@ Describe 'agy-consult-recovery candidate model' {
 }
 Describe 'agy-consult-recovery output vocabulary' {
   BeforeAll {
+    . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
+    $script:bash = Get-GitBashOrThrow
     $script:hook = Join-Path $PSScriptRoot '..\..\clavity-dotnet\plugin\hooks\agy-consult-recovery.sh'
     function New-Repo { $t = Join-Path ([IO.Path]::GetTempPath()) ("cr-" + [guid]::NewGuid()); New-Item -ItemType Directory $t | Out-Null; & git -C $t init -q; & git -C $t commit -q --allow-empty -m init; New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null; New-Item -ItemType Directory (Join-Path $t '.clavity\agy-marks') -Force | Out-Null; $t }
     function Seam($repo,$name){ Set-Content (Join-Path $repo ".clavity\seams\$name") 'body' }
-    function Run($repo){ (@{cwd=$repo;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & bash $script:hook 2>$null }
+    function Run($repo){ (@{cwd=$repo;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & $script:bash $script:hook 2>$null }
   }
   It 'branch 1: names PATH, carries the directive, does NOT contain the seam body' {
     $r = New-Repo; Seam $r 'agy-capstone-r5-x.md'
