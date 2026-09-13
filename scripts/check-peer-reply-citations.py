@@ -189,14 +189,20 @@ for idx, row in enumerate(rows, 1):
         # RESULT. subprocess.run can raise BEFORE it ever returns: FileNotFoundError when git is absent
         # from PATH (MEASURED - a minimal env with git off PATH crashed this script with an unhandled
         # WinError 2 traceback, exit 1, no problem list, the identical shape the five guards above fight),
-        # or an OSError on a fork/resource failure. The five guards above all inspect the RESULT, so none
-        # of them could reach this. git-on-PATH is a caller precondition here, but the module's contract
-        # is that no input OR environment makes it crash instead of report, so a failed spawn degrades to
-        # the same "cannot read" path as a non-zero exit.
+        # or an OSError on a fork/resource failure. It ALSO raises ValueError - which is NOT an OSError -
+        # when an argument holds an embedded NUL byte, and row["file"] is peer-supplied JSON in which a
+        # NUL is legal (MEASURED, capstone round 1 fold consult: a cited file containing a NUL crashed
+        # this script with an unhandled "ValueError: embedded null character" past an OSError-only guard -
+        # the incomplete fold this broadening closes). The five guards above all inspect the RESULT, so
+        # none of them could reach the spawn. git-on-PATH is a caller precondition here, but the module's
+        # contract is that no input OR environment makes it crash instead of report, so a failed spawn
+        # degrades to the same "cannot read" path as a non-zero exit. (OSError, ValueError) seals every
+        # pre-spawn raise: a TypeError is impossible because check_row_schema already proved row["file"]
+        # is a str before this line.
         try:
             r = subprocess.run(["git", "show", "%s:%s" % (sha, row["file"])],
                                capture_output=True, text=True, encoding="utf-8", errors="replace")
-        except OSError:
+        except (OSError, ValueError):
             r = None
         # `r is None` (the spawn itself failed) and `r.stdout is None` (a decode failure in subprocess's
         # reader thread) are both belt-and-braces against a crash arriving by another route instead of as
