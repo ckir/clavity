@@ -24,6 +24,7 @@ public class LauncherTests
         string sessionId = "11111111-2222-3333-4444-555555555555",
         string? projectId = "proj-123",
         string logFile = @"C:\Users\u\.gemini\antigravity-cli\logs\clavity-11111111-2222-3333-4444-555555555555.log",
+        string endpointFile = @"C:\Users\u\.clavity\agy-endpoint.11111111-2222-3333-4444-555555555555.json",
         bool skipPermissions = false,
         params string[] claudeArgs)
         => new()
@@ -32,6 +33,7 @@ public class LauncherTests
             SessionId = sessionId,
             ProjectId = projectId,
             AgyLogFilePath = logFile,
+            AgyEndpointFilePath = endpointFile,
             SkipPermissions = skipPermissions,
             ClaudeArgs = claudeArgs,
         };
@@ -50,6 +52,7 @@ public class LauncherTests
         var script = DecodeScript(plan);
         Assert.Equal(
             "$env:ANTIGRAVITY_PROJECT_ID='proj-123'; " +
+            @"$env:CLAVITY_AGY_ENDPOINT='C:\Users\u\.clavity\agy-endpoint.11111111-2222-3333-4444-555555555555.json'; " +
             @"agy --log-file 'C:\Users\u\.gemini\antigravity-cli\logs\clavity-11111111-2222-3333-4444-555555555555.log'",
             script);
     }
@@ -61,7 +64,9 @@ public class LauncherTests
 
         var script = DecodeScript(plan);
         Assert.DoesNotContain("ANTIGRAVITY_PROJECT_ID", script);
-        Assert.StartsWith("agy --log-file ", script);
+        // The endpoint export is UNCONDITIONAL (not gated on ProjectId), so it now leads the script.
+        Assert.StartsWith("$env:CLAVITY_AGY_ENDPOINT='", script);
+        Assert.Contains("; agy --log-file ", script);
     }
 
     [Fact]
@@ -86,6 +91,7 @@ public class LauncherTests
             Folder = "C:\\proj",
             SessionId = "sid",
             AgyLogFilePath = "C:\\logs\\agy.log",
+            AgyEndpointFilePath = "C:\\ep\\agy-endpoint.sid.json",
             SkipPermissions = true,
             AgyInstallDocPath = "C:\\install\\agy-pairing-INSTALL.md",
         });
@@ -96,6 +102,8 @@ public class LauncherTests
         Assert.Contains("-i 'Fetch and follow the instructions at C:\\install\\agy-pairing-INSTALL.md'", script);
         Assert.True(script.IndexOf("--dangerously-skip-permissions", StringComparison.Ordinal)
                     < script.IndexOf(" -i '", StringComparison.Ordinal));
+        // agy publishes to the PER-SESSION endpoint the tab exports; the INSTALL.md reads $env:CLAVITY_AGY_ENDPOINT.
+        Assert.Contains("$env:CLAVITY_AGY_ENDPOINT='C:\\ep\\agy-endpoint.sid.json'; ", script);
     }
 
     [Fact]
@@ -103,7 +111,8 @@ public class LauncherTests
     {
         var plan = Launcher.Build(new LaunchOptions
         {
-            Folder = "C:\\proj", SessionId = "sid", AgyLogFilePath = "C:\\logs\\agy.log", SkipPermissions = true,
+            Folder = "C:\\proj", SessionId = "sid", AgyLogFilePath = "C:\\logs\\agy.log",
+            AgyEndpointFilePath = "C:\\ep\\agy-endpoint.sid.json", SkipPermissions = true,
         });
         var script = DecodeScript(plan);
         Assert.DoesNotContain(" -i '", script);
@@ -121,6 +130,32 @@ public class LauncherTests
             plan.ClaudeLaunch.Environment["CLAVITY_SESSION_ID"]);
         Assert.Equal(@"C:\Users\u\.gemini\antigravity-cli\logs\clavity-11111111-2222-3333-4444-555555555555.log",
             plan.ClaudeLaunch.Environment["CLAVITY_AGY_LOG"]);
+        Assert.Equal(@"C:\Users\u\.clavity\agy-endpoint.11111111-2222-3333-4444-555555555555.json",
+            plan.ClaudeLaunch.Environment["CLAVITY_AGY_ENDPOINT"]);
         Assert.DoesNotContain("CLAVITY_LAUNCHED", plan.ClaudeLaunch.Environment.Keys);
+    }
+
+    [Fact]
+    public void The_SAME_per_session_endpoint_is_threaded_to_BOTH_agy_and_Claude_so_two_sessions_never_collide()
+    {
+        // ROOT-CAUSE REGRESSION GUARD (2026-09-13). The agy-pairing bridge had agy publish, and clavity-ls
+        // read, a single GLOBAL ~/.clavity/agy-endpoint.json with NO session discriminator on either side.
+        // MEASURED: two agy instances (PIDs 22140/22720) both published there, the second overwrote the
+        // first, and BOTH Claude peers connected to the last-published agy - a consult from this repo was
+        // answered by a different project's agy. The fix threads ONE per-session path into BOTH the agy tab
+        // (where agy publishes it, via $env:CLAVITY_AGY_ENDPOINT in INSTALL.md) AND Claude's env (where
+        // clavity-ls reads it). Both must carry the SAME session-scoped path, or the rendezvous breaks: if
+        // agy publishes to file A and clavity-ls reads file B they never meet; if either reverts to the
+        // fixed global path, two sessions collide again. This asserts they are equal AND session-scoped.
+        var endpoint = @"C:\Users\u\.clavity\agy-endpoint.SID-A.json";
+        var plan = Launcher.Build(Opts(sessionId: "SID-A", endpointFile: endpoint));
+
+        // clavity-ls (Claude's --mcp child inherits this) reads exactly this file.
+        Assert.Equal(endpoint, plan.ClaudeLaunch.Environment["CLAVITY_AGY_ENDPOINT"]);
+        // agy publishes to exactly this file (the tab exports it for INSTALL.md to consume).
+        Assert.Contains("$env:CLAVITY_AGY_ENDPOINT='" + endpoint + "'; ", DecodeScript(plan));
+        // and it is NOT the fixed global path that caused the collision.
+        Assert.NotEqual(@"C:\Users\u\.clavity\agy-endpoint.json",
+            plan.ClaudeLaunch.Environment["CLAVITY_AGY_ENDPOINT"]);
     }
 }

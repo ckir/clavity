@@ -101,6 +101,12 @@ if (args.Length > 0 && args[0] == "start")
     LogRetention.Prune(logsDir, LogRetention.DefaultMaxAge, DateTime.UtcNow);
     var agyLogPath = Path.Combine(logsDir, $"clavity-{sessionId}.log");
 
+    // Per-session pairing rendezvous. The reader's default is <userProfile>/.clavity/agy-endpoint.json
+    // (AgyEnvironment.ResolveEndpointPath); we key it by session so two concurrent clavity sessions cannot
+    // clobber one another's endpoint (both agy tab and clavity-ls get this exact path via CLAVITY_AGY_ENDPOINT).
+    var agyEndpointPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".clavity", $"agy-endpoint.{sessionId}.json");
+
     var installRoot = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
     var agyInstallDoc = Path.Combine(
         installRoot, "plugins", Clavity.Ls.Install.PluginInstaller.PluginName, "pairing", "agy-pairing-INSTALL.md");
@@ -111,6 +117,7 @@ if (args.Length > 0 && args[0] == "start")
         ClaudeArgs = claudeArgs,
         ProjectId = TryReadProjectId(agyHome),
         AgyLogFilePath = agyLogPath,
+        AgyEndpointFilePath = agyEndpointPath,
         // User decision 2026-06-30: agy ALWAYS launches with --dangerously-skip-permissions so unattended
         // bus/LS consults never stall on per-tool approval prompts. (Supersedes spec §4 "NOT default".)
         SkipPermissions = true,

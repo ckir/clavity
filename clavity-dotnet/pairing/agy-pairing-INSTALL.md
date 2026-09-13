@@ -16,11 +16,13 @@ any other configuration or sends anything off this machine.
 Run **exactly** this in your shell (PowerShell), then report the line it prints:
 
 ```powershell
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.clavity" | Out-Null; ([ordered]@{ csrf = $env:ANTIGRAVITY_CSRF_TOKEN; addr = $env:ANTIGRAVITY_LS_ADDRESS; published = (Get-Date).ToUniversalTime().ToString("o") } | ConvertTo-Json -Compress) | Tee-Object -FilePath "$env:USERPROFILE\.clavity\agy-endpoint.json"
+$dest = if ($env:CLAVITY_AGY_ENDPOINT) { $env:CLAVITY_AGY_ENDPOINT } else { "$env:USERPROFILE\.clavity\agy-endpoint.json" }; New-Item -ItemType Directory -Force (Split-Path -Parent $dest) | Out-Null; ([ordered]@{ csrf = $env:ANTIGRAVITY_CSRF_TOKEN; addr = $env:ANTIGRAVITY_LS_ADDRESS; published = (Get-Date).ToUniversalTime().ToString("o") } | ConvertTo-Json -Compress) | Tee-Object -FilePath $dest
 ```
 
-That writes `%USERPROFILE%\.clavity\agy-endpoint.json` (your peer reads it) and prints the same
-JSON so you can confirm.
+That writes your peer's endpoint file (its path is `$env:CLAVITY_AGY_ENDPOINT` when your session set it —
+a per-session file so parallel sessions never overwrite each other — otherwise the default
+`%USERPROFILE%\.clavity\agy-endpoint.json`) and prints the same JSON so you can confirm. Your peer reads
+that same path.
 
 ## Step 2 — Confirm
 

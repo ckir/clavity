@@ -25,6 +25,13 @@ public sealed class LaunchOptions
     public string? ProjectId { get; init; }
     /// <summary>Per-session agy log path; baked into the agy tab as <c>--log-file</c> and exported as CLAVITY_AGY_LOG.</summary>
     public required string AgyLogFilePath { get; init; }
+    /// <summary>Per-session endpoint-file path (the pairing rendezvous). Exported as CLAVITY_AGY_ENDPOINT into
+    /// BOTH the agy tab (so agy's INSTALL.md publishes its LS port + CSRF there) AND Claude's env (so the
+    /// <c>clavity --mcp</c> child reads the SAME file). It MUST be per-session: the bridge originally used a
+    /// single global <c>~/.clavity/agy-endpoint.json</c> on both sides, so a second clavity session's agy
+    /// overwrote the first's endpoint and both Claude peers connected to the last-published agy (measured
+    /// 2026-09-13). Scoping the path by session is what keeps one Claude paired to one agy.</summary>
+    public required string AgyEndpointFilePath { get; init; }
     /// <summary><c>--dangerously-skip-permissions</c> on the agy tab. The <c>start</c> command always sets this
     /// true (user decision 2026-06-30) so unattended consults don't stall on agy approval prompts; the field
     /// stays here so the Launcher itself remains policy-free and unit-testable both ways.</summary>
@@ -49,6 +56,9 @@ public static class Launcher
         var agyEnv = new SortedDictionary<string, string>(StringComparer.Ordinal);
         if (options.ProjectId is { Length: > 0 } projectId)
             agyEnv["ANTIGRAVITY_PROJECT_ID"] = projectId;
+        // agy self-publishes its endpoint HERE (INSTALL.md writes to $env:CLAVITY_AGY_ENDPOINT). Per-session,
+        // so a second clavity session's agy cannot clobber this one's rendezvous file.
+        agyEnv[AgyEnvironment.EndpointPathVar] = options.AgyEndpointFilePath;
 
         var script = BuildAgyTabScript(agyEnv, options.AgyLogFilePath, options.SkipPermissions, options.AgyInstallDocPath);
 
@@ -80,6 +90,9 @@ public static class Launcher
             {
                 [AgyEnvironment.LogPathVar] = options.AgyLogFilePath,
                 [AgyEnvironment.SessionIdVar] = options.SessionId,
+                // The clavity --mcp child reads THIS to find the paired agy - the SAME per-session file agy
+                // publishes to above. ResolveEndpointPath honours the var; the launcher just populates it.
+                [AgyEnvironment.EndpointPathVar] = options.AgyEndpointFilePath,
             });
 
         return new LaunchPlan(agyTab, claudeLaunch);
