@@ -72,8 +72,12 @@ Describe 'agy-consult-recovery candidate model' {
     Remove-Item -Recurse -Force $r
   }
   It 'treats agy-capstone-r5.md (no topic) as ON-convention' {
+    # test-audit G1: assert the rank-1-ONLY marker 'workflow position:', NOT the bare 'agy-capstone'
+    # which ALSO appears in the rank-2 path echo - so the old assertion passed even when a no-topic seam
+    # mis-routed to rank-2 (VACUOUS, MEASURED). Mutant: make the regex topic group required
+    # ((-.+)? -> (-.+)) -> no-topic seam drops to rank-2 -> 'workflow position:' vanishes -> reds.
     $r = New-Repo; Seam $r 'agy-capstone-r5.md'
-    (Run $r) | Should -Match 'agy-capstone'
+    (Run $r) | Should -Match 'workflow position: agy-capstone r5'
     Remove-Item -Recurse -Force $r
   }
   It 'treats agy-capstone-stage2.md as OFF-convention (unrecognised, not resolved)' {
@@ -82,8 +86,14 @@ Describe 'agy-consult-recovery candidate model' {
     Remove-Item -Recurse -Force $r
   }
   It 'recovers a human casing error: AGY-Capstone-r5-x.md is on-convention via lowercasing' {
+    # test-audit G2: -CMatch (case-SENSITIVE) the LOWERCASED rank-1 marker. The bare 'agy-capstone' was
+    # doubly vacuous - the path contains 'AGY-Capstone' AND PowerShell -Match is case-insensitive, so it
+    # passed even if the seam mis-routed to rank-2 (MEASURED). The emitted token is lowercased by the hook,
+    # so a case-sensitive match on 'workflow position: agy-capstone r5' pins BOTH the rank-1 routing AND
+    # the lowercase transform. Mutant: match the regex against $_base not $_lc -> AGY-Capstone fails the
+    # lowercase token alternation -> rank-2 -> reds.
     $r = New-Repo; Seam $r 'AGY-Capstone-r5-x.md'
-    (Run $r) | Should -Match 'agy-capstone'
+    (Run $r) | Should -CMatch 'workflow position: agy-capstone r5'
     Remove-Item -Recurse -Force $r
   }
   It 'never treats a -REPLY file as a candidate of its own' {
@@ -244,5 +254,83 @@ Describe 'agy-consult-recovery section-7 matrix (representative fixtures; each r
     $r = New-Repo; Seam $r 'agy-capstone-r5-x.MD'; Seam $r 'agy-capstone-r5-x-REPLY.md'
     (Run $r) | Should -Match 'A -REPLY EXISTS on disk'
     Remove-Item -Recurse -Force $r
+  }
+}
+
+Describe 'agy-consult-recovery test-audit coverage (verified gaps 2026-09-14)' {
+  BeforeAll {
+    . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
+    $script:bash = Get-GitBashOrThrow
+    $script:hook = Join-Path $PSScriptRoot '..\..\clavity-dotnet\plugin\hooks\agy-consult-recovery.sh'
+    function New-Repo { $t = Join-Path ([IO.Path]::GetTempPath()) ("cr-" + [guid]::NewGuid()); New-Item -ItemType Directory $t | Out-Null; & git -C $t init -q; & git -C $t commit -q --allow-empty -m init; New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null; New-Item -ItemType Directory (Join-Path $t '.clavity\agy-marks') -Force | Out-Null; $t }
+    function New-RepoNoCommit { $t = Join-Path ([IO.Path]::GetTempPath()) ("cr-" + [guid]::NewGuid()); New-Item -ItemType Directory $t | Out-Null; & git -C $t init -q; New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null; New-Item -ItemType Directory (Join-Path $t '.clavity\agy-marks') -Force | Out-Null; $t }
+    function Seam($repo,$name,$body='body'){ Set-Content (Join-Path $repo ".clavity\seams\$name") $body }
+    function Marker($repo,$tok,$sha='0000000000000000000000000000000000000000'){ Set-Content (Join-Path $repo ".clavity\agy-marks\$tok.head") $sha -NoNewline }
+    function Run($repo){ (@{cwd=$repo;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & $script:bash $script:hook 2>$null }
+    # Run the hook under a minimal PATH that has NO jq (bash/date/ls remain; git degrades harmlessly),
+    # forcing the jq-ABSENT envelope branch (G5). MEASURED: /usr/bin:/bin excludes the portable jq.
+    function RunNoJq($repo){ (@{cwd=$repo;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & $script:bash -c 'PATH=/usr/bin:/bin exec bash "$1"' _ $script:hook 2>$null }
+  }
+  It 'G3: _age_of degrades - a seam in a COMMITLESS repo is reported WITHOUT a commits-ago suffix' {
+    # Mutant: drop the `|| return 0` degrade in _age_of so a failed `git rev-list` prints ', written  commits ago' -> the suffix appears -> reds. Reachable: git repo, .clavity/seams, zero commits.
+    $r = New-RepoNoCommit; Seam $r 'agy-capstone-r5-x.md'
+    $out = Run $r
+    $out | Should -Match 'agy-capstone-r5-x'   # still surfaced (fail-open, degrade never drops)
+    $out | Should -Not -Match 'commits ago'    # age omitted because git rev-list cannot count
+    Remove-Item -Recurse -Force $r
+  }
+  It 'G4: an on-convention seam with mtime EQUAL to its marker is UNconcluded (-nt is strict)' {
+    # Mutant: relax `[ "$_marker" -nt "$_s" ]` to `[ ! "$_s" -nt "$_marker" ]` (marker >= seam concludes) -> the tie now concludes -> the seam vanishes -> reds.
+    $r = New-Repo; Seam $r 'agy-capstone-r5-x.md'; Marker $r 'agy-capstone'
+    $dt = Get-Date '2020-01-01T00:00:00'
+    (Get-Item (Join-Path $r '.clavity\seams\agy-capstone-r5-x.md')).LastWriteTime = $dt
+    (Get-Item (Join-Path $r '.clavity\agy-marks\agy-capstone.head')).LastWriteTime = $dt
+    (Run $r) | Should -Match 'agy-capstone-r5-x'
+    Remove-Item -Recurse -Force $r
+  }
+  It 'G5: the jq-ABSENT fallback still emits a valid JSON envelope naming the missing dependency' {
+    # Mutant: replace the fallback printf with a bare `printf '%s' "$_nm"` (no JSON wrapper) -> ConvertFrom-Json throws / shape missing -> reds. Dual-path masked by ambient jq on the dev box.
+    $r = New-Repo; Seam $r 'agy-capstone-r5-x.md'
+    $out = RunNoJq $r
+    $obj = $out | ConvertFrom-Json           # THROWS if the fallback is not valid JSON
+    $obj.systemMessage | Should -Match 'missing jq'
+    $obj.hookSpecificOutput.additionalContext | Should -Match 'missing jq'
+    Remove-Item -Recurse -Force $r
+  }
+  It 'G6: the emitted output is a valid JSON envelope (systemMessage + hookSpecificOutput.additionalContext)' {
+    # Mutant: replace the jq envelope with `printf '%s' "$_msg"` (raw text, no JSON) -> ConvertFrom-Json throws -> reds. Every other test substring-matches INSIDE the JSON string and would survive a malformed envelope.
+    $r = New-Repo; Seam $r 'agy-capstone-r5-x.md'
+    $out = Run $r
+    $obj = $out | ConvertFrom-Json           # THROWS on malformed JSON
+    $obj.systemMessage | Should -Match 'workflow position: agy-capstone r5'
+    $obj.hookSpecificOutput.hookEventName | Should -Be 'SessionStart'
+    $obj.hookSpecificOutput.additionalContext | Should -Match 'workflow position: agy-capstone r5'
+    Remove-Item -Recurse -Force $r
+  }
+  It 'G7: rank-1 filling the CAP still counts the suppressed rank-2 remainder' {
+    # Mutant: drop the rank-2 remainder emit (`_r2_rest` line) -> the suppressed rank-2 seam is silently lost -> reds. Distinct from the existing rank-2-overflow test, which has rank-1 UNDER the cap.
+    $r = New-Repo; 1..3 | ForEach-Object { Seam $r "agy-capstone-r$_-x.md" }; Seam $r 'loose-note.md'
+    $out = Run $r
+    $out | Should -Match 'agy-capstone r3'                          # rank-1 fills all 3 slots
+    $out | Should -Match '1 unrecognised seams are not shown'       # the 1 rank-2 seam is COUNTED, not dropped
+    Remove-Item -Recurse -Force $r
+  }
+  It 'G8: a GLOBAL $HOME/.claude/.no-agy suppresses the hook (distinct from the workspace .no-agy gate)' {
+    # Mutant: change line 28 to read a different path (or delete the gate) -> the hook emits despite the global kill-switch -> reds. Only the WORKSPACE .no-agy was previously covered.
+    $r = New-Repo; Seam $r 'agy-capstone-r5-x.md'
+    $fakehome = Join-Path ([IO.Path]::GetTempPath()) ("cr-home-" + [guid]::NewGuid())
+    New-Item -ItemType Directory (Join-Path $fakehome '.claude') -Force | Out-Null
+    Set-Content (Join-Path $fakehome '.claude\.no-agy') ''
+    $out = (@{cwd=$r;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & $script:bash -c 'HOME="$2" exec bash "$1"' _ $script:hook $fakehome 2>$null
+    $out | Should -BeNullOrEmpty
+    Remove-Item -Recurse -Force $r; Remove-Item -Recurse -Force $fakehome
+  }
+  It 'non-git: a directory with NO .git up-tree emits NOTHING even with .clavity/seams present (pins the line-43 gate)' {
+    # Mutant: remove `[ -e "$root/.git" ] || exit 0` -> a non-git dir with .clavity reaches enumeration and emits -> reds. Peer prose-only finding; verified reachable.
+    $t = Join-Path ([IO.Path]::GetTempPath()) ("cr-nogit-" + [guid]::NewGuid())
+    New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null
+    Seam $t 'agy-capstone-r5-x.md'
+    (Run $t) | Should -BeNullOrEmpty
+    Remove-Item -Recurse -Force $t
   }
 }
