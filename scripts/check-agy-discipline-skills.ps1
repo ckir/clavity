@@ -60,8 +60,10 @@ $skills = @('agy-first', 'agy-capstone', 'agy-test-audit')
 # The AGY-SCOPE disposition taxonomy (spec 2026-08-07). Required for the two review disciplines ENROLLED
 # in this checker. agy-first is excluded on purpose: it is a consult discipline and raises no findings to
 # dispose of. adversarial-panel-review DOES carry the taxonomy but is not enrolled in $skills at all (it
-# has 69 non-ASCII chars and no marker constant); it is pinned instead by the
-# 'AGY-SCOPE disposition taxonomy' Describe in scripts/tests/check-agy-discipline-skills.Tests.ps1.
+# is non-ASCII by design and its verdict vocabulary differs); it is pinned instead by the
+# 'AGY-SCOPE disposition taxonomy' Describe in scripts/tests/check-agy-discipline-skills.Tests.ps1. As of
+# section 15 Fork D it also carries an agy-panel.head marker contract - pinned by the 'marker contract'
+# rows in that same suite, NOT here (it still cannot satisfy the ASCII/verdict invariants $skills applies).
 $dispositionTokens = @(
     'FOLDED: '
     'REJECTED: '
@@ -99,10 +101,12 @@ foreach ($k in $ledgerFor.Keys) {
 #
 # THIS LIST IS FOUR, NOT THREE - and it is deliberately SEPARATE from $skills rather than an addition to
 # it. $skills carries invariants adversarial-panel-review cannot satisfy: it is non-ASCII by design (69
-# chars) and references no marker constant, being the one discipline with no debounce marker. Enrolling it
-# there to reach this single check would red the linter on three unrelated invariants and invent
-# requirements that discipline was never meant to meet. A separate list gets the coverage without the
-# false failures. AGY-AFTER was previously covered by NO lint at all here.
+# chars) and its verdict vocabulary / ledger requirements differ. (As of section 15 Fork D it DOES carry
+# an agy-panel.head debounce marker so consult-recovery can conclude its seams - but that is pinned by the
+# 'marker contract' rows in the .Tests.ps1, not by enrolling it here.) Enrolling it in $skills to reach
+# this single check would red the linter on unrelated invariants and invent requirements that discipline
+# was never meant to meet. A separate list gets the coverage without the false failures. AGY-AFTER was
+# previously covered by NO lint at all here.
 # AGY-TEST-AUDIT 2026-08-31: the REVIEW-ONLY SAFETY ENVELOPE, required of all four review disciplines.
 # MEASURED before this guard existed: deleting all 30 lines of the envelope from
 # adversarial-panel-review/SKILL.md left this linter printing 'agy-discipline skills OK' with rc=0, and

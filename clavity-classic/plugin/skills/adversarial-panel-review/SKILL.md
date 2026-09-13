@@ -416,3 +416,23 @@ finds nothing has told you about its own coverage, not about the artifact.
   `agy-required-but-unreachable` (a high-leverage run could not reach agy, and no operator was available to
   waive the escalation) or `cap-reached` (a non-interactive run hit the hard round cap while still finding
   substance).
+
+## Debounce marker (hook contract - written when the panel concludes GREEN)
+When a panel round concludes GREEN (a full round landed with no live challenge), record it so the
+consult-recovery reader (section 15) stops surfacing this panel's seams. The panel is the most multi-round
+discipline here, so without this marker its seams are surfaced at every session start forever - it is the
+ONLY mechanism that concludes a panel seam. Write the marker through the shipped writer, never by hand: it
+asserts the `.clavity/` shield BEFORE the write and creates the directory it writes into. Its two siblings
+(agy-first, agy-test-audit) already carry this same contract.
+
+```bash
+bash "<BASE>/../../hooks/agy-mark.sh" head "agy-panel" "$(git rev-parse HEAD)"
+```
+
+- **Path:** `.clavity/agy-marks/agy-panel.head` - a single discipline-keyed marker, no `<plugin-id>`
+  prefix (Option S, as for agy-first / agy-capstone / agy-test-audit). See
+  `docs/agy-disciplines-marker-contract.md`.
+- **Content:** ambient `HEAD`, exactly as the command writes it. If HEAD cannot resolve, skip writing
+  (the discipline re-fires next trigger - safe).
+- `agy-mark.sh` needs no ledger for `agy-panel` (there is no `docs/agy-panel-ledger.md`), so the
+  section-27 completion-gate returns `NO-LEDGER` and the write proceeds unblocked.

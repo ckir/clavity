@@ -292,6 +292,18 @@ Describe 'check-agy-discipline-skills' {
         ($out -join "`n") | Should -Match 'agy-discipline skills OK'
     }
 
+    It 'adversarial-panel-review carries the agy-panel.head marker contract - <Driver> (section 15 Fork D)' -ForEach @(
+        @{ Driver = 'clavity-dotnet' }, @{ Driver = 'clavity-classic' }
+    ) {
+        # section 15 (consult-recovery) can only CONCLUDE a panel seam when agy-panel.head is written, and
+        # the panel is the most multi-round discipline here. Fork D (owner-approved 2026-09-13) adds the
+        # debounce-marker contract to the panel skill, copying the agy-first/agy-test-audit pattern.
+        # Mutant that reds this: strip the marker section from the skill -> panel seams never conclude.
+        $panel = Get-Content -Raw (Join-Path $script:RepoRoot "$Driver/plugin/skills/adversarial-panel-review/SKILL.md")
+        $panel | Should -Match 'agy-mark\.sh"?\s+head\s+"?agy-panel'
+        $panel | Should -Match '\.clavity/agy-marks/agy-panel\.head'
+    }
+
     It 'derives the ledger roster from the linter source, and the parse still finds the map' -ForEach @(@{ Discovered = $ledgerRoster }) {
         # The two copies of the read - discovery time, which feeds -ForEach, and run time, which feeds the
         # two-skill row - must see the SAME roster. If they drifted, one half of this suite would be testing
