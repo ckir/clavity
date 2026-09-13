@@ -113,12 +113,16 @@ done
 _r1_sorted=(); if [ ${#_r1_paths[@]} -gt 0 ]; then while IFS= read -r _l; do _r1_sorted+=( "$_l" ); done < <(_sort_by_mtime "${_r1_paths[@]}"); fi
 _r2_sorted=(); if [ ${#rank2[@]} -gt 0 ]; then while IFS= read -r _l; do _r2_sorted+=( "$_l" ); done < <(_sort_by_mtime "${rank2[@]}"); fi
 
-# Degrade, never drop (capstone r1, F1): if the external `ls` sort emitted nothing while candidates
-# exist (e.g. it hit ARG_MAX on an enormous seams dir), fall back to the UNSORTED source. Otherwise the
-# remainder math below reads an empty array (0 - 0 = 0) and the hook goes SILENT on open seams - the one
-# outcome this reader exists to prevent.
-[ ${#_r1_sorted[@]} -eq 0 ] && [ ${#_r1_paths[@]} -gt 0 ] && _r1_sorted=( "${_r1_paths[@]}" )
-[ ${#_r2_sorted[@]} -eq 0 ] && [ ${#rank2[@]} -gt 0 ] && _r2_sorted=( "${rank2[@]}" )
+# Degrade, never drop (capstone r1 F1; r2 R2-F2/R2-F3): if the external `ls` sort emitted nothing while
+# candidates exist, fall back to the UNSORTED source - otherwise the remainder math below reads an empty
+# array (0 - 0 = 0) and the hook goes SILENT on open seams, the one outcome this reader exists to prevent.
+# This fires more readily than just ARG_MAX (r1's stated trigger): a seams dir with read-but-not-execute
+# permission lets the glob match NAMES while `ls -t` cannot stat, so `ls` emits nothing at ANY seam count.
+# The fallback order is bash-glob (alphabetical), NOT recency, so set a flag and say so below (R2-F3)
+# rather than silently imply the shown seams are the most recent.
+_ordering_lost=0
+[ ${#_r1_sorted[@]} -eq 0 ] && [ ${#_r1_paths[@]} -gt 0 ] && { _r1_sorted=( "${_r1_paths[@]}" ); _ordering_lost=1; }
+[ ${#_r2_sorted[@]} -eq 0 ] && [ ${#rank2[@]} -gt 0 ] && { _r2_sorted=( "${rank2[@]}" ); _ordering_lost=1; }
 
 CAP=3
 LINECAP=240
@@ -139,11 +143,14 @@ for _p in "${_r1_sorted[@]}"; do
   [ "$_shown" -ge "$CAP" ] && break
   _tok=${_meta["$_p"]%%|*}; _rnd=${_meta["$_p"]#*|}
   _age=$(_age_of "$_p")
-  # Case-robust extension strip (capstone r1, F2): nocaseglob (line 68) admits a .MD-cased seam, but a
-  # case-SENSITIVE ${_p%.md} then fails to strip it and the probe looks for "...MD-REPLY.md", missing the
-  # reply even on Windows (MEASURED). Replies are always uppercase -REPLY.md (129 exist under seams/), so
-  # only the extension needs case-folding; keep the quoted [ -f ] so a '[' in the repo path is never a glob.
-  if [ -f "${_p%.[Mm][Dd]}-REPLY.md" ]; then
+  # Case-robust reply probe (capstone r1 F2 + r2 R2-F1). The -reply.md exclusion (line ~84) matches the
+  # LOWERCASED $_lc, so it is case-INsensitive; this probe must be equally flexible or a -REPLY.MD reply on
+  # a case-SENSITIVE FS becomes a GHOST - excluded from candidates yet missed here, so the note silently
+  # vanishes. r1 fixed only the SEAM extension (${_p%.md} missed a .MD seam even on Windows, MEASURED);
+  # this closes the reply side too. Case-class glob on both the -REPLY token and its extension (nullglob at
+  # line 68 -> empty array when there is no reply); the stem is QUOTED so a '[' in the repo path is literal.
+  _rp=( "${_p%.[Mm][Dd]}"-[Rr][Ee][Pp][Ll][Yy].[Mm][Dd] )
+  if [ ${#_rp[@]} -gt 0 ]; then
     _lines+=( "$(_cap_line "workflow position: $_tok r$_rnd ($_p)$_age. A -REPLY EXISTS on disk. It may or may not have been folded already - check before re-folding it. Read that seam and its -REPLY before starting new work, or say why you are not resuming it.")" )
   else
     _lines+=( "$(_cap_line "workflow position: $_tok r$_rnd ($_p)$_age. Read that seam before starting new work, or say why you are not resuming it.")" )
@@ -162,6 +169,10 @@ _r2_rest=$(( ${#_r2_sorted[@]} - _shown_r2 ))
 [ "$_r1_rest" -gt 0 ] && _lines+=( "$_r1_rest more open seams are not shown. List .clavity/seams/ yourself before starting new work." )
 [ "$_r2_rest" -gt 0 ] && _lines+=( "$_r2_rest unrecognised seams are not shown. If you are resuming work you cannot see listed above, list .clavity/seams/ yourself before starting." )
 [ ${#bad[@]} -gt 0 ] && _lines+=( "${#bad[@]} unrecognised seams could not be named. If you are resuming work you cannot see listed above, list .clavity/seams/ yourself before starting." )
+
+# R2-F3: if we fell back to name order, say so FIRST - the seams below are NOT ordered by recency, and
+# without this the shown set silently implies it is the most recent.
+[ "$_ordering_lost" -eq 1 ] && [ ${#_lines[@]} -gt 0 ] && _lines=( "the seam directory could not be ordered by recency (it could not be stat-ed); the seams below are in NAME order, not most-recent-first - list .clavity/seams/ yourself to check timestamps." "${_lines[@]}" )
 
 # Nothing to say -> print NOTHING (spec section 3b: not a header, not an empty section).
 [ ${#_lines[@]} -eq 0 ] && exit 0
