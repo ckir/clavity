@@ -30,12 +30,16 @@ shared store). Register the same agentmemory MCP server in both Claude Code and 
 same daemon (default `:3111`). Nothing works without it — it is the shared data channel this
 plugin's convention runs over. That is the only dependency.
 
-**Recommended (end users):** run the standalone **commonmemory** installer
-(`commonmemory-setup-<version>.exe`) from the
-[clavity release page](https://github.com/ckir/clavity/releases). It stages the plugin and
-registers it locally — a scoped `clavity-commonmemory` marketplace under its own install dir —
-against every detected agent (Claude Code / agy). No manual `plugin install`, and no remote
-marketplace: the plugin ships inside the installer.
+**Claude Code:**
+
+```powershell
+claude plugin marketplace add ckir/clavity
+claude plugin install commonmemory@clavity
+```
+
+To uninstall: `claude plugin uninstall commonmemory@clavity`.
+
+**agy:** see "From a clone" below.
 
 **From a clone (developers):** install this plugin folder directly into both CLIs:
 ```
@@ -62,15 +66,10 @@ the start of a task:
 
 - **`memory_smart_search` fails, or notes never show up.** The **agentmemory** MCP server is not
   configured (or not running) in one or both CLIs — see Prerequisite above. Registration alone
-  does not install it; if you have not set up agentmemory yet, the shared notebook stays inactive
-  (source: `installer/commonmemory.iss` post-install message).
+  does not install it; if you have not set up agentmemory yet, the shared notebook stays inactive.
 - **Neither agent ever recalls `[common]` notes on its own.** The one-line rule under Configuration
   is missing from that agent's global instructions — installing the plugin only makes the skill
   available, it does not wire up proactive recall.
-- **Install/uninstall silently fails to (de)register the plugin.** Claude Code was running during
-  setup — it rewrites the plugin registration on its own startup/exit and overwrites what the
-  installer just did. Close Claude Code completely, then run the installer again (source:
-  `installer/commonmemory.iss`).
 
 ## Docs
 - `skills/commonmemory/SKILL.md` — the shared-memory convention (read by both CLIs)

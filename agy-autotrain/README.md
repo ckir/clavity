@@ -69,12 +69,13 @@ agy-autotrain/
 
 ## Install
 
-**Recommended (end users):** run the standalone **agy-autotrain** installer
-(`agy-autotrain-setup-<version>.exe`) from the
-[clavity release page](https://github.com/ckir/clavity/releases). It stages the plugin and registers it
-locally — a scoped `clavity-agy-autotrain` marketplace under its own install dir — with Claude Code
-only (never agy, which has no use for it). No manual `plugin install`, and no remote marketplace: the
-plugin ships inside the installer.
+```powershell
+claude plugin marketplace add ckir/clavity
+claude plugin install agy-autotrain@clavity
+```
+
+This registers agy-autotrain with Claude Code only (never agy, which has no use for it). To uninstall:
+`claude plugin uninstall agy-autotrain@clavity`.
 
 **From a clone (developers):**
 ```
@@ -96,11 +97,7 @@ golden header.
 - **Learned rules never show up in agy's context.** No clavity driver (clavity-dotnet or
   clavity-classic) is installed yet — agy-autotrain composes on top of one but ships no binary of its
   own, so nothing injects the golden header until a driver is present. Install one; expected and
-  non-blocking until then (source: `installer/agy-autotrain.iss` post-install message).
-- **Install/uninstall refuses to run with an error dialog.** The installer detects a running Claude
-  Code and blocks — Claude Code rewrites the plugin registration on its own startup/exit, which would
-  overwrite what the installer just did. Close Claude Code completely, then run the installer again
-  (source: `installer/agy-autotrain.iss`).
+  non-blocking until then.
 
 ## Recovering lost observations or a bad GROWTH region
 

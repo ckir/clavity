@@ -26,14 +26,28 @@ These two tools are **mutually exclusive** — pick exactly one. They let Claude
 
 ## How to get started
 
-Every product ships locally inside its own standalone Windows installer. There is no live remote marketplace.
+The five products install one of two ways.
 
-1. Go to the [Releases](../../releases) page. The `clavity-v<N>` umbrella release contains every product's installer in one place.
-2. Download the installer for the product you chose — assets are named
-   `<product>-setup-<version>.exe` (e.g. `clavity-dotnet-setup-<version>.exe`), each with a `.sha256`.
+**Three install with `claude plugin`** — clavity-dotnet, agy-autotrain and commonmemory — from this
+repository's marketplace. Cross-platform (Windows, Linux, macOS):
+
+```
+claude plugin marketplace add ckir/clavity
+claude plugin install clavity@clavity          # clavity-dotnet
+claude plugin install agy-autotrain@clavity
+claude plugin install commonmemory@clavity
+```
+
+clavity-dotnet fetches its `clavity-ls` binary on first run from the matching `clavity-v<N>` GitHub
+release (win-x64 / linux-x64 / osx-arm64 / osx-x64, checksum-verified), so nothing lands on your PATH.
+
+**Two ship a standalone Windows installer** — clavity-classic and ghidrust:
+
+1. Go to the [Releases](../../releases) page. The `clavity-v<N>` umbrella release carries both installers.
+2. Download the one you chose — assets are named `<product>-setup-<version>.exe`
+   (e.g. `clavity-classic-setup-<version>.exe`), each with a `.sha256`.
 3. Run it. It registers the product's plugin locally with every agent it detects (Claude Code and/or
-   `agy`). The three products that ship a binary — clavity-dotnet, clavity-classic, ghidrust — also put
-   it on your PATH; agy-autotrain and commonmemory are plugin-only and install nothing on PATH.
+   `agy`) and puts its binary on your PATH.
 
 Installing clavity-dotnet or clavity-classic? Their review disciplines are multi-round; see
 **Running this economically** in that product's `plugin/README.md` before you start.

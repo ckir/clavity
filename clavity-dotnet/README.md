@@ -22,27 +22,20 @@ the model your conversation last used rather than a baked-in default (dynamic se
 
 ### Prerequisites
 
-- Windows 10/11, PowerShell (not `cmd.exe`) — the CI matrix and installer both target `windows-latest`
-  / `win-x64`.
-- Claude Code and/or `agy` (Antigravity) installed — `clavity-ls install` needs at least one detected
-  agent.
+- Claude Code and/or `agy` (Antigravity) installed — at least one detected agent is needed to drive it.
 - To build from source: the .NET 10 SDK.
 
 ### Install
 
 ```powershell
-irm https://raw.githubusercontent.com/ckir/clavity/main/clavity-dotnet/install/clavity-install.ps1 | iex
+claude plugin marketplace add ckir/clavity
+claude plugin install clavity@clavity
 ```
 
-Downloads the latest release, verifies it against the companion `.sha256` asset, and runs the
-installer. It prompts for the variant (`dotnet` or `classic` — the two are mutually exclusive; see the
-[root README](../README.md) to choose) unless `-Variant` is passed. The installer is unsigned, so
-Windows SmartScreen may warn on first run — choose "More info" -> "Run anyway".
-
-Install places `clavity-ls.exe` under `%LOCALAPPDATA%\Programs\clavity-dotnet`, adds it to PATH
-(on by default, opt-out task), and registers the plugin with every detected agent by running
-`clavity-ls install --agent all`. Close Claude Code completely before installing or uninstalling — a
-running Claude overwrites the plugin registration and leaves it unregistered.
+clavity-dotnet is cross-platform (Windows, Linux, macOS — RIDs `win-x64`, `linux-x64`, `osx-arm64`,
+`osx-x64`). The `clavity-ls` binary is not bundled with the plugin; a plugin SessionStart hook fetches
+the RID-matching binary on first run from the matching `clavity-v<N>` GitHub release and verifies it
+against the companion `.sha256` asset.
 
 To build from source instead of using a release:
 
@@ -51,12 +44,16 @@ dotnet build                          # from clavity-dotnet/
 dotnet test tests/Clavity.Ls.Tests    # unit tests — matches ci-dotnet.yml
 ```
 
-The release installer's exe is produced by a single-file publish (from `.github/workflows/build-dotnet.yml`):
+The release `clavity-ls` binaries are produced by a single-file publish per RID (from
+`.github/workflows/build-dotnet.yml`), e.g. for `win-x64`:
 
 ```powershell
 dotnet publish src/Clavity.Cli -c Release -r win-x64 --self-contained true `
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -o publish
 ```
+
+The workflow repeats this per RID (`win-x64`, `linux-x64`, `osx-arm64`, `osx-x64`) and attaches each
+binary + `.sha256` to the `clavity-v<N>` GitHub release.
 
 ### First run
 
@@ -65,8 +62,8 @@ clavity-ls start C:\path\to\your\project
 ```
 
 Opens a visible `agy` tab in that folder and launches Claude Code in the foreground. Warns (without
-blocking) if the folder is not a git repository. To uninstall, use Windows Add/Remove Programs — it
-de-registers the plugin from each detected agent.
+blocking) if the folder is not a git repository. To uninstall, run `claude plugin uninstall
+clavity@clavity`.
 
 ## Command reference
 
@@ -75,8 +72,8 @@ de-registers the plugin from each detected agent.
 - `clavity-ls --mcp` — run the MCP stdio server (`agy_look` / `agy_status` / `agy_ask`); started
   automatically via `.mcp.json`, not normally run by hand.
 - `clavity-ls install [--plugin <name>]` — register a plugin with every detected agent (Claude Code
-  and/or agy); default plugin is the core `clavity` plugin. Used by the installer's
-  post-install step.
+  and/or agy); default plugin is the core `clavity` plugin. A manual/advanced command — the normal
+  install path is `claude plugin install clavity@clavity` (see Install above).
 - `clavity-ls uninstall [--purge-data]` — deregister; `--purge-data` also deletes the per-session log
   dir and the golden-header data dir.
 - `clavity-ls is-installed <plugin-name>` — exit 0 if `<plugin-name>` is registered with a detected
@@ -97,9 +94,10 @@ de-registers the plugin from each detected agent.
 
 ## Platform support
 
-Windows only today — the CI matrix and the installer both target `windows-latest` / `win-x64`
-self-contained. Contributions for Linux/macOS are welcome (see [CONTRIBUTING.md](../CONTRIBUTING.md));
-`clavity-classic` already runs cross-platform and is the fallback if you need that now.
+Cross-platform — the CI matrix builds a 4-RID self-contained matrix (`win-x64`, `linux-x64`,
+`osx-arm64`, `osx-x64`); `clavity-ls` is fetched on first run rather than bundled with the plugin (see
+Install above). Contributions and bug reports for Linux/macOS are welcome (see
+[CONTRIBUTING.md](../CONTRIBUTING.md)).
 
 ## Docs
 

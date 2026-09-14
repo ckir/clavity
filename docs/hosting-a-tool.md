@@ -14,9 +14,12 @@ the checklist to graft a new one in.
 - **One tree, no branches.** Every member is a **top-level folder on `main`** — `clavity-dotnet/`,
   `clavity-classic/`, `ghidrust/`, `agy-autotrain/`, `commonmemory/`. There is no `plugins/` directory
   and no per-tool branch. A `clavity-v<N>` tag on `main` deterministically pins all members at once.
-- **One release, five independent installers.** The umbrella release is the catalog page; each member
-  ships its **own standalone installer** that registers only itself into its own scoped marketplace.
-  No installer bundles or downloads a sibling, and there is no live remote marketplace channel.
+- **One release, two install models.** The umbrella release is the catalog page. `clavity-classic` and
+  `ghidrust` each ship their **own standalone Inno installer**, registering only themselves into their
+  own scoped marketplace; no installer bundles or downloads a sibling. `clavity-dotnet`, `agy-autotrain`,
+  and `commonmemory` install instead via the root `claude plugin` marketplace — `claude plugin
+  marketplace add ckir/clavity`, then `claude plugin install <name>@clavity` — with no installer asset
+  of their own.
 - **One tag lineage.** Only `clavity-v<N>` triggers a release (`umbrella-release.yml`). The legacy
   `v*`, `clavity-dotnet-v*`, and `clavity-classic-v*` tags are dead no-ops, and `release-ghidrust.yml`
   is `workflow_dispatch`-only — its tag trigger was deliberately removed. Do not invent a new per-tool

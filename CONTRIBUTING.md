@@ -112,6 +112,9 @@ the exact check used to verify Windows; reproduce it (adapt the shell to your OS
 
 ### Installer refuse-guard canary (real Claude Code)
 
+Applies to the two members that still ship a standalone Inno installer — `clavity-classic` and
+`ghidrust`; the other three install via the `claude plugin` marketplace and have no installer to canary.
+
 The install/uninstall **refuse guard** (Bug 2) detects a running Claude Code by the process name
 `claude.exe` (see [`docs/installer-assumptions.md`](docs/installer-assumptions.md)). CI can only prove
 the guard *logic* with a renamed `PING.EXE` stub — it has no authenticated Claude — so the real-Claude
@@ -170,13 +173,14 @@ Existing CI heavy-gates (all 5 builds + ghidrust live-E2E) and auto-publishes on
 the tag is "burned" (skipped); fix and re-run. Never hand-edit a version — `just bump` remains the
 sole writer and `just release` drives it for you.
 
-That one release, named `clavity`, is the **canonical catalog page** for five INDEPENDENT installers
-(cohesive-distribution model):
-`clavity-dotnet-setup`, `clavity-classic-setup`, `ghidrust-setup`, `agy-autotrain-setup`,
-`commonmemory-setup` — each with its own `.sha256`. Each installer does exactly one member; none bundles
-or downloads another (there is no live remote marketplace channel). ghidrust is gated by its live-E2E
-before publish, so a broken ghidrust blocks a **full** umbrella cut — but NOT a single-member hotfix:
-see "Republishing one member" below.
+That one release, named `clavity`, is the **canonical catalog page** for the umbrella. Two members
+(`clavity-classic`, `ghidrust`) still ship their own standalone INDEPENDENT installer
+(`clavity-classic-setup`, `ghidrust-setup` — each with its own `.sha256`); neither bundles or downloads
+another member. The other three (`clavity-dotnet`, `agy-autotrain`, `commonmemory`) install instead via
+the root `claude plugin` marketplace — `claude plugin marketplace add ckir/clavity`, then
+`claude plugin install <name>@clavity` — rather than a release-asset installer. ghidrust is gated by its
+live-E2E before publish, so a broken ghidrust blocks a **full** umbrella cut — but NOT a single-member
+hotfix: see "Republishing one member" below.
 
 **Repo topology:** all five members live on `main` in this monorepo (one top-level folder each) — there
 is no branch-per-tool split. `main` also houses the orchestration (`umbrella-release.yml` +
