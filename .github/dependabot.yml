@@ -1,0 +1,46 @@
+# Dependabot config for the clavity monorepo.
+# Grouping rule (see wiring-rust-repo-automation skill): minor+patch are grouped into ONE PR per
+# ecosystem; MAJOR updates are excluded from the group by construction, so they arrive as individual
+# PRs. The auto-merge workflow (.github/workflows/dependabot-automerge.yml) merges only patch/minor,
+# so a major always lands as a separate PR that waits for a human.
+version: 2
+updates:
+  # ---- Rust: clavity-classic workspace ----
+  - package-ecosystem: cargo
+    directory: /clavity-classic
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      cargo-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # ---- .NET: clavity-dotnet (no .sln; projects live under src/** and tests/**) ----
+  - package-ecosystem: nuget
+    directories:
+      - /clavity-dotnet/**
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      nuget-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # ---- GitHub Actions used by .github/workflows/** ----
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

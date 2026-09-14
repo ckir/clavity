@@ -1,0 +1,49 @@
+name: merge-gate
+
+# ONE always-run required check that transitively gates the repo's PATH-FILTERED member CI
+# (ci-classic / ci-dotnet / ci-scripts / ci-member-docs). It waits for every OTHER check-run on the
+# PR's head commit to conclude and fails if any of them failed. Because it only waits for checks that
+# actually registered for this PR, a path-filtered workflow that legitimately did not run never
+# deadlocks it (unlike requiring those path-filtered checks directly). Make THIS the sole required
+# status check in branch protection; auto-merge then waits for the whole CI surface via this one gate.
+on: pull_request
+
+permissions:
+  checks: read
+  contents: read
+  pull-requests: read
+
+jobs:
+  merge-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Wait for all other checks on the PR head to pass
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          SELF="merge-gate"
+          # Give sibling workflows (same pull_request event) time to register their check-runs, so we
+          # never observe an empty/partial set and pass prematurely.
+          sleep 60
+          deadline=$(( $(date +%s) + 1800 ))   # 30 min budget for the slowest sibling suite
+          while :; do
+            rows=$(gh api "repos/$REPO/commits/$SHA/check-runs" --paginate \
+              -q '.check_runs[] | select(.name != "'"$SELF"'") | [.name, .status, (.conclusion // "")] | @tsv')
+            failed=$(printf '%s\n' "$rows" | awk -F'\t' 'NF && $2=="completed" && $3!="success" && $3!="neutral" && $3!="skipped"')
+            if [ -n "$failed" ]; then
+              echo "FAILED / non-passing checks:"; printf '%s\n' "$failed"; exit 1
+            fi
+            pending=$(printf '%s\n' "$rows" | awk -F'\t' 'NF && $2!="completed"' | wc -l | tr -d ' ')
+            present=$(printf '%s\n' "$rows" | awk -F'\t' 'NF' | wc -l | tr -d ' ')
+            if [ "$present" -gt 0 ] && [ "$pending" -eq 0 ]; then
+              echo "all $present sibling check(s) passed"; printf '%s\n' "$rows"; exit 0
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "timed out waiting for checks (present=$present pending=$pending)"; printf '%s\n' "$rows"; exit 1
+            fi
+            sleep 20
+          done
