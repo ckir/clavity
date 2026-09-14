@@ -82,7 +82,7 @@ jobs:
       # Windows 24 passed; Linux 24 passed in 82s under WSL with Python 3.14.4. Wiring an unverified suite
       # into CI would have reddened main on the first push rather than caught a defect.
       - name: Install uv (for the Python bridge tests)
-        uses: astral-sh/setup-uv@v10.0.1
+        uses: astral-sh/setup-uv@v10.1.0
       - name: Test (Python bridge, 24)
         run: >
           uv run --project agy-mcp-bridge --frozen pytest
