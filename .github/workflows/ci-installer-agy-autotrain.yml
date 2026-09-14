@@ -1,23 +1,22 @@
 name: ci-installer-agy-autotrain
 
-# Continuous installer coverage for the agy-autotrain member (plugin-only; no ci-agy-autotrain.yml exists).
+# Continuous version-consistency coverage for the agy-autotrain member (plugin-only). Inno retired
+# 2026-09-14: build-agy-autotrain.yml is now validate-only (plugin.json version truth, no installer), so
+# this no longer watches installer/_shared/** or generate-scoped-manifest.ps1 — neither ships this member.
+# The workflow file keeps its ci-installer- name to preserve any required-check reference.
 on:
   push:
     branches: [main]
     paths:
       - 'agy-autotrain/**'
-      - 'installer/_shared/**'
       - '.github/workflows/build-agy-autotrain.yml'
       - '.github/workflows/ci-installer-agy-autotrain.yml'
-      - 'scripts/generate-scoped-manifest.ps1'
       - 'scripts/check-versions.ps1'
   pull_request:
     paths:
       - 'agy-autotrain/**'
-      - 'installer/_shared/**'
       - '.github/workflows/build-agy-autotrain.yml'
       - '.github/workflows/ci-installer-agy-autotrain.yml'
-      - 'scripts/generate-scoped-manifest.ps1'
       - 'scripts/check-versions.ps1'
 
 concurrency:

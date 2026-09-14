@@ -1,23 +1,22 @@
 name: ci-installer-commonmemory
 
-# Continuous installer coverage for the commonmemory member (plugin-only; no ci-commonmemory.yml exists).
+# Continuous version-consistency coverage for the commonmemory member (plugin-only). Inno retired
+# 2026-09-14: build-commonmemory.yml is now validate-only (plugin.json version truth, no installer), so
+# this no longer watches installer/_shared/** or generate-scoped-manifest.ps1 — neither ships this member.
+# The workflow file keeps its ci-installer- name to preserve any required-check reference.
 on:
   push:
     branches: [main]
     paths:
       - 'commonmemory/**'
-      - 'installer/_shared/**'
       - '.github/workflows/build-commonmemory.yml'
       - '.github/workflows/ci-installer-commonmemory.yml'
-      - 'scripts/generate-scoped-manifest.ps1'
       - 'scripts/check-versions.ps1'
   pull_request:
     paths:
       - 'commonmemory/**'
-      - 'installer/_shared/**'
       - '.github/workflows/build-commonmemory.yml'
       - '.github/workflows/ci-installer-commonmemory.yml'
-      - 'scripts/generate-scoped-manifest.ps1'
       - 'scripts/check-versions.ps1'
 
 concurrency:

@@ -1,244 +1,46 @@
 name: build-agy-autotrain
 
-# Reusable build+smoke for the agy-autotrain installer. Plugin-only member — no compile step (O4:
-# builds from main, same as the plugin content itself already does).
+# Validate-only (Inno retired 2026-09-14). agy-autotrain installs via `claude plugin` from the repo-root
+# .claude-plugin/marketplace.json — there is NO installer to build or ship. This reusable workflow now only
+# PROVES the member's version sources agree (plugin.json) and that every version-bearing file is
+# registered; the umbrella release `needs:` it, so a version-inconsistent member still fails the release.
+# The one-time pre-14g inbox migration that used to live in the .iss was rehomed to a SessionStart hook
+# (agy-autotrain/hooks/migrate-inbox.sh), covered by scripts/tests/agy-autotrain-migrate-inbox.Tests.ps1.
 on:
   workflow_call:
     outputs:
       version:
-        value: ${{ jobs.build.outputs.version }}
+        value: ${{ jobs.validate.outputs.version }}
       sha:
-        value: ${{ jobs.build.outputs.sha }}
-      artifact-name:
-        value: ${{ jobs.build.outputs.artifact-name }}
+        value: ${{ jobs.validate.outputs.sha }}
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: agy-autotrain
+  validate:
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.ver.outputs.version }}
       sha: ${{ steps.sha.outputs.sha }}
-      artifact-name: agy-autotrain-installer
     steps:
       - uses: actions/checkout@v7
 
       - name: Record the built commit
         id: sha
         shell: bash
-        # ASSIGN FIRST, THEN ECHO. `echo "sha=$(git rev-parse HEAD)"` discards the substitution's exit
-        # code - echo returns 0 whatever happened inside it - so even under the default
-        # `bash --noprofile --norc -eo pipefail`, `set -e` never sees the failure and the step stays
-        # GREEN. MEASURED 2026-08-26 with an unresolvable ref: the echo form exits 0 and writes
-        # `sha=HEAD-does-not-exist`, because git echoes an unresolved argument to stdout - so it can
-        # publish a NON-SHA, not merely an empty one, to every caller consuming this output. The
-        # standalone assignment below exits 128 and fails the step.
+        # Assign first, then echo: the `echo "sha=$(...)"` form discards git's exit code and can publish a
+        # non-sha while the step stays green. Measured; full note in git history of this file.
         run: |
           sha=$(git rev-parse HEAD)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      - name: Extract version from .iss
+      - name: Extract version from plugin.json
         id: ver
         shell: pwsh
         run: |
-          $v = (Select-String -Path installer/agy-autotrain.iss -Pattern '#define AppVersion "([^"]+)"').Matches[0].Groups[1].Value
+          $v = (Get-Content -Raw agy-autotrain/plugin.json | ConvertFrom-Json).version
+          if (-not $v) { throw "no version in agy-autotrain/plugin.json" }
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "TOOL_VER=$v" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Generate scoped marketplace.json (O3)
-        shell: pwsh
-        run: ../scripts/generate-scoped-manifest.ps1 -MemberName agy-autotrain -OutFile installer/marketplace.install.json
-
-      - name: Install Inno Setup
-        shell: pwsh
-        run: choco install innosetup --no-progress -y
 
       - name: Version consistency
         shell: pwsh
-        run: pwsh -File ../scripts/check-versions.ps1 agy-autotrain && pwsh -File ../scripts/check-versions.ps1 agy-autotrain -Coverage
-
-      - name: Build installer (ISCC)
-        shell: pwsh
-        run: |
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
-          & $iscc installer/agy-autotrain.iss
-          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
-          $setup = "dist/agy-autotrain-setup-$env:TOOL_VER.exe"
-          if (-not (Test-Path $setup)) { throw "$setup was not produced" }
-
-      - name: Compute SHA-256 companion
-        shell: pwsh
-        run: |
-          $name = "agy-autotrain-setup-$env:TOOL_VER.exe"
-          $h = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLower()
-          # LF-ONLY, NO BOM - `Set-Content` writes CRLF on Windows and GNU `sha256sum -c` then treats the
-          # trailing \r as part of the filename. MEASURED 2026-08-26, coreutils 8.32: the CRLF form fails
-          # with "No such file or directory" and exits 1 while the LF control passes. build-classic.yml has
-          # always written it this way; these copies diverged silently. THIS SENTENCE WAS INCOMPLETE until
-          # 2026-08-27: the commit that wrote it fixed three of the four divergent copies and left
-          # build-dotnet.yml on `Set-Content`, and saying "these copies" without naming which invited
-          # exactly that. All five members now write the companion identically.
-          [IO.File]::WriteAllText("$PWD/dist/$name.sha256", "$h  $name`n")
-
-      - name: Smoke — install/uninstall lifecycle + namespace + C6 growth ownership
-        timeout-minutes: 6
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $setup = "dist/agy-autotrain-setup-$env:TOOL_VER.exe"
-          $app = "$env:LOCALAPPDATA\Programs\agy-autotrain"
-
-          # THIS STEP IS DESTRUCTIVE TO A REAL PROFILE and must never run outside a throwaway runner.
-          # It uninstalls agy-autotrain, overwrites golden-header.growth.md, and deletes the capture
-          # inbox - the very file ROADMAP 14g exists to protect. CONTRIBUTING.md:113 documents a manual
-          # canary in which a human runs a member installer silently on their own box, so "nobody would
-          # paste this locally" is not a safe assumption. Measured on one developer machine: the two
-          # paths reset below held 125 KB (136 pending entries) and 120 KB of real captures.
-          if (-not $env:GITHUB_ACTIONS) {
-            throw "REFUSING: this smoke step deletes the user-local agy capture inbox and uninstalls agy-autotrain. It is safe only on a throwaway CI runner."
-          }
-
-          $knowledge = "$app\plugins\agy-autotrain\knowledge"
-          $oldInbox  = "$knowledge\agy-observations.md"
-          $sidecar   = "$oldInbox.migrated-14g"
-          $userInbox = "$env:USERPROFILE\.clavity\agy-observations.md"
-
-          # RESET BEFORE THE FIRST INSTALL, never after it. Install 1 runs the migration, so a reset
-          # placed after it deletes that migration's own rescue products - the merged $userInbox AND
-          # the retired $sidecar - leaving no copy of a pre-existing inbox anywhere.
-          Remove-Item $userInbox, $sidecar -Force -ErrorAction SilentlyContinue
-
-          $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "install exit $($p.ExitCode)" }
-          # ROADMAP 14g MIGRATION. MigrateInboxToUserState was the largest executable change in the
-          # 14g range and had no behavioural coverage of any kind - its only gate was the ISCC compile
-          # above, which proves the file compiles and nothing about what it does. The lifecycle here
-          # already installs twice, so the migration costs one planted file and three assertions.
-          # Planted BETWEEN the installs: the source must be a PRE-EXISTING inbox in the install tree.
-          # The paths and the reset are established above, before install 1.
-          New-Item -ItemType Directory -Force -Path $knowledge | Out-Null
-          Set-Content $oldInbox "SENTINEL-ALPHA"
-
-          # Finding-5: re-run the SAME installer — idempotent upgrade (remove-then-add) must exit 0.
-          $p2 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          if ($p2.ExitCode -ne 0) { throw "re-run install exit $($p2.ExitCode) — idempotent upgrade must not abort" }
-
-          # M1 - the inbox MOVED, exactly once, and the source was retired by rename.
-          # "exactly once" is the assertion that matters: the defect this migration was folded to fix
-          # duplicated every entry once per upgrade, and a plain Test-Path cannot see that.
-          if (-not (Test-Path $userInbox)) { throw "M1 MIGRATION: $userInbox was not created - a pre-14g inbox did not move" }
-          $alpha = @(Get-Content $userInbox | Where-Object { $_ -match 'SENTINEL-ALPHA' }).Count
-          if ($alpha -ne 1) { throw "M1 MIGRATION: expected SENTINEL-ALPHA exactly once in the migrated inbox, found $alpha" }
-          if (-not (Test-Path $sidecar))  { throw "M1 MIGRATION: the source was not retired to $sidecar" }
-          if (Test-Path $oldInbox)        { throw "M1 MIGRATION: the old inbox is still at $oldInbox - the source was not claimed" }
-          Write-Host "[M1] migration moved the inbox once and retired the source"
-
-          # M2 - a SECOND pre-14g inbox APPENDS to the now-non-empty destination, never clobbers it.
-          # The sidecar must be cleared first, or this correctly hits the ambiguous-source branch (M3).
-          Remove-Item $sidecar -Force
-          Set-Content $oldInbox "SENTINEL-BETA"
-          $p3 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          if ($p3.ExitCode -ne 0) { throw "third install exit $($p3.ExitCode)" }
-          $alpha2 = @(Get-Content $userInbox | Where-Object { $_ -match 'SENTINEL-ALPHA' }).Count
-          $beta   = @(Get-Content $userInbox | Where-Object { $_ -match 'SENTINEL-BETA'  }).Count
-          if ($alpha2 -ne 1) { throw "M2 APPEND: the pre-existing SENTINEL-ALPHA must survive exactly once, found $alpha2 (0 = clobbered, >1 = duplicated)" }
-          if ($beta   -ne 1) { throw "M2 APPEND: SENTINEL-BETA must be appended exactly once, found $beta" }
-          Write-Host "[M2] migration appended to a non-empty destination without clobbering"
-
-          # M3 - an ambiguous source (a sidecar ALREADY beside a fresh source file) is left untouched
-          # rather than guessed at. This is the input that used to cause the duplication.
-          Set-Content $oldInbox "SENTINEL-GAMMA"
-          $p4 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          if ($p4.ExitCode -ne 0) { throw "fourth install exit $($p4.ExitCode) - an ambiguous source must not fail the install" }
-          if (-not (Test-Path $oldInbox)) { throw "M3 AMBIGUOUS: the source was consumed despite an existing sidecar" }
-          $gamma = @(Get-Content $userInbox | Where-Object { $_ -match 'SENTINEL-GAMMA' }).Count
-          if ($gamma -ne 0) { throw "M3 AMBIGUOUS: an ambiguous source must not be merged, but SENTINEL-GAMMA appeared $gamma time(s)" }
-          Write-Host "[M3] an ambiguous source was left untouched"
-          Remove-Item $oldInbox -Force -ErrorAction SilentlyContinue
-          if (-not (Test-Path "$app\.claude-plugin\marketplace.json")) { throw "marketplace.json not installed" }
-          $manifest = Get-Content "$app\.claude-plugin\marketplace.json" -Raw | ConvertFrom-Json
-          if ($manifest.name -ne 'clavity-agy-autotrain') { throw "expected marketplace name clavity-agy-autotrain, got $($manifest.name)" }
-          if ($manifest.plugins.Count -ne 1) { throw "expected 1 plugin in scoped manifest, got $($manifest.plugins.Count)" }
-          if ($manifest.plugins[0].source -ne './plugins/agy-autotrain') { throw "unexpected plugin source $($manifest.plugins[0].source)" }
-          if (-not (Test-Path "$app\plugins\agy-autotrain\skills\agy-curate\SKILL.md")) { throw "plugin content not staged" }
-
-          # T5 - installed-tree manifest parity. A source-side check is a tautology for this defect
-          # class: the packager dropping .claude-plugin\plugin.json leaves the source correct and only
-          # the INSTALLED tree wrong. Hash equality, not a version comparison, is the instrument - a
-          # version compare passes when a dropped file leaves a stale manifest whose version did not
-          # move this release, and it would false-RED ghidrust, whose plugin.json and .iss AppVersion
-          # are deliberately independent equality classes (scripts/check-versions.ps1).
-          # This member's plugin root IS its member root, so the source manifest is not under plugin/.
-          #
-          # NOTE: this gate does NOT structurally validate the source manifest; it relies on the
-          # "Version consistency" step above having ConvertFrom-Json'd it and required a .version key.
-          $srcManifest  = ".claude-plugin/plugin.json"
-          $instManifest = "$app\plugins\agy-autotrain\.claude-plugin\plugin.json"
-          if (-not (Test-Path $srcManifest -PathType Leaf))  { throw "T5: source manifest missing, or not a file, at $srcManifest - no expected value to compare against" }
-          if (-not (Test-Path $instManifest -PathType Leaf)) { throw "T5 MANIFEST PARITY: $instManifest was not installed as a file (packager dropped .claude-plugin\plugin.json, or shipped a directory of that name)" }
-          $srcHash  = (Get-FileHash $srcManifest  -Algorithm SHA256).Hash
-          # Retry the INSTALLED file only: a real-time scanner can hold a transient read-lock on a file
-          # the installer extracted moments ago. The source file is a plain checkout artifact and is not
-          # subject to that, so it is hashed once above.
-          $instHash = $null
-          foreach ($attempt in 1..5) {
-            try { $instHash = (Get-FileHash $instManifest -Algorithm SHA256).Hash; break }
-            catch {
-              if ($attempt -eq 5) { throw "T5 MANIFEST PARITY: could not read $instManifest after 5 attempts - $($_.Exception.Message)" }
-              Start-Sleep -Milliseconds 400
-            }
-          }
-          if ($srcHash -ne $instHash) { throw "T5 MANIFEST PARITY: installed manifest bytes differ from source (installed=$instHash source=$srcHash) - stale or rewritten plugin.json" }
-          Write-Host "[T5] installed manifest parity OK ($instHash)"
-
-          # C6: pre-seed a fake growth.md and confirm a plain (keep-data) uninstall does NOT delete it.
-          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.clavity" | Out-Null
-          Set-Content "$env:USERPROFILE\.clavity\golden-header.growth.md" "fake learned wisdom"
-          # The migration above created $sidecar at RUNTIME via RenameFile, so it is not in Inno's
-          # uninstall log and nothing removes it. Left in place it blocks RemoveDir all the way up, so
-          # `Test-Path $app` would stay true forever - turning the poll below into a fixed 30s sleep and
-          # both keep-data survival assertions into races that cannot fail red.
-          Remove-Item $sidecar -Force -ErrorAction SilentlyContinue
-
-          $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select-Object -First 1
-          $u = Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          if ($u.ExitCode -ne 0) { throw "uninstall exit $($u.ExitCode)" }
-          # Poll a SPECIFIC artefact, as the three sibling members do, and THROW when it never clears.
-          # Polling $app and then falling through silently let a refused uninstall - the guard fires
-          # when Claude Code is running - satisfy every "this file survived" assertion below.
-          $deadline = (Get-Date).AddSeconds(30)
-          while ((Test-Path "$app\plugins") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
-          if (Test-Path "$app\plugins") { throw "uninstall did not remove staged plugin files within 30s - a refused or incomplete uninstall makes every keep-data survival assertion below vacuous" }
-          if (-not (Test-Path "$env:USERPROFILE\.clavity\golden-header.growth.md")) { throw "C6 VIOLATION: growth.md was deleted by a keep-data uninstall" }
-          # C6b - the CAPTURE INBOX has the same protection as growth.md, and needs asserting
-          # separately. Before 14g it lived inside the install dir; since 14g it lives beside
-          # growth.md in user-local state and carries no uninsneveruninstall flag, so its survival now
-          # rests entirely on the purge branch being gated on RemoveGrowth. Moving those DeleteFile
-          # calls outside that gate would destroy every undrained observation on an ordinary
-          # uninstall, and the growth.md assertion above would stay green either way.
-          if (-not (Test-Path $userInbox)) { throw "C6b VIOLATION: the capture inbox was deleted by a keep-data uninstall - every undrained observation is gone" }
-          # Deliberately NOT called "ownership": that word promises both directions, and the PURGE
-          # direction is unreachable from CI. RemoveGrowth is decided by a SuppressibleMsgBox whose
-          # suppressed default is IDNO (the RemoveGrowth SuppressibleMsgBox in InitializeUninstall -
-          # NAMED, not numbered: this said agy-autotrain.iss:255-259 until 2026-08-26, which was exact when
-          # written and now lands on MigrateInboxToUserState, because the same range that added the
-          # "NAMED, not numbered" lesson elsewhere moved this procedure out from under its own citation),
-          # so a silent uninstall always takes
-          # keep-data and the purge branch never executes here. Deleting the inbox DeleteFile on that
-          # branch would leave this step green. That gap IS tracked: `docs/coverage-debt.md` item 10,
-          # recorded by the same round that raised it. Until 2026-08-26 this comment said the opposite -
-          # "there is none, do not go looking" - which was true when written and false the moment item 10
-          # landed in this same range. Restated here because this is the assertion it bounds.
-          "install/uninstall + namespace + C6 growth/inbox KEEP-data survival + 14g migration smoke PASSED"
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: agy-autotrain-installer
-          path: |
-            agy-autotrain/dist/agy-autotrain-setup-*.exe
-            agy-autotrain/dist/agy-autotrain-setup-*.exe.sha256
+        run: pwsh -File scripts/check-versions.ps1 agy-autotrain && pwsh -File scripts/check-versions.ps1 agy-autotrain -Coverage

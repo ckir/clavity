@@ -163,17 +163,9 @@ jobs:
           name: ${{ needs.ghidrust.outputs.artifact-name }}
           path: dist-ghidrust
 
-      - name: Download agy-autotrain installer
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ needs.agy-autotrain.outputs.artifact-name }}
-          path: dist-agy-autotrain
-
-      - name: Download commonmemory installer
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ needs.commonmemory.outputs.artifact-name }}
-          path: dist-commonmemory
+      # agy-autotrain and commonmemory retired their Inno installers (2026-09-14) — they install via
+      # `claude plugin marketplace add ckir/clavity`, so they produce no release asset. Their build jobs
+      # are validate-only and are still in `needs:` above, so a version-inconsistent member fails the release.
 
       - name: Assemble release assets + notes
         id: notes
@@ -188,33 +180,40 @@ jobs:
           cp dist-dotnet/* out/
           cp dist-classic/* out/
           cp dist-ghidrust/* out/
-          cp dist-agy-autotrain/* out/
-          cp dist-commonmemory/* out/
           echo "assets in release:"; ls -1 out
           cat > body.md <<EOF
           # clavity $TAG
 
-          Standalone Windows installers for clavity-classic, ghidrust, agy-autotrain and commonmemory,
-          plus **clavity-dotnet** as a cross-platform \`claude plugin\` install (its \`clavity-ls\` binary is
-          fetched on first run from the assets below). Each installer does exactly ONE member.
+          Standalone Windows installers for **clavity-classic** and **ghidrust**, plus three
+          \`claude plugin\` installs — **clavity-dotnet**, **agy-autotrain** and **commonmemory** — served
+          from this repo's root marketplace (clavity-dotnet's \`clavity-ls\` binary is fetched on first run
+          from the assets below). Each Windows installer does exactly ONE member.
 
-          | installer | version | what it gives you | when you'd want it |
-          |-----------|---------|--------------------|--------------------|
-          | clavity-dotnet (claude plugin) | ${{ needs.dotnet.outputs.version }}   | Claude Code <-> agy pairing (Primary, .NET host)  | Default choice for pairing Claude with agy |
-          | clavity-classic-setup     | ${{ needs.classic.outputs.version }}       | Claude Code <-> agy pairing (Failover, Rust host) | Prefer the original Rust host, or dotnet is unavailable |
-          | ghidrust-setup            | ${{ needs.ghidrust.outputs.version }}      | Headless Ghidra reverse-engineering over MCP      | You reverse-engineer binaries and want AI-assisted decompile/rename |
-          | agy-autotrain-setup       | ${{ needs.agy-autotrain.outputs.version }} | agy auto-training loop (capture -> curate -> golden-header) | You already run a clavity driver and want it to keep learning your project |
-          | commonmemory-setup        | ${{ needs.commonmemory.outputs.version }}  | Shared Claude<->agy notebook over agentmemory     | You run the agentmemory MCP server and want cross-agent shared facts |
+          | member | version | how to install | what it gives you |
+          |--------|---------|----------------|--------------------|
+          | clavity-dotnet   | ${{ needs.dotnet.outputs.version }}         | \`claude plugin\` (see below) | Claude Code <-> agy pairing (Primary, .NET host) |
+          | clavity-classic-setup | ${{ needs.classic.outputs.version }}   | Windows installer (.exe) | Claude Code <-> agy pairing (Failover, Rust host) |
+          | ghidrust-setup   | ${{ needs.ghidrust.outputs.version }}       | Windows installer (.exe) | Headless Ghidra reverse-engineering over MCP |
+          | agy-autotrain    | ${{ needs.agy-autotrain.outputs.version }}  | \`claude plugin\` (see below) | agy auto-training loop (capture -> curate -> golden-header) |
+          | commonmemory     | ${{ needs.commonmemory.outputs.version }}   | \`claude plugin\` (see below) | Shared Claude<->agy notebook over agentmemory |
 
           **clavity-dotnet** and **clavity-classic** are **mutually exclusive** — install ONE, not both.
-          The other three install alongside either (or standalone). Installers are **unsigned** (Windows
-          SmartScreen may warn on first run: *More info -> Run anyway*). Verify each \`.sha256\` against its \`.exe\`.
-          There is **no** remote marketplace channel — every plugin ships locally inside its own installer.
+          The Windows installers are **unsigned** (SmartScreen may warn on first run: *More info -> Run anyway*);
+          verify each \`.sha256\` against its \`.exe\`.
 
-          **clavity-dotnet (no installer — installs via \`claude plugin\`):** its self-contained \`clavity-ls\`
-          binary ships here as \`clavity-ls-<rid>-${{ needs.dotnet.outputs.version }}.tar.gz\` for \`win-x64\`,
-          \`linux-x64\`, \`osx-arm64\` and \`osx-x64\` (each with a \`.sha256\`); a plugin hook fetches the matching
-          one on first run. See the clavity-dotnet README for the \`claude plugin\` install command.
+          **Install the \`claude plugin\` members** (clavity-dotnet, agy-autotrain, commonmemory):
+
+          \`\`\`
+          claude plugin marketplace add ckir/clavity
+          claude plugin install clavity@clavity          # clavity-dotnet
+          claude plugin install agy-autotrain@clavity
+          claude plugin install commonmemory@clavity
+          \`\`\`
+
+          **clavity-dotnet's \`clavity-ls\` binary** ships here as
+          \`clavity-ls-<rid>-${{ needs.dotnet.outputs.version }}.tar.gz\` for \`win-x64\`, \`linux-x64\`,
+          \`osx-arm64\` and \`osx-x64\` (each with a \`.sha256\`); its plugin hook fetches the matching one on
+          first run and verifies the checksum. See the clavity-dotnet README for details.
           EOF
           echo "wrote body.md"
           # CC1/TO2: the chore(release) commit body carries the aggregated notes. Extract to a FILE
@@ -239,7 +238,3 @@ jobs:
             out/clavity-classic-setup-*.exe.sha256
             out/ghidrust-setup-*.exe
             out/ghidrust-setup-*.exe.sha256
-            out/agy-autotrain-setup-*.exe
-            out/agy-autotrain-setup-*.exe.sha256
-            out/commonmemory-setup-*.exe
-            out/commonmemory-setup-*.exe.sha256

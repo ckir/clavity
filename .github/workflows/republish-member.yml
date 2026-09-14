@@ -16,12 +16,13 @@ on:
         description: 'Which member to rebuild and republish.'
         required: true
         type: choice
+        # agy-autotrain and commonmemory retired their Inno installers (2026-09-14) — they install via
+        # `claude plugin marketplace add ckir/clavity` and produce NO release asset, so there is nothing to
+        # republish onto a release. Only the members that ship a release asset are listed.
         options:
           - dotnet
           - classic
           - ghidrust
-          - agy-autotrain
-          - commonmemory
 
 permissions:
   contents: write
@@ -41,18 +42,10 @@ jobs:
 
   e2e-ghidrust:
     # ghidrust keeps its BLOCKING live gate (C8) — but ONLY for a ghidrust republish; it never
-    # runs, and so never blocks, a dotnet/classic/agy-autotrain/commonmemory republish.
+    # runs, and so never blocks, a dotnet/classic republish.
     if: inputs.member == 'ghidrust'
     needs: [ghidrust]
     uses: ./.github/workflows/e2e-ghidrust.yml
-
-  agy-autotrain:
-    if: inputs.member == 'agy-autotrain'
-    uses: ./.github/workflows/build-agy-autotrain.yml
-
-  commonmemory:
-    if: inputs.member == 'commonmemory'
-    uses: ./.github/workflows/build-commonmemory.yml
 
   publish:
     # Finding-3 fold: GitHub Actions SKIPS a downstream job by default when ANY of its `needs`
@@ -62,7 +55,7 @@ jobs:
     # actually FAILED (a skipped need is tolerated; a real failure of the one member that ran is
     # not). Only the selected member's 2 assets are downloaded/published (see the `member` switch
     # in the steps), so republishing one member never touches a sibling's assets.
-    needs: [dotnet, classic, ghidrust, e2e-ghidrust, agy-autotrain, commonmemory]
+    needs: [dotnet, classic, ghidrust, e2e-ghidrust]
     if: ${{ always() && !cancelled() && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
     permissions:
@@ -76,8 +69,6 @@ jobs:
             dotnet)        echo "artifact=dotnet-bin-*" >> "$GITHUB_OUTPUT"; echo "pattern=true" >> "$GITHUB_OUTPUT" ;;  # retired Inno -> 4 per-RID binary tarballs
             classic)       echo "artifact=${{ needs.classic.outputs.artifact-name }}" >> "$GITHUB_OUTPUT" ;;
             ghidrust)      echo "artifact=${{ needs.ghidrust.outputs.artifact-name }}" >> "$GITHUB_OUTPUT" ;;
-            agy-autotrain) echo "artifact=${{ needs.agy-autotrain.outputs.artifact-name }}" >> "$GITHUB_OUTPUT" ;;
-            commonmemory)  echo "artifact=${{ needs.commonmemory.outputs.artifact-name }}" >> "$GITHUB_OUTPUT" ;;
           esac
 
       - name: Download the rebuilt asset (single-name members)

@@ -1,142 +1,44 @@
 name: build-commonmemory
 
+# Validate-only (Inno retired 2026-09-14). commonmemory installs via `claude plugin` from the repo-root
+# .claude-plugin/marketplace.json — there is NO installer to build or ship. This reusable workflow now only
+# PROVES the member's version sources agree (plugin.json) and that every version-bearing file is
+# registered; the umbrella release `needs:` it, so a version-inconsistent member still fails the release.
 on:
   workflow_call:
     outputs:
       version:
-        value: ${{ jobs.build.outputs.version }}
+        value: ${{ jobs.validate.outputs.version }}
       sha:
-        value: ${{ jobs.build.outputs.sha }}
-      artifact-name:
-        value: ${{ jobs.build.outputs.artifact-name }}
+        value: ${{ jobs.validate.outputs.sha }}
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: commonmemory
+  validate:
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.ver.outputs.version }}
       sha: ${{ steps.sha.outputs.sha }}
-      artifact-name: commonmemory-installer
     steps:
       - uses: actions/checkout@v7
 
       - name: Record the built commit
         id: sha
         shell: bash
-        # Assign first, then echo: the `echo "sha=$(...)"` form discards git's exit code and can publish
-        # a non-sha while the step stays green. Measured; full note in build-agy-autotrain.yml.
+        # Assign first, then echo: the `echo "sha=$(...)"` form discards git's exit code and can publish a
+        # non-sha while the step stays green. Measured; full note in git history of this file.
         run: |
           sha=$(git rev-parse HEAD)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      - name: Extract version from .iss
+      - name: Extract version from plugin.json
         id: ver
         shell: pwsh
         run: |
-          $v = (Select-String -Path installer/commonmemory.iss -Pattern '#define AppVersion "([^"]+)"').Matches[0].Groups[1].Value
+          $v = (Get-Content -Raw commonmemory/plugin.json | ConvertFrom-Json).version
+          if (-not $v) { throw "no version in commonmemory/plugin.json" }
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "TOOL_VER=$v" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Generate scoped marketplace.json (O3)
-        shell: pwsh
-        run: ../scripts/generate-scoped-manifest.ps1 -MemberName commonmemory -OutFile installer/marketplace.install.json
-
-      - name: Install Inno Setup
-        shell: pwsh
-        run: choco install innosetup --no-progress -y
 
       - name: Version consistency
         shell: pwsh
-        run: pwsh -File ../scripts/check-versions.ps1 commonmemory && pwsh -File ../scripts/check-versions.ps1 commonmemory -Coverage
-
-      - name: Build installer (ISCC)
-        shell: pwsh
-        run: |
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
-          & $iscc installer/commonmemory.iss
-          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
-          $setup = "dist/commonmemory-setup-$env:TOOL_VER.exe"
-          if (-not (Test-Path $setup)) { throw "$setup was not produced" }
-
-      - name: Compute SHA-256 companion
-        shell: pwsh
-        run: |
-          $name = "commonmemory-setup-$env:TOOL_VER.exe"
-          $h = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLower()
-          # LF-ONLY, NO BOM - `Set-Content` writes CRLF on Windows and GNU `sha256sum -c` then treats the
-          # trailing \r as part of the filename. MEASURED 2026-08-26, coreutils 8.32: the CRLF form fails
-          # with "No such file or directory" and exits 1 while the LF control passes. build-classic.yml has
-          # always written it this way; these copies diverged silently. THIS SENTENCE WAS INCOMPLETE until
-          # 2026-08-27: the commit that wrote it fixed three of the four divergent copies and left
-          # build-dotnet.yml on `Set-Content`, and saying "these copies" without naming which invited
-          # exactly that. All five members now write the companion identically.
-          [IO.File]::WriteAllText("$PWD/dist/$name.sha256", "$h  $name`n")
-
-      - name: Smoke — install/uninstall lifecycle + namespace
-        timeout-minutes: 6
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $setup = "dist/commonmemory-setup-$env:TOOL_VER.exe"
-          $app = "$env:LOCALAPPDATA\Programs\commonmemory"
-
-          $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "install exit $($p.ExitCode)" }
-          # Finding-5: re-run the SAME installer — idempotent upgrade (remove-then-add) must exit 0.
-          $p2 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          if ($p2.ExitCode -ne 0) { throw "re-run install exit $($p2.ExitCode) — idempotent upgrade must not abort" }
-          if (-not (Test-Path "$app\.claude-plugin\marketplace.json")) { throw "marketplace.json not installed" }
-          $manifest = Get-Content "$app\.claude-plugin\marketplace.json" -Raw | ConvertFrom-Json
-          if ($manifest.name -ne 'clavity-commonmemory') { throw "expected marketplace name clavity-commonmemory, got $($manifest.name)" }
-          if ($manifest.plugins.Count -ne 1) { throw "expected 1 plugin in scoped manifest, got $($manifest.plugins.Count)" }
-          if ($manifest.plugins[0].source -ne './plugins/commonmemory') { throw "unexpected plugin source $($manifest.plugins[0].source)" }
-          if (-not (Test-Path "$app\plugins\commonmemory\skills\commonmemory\SKILL.md")) { throw "plugin content not staged" }
-
-          # T5 - installed-tree manifest parity. This member is why the gate exists: an unanchored
-          # Excludes entry once matched the .claude-plugin DIRECTORY and dropped plugin.json from the
-          # payload, so a fresh install had no manifest and an upgrade kept a stale one, while every
-          # source-side check passed (fixed at commonmemory/installer/commonmemory.iss:49). Hash
-          # equality, not a version comparison - a version compare passes when a dropped file leaves a
-          # stale manifest whose version did not move this release.
-          # This member's plugin root IS its member root, so the source manifest is not under plugin/.
-          #
-          # NOTE: this gate does NOT structurally validate the source manifest; it relies on the
-          # "Version consistency" step above having ConvertFrom-Json'd it and required a .version key.
-          $srcManifest  = ".claude-plugin/plugin.json"
-          $instManifest = "$app\plugins\commonmemory\.claude-plugin\plugin.json"
-          if (-not (Test-Path $srcManifest -PathType Leaf))  { throw "T5: source manifest missing, or not a file, at $srcManifest - no expected value to compare against" }
-          if (-not (Test-Path $instManifest -PathType Leaf)) { throw "T5 MANIFEST PARITY: $instManifest was not installed as a file (packager dropped .claude-plugin\plugin.json, or shipped a directory of that name)" }
-          $srcHash  = (Get-FileHash $srcManifest  -Algorithm SHA256).Hash
-          # Retry the INSTALLED file only: a real-time scanner can hold a transient read-lock on a file
-          # the installer extracted moments ago. The source file is a plain checkout artifact and is not
-          # subject to that, so it is hashed once above.
-          $instHash = $null
-          foreach ($attempt in 1..5) {
-            try { $instHash = (Get-FileHash $instManifest -Algorithm SHA256).Hash; break }
-            catch {
-              if ($attempt -eq 5) { throw "T5 MANIFEST PARITY: could not read $instManifest after 5 attempts - $($_.Exception.Message)" }
-              Start-Sleep -Milliseconds 400
-            }
-          }
-          if ($srcHash -ne $instHash) { throw "T5 MANIFEST PARITY: installed manifest bytes differ from source (installed=$instHash source=$srcHash) - stale or rewritten plugin.json" }
-          Write-Host "[T5] installed manifest parity OK ($instHash)"
-
-          $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select-Object -First 1
-          Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null
-          $deadline = (Get-Date).AddSeconds(30)
-          while ((Test-Path "$app\plugins") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
-          if (Test-Path "$app\plugins") { throw "uninstall did not remove staged plugin files within 30s" }
-          "install/uninstall + namespace smoke PASSED"
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: commonmemory-installer
-          path: |
-            commonmemory/dist/commonmemory-setup-*.exe
-            commonmemory/dist/commonmemory-setup-*.exe.sha256
+        run: pwsh -File scripts/check-versions.ps1 commonmemory && pwsh -File scripts/check-versions.ps1 commonmemory -Coverage
