@@ -73,18 +73,27 @@ jobs:
         shell: bash
         run: |
           case "${{ inputs.member }}" in
-            dotnet)        echo "artifact=${{ needs.dotnet.outputs.artifact-name }}" >> "$GITHUB_OUTPUT" ;;
+            dotnet)        echo "artifact=dotnet-bin-*" >> "$GITHUB_OUTPUT"; echo "pattern=true" >> "$GITHUB_OUTPUT" ;;  # retired Inno -> 4 per-RID binary tarballs
             classic)       echo "artifact=${{ needs.classic.outputs.artifact-name }}" >> "$GITHUB_OUTPUT" ;;
             ghidrust)      echo "artifact=${{ needs.ghidrust.outputs.artifact-name }}" >> "$GITHUB_OUTPUT" ;;
             agy-autotrain) echo "artifact=${{ needs.agy-autotrain.outputs.artifact-name }}" >> "$GITHUB_OUTPUT" ;;
             commonmemory)  echo "artifact=${{ needs.commonmemory.outputs.artifact-name }}" >> "$GITHUB_OUTPUT" ;;
           esac
 
-      - name: Download the rebuilt installer
+      - name: Download the rebuilt asset (single-name members)
+        if: ${{ steps.which.outputs.pattern != 'true' }}
         uses: actions/download-artifact@v8
         with:
           name: ${{ steps.which.outputs.artifact }}
           path: dist-member
+
+      - name: Download the rebuilt assets (dotnet, multi-RID binaries)
+        if: ${{ steps.which.outputs.pattern == 'true' }}
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ steps.which.outputs.artifact }}
+          path: dist-member
+          merge-multiple: true
 
       - name: Republish onto the existing release (adds/overwrites only this member's 2 assets)
         uses: softprops/action-gh-release@v3

@@ -1,8 +1,10 @@
 name: ci-installer-dotnet
 
-# Continuous installer coverage for the dotnet member: compile the Inno installer + run the install/
-# uninstall smoke on every push[main]/PR that touches the member, the shared installer includes, its build
-# workflow, this file, or the manifest generator. Delegates to the existing reusable build-dotnet.yml.
+# Continuous BUILD coverage for the dotnet member: build the per-RID clavity-ls binaries + run the validate
+# gates (version consistency, seed + cheatsheet byte budgets) on every push[main]/PR that touches the member,
+# its build workflow, this file, or the budget-check inputs. Delegates to the reusable build-dotnet.yml.
+# (The Inno installer was RETIRED 2026-09-14 -> `claude plugin` + fetch-on-first-run; this file kept its name
+# and job name to preserve the required-status-check identity.)
 on:
   push:
     branches: [main]
@@ -43,5 +45,3 @@ concurrency:
 jobs:
   installer:
     uses: ./.github/workflows/build-dotnet.yml
-    with:
-      fail_on_smoke: true   # dotnet ONLY: flip its 3 advisory smoke steps to blocking on CI (Option B).

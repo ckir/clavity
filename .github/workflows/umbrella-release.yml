@@ -144,17 +144,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download dotnet installer
+      - name: Download dotnet binaries (all RIDs)
         uses: actions/download-artifact@v8
         with:
-          name: ${{ needs.dotnet.outputs.artifact-name }}
+          pattern: dotnet-bin-*        # win-x64 / linux-x64 / osx-arm64 / osx-x64 tarballs + .sha256
           path: dist-dotnet
-
-      - name: Download dotnet linux build
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ needs.dotnet.outputs.linux-artifact-name }}
-          path: dist-dotnet-linux
+          merge-multiple: true
 
       - name: Download classic installer
         uses: actions/download-artifact@v8
@@ -191,7 +186,6 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           mkdir -p out
           cp dist-dotnet/* out/
-          cp dist-dotnet-linux/* out/
           cp dist-classic/* out/
           cp dist-ghidrust/* out/
           cp dist-agy-autotrain/* out/
@@ -200,12 +194,13 @@ jobs:
           cat > body.md <<EOF
           # clavity $TAG
 
-          Five standalone installers. Each does exactly ONE member and references no other —
-          grab whichever you want from this one page.
+          Standalone Windows installers for clavity-classic, ghidrust, agy-autotrain and commonmemory,
+          plus **clavity-dotnet** as a cross-platform \`claude plugin\` install (its \`clavity-ls\` binary is
+          fetched on first run from the assets below). Each installer does exactly ONE member.
 
           | installer | version | what it gives you | when you'd want it |
           |-----------|---------|--------------------|--------------------|
-          | clavity-dotnet-setup      | ${{ needs.dotnet.outputs.version }}        | Claude Code <-> agy pairing (Primary, .NET host)  | Default choice for pairing Claude with agy |
+          | clavity-dotnet (claude plugin) | ${{ needs.dotnet.outputs.version }}   | Claude Code <-> agy pairing (Primary, .NET host)  | Default choice for pairing Claude with agy |
           | clavity-classic-setup     | ${{ needs.classic.outputs.version }}       | Claude Code <-> agy pairing (Failover, Rust host) | Prefer the original Rust host, or dotnet is unavailable |
           | ghidrust-setup            | ${{ needs.ghidrust.outputs.version }}      | Headless Ghidra reverse-engineering over MCP      | You reverse-engineer binaries and want AI-assisted decompile/rename |
           | agy-autotrain-setup       | ${{ needs.agy-autotrain.outputs.version }} | agy auto-training loop (capture -> curate -> golden-header) | You already run a clavity driver and want it to keep learning your project |
@@ -216,9 +211,10 @@ jobs:
           SmartScreen may warn on first run: *More info -> Run anyway*). Verify each \`.sha256\` against its \`.exe\`.
           There is **no** remote marketplace channel — every plugin ships locally inside its own installer.
 
-          **Linux (clavity-dotnet host):** \`clavity-ls-linux-x64-${{ needs.dotnet.outputs.version }}.tar.gz\` is
-          the \`clavity-ls\` binary built for Linux (x64), self-contained (no .NET runtime needed). There is no
-          Linux installer yet — extract it and run \`clavity-ls\` directly. Verify its \`.sha256\`.
+          **clavity-dotnet (no installer — installs via \`claude plugin\`):** its self-contained \`clavity-ls\`
+          binary ships here as \`clavity-ls-<rid>-${{ needs.dotnet.outputs.version }}.tar.gz\` for \`win-x64\`,
+          \`linux-x64\`, \`osx-arm64\` and \`osx-x64\` (each with a \`.sha256\`); a plugin hook fetches the matching
+          one on first run. See the clavity-dotnet README for the \`claude plugin\` install command.
           EOF
           echo "wrote body.md"
           # CC1/TO2: the chore(release) commit body carries the aggregated notes. Extract to a FILE
@@ -237,10 +233,8 @@ jobs:
           name: ${{ steps.notes.outputs.tag }}        # e.g. "clavity-v1" — the umbrella IS the clavity release (avoid doubling "clavity")
           body_path: body.md
           files: |
-            out/clavity-dotnet-setup-*.exe
-            out/clavity-dotnet-setup-*.exe.sha256
-            out/clavity-ls-linux-x64-*.tar.gz
-            out/clavity-ls-linux-x64-*.tar.gz.sha256
+            out/clavity-ls-*-*.tar.gz
+            out/clavity-ls-*-*.tar.gz.sha256
             out/clavity-classic-setup-*.exe
             out/clavity-classic-setup-*.exe.sha256
             out/ghidrust-setup-*.exe

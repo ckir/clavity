@@ -1,35 +1,28 @@
 name: build-dotnet
 
-# Reusable build+smoke half of the dotnet release, minus the publish step. Called by umbrella-release.yml
-# and runnable in isolation via workflow_dispatch.
+# Reusable build half of the dotnet release. The Inno Setup installer was RETIRED (2026-09-14): clavity-dotnet
+# now installs via `claude plugin` + a fetch-on-first-run hook (clavity-dotnet/plugin/hooks/fetch-clavity-ls.sh)
+# that downloads the self-contained clavity-ls binary from the release. This workflow therefore publishes that
+# binary for every supported RID as a standalone `clavity-ls-<rid>-<version>.tar.gz` (+ .sha256) release asset.
+# clavity-classic KEEPS its Inno installer; this change does not touch it.
+#
+# Called by umbrella-release.yml and runnable in isolation via workflow_dispatch. umbrella-release downloads
+# every `dotnet-bin-*` artifact and attaches the tarballs to the GitHub release the fetch hook reads.
 on:
   workflow_call:
-    inputs:
-      fail_on_smoke:
-        description: 'When true, a runtime install/uninstall smoke FAILURE fails the workflow (CI-gate posture). Release callers omit it -> default false -> smoke stays advisory and cannot wedge a publish.'
-        type: boolean
-        default: false
     outputs:
       version:
-        value: ${{ jobs.build.outputs.version }}
-      sha:
-        value: ${{ jobs.build.outputs.sha }}
-      artifact-name:
-        value: ${{ jobs.build.outputs.artifact-name }}
-      linux-artifact-name:
-        value: ${{ jobs.build-linux.outputs.artifact-name }}
+        value: ${{ jobs.validate.outputs.version }}
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: windows-latest
+  validate:
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: clavity-dotnet
     outputs:
       version: ${{ steps.ver.outputs.version }}
-      sha: ${{ github.sha }}
-      artifact-name: dotnet-installer
     steps:
       - uses: actions/checkout@v7
 
@@ -38,40 +31,14 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Extract version from .iss
+      - name: Extract version from plugin.json
         id: ver
-        shell: pwsh
+        shell: bash
         run: |
-          $v = (Select-String -Path installer/clavity-dotnet.iss -Pattern '#define AppVersion "([^"]+)"').Matches[0].Groups[1].Value
-          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "CLAVITY_VER=$v" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Publish clavity-ls (non-extracting single-file)
-        shell: pwsh
-        run: |
-          dotnet publish src/Clavity.Cli -c Release -r win-x64 --self-contained true `
-            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false `
-            -o publish
-          if (-not (Test-Path publish/clavity-ls.exe)) { throw "publish/clavity-ls.exe was not produced" }
-
-      - name: --help smoke (usage + exit 0)
-        shell: pwsh
-        run: |
-          # Guard that the shipped binary answers --help with usage and exit 0. clavity-ls prints usage to
-          # stdout via the unrecognized-arg fall-through; capture combined streams so the check stays robust
-          # if that ever moves to stderr.
-          $out = & "./publish/clavity-ls.exe" --help 2>&1 | Out-String
-          if ($LASTEXITCODE -ne 0) { throw "clavity-ls --help exited $LASTEXITCODE" }
-          if ([string]::IsNullOrWhiteSpace($out)) { throw "clavity-ls --help produced no output" }
-          Write-Host "clavity-ls --help OK:`n$out"
-
-      - name: Install Inno Setup
-        shell: pwsh
-        run: choco install innosetup --no-progress -y
-
-      - name: Generate scoped marketplace.json (O3, single member)
-        shell: pwsh
-        run: ../scripts/generate-scoped-manifest.ps1 -MemberName clavity-dotnet -OutFile installer/marketplace.install.json
+          # Source of truth is now the plugin manifest (the .iss AppVersion, formerly canonical, is retired).
+          v=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' plugin/plugin.json | head -1)
+          [ -n "$v" ] || { echo "no top-level version in plugin/plugin.json" >&2; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
 
       - name: Version consistency
         shell: pwsh
@@ -83,293 +50,20 @@ jobs:
       - name: Driver-cheatsheet byte-budget gate
         run: pwsh -File ../scripts/check-cheatsheet-budget.ps1
 
-      - name: Build installer (ISCC)
-        shell: pwsh
-        run: |
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
-          & $iscc installer/clavity-dotnet.iss
-          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
-          $setup = "dist/clavity-dotnet-setup-$env:CLAVITY_VER.exe"
-          if (-not (Test-Path $setup)) { throw "$setup was not produced" }
-
-      - name: Compute SHA-256 companion (D2)
-        shell: pwsh
-        run: |
-          $name = "clavity-dotnet-setup-$env:CLAVITY_VER.exe"
-          $h = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLower()
-          # LF-ONLY, NO BOM - `Set-Content` writes CRLF on Windows and GNU `sha256sum -c` then treats the
-          # trailing \r as part of the filename. MEASURED 2026-08-27 on this box: `Set-Content -Encoding
-          # ascii` ends the file `78 65 0d 0a`, `WriteAllText` ends it `65 78 65 0a`.
-          #
-          # THIS FILE WAS THE ONE MISSED. 99449a3 converted build-agy-autotrain, build-commonmemory and
-          # build-ghidrust in a single commit (build-classic already wrote it this way) and left
-          # build-dotnet on Set-Content, so the flagship member shipped the one .sha256 a user is most
-          # likely to verify with a trailing CR in the filename. None of the three rationales it wrote
-          # named a fifth member, which is exactly how an incomplete fold survives review: each file it
-          # touched reads as complete and correct on its own.
-          [IO.File]::WriteAllText("$PWD/dist/$name.sha256", "$h  $name`n")
-
-      - name: Smoke — silent install then uninstall
-        timeout-minutes: 6
-        continue-on-error: ${{ !inputs.fail_on_smoke }}   # release: advisory (default false); ci-installer: blocking (fail_on_smoke=true)
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $setup = "dist/clavity-dotnet-setup-$env:CLAVITY_VER.exe"
-          $app = "$env:LOCALAPPDATA\Programs\clavity-dotnet"
-          # PATH is COUNTED, entry by entry - never tested with -like, which a duplicated entry satisfies too.
-          # installer/_shared/user-path.iss has the measurement of the defect that hid behind that.
-          function Get-UserPathEntry([string]$Dir) {
-            $raw = (Get-Item 'HKCU:\Environment').GetValue('Path', '', 'DoNotExpandEnvironmentNames')
-            @($raw -split ';' | Where-Object { $_.Trim().Trim('"').TrimEnd('\') -ieq $Dir.TrimEnd('\') })
-          }
-
-          Write-Host "[smoke] running silent install..."
-          $p = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          Write-Host "[smoke] install process exited: $($p.ExitCode)"
-          if ($p.ExitCode -ne 0) { throw "install exited $($p.ExitCode)" }
-
-          if (-not (Test-Path "$app\clavity-ls.exe")) { throw "clavity-ls.exe not installed under $app" }
-          if (-not (Test-Path "$app\.claude-plugin\marketplace.json")) { throw "marketplace.json not installed" }
-          $installedManifest = Get-Content "$app\.claude-plugin\marketplace.json" -Raw | ConvertFrom-Json
-          if ($installedManifest.name -ne 'clavity-dotnet') { throw "expected marketplace name clavity-dotnet (C9), got $($installedManifest.name)" }
-          if ($installedManifest.plugins.Count -ne 1) { throw "installed marketplace.json has $($installedManifest.plugins.Count) plugins, expected 1 (C10 teardown)" }
-          if ($installedManifest.plugins[0].source -ne './plugins/clavity') { throw "unexpected plugin source $($installedManifest.plugins[0].source)" }
-          if ($installedManifest.plugins[0].name -ne 'clavity') { throw "expected plugin identity clavity, got $($installedManifest.plugins[0].name)" }
-          if (-not (Test-Path "$app\plugins\clavity")) { throw "plugins\clavity not installed" }
-          if (Test-Path "$app\plugins\agy-autotrain") { throw "C10 VIOLATION: sibling agy-autotrain still bundled" }
-          if (Test-Path "$app\plugins\commonmemory") { throw "C10 VIOLATION: sibling commonmemory still bundled" }
-          if (Test-Path "$app\plugins\ghidrust") { throw "C10 VIOLATION: sibling ghidrust still bundled" }
-
-          # Phase 3: the post-install PowerShell step must seed golden-header.seed.md from the bundled baseline.
-          if (-not (Test-Path "$app\seed\golden-header.md")) { throw "bundled seed baseline not shipped under $app\seed" }
-          $seed = "$env:USERPROFILE\.clavity\golden-header.seed.md"
-          if (-not (Test-Path $seed)) { throw "golden-header.seed.md was not seeded to $seed" }
-          if ((Get-Content $seed -Raw) -ne (Get-Content "$app\seed\golden-header.md" -Raw)) {
-            throw "seeded golden-header.seed.md does not match the bundled baseline"
-          }
-          Write-Host "[smoke] golden-header.seed.md seeded and matches the bundled baseline."
-
-          $arp = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
-            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "clavity-dotnet*" }
-          if (-not $arp) { throw "Add/Remove Programs key not present after install" }
-
-          $n1 = @(Get-UserPathEntry $app).Count
-          if ($n1 -ne 1) { throw "PATH: expected the install dir exactly ONCE after install, found $n1" }
-
-          $uninst = Get-ChildItem "$app" -Filter "unins*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $uninst) { throw "uninstaller (unins*.exe) not found under $app" }
-          Write-Host "[smoke] running silent uninstall..."
-          $u = Start-Process -FilePath $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          Write-Host "[smoke] uninstall process exited: $($u.ExitCode)"
-          if ($u.ExitCode -ne 0) { throw "uninstall exited $($u.ExitCode)" }
-
-          # POLL, DO NOT SLEEP-THEN-ASSERT. An Inno uninstaller copies itself to %TEMP% and the process we
-          # waited on RETURNS BEFORE the copy finishes deleting the install directory, so a fixed 2-second
-          # sleep is a race this step lost on 2026-09-12 ("clavity-ls.exe still present after uninstall")
-          # with nothing wrong in the installer - the preceding run of the same commit range passed. The
-          # PATH assertion below has polled with a deadline since the PATH work landed; these two never did.
-          $deadline = (Get-Date).AddSeconds(30)
-          while ((Test-Path "$app\clavity-ls.exe") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
-          if (Test-Path "$app\clavity-ls.exe") { throw "clavity-ls.exe still present after uninstall" }
-          $arpGone = { @(Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
-            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "clavity-dotnet*" }).Count -eq 0 }
-          while (-not (& $arpGone) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
-          if (-not (& $arpGone)) { throw "Add/Remove Programs key still present after uninstall" }
-          $deadline = (Get-Date).AddSeconds(15)
-          while ((@(Get-UserPathEntry $app).Count -ne 0) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
-          $n2 = @(Get-UserPathEntry $app).Count
-          if ($n2 -ne 0) { throw "PATH: the install dir is still present $n2 time(s) after uninstall" }
-          Write-Host "Install/uninstall smoke PASSED."
-
-      - name: Smoke — C6 growth.md survives a keep-data uninstall + C1 idempotent re-run
-        timeout-minutes: 6
-        continue-on-error: ${{ !inputs.fail_on_smoke }}   # matches the sibling smoke step's fail_on_smoke policy
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $setup = "dist/clavity-dotnet-setup-$env:CLAVITY_VER.exe"
-          $app = "$env:LOCALAPPDATA\Programs\clavity-dotnet"
-          function Get-UserPathEntry([string]$Dir) {
-            $raw = (Get-Item 'HKCU:\Environment').GetValue('Path', '', 'DoNotExpandEnvironmentNames')
-            @($raw -split ';' | Where-Object { $_.Trim().Trim('"').TrimEnd('\') -ieq $Dir.TrimEnd('\') })
-          }
-          function Add-UserPathEntryRaw([string]$Entry) {
-            if (-not $env:GITHUB_ACTIONS) { throw "REFUSING: this smoke step edits the user PATH. It is safe only on a throwaway CI runner." }
-            $raw = (Get-Item 'HKCU:\Environment').GetValue('Path', '', 'DoNotExpandEnvironmentNames')
-            Set-ItemProperty -Path 'HKCU:\Environment' -Name Path -Type ExpandString -Value ($(if ($raw) { "$raw;$Entry" } else { $Entry }))
-          }
-
-          Write-Host "[smoke] first install..."
-          $p1 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          if ($p1.ExitCode -ne 0) { throw "first install exited $($p1.ExitCode)" }
-          # HEAL: plant the duplicate an older build would have left, so the re-run must collapse it.
-          Add-UserPathEntryRaw $app
-
-          Write-Host "[smoke] re-running the SAME installer over the existing install (Acceptance #8)..."
-          $p2 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          if ($p2.ExitCode -ne 0) { throw "re-run install exited $($p2.ExitCode) — idempotent upgrade must not abort" }
-          if (-not (Test-Path "$app\clavity-ls.exe")) { throw "clavity-ls.exe missing after re-run install" }
-          # EVIDENCE, not an assertion: which tasks did this silent re-run select? The PATH task is
-          # `checkedonce`, and the heal must work whether or not it was selected (DEDUPE otherwise).
-          $arpKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{B7E4B2A1-9C3D-4F5E-8A1B-2C3D4E5F6A7B}_is1'
-          Write-Host "[PATH] tasks the re-run recorded: [$((Get-ItemProperty $arpKey -ErrorAction SilentlyContinue).'Inno Setup: Selected Tasks')]"
-          $n2 = @(Get-UserPathEntry $app).Count
-          if ($n2 -ne 1) { throw "PATH: expected the install dir exactly ONCE after a re-run over a duplicated PATH, found $n2 - the installer appended again or did not heal" }
-          Write-Host "[PATH] exactly one entry after install, re-run, and heal"
-
-          # BOUNDARY: a sibling entry that merely STARTS with the install dir must survive the uninstall.
-          $sibling = "$app-sibling"
-          Add-UserPathEntryRaw $sibling
-          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.clavity" | Out-Null
-          Set-Content "$env:USERPROFILE\.clavity\golden-header.growth.md" "fake learned wisdom"
-          $uninst = Get-ChildItem "$app" -Filter "unins*.exe" | Select-Object -First 1
-          Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null
-          Start-Sleep -Seconds 2
-          if (-not (Test-Path "$env:USERPROFILE\.clavity\golden-header.growth.md")) { throw "C6 VIOLATION: growth.md deleted by a keep-data driver uninstall" }
-          $deadline = (Get-Date).AddSeconds(15)
-          while ((@(Get-UserPathEntry $app).Count -ne 0) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
-          $n3 = @(Get-UserPathEntry $app).Count
-          if ($n3 -ne 0) { throw "PATH: the install dir is still present $n3 time(s) after uninstall" }
-          $s3 = @(Get-UserPathEntry $sibling).Count
-          if ($s3 -ne 1) { throw "PATH BOUNDARY: the sibling entry $sibling should survive the uninstall exactly once, found $s3" }
-          Write-Host "[PATH] uninstall removed the dir and left the sibling intact"
-          Write-Host "C6 growth-ownership + C1 idempotent-upgrade smoke PASSED"
-
-      - name: Smoke — mutual-exclusion refusal (seeded fake classic)
-        timeout-minutes: 4
-        continue-on-error: ${{ !inputs.fail_on_smoke }}   # release: advisory; ci-installer: blocking
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $setup = "dist/clavity-dotnet-setup-$env:CLAVITY_VER.exe"
-          $app = "$env:LOCALAPPDATA\Programs\clavity-dotnet"
-          New-Item -Path "HKCU:\Software\clavity\classic" -Force | Out-Null
-          try {
-            $p = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-            if ($p.ExitCode -eq 0 -and (Test-Path "$app\clavity-ls.exe")) {
-              throw "exclusion refusal FAILED — install proceeded despite a classic registration"
-            }
-            Write-Host "Mutual-exclusion refusal PASSED (install refused; exit $($p.ExitCode))."
-          }
-          finally {
-            Remove-Item "HKCU:\Software\clavity\classic" -Recurse -Force -ErrorAction SilentlyContinue
-          }
-
-      - name: Gate — installed manifest parity (BLOCKING on CI and release)
-        timeout-minutes: 6
-        # Deliberately NO continue-on-error, unlike the three smoke steps above. Those stay advisory on
-        # the release path so an environmental flake - uninstall timing, ARP key, PATH propagation -
-        # cannot wedge a publish. This step asserts PAYLOAD INTEGRITY only: if the shipped .exe does not
-        # carry .claude-plugin\plugin.json, it is deterministically wrong for every user, which is not a
-        # flake and SHOULD wedge a publish.
-        #
-        # Why a separate step rather than an assertion inside the first smoke: the release caller
-        # (umbrella-release.yml) omits `fail_on_smoke`, so it defaults false and every assertion in those
-        # steps is advisory on the publishing path. The release `guard` job checks only tag-ancestry and
-        # roster drift - nothing verifies that ci-installer-dotnet.yml ever ran on the tagged commit, let
-        # alone concluded green, and `cancel-in-progress: true` plus the `paths:` filter make "CI already
-        # checked it" a property that merely usually holds rather than an enforced invariant.
-        #
-        # Placed LAST and it never uninstalls: the runner is ephemeral and only the artifact upload
-        # follows, so no teardown flake can wedge a publish either.
-        #
-        # This step does NOT assume the machine is clean. On the RELEASE path the three smokes above are
-        # advisory, so any of them can throw partway and be swallowed - leaving clavity-dotnet installed
-        # and, if the mutual-exclusion smoke was interrupted before its `finally`, leaving the exclusion
-        # registry key behind. Two consequences, both handled below:
-        #   * the key would make this install REFUSE, producing a false RED that wedges a publish on
-        #     leftover state from an advisory step - so the key is removed defensively first;
-        #   * the install may be an UPGRADE rather than a fresh install. That is safe for the assertion:
-        #     every install in this job runs the same setup.exe, so a leftover file is byte-identical to
-        #     what a reinstall would place and cannot mask a dropped manifest, and `ignoreversion`
-        #     overwrites the manifest regardless.
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $setup = "dist/clavity-dotnet-setup-$env:CLAVITY_VER.exe"
-          $app = "$env:LOCALAPPDATA\Programs\clavity-dotnet"
-          $log = "$env:RUNNER_TEMP\dotnet-parity-gate.log"
-
-          # Defensive: the mutual-exclusion smoke seeds this key OUTSIDE its try block and removes it only
-          # in `finally`. If that step was cancelled or timed out mid-try, the key survives and would make
-          # the install below refuse. Removing it here cannot harm a clean machine.
-          Remove-Item "HKCU:\Software\clavity\classic" -Recurse -Force -ErrorAction SilentlyContinue
-
-          # /LOG matches what build-ghidrust.yml already does: this step is release-BLOCKING, so a bare
-          # exit code is not enough to diagnose a failure that just stopped a publish.
-          #
-          # The dump must NOT be guarded behind a non-zero exit. The defect this gate exists to catch is a
-          # packager dropping a file, which produces a PERFECTLY SUCCESSFUL install that exits 0 - so the
-          # exit-code path would never fire and the operator would be left with a parity error and no
-          # installer trace at all. The install-exit, missing-manifest and differing-bytes failures below
-          # therefore all route through Show-LogAndFail. The retry-exhausted throw inside the hash loop
-          # deliberately does not: it carries the underlying IO exception, which is the diagnostic that
-          # matters for a file-lock, and the Inno log would say nothing about it.
-          function Show-LogAndFail([string]$msg) {
-            Write-Host "===== clavity-dotnet parity-gate install.log ====="
-            if (Test-Path $log) { Get-Content $log } else { Write-Host "(no log produced)" }
-            Write-Host "===== installed plugin tree ====="
-            if (Test-Path "$app\plugins\clavity") {
-              Get-ChildItem "$app\plugins\clavity" -Recurse -Force | Select-Object -ExpandProperty FullName
-            } else { Write-Host "(no plugins\clavity directory)" }
-            throw $msg
-          }
-
-          $p = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/LOG=$log" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { Show-LogAndFail "T5 GATE: install exited $($p.ExitCode) - cannot assert manifest parity over an install that did not complete" }
-
-          # T5 - installed-tree manifest parity. A source-side check is a tautology for this defect
-          # class: the packager dropping .claude-plugin\plugin.json leaves the source correct and only
-          # the INSTALLED tree wrong. Hash equality, not a version comparison - a version compare would
-          # false-RED ghidrust, whose plugin.json and .iss AppVersion are deliberately independent
-          # equality classes (scripts/check-versions.ps1).
-          #
-          # NOTE: this gate does NOT structurally validate the source manifest; it relies on the
-          # "Version consistency" step above having ConvertFrom-Json'd it and required a .version key.
-          # If that step is removed or reordered after ISCC, this degrades to comparing two
-          # identically-corrupt files.
-          $srcManifest  = "plugin/.claude-plugin/plugin.json"
-          $instManifest = "$app\plugins\clavity\.claude-plugin\plugin.json"
-          if (-not (Test-Path $srcManifest -PathType Leaf))  { throw "T5: source manifest missing, or not a file, at $srcManifest - no expected value to compare against" }
-          if (-not (Test-Path $instManifest -PathType Leaf)) { Show-LogAndFail "T5 MANIFEST PARITY: $instManifest was not installed as a file (packager dropped .claude-plugin\plugin.json, or shipped a directory of that name)" }
-          $srcHash  = (Get-FileHash $srcManifest  -Algorithm SHA256).Hash
-          # Retry the INSTALLED file only: a real-time scanner can hold a transient read-lock on a file
-          # the installer extracted moments ago. The source file is a plain checkout artifact and is not
-          # subject to that, so it is hashed once above.
-          $instHash = $null
-          foreach ($attempt in 1..5) {
-            try { $instHash = (Get-FileHash $instManifest -Algorithm SHA256).Hash; break }
-            catch {
-              if ($attempt -eq 5) { throw "T5 MANIFEST PARITY: could not read $instManifest after 5 attempts - $($_.Exception.Message)" }
-              Start-Sleep -Milliseconds 400
-            }
-          }
-          if ($srcHash -ne $instHash) { Show-LogAndFail "T5 MANIFEST PARITY: installed manifest bytes differ from source (installed=$instHash source=$srcHash) - stale or rewritten plugin.json" }
-          Write-Host "[T5] installed manifest parity OK ($instHash)"
-          # No uninstall: terminal step on an ephemeral runner (see the header comment).
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: dotnet-installer   # umbrella-release depends on this exact name — do NOT change
-          path: |
-            clavity-dotnet/dist/clavity-dotnet-setup-*.exe
-            clavity-dotnet/dist/clavity-dotnet-setup-*.exe.sha256
-
-  # Linux release artifact: the clavity-ls binary for linux-x64. There is no Linux INSTALLER (the installer
-  # is Inno Setup / Windows-only); this ships the self-contained single-file binary as a .tar.gz so a Linux
-  # user can extract and run clavity-ls directly. Runs on its own ubuntu runner so the --help smoke exercises
-  # the ACTUAL Linux binary (a win-x64 runner could cross-publish it but never run it). Verified locally
-  # (WSL, .NET 10): the publish flags below produce a runnable ELF and `clavity-ls --help` exits 0.
-  build-linux:
-    runs-on: ubuntu-latest
+  build:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: win-x64,   os: windows-latest }
+          - { rid: linux-x64, os: ubuntu-latest }
+          - { rid: osx-arm64, os: macos-latest }   # arm64 runner
+          - { rid: osx-x64,   os: macos-13 }        # Intel runner (native smoke for the x64 binary)
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: clavity-dotnet
-    outputs:
-      artifact-name: dotnet-linux
     steps:
       - uses: actions/checkout@v7
 
@@ -378,44 +72,35 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Extract version from .iss
-        id: ver
+      - name: Publish + smoke + package (${{ matrix.rid }})
         shell: bash
         run: |
-          v=$(sed -n 's/.*#define AppVersion "\([^"]*\)".*/\1/p' installer/clavity-dotnet.iss | head -1)
-          [ -n "$v" ] || { echo "no #define AppVersion in installer/clavity-dotnet.iss" >&2; exit 1; }
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-
-      - name: Publish clavity-ls (linux-x64 non-extracting single-file)
-        shell: bash
-        run: |
-          dotnet publish src/Clavity.Cli -c Release -r linux-x64 --self-contained true \
-            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false \
-            -o publish
-          test -f publish/clavity-ls || { echo "publish/clavity-ls was not produced" >&2; exit 1; }
-
-      - name: --help smoke (usage + exit 0)
-        shell: bash
-        run: |
-          # Mirror the win-x64 smoke: the shipped binary must answer --help with usage and exit 0. Capture
-          # combined streams so the check stays robust if usage ever moves to stderr.
-          out=$(./publish/clavity-ls --help 2>&1) || { rc=$?; echo "clavity-ls --help exited $rc"; exit 1; }
+          set -e
+          dotnet publish src/Clavity.Cli -c Release -r ${{ matrix.rid }} --self-contained true \
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -o publish
+          # win-x64 publishes clavity-ls.exe; every other RID publishes clavity-ls.
+          bin=clavity-ls; [ -f publish/clavity-ls.exe ] && bin=clavity-ls.exe
+          test -f "publish/$bin" || { echo "publish/$bin was not produced for ${{ matrix.rid }}" >&2; exit 1; }
+          chmod +x "publish/$bin" 2>/dev/null || true
+          # --help smoke on the NATIVE binary, on its own OS runner (usage + exit 0). Capture combined
+          # streams so the check stays robust if usage moves to stderr.
+          out=$("publish/$bin" --help 2>&1) || { echo "clavity-ls --help exited $?" >&2; exit 1; }
           [ -n "$out" ] || { echo "clavity-ls --help produced no output" >&2; exit 1; }
-          printf 'clavity-ls --help OK:\n%s\n' "$out"
-
-      - name: Package tar.gz + sha256
-        shell: bash
-        run: |
+          echo "smoke OK (${{ matrix.rid }}): ${out:0:90}"
+          # Normalise the in-archive name to clavity-ls; the fetch hook extracts `clavity-ls` and places it
+          # at ${CLAUDE_PLUGIN_DATA}/bin/clavity-ls.exe (the .exe suffix is required only on Windows).
+          [ "$bin" = clavity-ls ] || mv "publish/$bin" publish/clavity-ls
           mkdir -p dist
-          pkg="clavity-ls-linux-x64-${{ steps.ver.outputs.version }}.tar.gz"
+          v="${{ needs.validate.outputs.version }}"
+          pkg="clavity-ls-${{ matrix.rid }}-$v.tar.gz"
           tar -C publish -czf "dist/$pkg" clavity-ls
           ( cd dist && sha256sum "$pkg" > "$pkg.sha256" )
           ls -la dist
 
-      - name: Upload linux artifact
+      - name: Upload ${{ matrix.rid }} artifact
         uses: actions/upload-artifact@v7
         with:
-          name: dotnet-linux   # umbrella-release depends on this exact name — do NOT change
+          name: dotnet-bin-${{ matrix.rid }}   # umbrella-release downloads dotnet-bin-* — do NOT change the prefix
           path: |
-            clavity-dotnet/dist/clavity-ls-linux-x64-*.tar.gz
-            clavity-dotnet/dist/clavity-ls-linux-x64-*.tar.gz.sha256
+            clavity-dotnet/dist/clavity-ls-${{ matrix.rid }}-*.tar.gz
+            clavity-dotnet/dist/clavity-ls-${{ matrix.rid }}-*.tar.gz.sha256
