@@ -1,4 +1,13 @@
 # commonmemory changelog
+## 0.4.0 — 2026-09-14
+
+### Features
+- feat(release): retire Inno for 3 members -> root marketplace + plugin.json version truth (Inno-retirement U3/U4 part 1)
+
+### Fixes
+- fix(capstone-r25): one member could overwrite another member's registered marketplace
+- fix(injected-context): sanitise the whole domain - the gate now exits 0
+
 
 ## 0.3.0 - 2026-08-03
 
