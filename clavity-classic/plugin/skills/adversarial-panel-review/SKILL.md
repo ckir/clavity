@@ -434,5 +434,5 @@ bash "<BASE>/../../hooks/agy-mark.sh" head "agy-panel" "$(git rev-parse HEAD)"
   `docs/agy-disciplines-marker-contract.md`.
 - **Content:** ambient `HEAD`, exactly as the command writes it. If HEAD cannot resolve, skip writing
   (the discipline re-fires next trigger - safe).
-- `agy-mark.sh` needs no ledger for `agy-panel` (there is no `docs/agy-panel-ledger.md`), so the
+- `agy-mark.sh` needs no ledger for `agy-panel` (no such per-discipline ledger file exists for it), so the
   section-27 completion-gate returns `NO-LEDGER` and the write proceeds unblocked.

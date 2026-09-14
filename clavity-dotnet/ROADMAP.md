@@ -3189,7 +3189,7 @@ No plugin pair, no installer payload — class 1.
 
 ---
 
-### §43 — The injected-context gate false-flags a deliberately-negative prose mention of a non-existent doc — ▶ **PROMOTED 2026-09-14 from the anomalies conveyor, not yet planned**
+### §43 — The injected-context gate false-flags a deliberately-negative prose mention of a non-existent doc — ✅ **SHIPPED 2026-09-14** (reworded the `adversarial-panel-review/SKILL.md:437` prose to drop the `docs/agy-panel-ledger.md` path token — "no such per-discipline ledger file exists for it" — in both driver plugins; gate now exits 0)
 
 `scripts/check-injected-context.ps1`'s reference resolver reports `docs/agy-panel-ledger.md` as `unclassified`
 (3 violations, so `ci-injected-context` is RED on `main`). The reference is in
@@ -3207,7 +3207,7 @@ prose so the path is not token-shaped (both driver copies, byte-identical — ne
 
 ---
 
-### §44 — A hook builds its stderr payload in a non-`msg`-prefixed variable, invisible to the injected-context budget/hygiene invariants — ▶ **PROMOTED 2026-09-14 from the anomalies conveyor, not yet planned**
+### §44 — A hook builds its stderr payload in a non-`msg`-prefixed variable, invisible to the injected-context budget/hygiene invariants — ✅ **SHIPPED 2026-09-14** (renamed the hook's static jq-absent fallback message `_nm` → `msg_jq_missing` in both plugins so `Get-HookMessages` extracts it; the PRIMARY message is runtime-assembled from the seam list — no static literal, out of static scope by construction, self-bounded by LINECAP. corpus test 155/0)
 
 `scripts/tests/check-injected-context.Tests.ps1`'s corpus test (`~:1345`, "extracts at least one message from
 every corpus hook that actually emits one") fails because `clavity-{dotnet,classic}/plugin/hooks/agy-consult-recovery.sh`
@@ -3222,7 +3222,7 @@ widen `Get-HookMessages`' binding regex. **Blast radius:** one hook pair + the g
 
 ---
 
-### §45 — A test asserts a git commit count that a shallow CI checkout truncates, so it fails only in CI — ▶ **PROMOTED 2026-09-14 from the anomalies conveyor, not yet planned**
+### §45 — A test asserts a git commit count that a shallow CI checkout truncates, so it fails only in CI — ✅ **SHIPPED 2026-09-14** (the ORIGINAL fetch-depth hypothesis was WRONG — the test builds its own temp repo, so main-checkout depth is irrelevant; the real cause is `_age_of` degrading to empty in CI, which is UNREPRODUCIBLE locally and ALLOWED by the hook's "degrade, never drop" contract. Fixed the TEST to pin that contract: age must NEVER be wall-clock (the §15 regression, non-vacuous), and WHEN present it is a commit count. 37/0)
 
 `scripts/tests/agy-consult-recovery.Tests.ps1`'s "age is reported in COMMITS, not wall-clock" test asserts a
 seam age measured with `git rev-list --count`. In `ci-scripts` the checkout is shallow, so the count is

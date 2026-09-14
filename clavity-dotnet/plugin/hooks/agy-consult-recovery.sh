@@ -183,7 +183,11 @@ _msg=$(printf '%s\n' "${_lines[@]}")
 if command -v jq >/dev/null 2>&1; then
   jq -nc --arg m "$_msg" '{systemMessage:$m,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
 else
-  _nm="[consult-recovery] guard inactive: missing jq - cannot list open consult seams; list .clavity/seams/ yourself before starting new work"
-  printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$_nm" "$_nm"
+  # `msg_`-named ON PURPOSE (not `_nm`): the injected-context corpus invariant's Get-HookMessages binds
+  # `msg[A-Za-z0-9_]*`, so naming this static fallback message that way makes it visible to the budget /
+  # tag-hygiene checks. The PRIMARY message ($_msg above) is assembled at RUNTIME from the seam list, so it
+  # has no static literal to extract - out of static scope by construction, and self-bounded by LINECAP.
+  msg_jq_missing="[consult-recovery] guard inactive: missing jq - cannot list open consult seams; list .clavity/seams/ yourself before starting new work"
+  printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$msg_jq_missing" "$msg_jq_missing"
 fi
 exit 0

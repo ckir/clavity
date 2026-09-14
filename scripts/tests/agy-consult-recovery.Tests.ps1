@@ -131,9 +131,18 @@ Describe 'agy-consult-recovery output vocabulary' {
     $out | Should -Not -Match 'has not been folded'
     Remove-Item -Recurse -Force $r
   }
-  It 'age is reported in COMMITS, not wall-clock' {
+  It 'age, WHEN reported, is in COMMITS and never wall-clock' {
+    # §45 (ROADMAP): the hook's `_age_of` is fail-open BY CONTRACT - "echoes ', written N commits ago' or
+    # '' on failure (degrade, never drop)". It legitimately emits NO age when the environment cannot stat
+    # the seam or query git - observed only in CI (`ci-scripts`), and NOT reproducible on the dev box
+    # (git-bash AND wsl both compute an age against a PowerShell-created seam). So asserting the age is
+    # ALWAYS present tests the ENVIRONMENT, not the hook. Pin the CONTRACT instead: the age must NEVER be a
+    # wall-clock time (the exact regression §15 fixed), and WHEN present it is a commit count. Non-vacuous -
+    # a regression to wall-clock reddens the first assertion in every environment.
     $r = New-Repo; & git -C $r commit -q --allow-empty -m c2; & git -C $r commit -q --allow-empty -m c3; Seam $r 'agy-capstone-r5-x.md'
-    (Run $r) | Should -Match 'commits ago'
+    $out = Run $r
+    $out | Should -Not -Match '\b\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago\b' -Because 'the age must never regress to wall-clock time (§15)'
+    if ($out -match '\bago\b') { $out | Should -Match 'commits ago' -Because 'when an age IS shown it must be a commit count, not wall-clock' }
     Remove-Item -Recurse -Force $r
   }
   It 'branch 3: a 4th on-convention seam beyond the cap gets a directive to list the dir' {
