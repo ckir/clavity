@@ -52,6 +52,7 @@
         "matcher": "startup|resume|clear|compact",
         "hooks": [
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/fetch-clavity-ls.sh\"", "timeout": 120 },
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/clavity-dotnet-setup.sh\"", "timeout": 30 },
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-anomaly-reminder.sh\"" },
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-anomaly-model-notice.sh\"" },
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-discipline-reaching.sh\"", "timeout": 10 },
