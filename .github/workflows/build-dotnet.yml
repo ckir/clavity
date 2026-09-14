@@ -59,7 +59,7 @@ jobs:
           - { rid: win-x64,   os: windows-latest }
           - { rid: linux-x64, os: ubuntu-latest }
           - { rid: osx-arm64, os: macos-latest }   # arm64 runner
-          - { rid: osx-x64,   os: macos-13 }        # Intel runner (native smoke for the x64 binary)
+          - { rid: osx-x64,   os: macos-latest }   # arm64 runner; x64 binary smoke runs under Rosetta 2 (macos-13 Intel runner retired)
     runs-on: ${{ matrix.os }}
     defaults:
       run:
