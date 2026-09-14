@@ -221,42 +221,36 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
   to quote that MEASURED run plus the rows added since, which is a better convention than a derived total -
   but it is still prose, and still unguarded.
 
-### 9. The migration's ENCODING fix has only a structural pin, never a behavioural one
+### 9. The migration's ENCODING fix has only a structural pin, never a behavioural one — RESOLVED 2026-09-14
 
-- **Where:** `agy-autotrain/installer/agy-autotrain.iss` (`LoadStringFromFile`/`SaveStringToFile` in
-  `MigrateInboxToUserState`), guarded by `scripts/tests/agy-autotrain-installer.Tests.ps1`.
-- **The gap:** the guard asserts the singular byte-oriented CALL IS PRESENT. It does not assert that a
-  non-ASCII byte SURVIVES. Any change that re-encodes while still using a call of that name passes.
-- **The regression that would slip through:** the exact defect fixed in `1b2f7b7` - an em-dash entering
-  as UTF-8 `e2 80 94` and leaving as the Windows-1252 byte `97`, which PowerShell then renders as
-  U+FFFD. On a live inbox this destroys every non-ASCII line while the bullet count and the `^- \[`
-  anchor stay correct, so nothing notices - which is the whole point and does not depend on the size.
-  (This said "MEASURED on the live inbox: 138 non-ASCII lines" with NO DATE. Re-measured 2026-08-27 on the
-  same machine: 343. The figure was not wrong so much as UNRE-DERIVABLE - it describes user-local state
-  outside the repository that no reader of this file can check, that changes every time anyone captures an
-  observation, and that a different machine will never reproduce. A count like that is not evidence, it is
-  a timestamp wearing evidence's clothes; the invariant is what matters and it is stated without it.)
-- **The test that should exist:** a behavioural step in the migration smoke that plants a known
-  multi-byte marker in the pre-migration inbox and asserts the post-migration file contains those exact
-  bytes. The reproduction is already written and proven: a no-`[Files]` probe installer that aborts in
-  `InitializeSetup` exercises the real Pascal pair and installs nothing.
-- **Why it is NOT being added here:** it belongs in a CI workflow that cannot be executed locally, and
-  an assertion nobody can run before merging is how round 1's smoke defects got in - a poll that could
-  never fail red. Owner to scope.
-- **Raised:** 2026-08-26, AGY-CAPSTONE round 14, stop-condition seat.
+- **RESOLVED (Inno-retirement, 2026-09-14).** `MigrateInboxToUserState` was ported from the retired
+  `agy-autotrain/installer/agy-autotrain.iss` to the bash SessionStart hook
+  `agy-autotrain/hooks/migrate-inbox.sh`, which moves RAW BYTES (`cat`/`cp`/`>>`) and so cannot re-encode
+  at all — the `LoadStrings`/`SaveStrings` decode-then-re-encode that caused the em-dash corruption does
+  not exist there. And "the test that should exist" now DOES: `scripts/tests/agy-autotrain-migrate-inbox.Tests.ps1`
+  → *"moves NON-ASCII observations byte-for-byte (no re-encode)"* plants the exact UTF-8 em-dash bytes
+  `E2 80 94` in the pre-migration inbox, runs the hook, and asserts they survive contiguously in the
+  destination AND that the Windows-1252 collapse byte `0x97` is absent. It is BEHAVIOURAL and, unlike the
+  Pascal-in-CI proposal below, runs locally (the hook is bash), so the "assertion nobody can run before
+  merging" objection is gone.
+- **Original gap (for the record):** the .iss guard asserted the singular byte-oriented CALL was PRESENT,
+  not that a non-ASCII byte SURVIVED — the exact defect fixed in `1b2f7b7` (an em-dash entering as UTF-8
+  `e2 80 94` and leaving as the Windows-1252 byte `97`, which PowerShell renders as U+FFFD, destroying
+  every non-ASCII line while the bullet count and the `^- \[` anchor stayed correct).
+- **Raised:** 2026-08-26, AGY-CAPSTONE round 14, stop-condition seat. **Resolved:** 2026-09-14, Inno-retirement.
 
-### 10. The PURGE destruction path is structurally asserted and behaviourally unreachable in CI
+### 10. The PURGE destruction path is structurally asserted and behaviourally unreachable in CI — RETIRED 2026-09-14
 
-- **Where:** the migration smoke in `.github/workflows/build-agy-autotrain.yml`; the gate itself at
-  `agy-autotrain/installer/agy-autotrain.iss` under `if RemoveGrowth then`.
-- **The gap:** a silent uninstall defaults the consent prompt to IDNO, so CI always takes the KEEP path.
-  The reviewer put it exactly: **removing the `DeleteFile` calls from the purge gate entirely would
-  leave the smoke green.** Deletion on consent is asserted structurally and never once executed.
-- **The regression that would slip through:** any change that stops the purge deleting - including the
-  two paths added in `f06fb3e` and the census that pins them, all of which assert TEXT, not behaviour.
-- **Note:** the structural census added in `f06fb3e` is real coverage and is not being double-counted
-  here; the gap is that nothing runs the branch.
-- **Raised:** 2026-08-26, AGY-CAPSTONE round 14, unrun-guard and stop-condition seats agreeing.
+- **RETIRED (Inno-retirement, 2026-09-14).** The Inno uninstall PURGE path no longer exists: agy-autotrain
+  installs via `claude plugin`, and `agy-autotrain/installer/agy-autotrain.iss` (with its
+  `if RemoveGrowth then` consent-gated `DeleteFile` set) and the `build-agy-autotrain.yml` migration smoke
+  were both deleted. There is no data-purge-on-uninstall flow in the `claude plugin` world, so this debt
+  no longer describes any code. (The one-time inbox MIGRATION it neighboured was preserved — rehomed to the
+  bash hook per item 9 — but the destructive uninstall behaviour was deliberately not carried over.)
+- **Original gap (for the record):** a silent uninstall defaulted the consent prompt to IDNO, so CI always
+  took the KEEP path — removing the `DeleteFile` calls from the purge gate entirely would have left the
+  smoke green; deletion on consent was asserted structurally and never once executed.
+- **Raised:** 2026-08-26, AGY-CAPSTONE round 14, unrun-guard and stop-condition seats agreeing. **Retired:** 2026-09-14, Inno-retirement.
 
 ### 11. `check-dangling-consumers.ps1` cannot see a reader that does not use a NAMED CONSTANT
 

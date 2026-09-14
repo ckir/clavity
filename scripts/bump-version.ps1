@@ -103,7 +103,7 @@ Write-Host "bump-version: $Member$(if ($Channel) { " ($Channel)" }) -> $Version"
 
 switch ($Member) {
     'dotnet' {
-        Set-IssVersion  'clavity-dotnet/installer/clavity-dotnet.iss'
+        # Inno-retired (2026-09-14): version truth is plugin.json only (no .iss).
         Set-JsonVersion 'clavity-dotnet/plugin/plugin.json'
         Set-JsonVersion 'clavity-dotnet/plugin/.claude-plugin/plugin.json'
     }
@@ -116,12 +116,12 @@ switch ($Member) {
         Set-JsonVersion 'clavity-classic/plugin/.claude-plugin/plugin.json'
     }
     'agy-autotrain' {
-        Set-IssVersion  'agy-autotrain/installer/agy-autotrain.iss'
+        # Inno-retired (2026-09-14): version truth is plugin.json only (no .iss).
         Set-JsonVersion 'agy-autotrain/plugin.json'
         Set-JsonVersion 'agy-autotrain/.claude-plugin/plugin.json'
     }
     'commonmemory' {
-        Set-IssVersion  'commonmemory/installer/commonmemory.iss'
+        # Inno-retired (2026-09-14): version truth is plugin.json only (no .iss).
         Set-JsonVersion 'commonmemory/plugin.json'
         Set-JsonVersion 'commonmemory/.claude-plugin/plugin.json'
     }

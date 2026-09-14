@@ -1,18 +1,23 @@
 Set-StrictMode -Version Latest
 
 # Explicit roster — do NOT derive from build/members.json (its source is the plugin subdir, name is the
-# marketplace name). Iss = canonical current-version read (F5/FI2). Paths verified vs bump-version.ps1.
-# `Marketplace` = the member's `name` in build/members.json (the marketplace manifest). It is the ONLY
-# cross-reference between this release-tooling roster and members.json, consumed by the CC2 drift gate
-# (Task 6b) — a strict bidirectional set-equality check that fails the build if this table and members.json
-# ever disagree on the member set. This decoupled-schemas + proving-gate approach (owner-ratified 2026-07-12,
-# agy-negotiated) honors spec CC2's INTENT (no silent un-versioned member) WITHOUT moving release-internal
-# build paths (Root/Iss) into the marketplace manifest.
+# marketplace name). `Marketplace` = the member's `name` in build/members.json (the marketplace manifest).
+# It is the ONLY cross-reference between this release-tooling roster and members.json, consumed by the CC2
+# drift gate (Task 6b) — a strict bidirectional set-equality check that fails the build if this table and
+# members.json ever disagree on the member set. This decoupled-schemas + proving-gate approach
+# (owner-ratified 2026-07-12, agy-negotiated) honors spec CC2's INTENT (no silent un-versioned member)
+# WITHOUT moving release-internal build paths (Root/VerFile) into the marketplace manifest.
+#
+# CANONICAL CURRENT-VERSION READ: `VerFile` + `VerKind` ('iss' | 'json'). Was `Iss` for every member, but
+# the Inno-retirement migration (2026-09-14) removed the .iss for clavity-dotnet, agy-autotrain and
+# commonmemory — those three now install via `claude plugin` and their version truth lives in plugin.json.
+# clavity-classic keeps its .iss (still Inno). ghidrust is the exception: its two version CHANNELS read from
+# distinct files, so it keeps `Iss` (binary channel) + `PluginJson` (plugin channel) and sets no VerFile.
 $script:Members = @(
-    [pscustomobject]@{ Key='dotnet';        Marketplace='clavity-dotnet';  Root='clavity-dotnet';  Iss='clavity-dotnet/installer/clavity-dotnet.iss';   Ghidrust=$false }
-    [pscustomobject]@{ Key='classic';       Marketplace='clavity-classic'; Root='clavity-classic'; Iss='clavity-classic/installer/clavity-classic.iss'; Ghidrust=$false }
-    [pscustomobject]@{ Key='agy-autotrain'; Marketplace='agy-autotrain';   Root='agy-autotrain';   Iss='agy-autotrain/installer/agy-autotrain.iss';     Ghidrust=$false }
-    [pscustomobject]@{ Key='commonmemory';  Marketplace='commonmemory';    Root='commonmemory';    Iss='commonmemory/installer/commonmemory.iss';       Ghidrust=$false }
+    [pscustomobject]@{ Key='dotnet';        Marketplace='clavity-dotnet';  Root='clavity-dotnet';  VerFile='clavity-dotnet/plugin/plugin.json';         VerKind='json'; Ghidrust=$false }
+    [pscustomobject]@{ Key='classic';       Marketplace='clavity-classic'; Root='clavity-classic'; VerFile='clavity-classic/installer/clavity-classic.iss'; VerKind='iss';  Ghidrust=$false }
+    [pscustomobject]@{ Key='agy-autotrain'; Marketplace='agy-autotrain';   Root='agy-autotrain';   VerFile='agy-autotrain/plugin.json';                 VerKind='json'; Ghidrust=$false }
+    [pscustomobject]@{ Key='commonmemory';  Marketplace='commonmemory';    Root='commonmemory';    VerFile='commonmemory/plugin.json';                  VerKind='json'; Ghidrust=$false }
     [pscustomobject]@{ Key='ghidrust';      Marketplace='ghidrust';        Root='ghidrust';        Iss='ghidrust/installer/ghidrust.iss';               Ghidrust=$true;  PluginJson='ghidrust/plugin/plugin.json' }
 )
 function Get-Members { $script:Members }
@@ -38,18 +43,29 @@ function Get-Members { $script:Members }
 # ghidrust plugin channel versions ghidrust/plugin/** only.
 # Provable=$false marks an asset member installers never name literally, so the grep auditor cannot see it;
 # each carries its own justification and is covered instead by the coverage half of the gate.
+# Inno-retirement (2026-09-14): clavity-dotnet, agy-autotrain and commonmemory no longer have an installer/
+# tree, so they ship NONE of the installer/_shared/* Inno assets — every provable installer asset below is
+# now derived from (and declared for) only the two members that keep Inno: classic and ghidrust. The
+# derivation is unchanged for those two (their installers were not touched), so removing the three migrated
+# members from each set keeps declared == derived. `seed/golden-header.md` is the exception: clavity-dotnet
+# still ships it, but via its PLUGIN seed copy (clavity-dotnet/plugin/seed/golden-header.md, kept byte-equal
+# by the seed-drift gate) rather than an installer, so no installer source names it for dotnet — hence
+# Provable=$false with a hand-declared set, mirroring build/members.json.
 $script:SharedPaths = @(
-    [pscustomobject]@{ Path='installer/_shared/claude-running.iss';        Provable=$true;  Members=@('dotnet','classic','agy-autotrain','commonmemory','ghidrust') }
-    [pscustomobject]@{ Path='installer/_shared/register-plugin.ps1';       Provable=$true;  Members=@('dotnet','classic','agy-autotrain','commonmemory','ghidrust') }
-    [pscustomobject]@{ Path='installer/_shared/golden-header-data.iss';    Provable=$true;  Members=@('dotnet','classic','agy-autotrain') }
-    [pscustomobject]@{ Path='installer/_shared/register-invoke.iss';       Provable=$true;  Members=@('classic','agy-autotrain','commonmemory','ghidrust') }
-    [pscustomobject]@{ Path='installer/_shared/register-plugin-hash.iss';  Provable=$true;  Members=@('classic','agy-autotrain','commonmemory','ghidrust') }
+    [pscustomobject]@{ Path='installer/_shared/claude-running.iss';        Provable=$true;  Members=@('classic','ghidrust') }
+    [pscustomobject]@{ Path='installer/_shared/register-plugin.ps1';       Provable=$true;  Members=@('classic','ghidrust') }
+    [pscustomobject]@{ Path='installer/_shared/golden-header-data.iss';    Provable=$true;  Members=@('classic') }
+    [pscustomobject]@{ Path='installer/_shared/register-invoke.iss';       Provable=$true;  Members=@('classic','ghidrust') }
+    [pscustomobject]@{ Path='installer/_shared/register-plugin-hash.iss';  Provable=$true;  Members=@('classic','ghidrust') }
     [pscustomobject]@{ Path='installer/_shared/path-scan.iss';             Provable=$true;  Members=@('classic') }
-    [pscustomobject]@{ Path='installer/_shared/user-path.iss';             Provable=$true;  Members=@('dotnet','classic','ghidrust') }
-    [pscustomobject]@{ Path='seed/golden-header.md';                       Provable=$true;  Members=@('dotnet','classic') }
-    # Not named by any installer: scripts/generate-scoped-manifest.ps1 reads it and GENERATES each member's
-    # scoped 1-entry marketplace.json, so an edit here changes what every member ships.
-    [pscustomobject]@{ Path='build/members.json';                          Provable=$false; Members=@('dotnet','classic','agy-autotrain','commonmemory','ghidrust') }
+    [pscustomobject]@{ Path='installer/_shared/user-path.iss';             Provable=$true;  Members=@('classic','ghidrust') }
+    # dotnet ships the seed via its plugin copy (not an installer), so it is not installer-derivable — hand-declared.
+    [pscustomobject]@{ Path='seed/golden-header.md';                       Provable=$false; Members=@('dotnet','classic') }
+    # Not named by any installer: scripts/generate-scoped-manifest.ps1 reads it and GENERATES each Inno
+    # member's scoped 1-entry marketplace.json, so an edit here changes what classic/ghidrust ship. The three
+    # `claude plugin` members install from the ROOT .claude-plugin/marketplace.json (hand-written), not from
+    # a members.json-generated manifest, so a members.json edit does not change what they ship.
+    [pscustomobject]@{ Path='build/members.json';                          Provable=$false; Members=@('classic','ghidrust') }
 )
 function Get-SharedPaths { $script:SharedPaths }
 

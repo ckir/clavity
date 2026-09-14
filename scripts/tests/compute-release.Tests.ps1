@@ -59,14 +59,16 @@ Describe 'compute emit (sweep + Nothing + non-conventional)' {
     # PINNING (2026-07-21): a commit touching ONLY a shared installer asset must bump every member that
     # SHIPS it. Before this, member-folder pathspecs attributed it to nobody and the run reported a clean
     # "nothing to release", stranding 69ee30f — a fix for plugin registration failing on every install.
+    # REPINNED (Inno-retirement, 2026-09-14): only clavity-classic and ghidrust keep an Inno installer, so
+    # register-invoke.iss now ships into those TWO only. The three `claude plugin` members — clavity-dotnet,
+    # agy-autotrain, commonmemory — no longer use the Inno registrar, so a shared-installer change must bump
+    # none of them. (clavity-dotnet was already excluded pre-migration; agy-autotrain and commonmemory join
+    # it now that their installers are gone.)
     It 'attributes a shared-installer commit to exactly the members that ship it' {
         $repo = New-TempRepo
         try {
-            foreach ($mm in @('clavity-classic','agy-autotrain','commonmemory','clavity-dotnet')) {
-                New-Item -ItemType Directory -Force -Path "$mm/installer" | Out-Null
-                Set-Content "$mm/installer/$mm.iss" '#define AppVersion "0.1.0"' -NoNewline
-            }
-            New-Item -ItemType Directory -Force -Path 'ghidrust/installer','ghidrust/plugin','installer/_shared' | Out-Null
+            New-Item -ItemType Directory -Force -Path 'clavity-classic/installer','ghidrust/installer','ghidrust/plugin','installer/_shared' | Out-Null
+            Set-Content 'clavity-classic/installer/clavity-classic.iss' '#define AppVersion "0.1.0"' -NoNewline
             Set-Content 'ghidrust/installer/ghidrust.iss' '#define AppVersion "1.0.0"' -NoNewline
             Set-Content 'ghidrust/plugin/plugin.json' '{ "version": "1.0.0" }' -NoNewline
             Set-Content 'installer/_shared/register-invoke.iss' 'x' -NoNewline
@@ -77,10 +79,11 @@ Describe 'compute emit (sweep + Nothing + non-conventional)' {
             $r = & $script:Engine -RepoRoot $repo
 
             $r.Nothing | Should -BeFalse
-            # register-invoke.iss ships into four members; clavity-dotnet registers via clavity-ls
-            # streaming, not the Inno shell, so it must NOT be bumped by this commit.
-            @($r.Bumps | ForEach-Object { $_.Key }) | Should -Not -Contain 'dotnet'
-            foreach ($k in @('classic','agy-autotrain','commonmemory','ghidrust')) {
+            # The three `claude plugin` members do not ship the Inno registrar and must NOT bump.
+            foreach ($k in @('dotnet','agy-autotrain','commonmemory')) {
+                @($r.Bumps | ForEach-Object { $_.Key }) | Should -Not -Contain $k -Because "$k installs via 'claude plugin' and does not ship register-invoke.iss"
+            }
+            foreach ($k in @('classic','ghidrust')) {
                 $b = @($r.Bumps | Where-Object Key -eq $k)
                 $b.Count | Should -Be 1 -Because "$k ships register-invoke.iss and must bump exactly once"
                 $b[0].Level | Should -Be 'patch'

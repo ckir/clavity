@@ -679,13 +679,15 @@ agy-inbox-snapshot.Tests.ps1                    120,1s   32 tests   <- SLOW, re-
   (cold 119,5s - this suite is I/O bound, so warm and cold agree). The test-audit closure added 3 It
   blocks; Pester expands them to 31 because two use -ForEach. The old row said 22. Before 2026-08-03 this
   suite was MISSING from this table entirely.
-agy-autotrain-installer.Tests.ps1                 1,3s   17 tests   <- FAST, new 2026-08-24. WARM on an idle
-  CPU (cold 9,8s - almost all of that is Pester module load, which this suite does not pay again once
-  warm). Pure file parsing, no bash and no process launches, which is why it is the cheapest row here.
+agy-autotrain-migrate-inbox.Tests.ps1            16,0s    9 tests   <- SLOW, NEW 2026-09-14 (Inno-retirement:
+  the .iss MigrateInboxToUserState was ported to a bash SessionStart hook). REPLACES the retired
+  agy-autotrain-installer.Tests.ps1 (17 tests, FAST, .iss line-inspection) — that .iss is deleted, and the
+  migration is now RUN against real fixtures, so this is behavioural (bash + process launches per It, hence
+  SLOW, spawn-latency-dominated on this AV-scanning box) where the old suite was pure file parsing.
 agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new 2026-08-24. 6,4s WARM on an
                                                                       idle CPU; 11,1s cold. It will not be the
                                                                       cold-start absorber in this half
-agy-consult-recovery.Tests.ps1                  280,0s   29 tests   <- SLOW, ADDED 2026-09-13 (section 15 consult-recovery). Time is spawn-latency-dominated (~6s/hook: this box AV-scans each bash/git/date) and MEASURED ONLY UNDER CONTENTION - NOT a clean idle figure; re-measure idle before trusting it. Count 29 is reliable. Slow-half by design: cannot fit the fast cap at this per-call cost.
+agy-consult-recovery.Tests.ps1                  280,0s   37 tests   <- SLOW, ADDED 2026-09-13 (section 15 consult-recovery). Time is spawn-latency-dominated (~6s/hook: this box AV-scans each bash/git/date) and MEASURED ONLY UNDER CONTENTION - NOT a clean idle figure; re-measure idle before trusting it. Count 30->37 by the section-15 AGY-TEST-AUDIT (this row lagged at 29 from the suite's initial state; corrected 2026-09-14). Slow-half by design: cannot fit the fast cap at this per-call cost.
 agy-liveness-check.Tests.ps1                     56,4s   33 tests   <- SLOW, re-measured 2026-08-06 (+4)
   32 -> 33 on 2026-09-12 (anomaly triage): one row proving the hook stays SILENT on stderr when PATH holds
   no external tools. It drives the RAW msys shell through a generated .sh - Git\bin\bash.exe restores its

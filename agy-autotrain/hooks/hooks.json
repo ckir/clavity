@@ -6,6 +6,8 @@
     ],
     "SessionStart": [
       { "matcher": "startup|resume|clear|compact",
+        "hooks": [ { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/migrate-inbox.sh\"", "timeout": 30 } ] },
+      { "matcher": "startup|resume|clear|compact",
         "hooks": [ { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-learn-reminder.sh\" SessionStart" } ] },
       { "matcher": "startup|resume|clear|compact",
         "hooks": [ { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-curate-nudge.sh\"" } ] }

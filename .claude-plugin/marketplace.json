@@ -1,0 +1,25 @@
+{
+  "$schema": "https://code.claude.com/schemas/marketplace.json",
+  "name": "clavity",
+  "owner": {
+    "name": "ckir",
+    "url": "https://github.com/ckir/clavity"
+  },
+  "plugins": [
+    {
+      "name": "clavity",
+      "source": "./clavity-dotnet/plugin",
+      "description": "Pair Claude with a live agy peer via the clavity-ls Language-Server bridge (agy_look / agy_status / agy_ask). The clavity-ls binary is fetched on first run from the matching clavity-v<N> GitHub release."
+    },
+    {
+      "name": "agy-autotrain",
+      "source": "./agy-autotrain",
+      "description": "Drive the agy peer like a model and auto-train clavity's agy knowledge from everyday usage (capture -> curate -> verify -> golden-header)."
+    },
+    {
+      "name": "commonmemory",
+      "source": "./commonmemory",
+      "description": "Optional add-on: a shared notebook so Claude and agy share facts across the pairing over the agentmemory store."
+    }
+  ]
+}

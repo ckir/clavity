@@ -68,7 +68,10 @@ foreach ($m in Get-Members) {
     if ($nc.Count) { $nonConv += [pscustomobject]@{ Key=$m.Key; Subjects=$nc } }
     $level = Get-BumpLevel $conv
     if ($level -eq 'none') { continue }
-    $current = Read-IssVersion (Join-Path $RepoRoot $m.Iss)
+    # Canonical current-version source per member: .iss for the Inno members, plugin.json for the
+    # `claude plugin` members (Inno-retirement, 2026-09-14). ghidrust never reaches here (handled above).
+    $current = if ($m.VerKind -eq 'iss') { Read-IssVersion (Join-Path $RepoRoot $m.VerFile) }
+               else                      { Read-JsonVersion (Join-Path $RepoRoot $m.VerFile) }
     $bumps += [pscustomobject]@{ Key=$m.Key; Channel=$null; Root=$m.Root; Current=$current;
         Next=(Step-SemverVersion $current $level); Level=$level; CommitCount=$conv.Count; Notes=(Group-Notes $conv) }
 }

@@ -180,16 +180,15 @@ function Invoke-Coverage([hashtable]$cfg) {
 # --- per-member registry ---
 $Registry = @{
     'dotnet' = @{
+        # Inno-retired (2026-09-14): installs via `claude plugin`; version truth is plugin.json (no .iss).
         Folder = 'clavity-dotnet'
         Classes = @(
             @{ Name = 'all'; Eq = @(
-                @{ Type = 'iss';  Path = 'clavity-dotnet/installer/clavity-dotnet.iss' }
                 @{ Type = 'json'; Path = 'clavity-dotnet/plugin/plugin.json' }
                 @{ Type = 'json'; Path = 'clavity-dotnet/plugin/.claude-plugin/plugin.json' }
             ) }
         )
         CoverageFiles = @(
-            'clavity-dotnet/installer/clavity-dotnet.iss'
             'clavity-dotnet/plugin/plugin.json'
             'clavity-dotnet/plugin/.claude-plugin/plugin.json'
         )
@@ -246,31 +245,29 @@ $Registry = @{
         )
     }
     'agy-autotrain' = @{
+        # Inno-retired (2026-09-14): installs via `claude plugin`; version truth is plugin.json (no .iss).
         Folder = 'agy-autotrain'
         Classes = @(
             @{ Name = 'all'; Eq = @(
-                @{ Type = 'iss';  Path = 'agy-autotrain/installer/agy-autotrain.iss' }
                 @{ Type = 'json'; Path = 'agy-autotrain/plugin.json' }
                 @{ Type = 'json'; Path = 'agy-autotrain/.claude-plugin/plugin.json' }
             ) }
         )
         CoverageFiles = @(
-            'agy-autotrain/installer/agy-autotrain.iss'
             'agy-autotrain/plugin.json'
             'agy-autotrain/.claude-plugin/plugin.json'
         )
     }
     'commonmemory' = @{
+        # Inno-retired (2026-09-14): installs via `claude plugin`; version truth is plugin.json (no .iss).
         Folder = 'commonmemory'
         Classes = @(
             @{ Name = 'all'; Eq = @(
-                @{ Type = 'iss';  Path = 'commonmemory/installer/commonmemory.iss' }
                 @{ Type = 'json'; Path = 'commonmemory/plugin.json' }
                 @{ Type = 'json'; Path = 'commonmemory/.claude-plugin/plugin.json' }
             ) }
         )
         CoverageFiles = @(
-            'commonmemory/installer/commonmemory.iss'
             'commonmemory/plugin.json'
             'commonmemory/.claude-plugin/plugin.json'
         )

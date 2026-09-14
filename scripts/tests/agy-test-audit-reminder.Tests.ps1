@@ -264,7 +264,7 @@ Describe 'agy-test-audit-reminder.sh' {
         # recognised none of the file types this project gates itself with. These are not hypothetical
         # extensions: each one below names a file this very review range changed.
         foreach ($p in @(
-            'agy-autotrain/installer/agy-autotrain.iss',   # a Pascal program that deletes user data
+            'clavity-classic/installer/clavity-classic.iss', # a Pascal program that deletes user data
             '.github/workflows/build-classic.yml',          # rewritten by round 20
             'justfile',                                     # the test gate itself, no extension at all
             'scripts/drain-lib.ps1',                        # the original list did cover this

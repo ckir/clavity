@@ -38,9 +38,11 @@ Describe 'installer user PATH handling' {
             $withTask = @($script:AllIss | Where-Object { (Get-Content -Raw -LiteralPath $_) -match 'Name:\s*"addtopath"' } |
                 ForEach-Object { $_.Substring($script:RepoRoot.Length + 1).Replace('\', '/') } | Sort-Object)
             # IDENTITY, not a count: a discovery that lost one and gained another would keep the count.
+            # clavity-dotnet retired its Inno installer (2026-09-14) — it installs via `claude plugin` now,
+            # so no clavity-dotnet.iss offers the PATH task. classic + ghidrust keep Inno; the tool-skeleton
+            # template still ships the task for a future Inno-based tool.
             $withTask | Should -Be @(
                 'clavity-classic/installer/clavity-classic.iss'
-                'clavity-dotnet/installer/clavity-dotnet.iss'
                 'clavity-dotnet/templates/tool-skeleton/installer.iss.template'
                 'ghidrust/installer/ghidrust.iss'
             )
