@@ -65,21 +65,32 @@ Describe 'shipped plugin hook payload' {
         # here and the suite reported green. The exception is now spelled out, which makes it reviewable and
         # makes anything else red.
         $classicOnly = @('agy-drive-session-reset.sh')
+        # Inno-retirement (2026-09-14): clavity-dotnet gained two DOTNET-ONLY hooks — fetch-clavity-ls.sh
+        # (fetches the .NET clavity-ls binary on first run) and clavity-dotnet-setup.sh (the preserved
+        # golden-header/agy-register/classic-exclusion extras). classic has no equivalent (it ships its own
+        # binary via Inno), so these are a permitted asymmetry in the DOTNET direction, named here exactly as
+        # agy-drive-session-reset.sh is named for the classic direction.
+        $dotnetOnly = @('fetch-clavity-ls.sh', 'clavity-dotnet-setup.sh')
 
         $dotnet  = Get-HookSet $script:DotnetHooks
         $classic = Get-HookSet $script:ClassicHooks
         $classic.Count | Should -BeGreaterThan 0
         $dotnet.Count  | Should -BeGreaterThan 0
 
-        # AND THE EXCEPTION LIST MUST NOT GO STALE. A named file that no longer exists is drift of its own:
+        # AND THE EXCEPTION LISTS MUST NOT GO STALE. A named file that no longer exists is drift of its own:
         # it silently stops excusing anything while still reading as a deliberate decision.
         foreach ($name in $classicOnly) {
             Test-Path -LiteralPath (Join-Path $script:ClassicHooks $name) | Should -BeTrue -Because "the classic-only exception list names '$name', so it must still be there - an exception for a file that is gone is a decision nobody has revisited"
             Test-Path -LiteralPath (Join-Path $script:DotnetHooks  $name) | Should -BeFalse -Because "'$name' is listed as classic-ONLY, so a dotnet copy appearing means the asymmetry ended and this list is now wrong"
         }
+        foreach ($name in $dotnetOnly) {
+            Test-Path -LiteralPath (Join-Path $script:DotnetHooks  $name) | Should -BeTrue -Because "the dotnet-only exception list names '$name', so it must still be there - an exception for a file that is gone is a decision nobody has revisited"
+            Test-Path -LiteralPath (Join-Path $script:ClassicHooks $name) | Should -BeFalse -Because "'$name' is listed as dotnet-ONLY, so a classic copy appearing means the asymmetry ended and this list is now wrong"
+        }
 
         $drift = @(
             foreach ($h in $dotnet) {
+                if ($h.Name -in $dotnetOnly) { continue }
                 $mirror = Join-Path $script:ClassicHooks $h.Name
                 if (-not (Test-Path -LiteralPath $mirror)) { "$($h.Name) missing in classic" }
                 elseif ((Get-FileHash $h.FullName).Hash -ne (Get-FileHash $mirror).Hash) { "$($h.Name) differs" }
@@ -90,7 +101,7 @@ Describe 'shipped plugin hook payload' {
                 if (-not (Test-Path -LiteralPath (Join-Path $script:DotnetHooks $h.Name))) { "$($h.Name) missing in dotnet" }
             }
         )
-        ($drift -join '; ') | Should -BeNullOrEmpty -Because 'a hook shipped by one driver and not the other is drift in EITHER direction - the only permitted asymmetry is the one named above'
+        ($drift -join '; ') | Should -BeNullOrEmpty -Because 'a hook shipped by one driver and not the other is drift in EITHER direction - the only permitted asymmetries are the ones named above'
     }
 
     It 'gates every repo-root walk on one stat, and stops at the UNC volume root' {
