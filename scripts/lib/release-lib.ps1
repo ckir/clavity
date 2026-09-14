@@ -78,7 +78,14 @@ $script:DevOnlyPaths = @(
     'scripts/', '.github/', 'docs/', '.claude/', '.vscode/', '.worktrees/',
     '.antigravityignore', '.gitattributes', '.gitignore', '.mlc.toml',
     'CLAUDE.md', 'CODE_OF_CONDUCT.md', 'CONTRIBUTING.md', 'DevelopersCockpit.ps1',
-    'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'justfile', 'lefthook.yml'
+    'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'justfile', 'lefthook.yml',
+    # Inno-retirement (2026-09-14). '.claude-plugin/' is the repo-ROOT marketplace that
+    # `claude plugin marketplace add ckir/clavity` fetches LIVE from the repo (not a released asset), so a
+    # change to it needs no member version bump - the members' versions live in their own plugin.json. Member
+    # `.claude-plugin/` dirs are under a member Root and are matched member-bound FIRST, so this prefix only
+    # ever catches the root one. 'archive/' holds retired Inno installer snapshots (revert points, shipped to
+    # nobody). 'BundleCodeBase.ps1' is a dev tool that bundles the repo for the agy peer.
+    '.claude-plugin/', 'archive/', 'BundleCodeBase.ps1'
 )
 function Get-DevOnlyPaths { $script:DevOnlyPaths }
 
