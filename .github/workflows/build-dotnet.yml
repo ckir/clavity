@@ -16,6 +16,8 @@ on:
         value: ${{ jobs.build.outputs.sha }}
       artifact-name:
         value: ${{ jobs.build.outputs.artifact-name }}
+      linux-artifact-name:
+        value: ${{ jobs.build-linux.outputs.artifact-name }}
   workflow_dispatch:
 
 jobs:
@@ -355,3 +357,65 @@ jobs:
           path: |
             clavity-dotnet/dist/clavity-dotnet-setup-*.exe
             clavity-dotnet/dist/clavity-dotnet-setup-*.exe.sha256
+
+  # Linux release artifact: the clavity-ls binary for linux-x64. There is no Linux INSTALLER (the installer
+  # is Inno Setup / Windows-only); this ships the self-contained single-file binary as a .tar.gz so a Linux
+  # user can extract and run clavity-ls directly. Runs on its own ubuntu runner so the --help smoke exercises
+  # the ACTUAL Linux binary (a win-x64 runner could cross-publish it but never run it). Verified locally
+  # (WSL, .NET 10): the publish flags below produce a runnable ELF and `clavity-ls --help` exits 0.
+  build-linux:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clavity-dotnet
+    outputs:
+      artifact-name: dotnet-linux
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Extract version from .iss
+        id: ver
+        shell: bash
+        run: |
+          v=$(sed -n 's/.*#define AppVersion "\([^"]*\)".*/\1/p' installer/clavity-dotnet.iss | head -1)
+          [ -n "$v" ] || { echo "no #define AppVersion in installer/clavity-dotnet.iss" >&2; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Publish clavity-ls (linux-x64 non-extracting single-file)
+        shell: bash
+        run: |
+          dotnet publish src/Clavity.Cli -c Release -r linux-x64 --self-contained true \
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false \
+            -o publish
+          test -f publish/clavity-ls || { echo "publish/clavity-ls was not produced" >&2; exit 1; }
+
+      - name: --help smoke (usage + exit 0)
+        shell: bash
+        run: |
+          # Mirror the win-x64 smoke: the shipped binary must answer --help with usage and exit 0. Capture
+          # combined streams so the check stays robust if usage ever moves to stderr.
+          out=$(./publish/clavity-ls --help 2>&1) || { rc=$?; echo "clavity-ls --help exited $rc"; exit 1; }
+          [ -n "$out" ] || { echo "clavity-ls --help produced no output" >&2; exit 1; }
+          printf 'clavity-ls --help OK:\n%s\n' "$out"
+
+      - name: Package tar.gz + sha256
+        shell: bash
+        run: |
+          mkdir -p dist
+          pkg="clavity-ls-linux-x64-${{ steps.ver.outputs.version }}.tar.gz"
+          tar -C publish -czf "dist/$pkg" clavity-ls
+          ( cd dist && sha256sum "$pkg" > "$pkg.sha256" )
+          ls -la dist
+
+      - name: Upload linux artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dotnet-linux   # umbrella-release depends on this exact name — do NOT change
+          path: |
+            clavity-dotnet/dist/clavity-ls-linux-x64-*.tar.gz
+            clavity-dotnet/dist/clavity-ls-linux-x64-*.tar.gz.sha256

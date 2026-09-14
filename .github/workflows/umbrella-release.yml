@@ -150,6 +150,12 @@ jobs:
           name: ${{ needs.dotnet.outputs.artifact-name }}
           path: dist-dotnet
 
+      - name: Download dotnet linux build
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.dotnet.outputs.linux-artifact-name }}
+          path: dist-dotnet-linux
+
       - name: Download classic installer
         uses: actions/download-artifact@v8
         with:
@@ -185,6 +191,7 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           mkdir -p out
           cp dist-dotnet/* out/
+          cp dist-dotnet-linux/* out/
           cp dist-classic/* out/
           cp dist-ghidrust/* out/
           cp dist-agy-autotrain/* out/
@@ -208,6 +215,10 @@ jobs:
           The other three install alongside either (or standalone). Installers are **unsigned** (Windows
           SmartScreen may warn on first run: *More info -> Run anyway*). Verify each \`.sha256\` against its \`.exe\`.
           There is **no** remote marketplace channel — every plugin ships locally inside its own installer.
+
+          **Linux (clavity-dotnet host):** \`clavity-ls-linux-x64-${{ needs.dotnet.outputs.version }}.tar.gz\` is
+          the \`clavity-ls\` binary built for Linux (x64), self-contained (no .NET runtime needed). There is no
+          Linux installer yet — extract it and run \`clavity-ls\` directly. Verify its \`.sha256\`.
           EOF
           echo "wrote body.md"
           # CC1/TO2: the chore(release) commit body carries the aggregated notes. Extract to a FILE
@@ -228,6 +239,8 @@ jobs:
           files: |
             out/clavity-dotnet-setup-*.exe
             out/clavity-dotnet-setup-*.exe.sha256
+            out/clavity-ls-linux-x64-*.tar.gz
+            out/clavity-ls-linux-x64-*.tar.gz.sha256
             out/clavity-classic-setup-*.exe
             out/clavity-classic-setup-*.exe.sha256
             out/ghidrust-setup-*.exe
