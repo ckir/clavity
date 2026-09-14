@@ -1044,7 +1044,7 @@ check-roadmap-claims.Tests.ps1                  54-55s   28 tests   <- SLOW, NEW
                                                                       lacked while its twin had one.
                                                                       TIME not re-measured.
 check-roster.Tests.ps1                            4,2s    5 tests   <- FAST, re-measured 2026-08-05
-check-seed-artifacts-synced.Tests.ps1            71,9s   10 tests   <- re-measured 2026-08-04, again
+check-seed-artifacts-synced.Tests.ps1            74,0s   12 tests   <- re-measured 2026-08-04, again
                                                                       said 4,1s / 2 tests; the suite had
                                                                       SEVEN tests before this change even
                                                                       touched it, so this figure had

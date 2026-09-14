@@ -27,6 +27,8 @@ status=0
 divergent() {
   case "$1" in
     hooks/agy-drive-session-reset.sh) return 0 ;;   # classic-only: driver-guidance reset
+    hooks/fetch-clavity-ls.sh)        return 0 ;;   # dotnet-only: fetch the .NET clavity-ls binary on first run (Inno-retirement)
+    hooks/clavity-dotnet-setup.sh)    return 0 ;;   # dotnet-only: preserved-extras setup (golden-header seed, agy register, classic-exclusion)
     skills/driving/SKILL.md)          return 0 ;;   # classic transport twin of ls-driving
     skills/responder/SKILL.md)        return 0 ;;   # classic transport twin of ls-pairing
     skills/ls-driving/SKILL.md)       return 0 ;;   # dotnet transport twin of driving
@@ -119,21 +121,31 @@ fi
 # (jq -S sorts object keys, never array elements). That is correct rather than incidental -- SessionStart
 # hooks run in array order, so two plugins listing the shared hooks differently would genuinely behave
 # differently. It could not be enforced while only one entry survived the old allow-list.
-sp_sel='[.hooks.SessionStart[]? | .hooks |= map(select((.command // "") | test("agy-drive-session-reset\\.sh") | not)) | select(.hooks | length > 0)]'
+# The deny-list of variant-specific SessionStart commands: classic's driver-guidance reset, plus the two
+# dotnet-only Inno-retirement hooks (fetch-clavity-ls.sh, clavity-dotnet-setup.sh). Each is asserted
+# one-sided below so stripping it here cannot hide it appearing on the WRONG side.
+_variant_cmds='agy-drive-session-reset\\.sh|fetch-clavity-ls\\.sh|clavity-dotnet-setup\\.sh'
+sp_sel="[.hooks.SessionStart[]? | .hooks |= map(select((.command // \"\") | test(\"$_variant_cmds\") | not)) | select(.hooks | length > 0)]"
 if ! diff -q <(jq -S "$sp_sel" "$D/hooks/hooks.json") \
              <(jq -S "$sp_sel" "$C/hooks/hooks.json") >/dev/null 2>&1; then
   echo "SEED-DRIFT: hooks/hooks.json SessionStart (shared hooks) differs between the two plugins" >&2
   status=1
 fi
-# Capstone round 2: the filter above strips agy-drive-session-reset.sh from BOTH manifests, so if the
-# DOTNET manifest ever registered it the gate would strip it there too and still report GREEN - the
-# classic-only hook would be running under dotnet, unnoticed. The filter exists to permit a known
-# one-sided entry, so assert the one-sidedness explicitly rather than assuming it.
-if jq -e '[.hooks.SessionStart[]?.hooks[]? | select((.command // "") | test("agy-drive-session-reset\\.sh"))] | length > 0' \
-      "$D/hooks/hooks.json" >/dev/null 2>&1; then
-  echo "SEED-DRIFT: agy-drive-session-reset.sh is registered in clavity-dotnet/plugin/hooks/hooks.json; it is classic-only" >&2
-  status=1
-fi
+# Capstone round 2 + Inno-retirement: the filter above strips each variant command from BOTH manifests, so
+# if a manifest ever registered a hook that belongs to the OTHER variant the gate would strip it there too
+# and still report GREEN - the wrong-side hook would run unnoticed. The filter exists to permit a known
+# ONE-SIDED entry, so assert the one-sidedness explicitly rather than assuming it. Each row names the
+# command, the manifest it must be ABSENT from, and that side's label.
+_assert_absent() { # $1 command-regex  $2 manifest-path  $3 wrong-side-label
+  if jq -e "[.hooks.SessionStart[]?.hooks[]? | select((.command // \"\") | test(\"$1\"))] | length > 0" \
+        "$2" >/dev/null 2>&1; then
+    echo "SEED-DRIFT: a hook matching /$1/ is registered in $3; it is variant-specific and must not appear there" >&2
+    status=1
+  fi
+}
+_assert_absent 'agy-drive-session-reset\\.sh' "$D/hooks/hooks.json" 'clavity-dotnet/plugin (classic-only hook)'
+_assert_absent 'fetch-clavity-ls\\.sh'        "$C/hooks/hooks.json" 'clavity-classic/plugin (dotnet-only hook)'
+_assert_absent 'clavity-dotnet-setup\\.sh'    "$C/hooks/hooks.json" 'clavity-classic/plugin (dotnet-only hook)'
 # PreCompact registers the SHARED capture-side anomaly reminder and must be byte-identical across both
 # plugins. It is compared here because the per-event rules above are an ALLOW-LIST of events, and
 # compared_elsewhere() waives hooks.json from the byte-diff on the strength of exactly these rules -- so
@@ -160,7 +172,7 @@ fi
 # the deny-list, which is a visible edit. This subsumes the per-event blocks above; they are kept because
 # "PostToolUse differs" localises a failure this catch-all can only report as "the hooks block differs".
 # MEASURED GREEN against both manifests as they stand, with four controls that each reddened it.
-all_sel='.hooks | map_values([ .[]? | .hooks |= map(select((.command // "") | test("agy-drive-session-reset\\.sh") | not)) | select(.hooks | length > 0) ])'
+all_sel=".hooks | map_values([ .[]? | .hooks |= map(select((.command // \"\") | test(\"$_variant_cmds\") | not)) | select(.hooks | length > 0) ])"
 if ! diff -q <(jq -S "$all_sel" "$D/hooks/hooks.json") \
              <(jq -S "$all_sel" "$C/hooks/hooks.json") >/dev/null 2>&1; then
   echo "SEED-DRIFT: hooks/hooks.json differs between the two plugins (event set or hook contents)" >&2
@@ -205,5 +217,23 @@ elif ! diff -q <(strip_idname "$plugin_responder") <(strip_idname "$agy_responde
   echo "  $agy_responder" >&2
   status=1
 fi
-[ "$status" -eq 0 ] && echo "seed agent artifacts in sync (dotnet == classic)"
+# Golden-header seed (Inno-retirement, 2026-09-14). clavity-dotnet no longer has an Inno installer to
+# FileCopy the golden-header baseline into ~/.clavity, so it ships a COPY of the canonical repo-root seed at
+# clavity-dotnet/plugin/seed/golden-header.md and its clavity-dotnet-setup.sh hook seeds from that copy. The
+# copy MUST stay byte-identical to the canonical seed/golden-header.md, or a stale header ships to every
+# dotnet install and drifts from what classic's installer seeds. Missing-file guard fails LOUD — a `diff -q`
+# of two absent files returns 0 (identical) and would false-pass a deleted copy.
+canon_gh="seed/golden-header.md"
+plugin_gh="clavity-dotnet/plugin/seed/golden-header.md"
+if [ ! -f "$canon_gh" ] || [ ! -f "$plugin_gh" ]; then
+  echo "SEED-DRIFT: a golden-header seed copy is MISSING (cannot verify sync):" >&2
+  [ -f "$canon_gh" ]  || echo "  missing: $canon_gh" >&2
+  [ -f "$plugin_gh" ] || echo "  missing: $plugin_gh" >&2
+  status=1
+elif ! diff -q "$canon_gh" "$plugin_gh" >/dev/null 2>&1; then
+  echo "SEED-DRIFT: clavity-dotnet/plugin/seed/golden-header.md differs from the canonical seed/golden-header.md — re-copy the canonical seed into the plugin" >&2
+  status=1
+fi
+
+[ "$status" -eq 0 ] && echo "seed agent artifacts in sync (dotnet == classic; golden-header canonical == dotnet plugin copy)"
 exit "$status"

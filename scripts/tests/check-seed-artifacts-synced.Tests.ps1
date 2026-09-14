@@ -145,6 +145,35 @@ Describe 'check-seed-artifacts-synced.sh' {
         } finally { Set-Content -LiteralPath $f -Value $orig -NoNewline }
     }
 
+    It 'FIRES when the clavity-dotnet golden-header seed copy drifts from the canonical seed' {
+        # Inno-retirement (2026-09-14): clavity-dotnet ships a COPY of seed/golden-header.md at
+        # clavity-dotnet/plugin/seed/golden-header.md (its setup hook seeds ~/.clavity from it, now that no
+        # Inno installer FileCopy's it). The gate must fire when that copy drifts, or a stale header ships.
+        $f = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/seed/golden-header.md'
+        $orig = Get-Content -Raw -LiteralPath $f
+        try {
+            Add-Content -LiteralPath $f -Value "`n<!-- drift probe -->`n"
+            $r = Invoke-SeedSync
+            $r.ExitCode | Should -Not -Be 0
+            "$($r.StdOut)`n$($r.StdErr)" |
+                Should -Match 'clavity-dotnet/plugin/seed/golden-header\.md differs from the canonical'
+        } finally { Set-Content -LiteralPath $f -Value $orig -NoNewline }
+    }
+
+    It 'FAILS LOUD when the clavity-dotnet golden-header seed copy is MISSING' {
+        # A `diff -q` of two files returns 0 (identical) if BOTH are absent, so a deleted copy would
+        # false-pass without the explicit existence guard. Park the file OUTSIDE the plugin trees so the
+        # skills/knowledge walk does not also report it.
+        $f   = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/seed/golden-header.md'
+        $bak = Join-Path ([IO.Path]::GetTempPath()) 'clavity-dotnet-golden-header.testbak'
+        Move-Item $f $bak -Force
+        try {
+            $r = Invoke-SeedSync
+            $r.ExitCode | Should -Not -Be 0
+            "$($r.StdOut)`n$($r.StdErr)" | Should -Match 'golden-header seed copy is MISSING'
+        } finally { Move-Item $bak $f -Force }
+    }
+
     It 'FIRES when both plugins register the SAME new event with DIFFERENT contents' {
         # THE CONTROL THAT DISTINGUISHES THE FIX FROM ITS HALF-MEASURE. A key-set comparison passes this
         # case - both manifests carry the same event NAME - so if this test goes green while the gate is
