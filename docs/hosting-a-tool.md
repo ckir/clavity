@@ -3,7 +3,10 @@
 `clavity` is an umbrella repo: it hosts several independently-installable tools under one brand. This is
 the checklist to graft a new one in.
 
-> **Rewritten 2026-07-19 from how `ghidrust` was actually onboarded.** The previous version of this
+> **Rewritten 2026-07-19 from how `ghidrust` was actually onboarded** (ghidrust itself was fully
+> retired from this repo on 2026-09-14; it is superseded by the standalone `re-ghidra-mcp-cc` plugin
+> in `ckir/aiplugins` — kept as a citation here only because it is the playbook's worked example, not
+> a live member). The previous version of this
 > playbook described a **branch-per-tool** model (code on a `<tool-id>` branch, plugin under
 > `plugins/<tool-id>/` on `main`, a per-tool `<tool-id>-v<N>` release lineage, an entry in a repo-root
 > `.claude-plugin/marketplace.json`). **None of that exists any more** — every path it named is either
@@ -12,17 +15,16 @@ the checklist to graft a new one in.
 ## The current model
 
 - **One tree, no branches.** Every member is a **top-level folder on `main`** — `clavity-dotnet/`,
-  `clavity-classic/`, `ghidrust/`, `agy-autotrain/`, `commonmemory/`. There is no `plugins/` directory
+  `clavity-classic/`, `agy-autotrain/`, `commonmemory/`. There is no `plugins/` directory
   and no per-tool branch. A `clavity-v<N>` tag on `main` deterministically pins all members at once.
-- **One release, two install models.** The umbrella release is the catalog page. `clavity-classic` and
-  `ghidrust` each ship their **own standalone Inno installer**, registering only themselves into their
+- **One release, two install models.** The umbrella release is the catalog page. `clavity-classic`
+  ships its **own standalone Inno installer**, registering only itself into its
   own scoped marketplace; no installer bundles or downloads a sibling. `clavity-dotnet`, `agy-autotrain`,
   and `commonmemory` install instead via the root `claude plugin` marketplace — `claude plugin
   marketplace add ckir/clavity`, then `claude plugin install <name>@clavity` — with no installer asset
   of their own.
 - **One tag lineage.** Only `clavity-v<N>` triggers a release (`umbrella-release.yml`). The legacy
-  `v*`, `clavity-dotnet-v*`, and `clavity-classic-v*` tags are dead no-ops, and `release-ghidrust.yml`
-  is `workflow_dispatch`-only — its tag trigger was deliberately removed. Do not invent a new per-tool
+  `v*`, `clavity-dotnet-v*`, and `clavity-classic-v*` tags are dead no-ops. Do not invent a new per-tool
   tag namespace.
 - **Members are declared in `build/members.json`.** That file is the roster. It is **not** a Claude
   marketplace manifest and must never be placed under a `.claude-plugin/` directory; each installer's
@@ -36,7 +38,7 @@ that matches what you are adding:
 
 | Shape | `source` | Examples |
 |---|---|---|
-| **Code + plugin** — a binary plus a plugin that drives it | `./<member>/plugin` | `clavity-dotnet`, `clavity-classic`, `ghidrust` |
+| **Code + plugin** — a binary plus a plugin that drives it | `./<member>/plugin` | `clavity-dotnet`, `clavity-classic` |
 | **Plugin-only** — no binary; the member root *is* the plugin | `./<member>` | `agy-autotrain`, `commonmemory` |
 
 A plugin-only member has `plugin.json` at its root and no `plugin/` subdirectory. It also has no
@@ -47,12 +49,12 @@ A plugin-only member has `plugin.json` at its root and no `plugin/` subdirectory
 - **`<member>` is a flat kebab slug**, used identically for the folder, the installer basename, the
   `.iss` filename, and the workflow suffixes. No slashes.
 - **Unique binary name.** Binaries land on the shared user PATH, so name the binary for the tool
-  (`ghidrust`, `clavity-ls`) — never a generic `agent.exe` / `proxy.exe`.
+  (`clavity-ls`) — never a generic `agent.exe` / `proxy.exe`.
 - **Docs live with the member** — `<member>/README.md` (operator) and optional `<member>/docs/`
   (design). Root `docs/` is umbrella-only; see [`README.md`](README.md) in this directory.
 - **Member-specific `CLAUDE.md`.** If you add one, write it *for that member*. It is auto-loaded into
   agent context for work in that folder, so a copied-from-a-sibling `CLAUDE.md` actively poisons
-  sessions — this happened to `ghidrust` and went unnoticed for weeks.
+  sessions — this happened to the now-retired `ghidrust` member and went unnoticed for weeks.
 - **`*.template` rule.** Skeletons live in **`clavity-dotnet/templates/tool-skeleton/`** with a
   `.template` suffix so no loader ever ingests them as a live tool. (Note the location — they are *not*
   at the repo root.)
@@ -78,7 +80,7 @@ member that never builds, never version-checks, or never ships. Verified list:
    `$Registry` entry: the equality class(es) listing every version-bearing source (its
    `installer/<member>.iss` `#define AppVersion`, its `plugin.json`(s), plus any `Cargo.toml`/`Cargo.lock`
    or `pyproject.toml`+`uv.lock`), plus a matching `CoverageFiles` list so `-Coverage` does not flag the
-   new files as unregistered. Note `ghidrust` uses **two** classes (`binary` and `plugin`) because it
+   new files as unregistered. A code+plugin member can use **two** classes (`binary` and `plugin`) if it
    versions those independently — copy that shape only if you need it.
 5. `scripts/bump-version.ps1` — add the member to its `[ValidateSet(...)]`.
 6. `scripts/check-versions-all.ps1` — append the member to the `$members` array so the unified
@@ -156,8 +158,9 @@ Three rules carry the weight:
 
 - **`CLAUDE.md` is absent-or-correct, never copied.** A missing one is harmless; the umbrella
   `CLAUDE.md` applies. A *wrong* one is actively harmful, because it is auto-loaded into agent context
-  for work in that directory. `ghidrust/CLAUDE.md` was once a verbatim copy of clavity-classic's and
-  poisoned every session opened there for weeks. **Never start from a sibling's copy.**
+  for work in that directory. The now-retired `ghidrust` member's `CLAUDE.md` was once a verbatim copy
+  of clavity-classic's and poisoned every session opened there for weeks. **Never start from a
+  sibling's copy.**
 - **A member `CONTRIBUTING.md` defers for policy.** Licensing, DCO, and the release process live in the
   umbrella `CONTRIBUTING.md` and are never restated. The member file carries only its own toolchain,
   test tiers, and failure modes.
@@ -194,8 +197,7 @@ semver + CHANGELOG from conventional commits, previews every bump, and on a type
 green local gate pushes `main` to the public remote — publishing every accumulated commit — before
 creating and pushing the `clavity-v<N>` tag that triggers `umbrella-release.yml`.
 
-`ghidrust` is gated by its live E2E before publish, so a broken ghidrust blocks a **full** cut — but not
-a single-member hotfix. `republish-member.yml` rebuilds one member onto an already-published release
+`republish-member.yml` rebuilds one member onto an already-published release
 without any sibling's build or gate running (this is why step 14 above matters).
 
 **Which commits bump your member.** The engine does not bump on "any commit since the last release"; it

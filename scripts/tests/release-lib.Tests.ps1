@@ -126,20 +126,8 @@ Describe 'Group-Notes (F10 grouping)' {
     }
 }
 
-Describe 'Get-GhidrustChannel (F2 exhaustive split)' {
-    It 'plugin path -> plugin' {
-        Get-GhidrustChannel 'ghidrust/plugin/plugin.json' | Should -Be 'plugin'
-        Get-GhidrustChannel 'ghidrust/plugin/skills/x/SKILL.md' | Should -Be 'plugin'
-    }
-    It 'every other ghidrust path -> binary (exhaustive default)' {
-        Get-GhidrustChannel 'ghidrust/installer/ghidrust.iss' | Should -Be 'binary'
-        Get-GhidrustChannel 'ghidrust/Cargo.lock'             | Should -Be 'binary'
-        Get-GhidrustChannel 'ghidrust/crates/core/src/lib.rs' | Should -Be 'binary'
-    }
-    It 'non-ghidrust path -> $null' {
-        Get-GhidrustChannel 'clavity-classic/Cargo.toml' | Should -BeNullOrEmpty
-    }
-}
+# Describe 'Get-GhidrustChannel' removed 2026-09-14: ghidrust was fully retired and the function it tested
+# (the only dual-channel member's per-channel split) was deleted from release-lib.ps1.
 
 Describe 'Format-ReleaseNotes (CC1 aggregated body)' {
     It 'renders per-member grouped sections' {

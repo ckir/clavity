@@ -113,16 +113,8 @@ jobs:
     needs: [guard]
     uses: ./.github/workflows/build-classic.yml
 
-  ghidrust:
-    needs: [guard]
-    uses: ./.github/workflows/build-ghidrust.yml
-
-  e2e-ghidrust:
-    # BLOCKING live-E2E gate — the flagship vouches for the ghidrust it ships (shared reusable workflow, one
-    # definition with release-ghidrust.yml). `needs: ghidrust` so a broken build skips the ~573 MB Ghidra
-    # download; all tools now build from the same main checkout, so no ref pass-through is needed.
-    needs: [ghidrust]
-    uses: ./.github/workflows/e2e-ghidrust.yml
+  # ghidrust was fully retired from this monorepo (2026-09-14) — superseded by re-ghidra-mcp-cc in
+  # ckir/aiplugins. Its build + BLOCKING live-E2E jobs were removed with it.
 
   agy-autotrain:
     needs: [guard]
@@ -133,8 +125,8 @@ jobs:
     uses: ./.github/workflows/build-commonmemory.yml
 
   publish:
-    # Atomic all-or-nothing: a broken/failed-E2E ghidrust blocks the whole clavity release (no continue-on-error).
-    needs: [dotnet, classic, ghidrust, e2e-ghidrust, agy-autotrain, commonmemory]
+    # Atomic all-or-nothing: any failed member build blocks the whole clavity release (no continue-on-error).
+    needs: [dotnet, classic, agy-autotrain, commonmemory]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -157,12 +149,6 @@ jobs:
           name: ${{ needs.classic.outputs.artifact-name }}
           path: dist-classic
 
-      - name: Download ghidrust installer
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ needs.ghidrust.outputs.artifact-name }}
-          path: dist-ghidrust
-
       # agy-autotrain and commonmemory retired their Inno installers (2026-09-14) — they install via
       # `claude plugin marketplace add ckir/clavity`, so they produce no release asset. Their build jobs
       # are validate-only and are still in `needs:` above, so a version-inconsistent member fails the release.
@@ -179,27 +165,28 @@ jobs:
           mkdir -p out
           cp dist-dotnet/* out/
           cp dist-classic/* out/
-          cp dist-ghidrust/* out/
           echo "assets in release:"; ls -1 out
           cat > body.md <<EOF
           # clavity $TAG
 
-          Standalone Windows installers for **clavity-classic** and **ghidrust**, plus three
-          \`claude plugin\` installs — **clavity-dotnet**, **agy-autotrain** and **commonmemory** — served
-          from this repo's root marketplace (clavity-dotnet's \`clavity-ls\` binary is fetched on first run
-          from the assets below). Each Windows installer does exactly ONE member.
+          A standalone Windows installer for **clavity-classic**, plus three \`claude plugin\` installs —
+          **clavity-dotnet**, **agy-autotrain** and **commonmemory** — served from this repo's root
+          marketplace (clavity-dotnet's \`clavity-ls\` binary is fetched on first run from the assets below).
 
           | member | version | how to install | what it gives you |
           |--------|---------|----------------|--------------------|
           | clavity-dotnet   | ${{ needs.dotnet.outputs.version }}         | \`claude plugin\` (see below) | Claude Code <-> agy pairing (Primary, .NET host) |
           | clavity-classic-setup | ${{ needs.classic.outputs.version }}   | Windows installer (.exe) | Claude Code <-> agy pairing (Failover, Rust host) |
-          | ghidrust-setup   | ${{ needs.ghidrust.outputs.version }}       | Windows installer (.exe) | Headless Ghidra reverse-engineering over MCP |
           | agy-autotrain    | ${{ needs.agy-autotrain.outputs.version }}  | \`claude plugin\` (see below) | agy auto-training loop (capture -> curate -> golden-header) |
           | commonmemory     | ${{ needs.commonmemory.outputs.version }}   | \`claude plugin\` (see below) | Shared Claude<->agy notebook over agentmemory |
 
+          > **Headless Ghidra reverse-engineering (formerly ghidrust)** moved to a standalone plugin:
+          > **re-ghidra-mcp-cc** in [ckir/aiplugins](https://github.com/ckir/aiplugins). It is no longer part
+          > of the clavity release.
+
           **clavity-dotnet** and **clavity-classic** are **mutually exclusive** — install ONE, not both.
-          The Windows installers are **unsigned** (SmartScreen may warn on first run: *More info -> Run anyway*);
-          verify each \`.sha256\` against its \`.exe\`.
+          The clavity-classic installer is **unsigned** (SmartScreen may warn on first run: *More info -> Run anyway*);
+          verify its \`.sha256\` against its \`.exe\`.
 
           **Install the \`claude plugin\` members** (clavity-dotnet, agy-autotrain, commonmemory):
 
@@ -236,5 +223,3 @@ jobs:
             out/clavity-ls-*-*.tar.gz.sha256
             out/clavity-classic-setup-*.exe
             out/clavity-classic-setup-*.exe.sha256
-            out/ghidrust-setup-*.exe
-            out/ghidrust-setup-*.exe.sha256

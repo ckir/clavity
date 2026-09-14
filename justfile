@@ -3,24 +3,24 @@
 # working directory set to the tool folder, so `cargo`/`dotnet` resolve correctly.
 # One tool: `just classic::test`. All tools: `just test`.
 
+# ghidrust was fully retired 2026-09-14 (superseded by re-ghidra-mcp-cc in ckir/aiplugins).
 mod dotnet 'clavity-dotnet/justfile'
 mod classic 'clavity-classic/justfile'
-mod ghidrust 'ghidrust/justfile'
 
 default:
     @just --list
 
 # Aggregate lint across every tool (each recipe mirrors that tool's CI gate).
-lint: dotnet::lint classic::lint ghidrust::lint
+lint: dotnet::lint classic::lint
 
 # Aggregate tests across every tool.
-test: dotnet::test classic::test ghidrust::test
+test: dotnet::test classic::test
 
 # Aggregate build across every tool.
-build: dotnet::build classic::build ghidrust::build
+build: dotnet::build classic::build
 
 # Aggregate format across every tool (mutating).
-fmt: dotnet::fmt classic::fmt ghidrust::fmt
+fmt: dotnet::fmt classic::fmt
 
 # Verify the seed agent artifacts are byte-identical across the two driver plugins
 seed-sync-check:
@@ -43,19 +43,15 @@ check-user-facing-docs:
     pwsh -NoProfile -File scripts/check-user-facing-docs.ps1
 
 # Verify every relative link in the product docs resolves (becheran/mlc; config in .mlc.toml).
-# Not wired into lefthook: it reports 2 KNOWN errors -- the GitHub-relative release links in
-# README.md and ghidrust/README.md, which are correct under GitHub rendering but unresolvable to an
-# offline filesystem check. Anything beyond those two is a real defect. Read .mlc.toml first.
+# Not wired into lefthook: it reports a KNOWN error -- the GitHub-relative release link in
+# README.md, which is correct under GitHub rendering but unresolvable to an offline filesystem check.
+# Anything beyond that is a real defect. Read .mlc.toml first.
 check-links:
     mlc
 
 # Bump every version source for a member to <version>, then self-verify (dotnet/classic/agy-autotrain/commonmemory).
 bump member version:
     pwsh -NoProfile -File scripts/bump-version.ps1 {{member}} {{version}}
-
-# Bump ghidrust independently per channel (binary = crates+iss, plugin = plugin.json ×2).
-bump-ghidrust channel version:
-    pwsh -NoProfile -File scripts/bump-version.ps1 ghidrust {{version}} -Channel {{channel}}
 
 # Check a member's version sources agree (dev-time gate mirror of CI).
 check-versions member:
@@ -125,7 +121,7 @@ check-installer-ascii:
 # plan-residue, tag-hygiene, namespace, payload-budget, and reference resolution. Discovery is
 # SUBTRACTIVE - walk the domain roots and subtract scripts/injected-context-ignore.txt - because an
 # additive role-matcher is an allowlist, which is the drift this gate exists to remove.
-# DELIBERATELY NOT in the `lint` aggregate: that recipe delegates per-tool (dotnet/classic/ghidrust),
+# DELIBERATELY NOT in the `lint` aggregate: that recipe delegates per-tool (dotnet/classic),
 # and all seven repo-level check-* recipes sit outside it. The consequence is worth naming rather than
 # hiding - a developer running `just lint` will not run this gate and will first see a violation in CI.
 # That is true of all seven siblings, so it is a pre-existing repo-wide property, and changing it is a

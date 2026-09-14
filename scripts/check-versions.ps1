@@ -11,7 +11,7 @@
   Fail-closed: any unreadable source or missing required tool exits non-zero.
 
 .PARAMETER Member
-  One of: dotnet, classic, ghidrust, agy-autotrain, commonmemory.
+  One of: dotnet, classic, agy-autotrain, commonmemory.
 
 .PARAMETER Coverage
   Enumerate git-tracked version-bearing files by known TYPE under the member's tree and fail if any
@@ -20,12 +20,12 @@
 .EXAMPLE
   pwsh scripts/check-versions.ps1 classic
 .EXAMPLE
-  pwsh scripts/check-versions.ps1 ghidrust -Coverage
+  pwsh scripts/check-versions.ps1 dotnet -Coverage
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory, Position = 0)]
-    [ValidateSet('dotnet', 'classic', 'ghidrust', 'agy-autotrain', 'commonmemory')]
+    [ValidateSet('dotnet', 'classic', 'agy-autotrain', 'commonmemory')]
     [string]$Member,
 
     [switch]$Coverage
@@ -217,33 +217,7 @@ $Registry = @{
             'clavity-classic/plugin/.claude-plugin/plugin.json'
         )
     }
-    'ghidrust' = @{
-        Folder = 'ghidrust'
-        Classes = @(
-            @{ Name = 'binary'; Eq = @(
-                @{ Type = 'cargo';     Path = 'ghidrust/Cargo.toml'; Crate = 'ghidrust-mcp' }
-                @{ Type = 'cargo';     Path = 'ghidrust/Cargo.toml'; Crate = 'ghidra-ipc' }
-                @{ Type = 'cargo';     Path = 'ghidrust/Cargo.toml'; Crate = 'ghidra-worker-ctl' }
-                @{ Type = 'cargolock'; Path = 'ghidrust/Cargo.lock'; Crate = 'ghidrust-mcp' }
-                @{ Type = 'cargolock'; Path = 'ghidrust/Cargo.lock'; Crate = 'ghidra-ipc' }
-                @{ Type = 'cargolock'; Path = 'ghidrust/Cargo.lock'; Crate = 'ghidra-worker-ctl' }
-                @{ Type = 'iss';       Path = 'ghidrust/installer/ghidrust.iss' }
-            ) }
-            @{ Name = 'plugin'; Eq = @(
-                @{ Type = 'json'; Path = 'ghidrust/plugin/plugin.json' }
-                @{ Type = 'json'; Path = 'ghidrust/plugin/.claude-plugin/plugin.json' }
-            ) }
-        )
-        CoverageFiles = @(
-            'ghidrust/crates/ghidrust-mcp/Cargo.toml'
-            'ghidrust/crates/ghidra-ipc/Cargo.toml'
-            'ghidrust/crates/ghidra-worker-ctl/Cargo.toml'
-            'ghidrust/Cargo.lock'
-            'ghidrust/installer/ghidrust.iss'
-            'ghidrust/plugin/plugin.json'
-            'ghidrust/plugin/.claude-plugin/plugin.json'
-        )
-    }
+    # ghidrust fully retired 2026-09-14 (superseded by re-ghidra-mcp-cc in ckir/aiplugins) — registry entry removed.
     'agy-autotrain' = @{
         # Inno-retired (2026-09-14): installs via `claude plugin`; version truth is plugin.json (no .iss).
         Folder = 'agy-autotrain'

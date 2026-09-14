@@ -29,7 +29,6 @@ SEED, see [`docs/drain-knowledge-runbook.md`](docs/drain-knowledge-runbook.md).
 |---------|--------|-------|----------------|
 | clavity-dotnet | `clavity-dotnet/` | `cd clavity-dotnet && just test` | [clavity-dotnet/CLAUDE.md](clavity-dotnet/CLAUDE.md) |
 | clavity-classic | `clavity-classic/` | `cd clavity-classic && just test` | [clavity-classic/CLAUDE.md](clavity-classic/CLAUDE.md) |
-| ghidrust | `ghidrust/` | `cd ghidrust && just test` | [ghidrust/CLAUDE.md](ghidrust/CLAUDE.md) |
 | agy-autotrain | `agy-autotrain/` | (plugin only) | — |
 | commonmemory | `commonmemory/` | (plugin only) | — |
 

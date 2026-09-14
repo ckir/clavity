@@ -25,9 +25,13 @@ BeforeAll {
     $script:Iscc = @(Get-ChildItem -Path "$env:ProgramFiles\Inno Setup *\ISCC.exe", "${env:ProgramFiles(x86)}\Inno Setup *\ISCC.exe" -ErrorAction SilentlyContinue |
         Sort-Object FullName -Descending | Select-Object -First 1)
 
-    # Every tracked installer script. DISCOVERED through git, never listed: a hand list is how a fourth copy
-    # of the defect would go unchecked.
-    $script:AllIss = @(git -C $script:RepoRoot ls-files -- '*.iss' '*.iss.template' | ForEach-Object { Join-Path $script:RepoRoot $_ })
+    # Every tracked LIVE installer script. DISCOVERED through git, never listed: a hand list is how a fourth
+    # copy of the defect would go unchecked. `archive/` is EXCLUDED: the Inno-retirement (2026-09-14) snapshots
+    # retired .iss files under archive/inno-installers/ as revert points, and those carry the addtopath task
+    # too — but they are NOT live installers and must not be held to the live PATH-handling invariant.
+    $script:AllIss = @(git -C $script:RepoRoot ls-files -- '*.iss' '*.iss.template' |
+        Where-Object { ($_ -replace '\\', '/') -notmatch '^archive/' } |
+        ForEach-Object { Join-Path $script:RepoRoot $_ })
 }
 
 Describe 'installer user PATH handling' {
@@ -38,13 +42,12 @@ Describe 'installer user PATH handling' {
             $withTask = @($script:AllIss | Where-Object { (Get-Content -Raw -LiteralPath $_) -match 'Name:\s*"addtopath"' } |
                 ForEach-Object { $_.Substring($script:RepoRoot.Length + 1).Replace('\', '/') } | Sort-Object)
             # IDENTITY, not a count: a discovery that lost one and gained another would keep the count.
-            # clavity-dotnet retired its Inno installer (2026-09-14) — it installs via `claude plugin` now,
-            # so no clavity-dotnet.iss offers the PATH task. classic + ghidrust keep Inno; the tool-skeleton
-            # template still ships the task for a future Inno-based tool.
+            # clavity-dotnet retired its Inno installer (2026-09-14) and ghidrust was fully retired the same
+            # day, so clavity-classic is the ONLY shipping installer that offers the PATH task; the
+            # tool-skeleton template still ships it for a future Inno-based tool.
             $withTask | Should -Be @(
                 'clavity-classic/installer/clavity-classic.iss'
                 'clavity-dotnet/templates/tool-skeleton/installer.iss.template'
-                'ghidrust/installer/ghidrust.iss'
             )
         }
 

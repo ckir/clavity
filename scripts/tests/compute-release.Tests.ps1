@@ -59,18 +59,14 @@ Describe 'compute emit (sweep + Nothing + non-conventional)' {
     # PINNING (2026-07-21): a commit touching ONLY a shared installer asset must bump every member that
     # SHIPS it. Before this, member-folder pathspecs attributed it to nobody and the run reported a clean
     # "nothing to release", stranding 69ee30f — a fix for plugin registration failing on every install.
-    # REPINNED (Inno-retirement, 2026-09-14): only clavity-classic and ghidrust keep an Inno installer, so
-    # register-invoke.iss now ships into those TWO only. The three `claude plugin` members — clavity-dotnet,
-    # agy-autotrain, commonmemory — no longer use the Inno registrar, so a shared-installer change must bump
-    # none of them. (clavity-dotnet was already excluded pre-migration; agy-autotrain and commonmemory join
-    # it now that their installers are gone.)
+    # REPINNED (2026-09-14): after the Inno-retirement AND the ghidrust full retirement, clavity-classic is
+    # the ONLY member with an Inno installer, so register-invoke.iss ships into clavity-classic ALONE. The
+    # three `claude plugin` members (dotnet, agy-autotrain, commonmemory) do not use the Inno registrar.
     It 'attributes a shared-installer commit to exactly the members that ship it' {
         $repo = New-TempRepo
         try {
-            New-Item -ItemType Directory -Force -Path 'clavity-classic/installer','ghidrust/installer','ghidrust/plugin','installer/_shared' | Out-Null
+            New-Item -ItemType Directory -Force -Path 'clavity-classic/installer','installer/_shared' | Out-Null
             Set-Content 'clavity-classic/installer/clavity-classic.iss' '#define AppVersion "0.1.0"' -NoNewline
-            Set-Content 'ghidrust/installer/ghidrust.iss' '#define AppVersion "1.0.0"' -NoNewline
-            Set-Content 'ghidrust/plugin/plugin.json' '{ "version": "1.0.0" }' -NoNewline
             Set-Content 'installer/_shared/register-invoke.iss' 'x' -NoNewline
             git add -A; git commit -q -m 'chore(release): clavity-v7'; git tag clavity-v7
 
@@ -83,13 +79,9 @@ Describe 'compute emit (sweep + Nothing + non-conventional)' {
             foreach ($k in @('dotnet','agy-autotrain','commonmemory')) {
                 @($r.Bumps | ForEach-Object { $_.Key }) | Should -Not -Contain $k -Because "$k installs via 'claude plugin' and does not ship register-invoke.iss"
             }
-            foreach ($k in @('classic','ghidrust')) {
-                $b = @($r.Bumps | Where-Object Key -eq $k)
-                $b.Count | Should -Be 1 -Because "$k ships register-invoke.iss and must bump exactly once"
-                $b[0].Level | Should -Be 'patch'
-            }
-            # ghidrust's shared-asset bump belongs to the INSTALLER (binary), never the plugin channel.
-            (@($r.Bumps | Where-Object Key -eq 'ghidrust')[0]).Channel | Should -Be 'binary'
+            $b = @($r.Bumps | Where-Object Key -eq 'classic')
+            $b.Count | Should -Be 1 -Because 'clavity-classic is the sole Inno member and ships register-invoke.iss, so it must bump exactly once'
+            $b[0].Level | Should -Be 'patch'
         } finally { Pop-Location; Remove-Item -Recurse -Force $repo }
     }
 
@@ -117,16 +109,15 @@ Describe 'compute emit (sweep + Nothing + non-conventional)' {
     It 'reports an unclassified path even when another member DID bump' {
         $repo = New-TempRepo
         try {
-            New-Item -ItemType Directory -Force -Path 'ghidrust/installer','ghidrust/plugin' | Out-Null
-            Set-Content 'ghidrust/installer/ghidrust.iss' '#define AppVersion "1.0.0"' -NoNewline
-            Set-Content 'ghidrust/plugin/plugin.json' '{ "version": "1.0.0" }' -NoNewline
+            New-Item -ItemType Directory -Force -Path 'clavity-classic/installer' | Out-Null
+            Set-Content 'clavity-classic/installer/clavity-classic.iss' '#define AppVersion "0.1.0"' -NoNewline
             git add -A; git commit -q -m 'chore(release): clavity-v7'; git tag clavity-v7
             New-Item -ItemType Directory -Force -Path 'installer/_shared' | Out-Null
-            'x' | Set-Content 'installer/_shared/new-core.iss'      # shared, NOT declared in $SharedPaths
-            'y' | Set-Content 'ghidrust/readme-tweak.txt'           # bumps ghidrust, hiding the above
-            git add -A; git commit -q -m 'fix(installer): add a shared helper and tweak ghidrust'
+            'x' | Set-Content 'installer/_shared/new-core.iss'          # shared, NOT declared in $SharedPaths
+            'y' | Set-Content 'clavity-classic/readme-tweak.txt'        # bumps classic, hiding the above
+            git add -A; git commit -q -m 'fix(installer): add a shared helper and tweak classic'
             $r = & $script:Engine -RepoRoot $repo
-            $r.Nothing      | Should -BeFalse -Because 'the bundled ghidrust change bumps'
+            $r.Nothing      | Should -BeFalse -Because 'the bundled clavity-classic change bumps'
             $r.Unclassified | Should -Contain 'installer/_shared/new-core.iss'
         } finally { Pop-Location; Remove-Item -Recurse -Force $repo }
     }

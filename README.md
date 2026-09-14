@@ -5,11 +5,11 @@
 
 **clavity** is a suite of tools that expand the capabilities of AI coding agents like Claude Code and Antigravity (`agy`).
 
-It provides bridges that let agents collaborate, such as Claude driving a live `agy` peer. It includes specialized tools, like a headless Ghidra bridge for reverse engineering. It also offers plugins to help agents share memory and learn from everyday usage.
+It provides bridges that let agents collaborate, such as Claude driving a live `agy` peer. It also offers plugins to help agents share memory and learn from everyday usage.
 
 ## Which product do I need?
 
-This repository contains five independent products. You only need to install the ones you actually want to use.
+This repository contains four independent products. You only need to install the ones you actually want to use.
 
 ### I want Claude Code to drive a live `agy` peer
 These two tools are **mutually exclusive** — pick exactly one. They let Claude Code delegate tasks, get second opinions, or collaborate with `agy`.
@@ -18,7 +18,8 @@ These two tools are **mutually exclusive** — pick exactly one. They let Claude
 *   **[clavity-classic](clavity-classic/README.md) (Failover):** The original Rust-based bridge. It uses a psmux doorbell and the agentmemory bus to drive a live `agy` peer in the same folder. Use this as a fallback if the .NET version breaks.
 
 ### I want to reverse-engineer binaries with my agent
-*   **[ghidrust](ghidrust/README.md):** Attaches a persistent, headless Ghidra JVM to your agent. Exposes 19 reverse-engineering tools (decompile, navigate, and make durable edits) over MCP.
+This is no longer part of clavity — see **[re-ghidra-mcp-cc](https://github.com/ckir/aiplugins)** (in the
+`ckir/aiplugins` repo) for headless Ghidra reverse-engineering over MCP.
 
 ### I want my agents to learn and share knowledge (Opt-in Add-ons)
 *   **[agy-autotrain](agy-autotrain/README.md):** Auto-trains clavity's `agy` knowledge from everyday usage. It captures insights, verifies them, and compiles them into a project-agnostic manual.
@@ -26,7 +27,7 @@ These two tools are **mutually exclusive** — pick exactly one. They let Claude
 
 ## How to get started
 
-The five products install one of two ways.
+The four products install one of two ways.
 
 **Three install with `claude plugin`** — clavity-dotnet, agy-autotrain and commonmemory — from this
 repository's marketplace. Cross-platform (Windows, Linux, macOS):
@@ -41,11 +42,10 @@ claude plugin install commonmemory@clavity
 clavity-dotnet fetches its `clavity-ls` binary on first run from the matching `clavity-v<N>` GitHub
 release (win-x64 / linux-x64 / osx-arm64 / osx-x64, checksum-verified), so nothing lands on your PATH.
 
-**Two ship a standalone Windows installer** — clavity-classic and ghidrust:
+**One ships a standalone Windows installer** — clavity-classic:
 
-1. Go to the [Releases](../../releases) page. The `clavity-v<N>` umbrella release carries both installers.
-2. Download the one you chose — assets are named `<product>-setup-<version>.exe`
-   (e.g. `clavity-classic-setup-<version>.exe`), each with a `.sha256`.
+1. Go to the [Releases](../../releases) page. The `clavity-v<N>` umbrella release carries the installer.
+2. Download it — the asset is named `clavity-classic-setup-<version>.exe`, with a `.sha256`.
 3. Run it. It registers the product's plugin locally with every agent it detects (Claude Code and/or
    `agy`) and puts its binary on your PATH.
 
@@ -75,6 +75,6 @@ Pre-commit only runs `ruff` on staged Python files.
 
 ## License
 
-This project is licensed under the **PolyForm Noncommercial License 1.0.0** — free for non-commercial use (personal, academic, non-profit). See [LICENSE](LICENSE). All five products (clavity-dotnet, clavity-classic, ghidrust, agy-autotrain, commonmemory) ship under the same license.
+This project is licensed under the **PolyForm Noncommercial License 1.0.0** — free for non-commercial use (personal, academic, non-profit). See [LICENSE](LICENSE). All four products (clavity-dotnet, clavity-classic, agy-autotrain, commonmemory) ship under the same license.
 
-_Trademarks:_ Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of Anthropic; Ghidra is a trademark of the National Security Agency. This is an independent project — not affiliated with, endorsed by, or sponsored by Google, Anthropic, or the NSA.
+_Trademarks:_ Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of Anthropic. This is an independent project — not affiliated with, endorsed by, or sponsored by Google or Anthropic.

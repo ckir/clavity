@@ -4,7 +4,7 @@
 > the "clavity is the grandfathered exception" split below describe the pre-monorepo layout. Every
 > product — including clavity's `clavity-dotnet` / `clavity-classic` variants — now lives in its own
 > top-level folder with docs at `<product>/README.md`. The code+plugin members (clavity-dotnet,
-> clavity-classic, ghidrust) also carry `<product>/plugin/README.md`; the plugin-only members
+> clavity-classic) also carry `<product>/plugin/README.md`; the plugin-only members
 > (agy-autotrain, commonmemory) have no `plugin/` subfolder — their manifest sits at the product
 > root. See the root [`README.md`](../README.md) for the current product index.
 

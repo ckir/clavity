@@ -21,8 +21,8 @@ Describe 'check-injected-context.ps1' {
             $script:Files | Should -Contain 'clavity-dotnet/plugin/skills/agy-first/SKILL.md'
             $script:Files | Should -Contain 'clavity-classic/plugin/skills/agy-first/SKILL.md'
         }
-        It 'finds files in all three previously unaudited products' {
-            $script:Files | Should -Contain 'ghidrust/plugin/skills/ghidra-re-driver/SKILL.md'
+        It 'finds files in the previously unaudited products' {
+            # ghidrust was fully retired 2026-09-14, so it is no longer a domain root.
             $script:Files | Should -Contain 'commonmemory/skills/commonmemory/SKILL.md'
             $script:Files | Should -Contain 'agy-autotrain/skills/agy-learn/SKILL.md'
         }
@@ -1421,9 +1421,8 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
         # PRECONDITION 2 below reddens this row. Do not replace that precondition with a softer check.
         $domainRoots = @(
             'clavity-dotnet/plugin', 'clavity-classic/plugin', 'clavity-classic/agy_skills',
-            'clavity-classic/agy-mcp-bridge', 'seed', 'agy-autotrain', 'ghidrust/plugin',
-            'ghidrust/skill', 'commonmemory'
-        )
+            'clavity-classic/agy-mcp-bridge', 'seed', 'agy-autotrain', 'commonmemory'
+        )   # ghidrust/plugin + ghidrust/skill removed 2026-09-14 (ghidrust full retirement).
         $parent = Join-Path ([IO.Path]::GetTempPath()) ("s28ic-" + [guid]::NewGuid().ToString('N'))
         $root   = Join-Path $parent 'a-very-long-directory-name-that-gets-shortened'
         New-Item -ItemType Directory -Force -Path (Join-Path $root 'scripts') | Out-Null

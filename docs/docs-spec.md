@@ -14,7 +14,7 @@ This file is also the authority over the **user-facing subset** that the `docs-r
 | Doc | Audience | Voice |
 |---|---|---|
 | `README.md` | Orient, choose a product, get running — then route out (≤ ~90 lines) | terse-technical |
-| `<member>/README.md` | A repo reader evaluating or building that member. For the **code+plugin** members (dotnet, classic, ghidrust) this file does **not** ship — their `.iss` ships `..\plugin\*`. For the **plugin-only** members (agy-autotrain, commonmemory) it **does** — their `.iss` ships `..\*` recursively, so write those two for an installed operator too | terse-technical |
+| `<member>/README.md` | A repo reader evaluating or building that member. For the **code+plugin** members (dotnet, classic) this file does **not** ship — their `.iss` ships `..\plugin\*`. For the **plugin-only** members (agy-autotrain, commonmemory) it **does** — their `.iss` ships `..\*` recursively, so write those two for an installed operator too | terse-technical |
 | `<member>/plugin/README.md` | The integrator wiring the plugin — **and the installed operator, because this file ships** | terse-technical |
 | `<member>/CONTRIBUTING.md` | A contributor to that member — its toolchain, test tiers, failure modes. Defers to umbrella `CONTRIBUTING.md` for licence/DCO/release | terse-technical |
 | `<member>/CLAUDE.md` | The agent working in that folder — load-bearing facts and traps only | terse, dense |
@@ -103,7 +103,7 @@ This file is also the authority over the **user-facing subset** that the `docs-r
   pass could rewrite its own governing contract. Changed deliberately by the owner, never by a pass.
 
 **Exclusions win.** Where a path matches both the doc list and this list, it is out of scope — e.g.
-`ghidrust/crates/**/tests/fixtures/README.md` matches `<member>/README.md` by shape but is test data.
+a code+plugin member's `crates/**/tests/fixtures/README.md` matches `<member>/README.md` by shape but is test data.
 
 > Every tracked `.md` is either named in the table above or excluded here. If a pass encounters one that
 > is neither, that is a spec gap — report it rather than guessing whether it is in scope.
@@ -114,7 +114,7 @@ The WRITER and the REVIEWER are different contexts — non-negotiable. A context
 prose rubber-stamps its own confabulations. WRITER: the agy peer, else a fresh isolated subagent.
 REVIEWER: the driving session, verifying every changed claim by measurement.
 
-**`<member>` resolves against `build/members.json`** — the five entries there are the roster. A member's
+**`<member>` resolves against `build/members.json`** — the four entries there are the roster. A member's
 shape comes from its `source`: ending in `/plugin` = code+plugin, otherwise plugin-only. Hand the roster
 to any WRITER or auditor; without it `<member>` is undefined and they will guess.
 

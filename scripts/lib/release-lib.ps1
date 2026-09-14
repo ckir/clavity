@@ -10,15 +10,15 @@ Set-StrictMode -Version Latest
 #
 # CANONICAL CURRENT-VERSION READ: `VerFile` + `VerKind` ('iss' | 'json'). Was `Iss` for every member, but
 # the Inno-retirement migration (2026-09-14) removed the .iss for clavity-dotnet, agy-autotrain and
-# commonmemory — those three now install via `claude plugin` and their version truth lives in plugin.json.
-# clavity-classic keeps its .iss (still Inno). ghidrust is the exception: its two version CHANNELS read from
-# distinct files, so it keeps `Iss` (binary channel) + `PluginJson` (plugin channel) and sets no VerFile.
+# commonmemory — those three install via `claude plugin` and their version truth lives in plugin.json.
+# clavity-classic is now the ONLY member that keeps its .iss (still Inno).
+# ghidrust was RETIRED from this monorepo (2026-09-14, full retirement — superseded by re-ghidra-mcp-cc in
+# ckir/aiplugins); it was the only dual-channel member, so the channel machinery below went with it.
 $script:Members = @(
     [pscustomobject]@{ Key='dotnet';        Marketplace='clavity-dotnet';  Root='clavity-dotnet';  VerFile='clavity-dotnet/plugin/plugin.json';         VerKind='json'; Ghidrust=$false }
     [pscustomobject]@{ Key='classic';       Marketplace='clavity-classic'; Root='clavity-classic'; VerFile='clavity-classic/installer/clavity-classic.iss'; VerKind='iss';  Ghidrust=$false }
     [pscustomobject]@{ Key='agy-autotrain'; Marketplace='agy-autotrain';   Root='agy-autotrain';   VerFile='agy-autotrain/plugin.json';                 VerKind='json'; Ghidrust=$false }
     [pscustomobject]@{ Key='commonmemory';  Marketplace='commonmemory';    Root='commonmemory';    VerFile='commonmemory/plugin.json';                  VerKind='json'; Ghidrust=$false }
-    [pscustomobject]@{ Key='ghidrust';      Marketplace='ghidrust';        Root='ghidrust';        Iss='ghidrust/installer/ghidrust.iss';               Ghidrust=$true;  PluginJson='ghidrust/plugin/plugin.json' }
 )
 function Get-Members { $script:Members }
 
@@ -39,33 +39,30 @@ function Get-Members { $script:Members }
 # to files no `#include` mentions (register-plugin.ps1 is shipped by a [Files] `Source:` line and invoked
 # at RUNTIME — a pure #include parser attributes it to nobody, the exact bug class this replaces).
 #
-# `ghidrust` here always means its BINARY channel: every shared asset is an installer asset, and the
-# ghidrust plugin channel versions ghidrust/plugin/** only.
 # Provable=$false marks an asset member installers never name literally, so the grep auditor cannot see it;
 # each carries its own justification and is covered instead by the coverage half of the gate.
-# Inno-retirement (2026-09-14): clavity-dotnet, agy-autotrain and commonmemory no longer have an installer/
-# tree, so they ship NONE of the installer/_shared/* Inno assets — every provable installer asset below is
-# now derived from (and declared for) only the two members that keep Inno: classic and ghidrust. The
-# derivation is unchanged for those two (their installers were not touched), so removing the three migrated
-# members from each set keeps declared == derived. `seed/golden-header.md` is the exception: clavity-dotnet
-# still ships it, but via its PLUGIN seed copy (clavity-dotnet/plugin/seed/golden-header.md, kept byte-equal
-# by the seed-drift gate) rather than an installer, so no installer source names it for dotnet — hence
-# Provable=$false with a hand-declared set, mirroring build/members.json.
+# After the Inno-retirement (dotnet/agy-autotrain/commonmemory) AND the ghidrust full retirement (both
+# 2026-09-14), clavity-classic is the ONLY member with an installer/ tree, so every provable installer
+# asset below ships into classic alone; the derivation greps only classic's installer and agrees.
+# `seed/golden-header.md` is the exception: clavity-dotnet still ships it, but via its PLUGIN seed copy
+# (clavity-dotnet/plugin/seed/golden-header.md, kept byte-equal by the seed-drift gate) rather than an
+# installer, so no installer source names it for dotnet — hence Provable=$false with a hand-declared set,
+# mirroring build/members.json.
 $script:SharedPaths = @(
-    [pscustomobject]@{ Path='installer/_shared/claude-running.iss';        Provable=$true;  Members=@('classic','ghidrust') }
-    [pscustomobject]@{ Path='installer/_shared/register-plugin.ps1';       Provable=$true;  Members=@('classic','ghidrust') }
+    [pscustomobject]@{ Path='installer/_shared/claude-running.iss';        Provable=$true;  Members=@('classic') }
+    [pscustomobject]@{ Path='installer/_shared/register-plugin.ps1';       Provable=$true;  Members=@('classic') }
     [pscustomobject]@{ Path='installer/_shared/golden-header-data.iss';    Provable=$true;  Members=@('classic') }
-    [pscustomobject]@{ Path='installer/_shared/register-invoke.iss';       Provable=$true;  Members=@('classic','ghidrust') }
-    [pscustomobject]@{ Path='installer/_shared/register-plugin-hash.iss';  Provable=$true;  Members=@('classic','ghidrust') }
+    [pscustomobject]@{ Path='installer/_shared/register-invoke.iss';       Provable=$true;  Members=@('classic') }
+    [pscustomobject]@{ Path='installer/_shared/register-plugin-hash.iss';  Provable=$true;  Members=@('classic') }
     [pscustomobject]@{ Path='installer/_shared/path-scan.iss';             Provable=$true;  Members=@('classic') }
-    [pscustomobject]@{ Path='installer/_shared/user-path.iss';             Provable=$true;  Members=@('classic','ghidrust') }
+    [pscustomobject]@{ Path='installer/_shared/user-path.iss';             Provable=$true;  Members=@('classic') }
     # dotnet ships the seed via its plugin copy (not an installer), so it is not installer-derivable — hand-declared.
     [pscustomobject]@{ Path='seed/golden-header.md';                       Provable=$false; Members=@('dotnet','classic') }
-    # Not named by any installer: scripts/generate-scoped-manifest.ps1 reads it and GENERATES each Inno
-    # member's scoped 1-entry marketplace.json, so an edit here changes what classic/ghidrust ship. The three
-    # `claude plugin` members install from the ROOT .claude-plugin/marketplace.json (hand-written), not from
-    # a members.json-generated manifest, so a members.json edit does not change what they ship.
-    [pscustomobject]@{ Path='build/members.json';                          Provable=$false; Members=@('classic','ghidrust') }
+    # Not named by any installer: scripts/generate-scoped-manifest.ps1 reads it and GENERATES clavity-classic's
+    # scoped 1-entry marketplace.json, so an edit here changes what classic ships. The three `claude plugin`
+    # members install from the ROOT .claude-plugin/marketplace.json (hand-written), not from a
+    # members.json-generated manifest, so a members.json edit does not change what they ship.
+    [pscustomobject]@{ Path='build/members.json';                          Provable=$false; Members=@('classic') }
 )
 function Get-SharedPaths { $script:SharedPaths }
 
@@ -275,37 +272,8 @@ function Group-Notes([string[]]$subjects) {
     return [pscustomobject]@{ Breaking=$breaking; Features=$features; Fixes=$fixes }
 }
 
-# Exhaustive split (F2): ghidrust/plugin/** = plugin; ANY other ghidrust/ path = binary.
-function Get-GhidrustChannel([string]$path) {
-    $p = $path -replace '\\', '/'
-    if ($p -like 'ghidrust/plugin/*') { return 'plugin' }
-    if ($p -like 'ghidrust/*')        { return 'binary' }
-    return $null
-}
-
-# For a ghidrust channel, return {Sha, Subject} for commits in $Range that touch that channel's paths.
-# Sha (not just the subject) so the caller can UNION this with the shared-path sweep and de-duplicate a
-# commit that touches both, without two same-subject commits collapsing into one.
-function Get-ChannelRecords([string]$Range, [string]$Channel, [string]$RepoRoot) {
-    # MUST Out-String first (plan-review R1): git log is a string[]; splitting the array on the %x1e record
-    # separator directly detaches each commit's subject from its following --name-only file lines, so the
-    # channel attribution silently finds no files and ghidrust never bumps. Join to one string first.
-    $raw = (git -C $RepoRoot log $Range --format='%x1e%H%x1f%s%x00' --name-only -- 'ghidrust/' 2>$null | Out-String)
-    if (-not $raw) { return @() }
-    $records = @()
-    foreach ($rec in ($raw -split "`u{1e}" | Where-Object { $_ -ne '' })) {
-        $parts = $rec -split "`0", 2
-        $head  = $parts[0] -split "`u{1f}", 2
-        if ($head.Count -lt 2) { continue }
-        $sha = $head[0].Trim(); $subject = $head[1].Trim()
-        $files = @()
-        if ($parts.Count -gt 1) { $files = @($parts[1] -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }) }
-        foreach ($f in $files) {
-            if ((Get-GhidrustChannel $f) -eq $Channel) { $records += [pscustomobject]@{ Sha=$sha; Subject=$subject }; break }
-        }
-    }
-    return $records
-}
+# (Get-GhidrustChannel / Get-ChannelRecords were removed 2026-09-14 with the ghidrust full retirement —
+# ghidrust was the only dual-channel member, so per-channel commit attribution is no longer needed.)
 
 # CC2 drift gate (option C): the release roster ($Members.Marketplace) MUST equal, as a SET, the member
 # names in build/members.json. Bidirectional — any element in exactly one side fails. Keeps the two

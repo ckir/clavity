@@ -4,21 +4,21 @@
 # Narrower than docs-spec.md's full voice-table (which also voices CLAUDE.md, ROADMAP.md, internal docs).
 # See docs/docs-spec.md and docs/superpowers/specs/2026-07-22-docs-rationalize-tool-design.md.
 
-# --- End-user / operator / integrator (12) ---
+# --- End-user / operator / integrator (10) ---
+# (ghidrust/README.md + ghidrust/plugin/README.md removed 2026-09-14: ghidrust fully retired.)
 README.md
 agy-autotrain/README.md
 commonmemory/README.md
 clavity-classic/README.md
 clavity-dotnet/README.md
-ghidrust/README.md
 clavity-classic/plugin/README.md
 clavity-dotnet/plugin/README.md
-ghidrust/plugin/README.md
 clavity-classic/installer/clavity-classic-MANUAL-SETUP.md
 clavity-classic/installer/clavity-classic-bridge-README-FIRST.md
 SECURITY.md
 
-# --- Contributor (14) ---
+# --- Contributor (13) ---
+# (ghidrust/CONTRIBUTING.md removed 2026-09-14: ghidrust fully retired.)
 CONTRIBUTING.md
 scripts/README.md
 agy-autotrain/verify/README.md
@@ -28,7 +28,6 @@ agy-autotrain/CONTRIBUTING.md
 clavity-classic/CONTRIBUTING.md
 clavity-dotnet/CONTRIBUTING.md
 commonmemory/CONTRIBUTING.md
-ghidrust/CONTRIBUTING.md
 .github/pull_request_template.md
 .github/ISSUE_TEMPLATE/bug_report.md
 .github/ISSUE_TEMPLATE/feature_request.md

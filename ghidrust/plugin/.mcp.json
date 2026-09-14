@@ -1,5 +1,0 @@
-{
-  "mcpServers": {
-    "ghidrust": { "command": "ghidrust", "args": ["serve"] }
-  }
-}

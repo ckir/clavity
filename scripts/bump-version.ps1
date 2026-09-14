@@ -1,30 +1,28 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-  Write every version source for one clavity member (or one ghidrust channel) to <Version>, then
-  self-verify with check-versions.ps1. Idempotent: re-running with the same version is a no-op.
+  Write every version source for one clavity member to <Version>, then self-verify with
+  check-versions.ps1. Idempotent: re-running with the same version is a no-op.
 
 .PARAMETER Member
-  dotnet | classic | ghidrust | agy-autotrain | commonmemory
+  dotnet | classic | agy-autotrain | commonmemory
 
 .PARAMETER Version
   Target semver, e.g. 0.1.3
 
-.PARAMETER Channel
-  ghidrust only: 'binary' or 'plugin' (required for ghidrust; forbidden for other members).
+.NOTES
+  The -Channel parameter (ghidrust binary|plugin) was removed 2026-09-14 when ghidrust was fully retired
+  from this monorepo — no remaining member is multi-channel.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory, Position = 0)]
-    [ValidateSet('dotnet', 'classic', 'ghidrust', 'agy-autotrain', 'commonmemory')]
+    [ValidateSet('dotnet', 'classic', 'agy-autotrain', 'commonmemory')]
     [string]$Member,
 
     [Parameter(Mandatory, Position = 1)]
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version,
-
-    [ValidateSet('binary', 'plugin')]
-    [string]$Channel
+    [string]$Version
 )
 
 Set-StrictMode -Version Latest
@@ -93,13 +91,7 @@ function Invoke-UvLock([string]$bridgeDirRel) {
     Write-Host "  uv lock ($bridgeDirRel) [uv.lock]"
 }
 
-if ($Member -eq 'ghidrust') {
-    if (-not $Channel) { Die "ghidrust requires -Channel binary|plugin" }
-} elseif ($Channel) {
-    Die "-Channel is only valid for ghidrust"
-}
-
-Write-Host "bump-version: $Member$(if ($Channel) { " ($Channel)" }) -> $Version"
+Write-Host "bump-version: $Member -> $Version"
 
 switch ($Member) {
     'dotnet' {
@@ -125,15 +117,7 @@ switch ($Member) {
         Set-JsonVersion 'commonmemory/plugin.json'
         Set-JsonVersion 'commonmemory/.claude-plugin/plugin.json'
     }
-    'ghidrust' {
-        if ($Channel -eq 'binary') {
-            Invoke-CargoSetVersion 'ghidrust' -Workspace   # virtual workspace root: --workspace bumps all 3 crates + Cargo.lock
-            Set-IssVersion 'ghidrust/installer/ghidrust.iss'
-        } else {
-            Set-JsonVersion 'ghidrust/plugin/plugin.json'
-            Set-JsonVersion 'ghidrust/plugin/.claude-plugin/plugin.json'
-        }
-    }
+    # ghidrust fully retired 2026-09-14 (superseded by re-ghidra-mcp-cc in ckir/aiplugins) — case removed.
 }
 
 Write-Host "bump-version: self-verifying with check-versions.ps1 ..."

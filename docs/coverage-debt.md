@@ -422,17 +422,16 @@ gate is for. The two dead references that existed were rewritten (both in `commo
 so no deleted file is cited as a live backticked path.
 **Anchor (its disappearance voids this entry):** the ABSENCE of `'iss'` from `$script:ShippedExtensions` in `scripts/check-injected-context.ps1`. Adding that extension is what would close this gap, so the entry must void when it appears. **Deliberately NOT the explanatory comment above `$AssertPrefixes`** - a comment can be reworded or deleted with the gate's behaviour completely unchanged, so anchoring there would void the entry while the `.iss` blind spot it documents remained exactly as it was.
 
-### E. `ghidrust/crates/ghidrust-mcp/src/tools.rs` has zero automated coverage (Stage 2, D3)
+### E. `ghidrust/crates/ghidrust-mcp/src/tools.rs` has zero automated coverage (Stage 2, D3) — VOIDED 2026-09-14
 
-19 `pub const DESC_*` blocks totalling roughly 12 KB of description text, delivered to every agent by MCP `tools/list` (all 19 verified wired into `server.rs`, not dead constants). `ghidrust/crates`
-is not a domain root and is deliberately not being added: the encoding invariant exists for the Inno /
-CP437 route, and these descriptions travel UTF-8 JSON-RPC over stdio, so adding the file would red-gate
-correct content.
-
-**Compensation:** accuracy hand-verified 2026-08-11 - all 19 documented tool names exist in
-`ghidrust/crates/`, and all 5 tools the skill says will "dead-end" are genuinely absent.
-**Re-check trigger: a tool is added or renamed.**
-**Anchor (its disappearance voids this entry):** the ABSENCE of `ghidrust/crates` from `$script:DomainRoots` in `scripts/check-injected-context.ps1`. Adding that root is precisely what would close this gap, so the entry must void the moment it appears. Anchoring on the `DESC_*` block instead would anchor on something that exists as long as the file does and could therefore never void anything.
+- **VOIDED (ghidrust full retirement, 2026-09-14).** ghidrust was removed from this monorepo entirely
+  (superseded by re-ghidra-mcp-cc in ckir/aiplugins), so `ghidrust/crates/ghidrust-mcp/src/tools.rs` no
+  longer exists here and there is nothing to cover. The entry's own void-anchor was "the ABSENCE of
+  `ghidrust/crates` from `$script:DomainRoots`" — that absence is now permanent, so the entry retires here.
+- **Original gap (for the record):** 19 `pub const DESC_*` blocks (~12 KB of MCP tool-description text
+  delivered via `tools/list`) had no automated coverage; `ghidrust/crates` was deliberately not a domain
+  root because those descriptions travel UTF-8 over stdio, where the Inno/CP437 encoding invariant does
+  not apply.
 
 ### F. Repo-vs-install drift is undetected (Stage 2, D2)
 

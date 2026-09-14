@@ -4,9 +4,9 @@
   Run check-versions.ps1 for every member in ONE pwsh process. Pre-push hook entry point.
 
 .DESCRIPTION
-  Semantically identical to chaining five `pwsh -File scripts/check-versions.ps1 <member>` calls with
-  `&&`: same members, same order, same fail-fast on the first failure, same exit code. The only
-  difference is process count — one cold pwsh start instead of five.
+  Semantically identical to chaining the per-member `pwsh -File scripts/check-versions.ps1 <member>` calls
+  with `&&`: same members, same order, same fail-fast on the first failure, same exit code. The only
+  difference is process count — one cold pwsh start instead of one per member.
 
   That matters because of WHERE this runs. A pwsh cold start costs ~6s on this platform (see the
   installer-ascii note in lefthook.yml), so the old five-call chain spent ~30s of its ~34s purely
@@ -36,7 +36,7 @@ if (-not (Test-Path -PathType Leaf $checker)) {
 
 # Same order the lefthook `&&` chain used. Kept explicit rather than derived from a roster file so this
 # hook entry point has no dependency that could make it silently check FEWER members than it claims.
-$members = @('dotnet', 'classic', 'ghidrust', 'agy-autotrain', 'commonmemory')
+$members = @('dotnet', 'classic', 'agy-autotrain', 'commonmemory')
 
 $LASTEXITCODE = 0
 foreach ($member in $members) {

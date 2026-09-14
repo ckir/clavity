@@ -48,10 +48,8 @@ $script:DomainRoots = @(
     'clavity-classic/agy-mcp-bridge'
     'seed'
     'agy-autotrain'
-    'ghidrust/plugin'
-    'ghidrust/skill'
     'commonmemory'
-)
+)   # ghidrust/plugin + ghidrust/skill removed 2026-09-14 with the ghidrust full retirement.
 
 # PRUNING IS RELATIVE TO THE REPOSITORY ROOT, NEVER ABSOLUTE - and that is a fix, not a preference.
 # MEASURED 2026-08-09: both walks matched these segments against $_.FullName, the ABSOLUTE path. Clone
@@ -487,7 +485,7 @@ function Test-IsPathCandidate {
 # prefix logic here. MEASURED 2026-08-11: installer/_shared/anything.iss -> candidate False, while
 # installer/_shared/register-plugin.ps1 (the only .ps1 under installer/) -> True. The cost is accepted
 # and logged in docs/coverage-debt.md: a genuinely broken .iss reference sails past this gate.
-$script:AssertPrefixes = @('docs/','scripts/','clavity-dotnet/','clavity-classic/','seed/','installer/','agy-autotrain/','ghidrust/','commonmemory/')
+$script:AssertPrefixes = @('docs/','scripts/','clavity-dotnet/','clavity-classic/','seed/','installer/','agy-autotrain/','commonmemory/')
 # Bare filenames whose referent lives on the USER's machine, not in this repository.
 $script:RuntimeArtifacts = @('golden-header.md','golden-header.seed.md','golden-header.growth.md','settings.json')
 

@@ -39,37 +39,17 @@ foreach ($m in Get-Members) {
     # Shared assets that ship into this member (installer/_shared/**, seed/**, build/members.json). Without
     # these, a commit touching only shared paths bumps nobody and the run reports a silent "nothing to
     # release" — the bug that stranded the 69ee30f registration fix.
+    # ghidrust was the only dual-channel (binary+plugin) member; it was fully retired 2026-09-14, so every
+    # remaining member is single-channel and this loop no longer special-cases anyone.
     $shared = @(Get-SharedPathsFor $m.Key)
-    if ($m.Ghidrust) {
-        foreach ($ch in @('binary','plugin')) {
-            # commits whose changed paths fall in this channel. Shared assets are INSTALLER assets, so they
-            # belong to the binary channel; the plugin channel versions ghidrust/plugin/** alone.
-            $records = @(Get-ChannelRecords -Range $range -Channel $ch -RepoRoot $RepoRoot)
-            if ($ch -eq 'binary' -and $shared.Count) {
-                $seen = @($records | ForEach-Object { $_.Sha })
-                $records += @(Get-CommitRecords $shared | Where-Object { $_.Sha -notin $seen })
-            }
-            $subjects = @($records | ForEach-Object { $_.Subject })
-            $conv = @($subjects | Where-Object { Test-Conventional $_ })
-            $nc   = @($subjects | Where-Object { -not (Test-Conventional $_) })
-            if ($nc.Count) { $nonConv += [pscustomobject]@{ Key="ghidrust ($ch)"; Subjects=$nc } }
-            $level = Get-BumpLevel $conv
-            if ($level -eq 'none') { continue }
-            $curFile = if ($ch -eq 'binary') { $m.Iss } else { $m.PluginJson }
-            $current = if ($ch -eq 'binary') { Read-IssVersion (Join-Path $RepoRoot $curFile) } else { Read-JsonVersion (Join-Path $RepoRoot $curFile) }
-            $bumps += [pscustomobject]@{ Key='ghidrust'; Channel=$ch; Root=$m.Root; Current=$current;
-                Next=(Step-SemverVersion $current $level); Level=$level; CommitCount=$conv.Count; Notes=(Group-Notes $conv) }
-        }
-        continue
-    }
     $subjects = @(Get-CommitRecords (@("{0}/" -f $m.Root) + $shared) | ForEach-Object { $_.Subject })
     $conv = @($subjects | Where-Object { Test-Conventional $_ })
     $nc   = @($subjects | Where-Object { -not (Test-Conventional $_) })
     if ($nc.Count) { $nonConv += [pscustomobject]@{ Key=$m.Key; Subjects=$nc } }
     $level = Get-BumpLevel $conv
     if ($level -eq 'none') { continue }
-    # Canonical current-version source per member: .iss for the Inno members, plugin.json for the
-    # `claude plugin` members (Inno-retirement, 2026-09-14). ghidrust never reaches here (handled above).
+    # Canonical current-version source per member: .iss for clavity-classic (the sole Inno member),
+    # plugin.json for the three `claude plugin` members (Inno-retirement, 2026-09-14).
     $current = if ($m.VerKind -eq 'iss') { Read-IssVersion (Join-Path $RepoRoot $m.VerFile) }
                else                      { Read-JsonVersion (Join-Path $RepoRoot $m.VerFile) }
     $bumps += [pscustomobject]@{ Key=$m.Key; Channel=$null; Root=$m.Root; Current=$current;

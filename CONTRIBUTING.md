@@ -3,10 +3,10 @@
 Thanks for helping out. Contributions are very welcome — **especially Linux/macOS support**, since
 the project is Windows-verified today.
 
-> **Monorepo note:** this repo hosts five products (clavity-dotnet, clavity-classic, ghidrust,
+> **Monorepo note:** this repo hosts four products (clavity-dotnet, clavity-classic,
 > agy-autotrain, commonmemory). The dev setup below is for **clavity-classic** (Rust); the other
 > members build per their own `CLAUDE.md` — e.g. `dotnet build && dotnet test tests/Clavity.Ls.Tests`
-> for clavity-dotnet, `just test` for ghidrust. See the root [README](README.md) dev-workflow
+> for clavity-dotnet. See the root [README](README.md) dev-workflow
 > section, and run `lefthook install` once so the pre-commit / pre-push gates (via `just`) run
 > automatically.
 
@@ -112,8 +112,8 @@ the exact check used to verify Windows; reproduce it (adapt the shell to your OS
 
 ### Installer refuse-guard canary (real Claude Code)
 
-Applies to the two members that still ship a standalone Inno installer — `clavity-classic` and
-`ghidrust`; the other three install via the `claude plugin` marketplace and have no installer to canary.
+Applies to the one member that still ships a standalone Inno installer — `clavity-classic`; the
+other three install via the `claude plugin` marketplace and have no installer to canary.
 
 The install/uninstall **refuse guard** (Bug 2) detects a running Claude Code by the process name
 `claude.exe` (see [`docs/installer-assumptions.md`](docs/installer-assumptions.md)). CI can only prove
@@ -169,20 +169,18 @@ each path in `scripts/lib/release-lib.ps1`: add it to `$SharedPaths` with the me
 to `$DevOnlyPaths` if it reaches no end user. `pwsh -File scripts/check-roster.ps1` verifies the result,
 and also re-derives the shared map from the members' installers so it cannot drift.
 
-Existing CI heavy-gates (all 5 builds + ghidrust live-E2E) and auto-publishes on green. If CI fails,
+Existing CI heavy-gates (all 4 builds) and auto-publishes on green. If CI fails,
 the tag is "burned" (skipped); fix and re-run. Never hand-edit a version — `just bump` remains the
 sole writer and `just release` drives it for you.
 
-That one release, named `clavity`, is the **canonical catalog page** for the umbrella. Two members
-(`clavity-classic`, `ghidrust`) still ship their own standalone INDEPENDENT installer
-(`clavity-classic-setup`, `ghidrust-setup` — each with its own `.sha256`); neither bundles or downloads
-another member. The other three (`clavity-dotnet`, `agy-autotrain`, `commonmemory`) install instead via
+That one release, named `clavity`, is the **canonical catalog page** for the umbrella. One member
+(`clavity-classic`) still ships its own standalone INDEPENDENT installer
+(`clavity-classic-setup` — with its own `.sha256`); it bundles or downloads nothing else. The other three
+(`clavity-dotnet`, `agy-autotrain`, `commonmemory`) install instead via
 the root `claude plugin` marketplace — `claude plugin marketplace add ckir/clavity`, then
-`claude plugin install <name>@clavity` — rather than a release-asset installer. ghidrust is gated by its
-live-E2E before publish, so a broken ghidrust blocks a **full** umbrella cut — but NOT a single-member
-hotfix: see "Republishing one member" below.
+`claude plugin install <name>@clavity` — rather than a release-asset installer.
 
-**Repo topology:** all five members live on `main` in this monorepo (one top-level folder each) — there
+**Repo topology:** all four members live on `main` in this monorepo (one top-level folder each) — there
 is no branch-per-tool split. `main` also houses the orchestration (`umbrella-release.yml` +
 `build-<member>.yml` per member). A `clavity-v<N>` tag on `main` deterministically pins every member.
 
@@ -190,9 +188,10 @@ is no branch-per-tool split. `main` also houses the orchestration (`umbrella-rel
 decoupled hotfix path — rebuild ONE member and republish its 2 assets onto an already-published
 release:
 - `tag` — an existing `clavity-v<N>` release tag to republish onto.
-- `member` — a fixed choice of one: `dotnet`, `classic`, `ghidrust`, `agy-autotrain`, `commonmemory`.
+- `member` — a fixed choice of one: `dotnet`, `classic` (the only members that ship a release asset;
+  `agy-autotrain` and `commonmemory` install via `claude plugin`, with no asset to republish).
 
-It runs without any sibling's build or gate (including ghidrust's live-E2E) running at all.
+It runs without any sibling's build or gate running at all.
 
 **Deprecated tags (no-ops):** the legacy `v*`, `clavity-dotnet-v*`, and `clavity-classic-v*` tags no
 longer trigger anything — the per-variant release workflows were retired. Pushing one produces **no

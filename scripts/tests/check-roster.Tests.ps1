@@ -10,17 +10,19 @@ Describe 'Assert-RosterMatchesMembers (CC2 drift gate)' {
         { Assert-RosterMatchesMembers -MembersJsonPath (Join-Path $PSScriptRoot '..' '..' 'build' 'members.json') } | Should -Not -Throw
     }
     It 'FAILS if members.json has a member the roster does not (add-without-register)' {
+        # The real roster is 4 members (ghidrust fully retired 2026-09-14); members.json here adds a 5th
+        # that the roster lacks, which must throw.
         $j = @{ members = @(
             @{ name='clavity-dotnet' }, @{ name='clavity-classic' }, @{ name='agy-autotrain' },
-            @{ name='commonmemory' }, @{ name='ghidrust' }, @{ name='brand-new-plugin' }
+            @{ name='commonmemory' }, @{ name='brand-new-plugin' }
         ) } | ConvertTo-Json -Depth 5
         $p = Join-Path $TestDrive 'm.json'; Set-Content $p $j
         { Assert-RosterMatchesMembers -MembersJsonPath $p } | Should -Throw
     }
     It 'FAILS if the roster has a member members.json does not (sunset-without-remove)' {
+        # members.json here DROPS commonmemory, which is still in the real 4-member roster — must throw.
         $j = @{ members = @(
-            @{ name='clavity-dotnet' }, @{ name='clavity-classic' }, @{ name='agy-autotrain' },
-            @{ name='commonmemory' }   # ghidrust removed from marketplace but still in $Members
+            @{ name='clavity-dotnet' }, @{ name='clavity-classic' }, @{ name='agy-autotrain' }
         ) } | ConvertTo-Json -Depth 5
         $p = Join-Path $TestDrive 'm.json'; Set-Content $p $j
         { Assert-RosterMatchesMembers -MembersJsonPath $p } | Should -Throw

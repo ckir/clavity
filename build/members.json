@@ -30,12 +30,6 @@
       "source": "./commonmemory",
       "description": "Optional add-on: a shared notebook so Claude and agy share facts across the pairing.",
       "marketplaceName": "clavity-commonmemory"
-    },
-    {
-      "name": "ghidrust",
-      "source": "./ghidrust/plugin",
-      "description": "Drive a persistent headless Ghidra JVM from your agent: 19 reverse-engineering tools (decompile, navigate, durable rename/type/prototype writes) over MCP.",
-      "marketplaceName": "clavity-ghidrust"
     }
   ]
 }

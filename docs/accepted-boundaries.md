@@ -44,10 +44,6 @@ orphaned entries. A routine diff-scoped run cannot see deleted code, so it canno
 
 _(none yet)_
 
-## ghidrust
-
-_(none yet)_
-
 ## agy-autotrain
 
 _(none yet)_
