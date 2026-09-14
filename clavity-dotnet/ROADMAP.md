@@ -3189,6 +3189,55 @@ No plugin pair, no installer payload — class 1.
 
 ---
 
+### §43 — The injected-context gate false-flags a deliberately-negative prose mention of a non-existent doc — ▶ **PROMOTED 2026-09-14 from the anomalies conveyor, not yet planned**
+
+`scripts/check-injected-context.ps1`'s reference resolver reports `docs/agy-panel-ledger.md` as `unclassified`
+(3 violations, so `ci-injected-context` is RED on `main`). The reference is in
+`clavity-{dotnet,classic}/plugin/skills/adversarial-panel-review/SKILL.md:437`, whose prose *says the file does
+not exist* — "`agy-mark.sh` needs no ledger for `agy-panel` (there is no `docs/agy-panel-ledger.md`)". The gate
+cannot tell a deliberately-negative mention from a broken link.
+
+**MEASURED 2026-09-14** (ghidrust-retirement CI check): the gate exits 1 with 3 `unclassified: docs/agy-panel-ledger.md`
+violations on committed HEAD `d3ea8ce`, and it has been RED on `main` at least since `be6facd` — a SLOW-suite /
+non-pre-push CI gate, so it went red unnoticed. PRE-EXISTING from §15; unrelated to ghidrust.
+
+**Fix options:** add a targeted entry to `scripts/injected-context-exemptions.json`, OR rephrase the SKILL.md
+prose so the path is not token-shaped (both driver copies, byte-identical — needs `writing-skills` + a
+`seed-sync-check`). **Blast radius:** one gate + the `adversarial-panel-review` skill pair.
+
+---
+
+### §44 — A hook builds its stderr payload in a non-`msg`-prefixed variable, invisible to the injected-context budget/hygiene invariants — ▶ **PROMOTED 2026-09-14 from the anomalies conveyor, not yet planned**
+
+`scripts/tests/check-injected-context.Tests.ps1`'s corpus test (`~:1345`, "extracts at least one message from
+every corpus hook that actually emits one") fails because `clavity-{dotnet,classic}/plugin/hooks/agy-consult-recovery.sh`
+builds its emitted message in a variable that `Get-HookMessages` (which binds only `msg[A-Za-z0-9_]*`) cannot
+see, so that hook's payload escapes the budget and tag-hygiene invariants.
+
+**MEASURED 2026-09-14** via the full `ci-scripts` Pester suite: the miss string is exactly the two
+`agy-consult-recovery.sh` copies. PRE-EXISTING from §15 (RED since `be6facd`); unrelated to ghidrust.
+
+**Fix options:** rename the hook's payload variable to a `msg*` name (both plugins, keep byte-identical), OR
+widen `Get-HookMessages`' binding regex. **Blast radius:** one hook pair + the gate's test helper.
+
+---
+
+### §45 — A test asserts a git commit count that a shallow CI checkout truncates, so it fails only in CI — ▶ **PROMOTED 2026-09-14 from the anomalies conveyor, not yet planned**
+
+`scripts/tests/agy-consult-recovery.Tests.ps1`'s "age is reported in COMMITS, not wall-clock" test asserts a
+seam age measured with `git rev-list --count`. In `ci-scripts` the checkout is shallow, so the count is
+truncated and the test fails; it PASSES 37/0 locally on a full clone. This is a false failure of the CI
+environment, not a code defect.
+
+**MEASURED 2026-09-14:** local run 37/0 green; the same test red in the `ci-scripts` run for `d3ea8ce` (and
+`be6facd`). PRE-EXISTING from §15; unrelated to ghidrust.
+
+**Fix options:** add `fetch-depth: 0` to the `ci-scripts.yml` checkout (verify no other suite depends on a
+shallow clone), OR make the test tolerate a shallow clone (assert relative to the available history). **Blast
+radius:** one CI workflow + one test.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
