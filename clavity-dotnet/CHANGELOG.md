@@ -1,5 +1,10 @@
 # dotnet changelog
 
+## 0.8.1 — 2026-09-17
+
+### Fixes
+- fix(ls): deliver a finished agy reply when background tasks block full idle
+
 ## 0.8.0 — 2026-09-14
 
 ### Features
