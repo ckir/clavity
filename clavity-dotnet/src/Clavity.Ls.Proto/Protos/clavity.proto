@@ -87,7 +87,9 @@ message CascadeTrajectory {                     // partial of gemini_coder.Traje
 
 message CascadeStep {                           // partial
   int32 kind = 1;                               // step-kind enum (verified: 14=user input, 15=assistant output).
-  // 4 = ?, present on most steps — skipped.
+  // Step status enum. Wire-verified 2026-09-17 on agy 1.0.11 (TestData golden) AND a live 1.2.x trajectory: a
+  // varint on EVERY step; 3 = DONE (all finished steps), 6 = seen on background shell tasks that were killed.
+  int32 status = 4;
   CortexStepMetadata metadata = 5;              // ids/timestamps/run-status AND the per-step model (11/13).
   CascadeUserInput user_input = 19;             // present only on user-message steps (kind 14).
   CascadeAssistantOutput assistant_output = 20; // present on assistant-message steps (kind 15); wire-verified.
@@ -111,6 +113,13 @@ message CascadeUserInput {                      // partial — step field 19
 message CascadeAssistantOutput {                // partial — step field 20 (assistant reply; wire-verified 2026-06-30)
   string text = 1;                              // the assistant's reply prose
   // 3 = reasoning/thinking, 6 = bot id, 8 = duplicate rendered text, 14 = encoded model output — skipped.
+  // The tool calls this planner step requests. Wire-verified 2026-09-17 (golden 1.0.11 + live 1.2.x): a DONE kind-15
+  // step WITHOUT field 7 is exactly a TURN END — 10 of 402 live planner steps, one per completed turn, and the
+  // golden's single tool-less step is its turn end too. Only presence/count is read; the body is not modeled.
+  repeated CascadeToolCall tool_calls = 7;
+}
+
+message CascadeToolCall {                      // partial — assistant-output field 7; body deliberately unmodeled
 }
 
 // --- SendUserCascadeMessage (T7): post a user message into a cascade. Field numbers verified against the

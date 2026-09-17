@@ -38,7 +38,10 @@ public class AgyAskIntegrationTests
         /// blocking until the client's window cancels. This is a real LS behaviour - the server has its own
         /// IdleInactivityTimeoutSeconds - and it is the case that separates "the budget ran out" from "the
         /// server gave up early with budget to spare".</param>
-        public sealed record WaitStep(int AppendSteps, bool GoesIdle, bool ServerTimesOut = false);
+        /// <param name="AppendAfter">One extra step appended AFTER the progress steps, in a window that does NOT go
+        /// idle. Carries the "turn ended but agy never went fully idle" case: a DONE, tool-less kind-15 reply while
+        /// background shell tasks keep the conversation busy (measured live 2026-09-17).</param>
+        public sealed record WaitStep(int AppendSteps, bool GoesIdle, bool ServerTimesOut = false, CascadeStep? AppendAfter = null);
         private readonly IReadOnlyList<WaitStep>? _waitPlan;
         private int _waitCalls;
         public int WaitCalls => _waitCalls;
@@ -47,6 +50,9 @@ public class AgyAskIntegrationTests
         // re-fetched afterwards. SETTABLE rather than a ctor flag because one test must fail a send and
         // then succeed on the next ask with the SAME view - the memoized cache lives on the view.
         public bool ThrowOnSend { get; set; }
+        // The send is accepted but our user step has NOT appeared in the trajectory yet - so the last step is still
+        // the PREVIOUS turn's reply. The only shape that can tell a "past our own step" guard from no guard at all.
+        public bool SendAppendsNoStep { get; set; }
         private int _catalogCalls;
         public int CatalogCalls => _catalogCalls;
         private int _trajectoryCalls;
@@ -118,7 +124,8 @@ public class AgyAskIntegrationTests
             {
                 LastSentText = request.Items.Count > 0 ? request.Items[0].Text : null;
                 LastSentModel = request.CascadeConfig?.PlannerConfig?.RequestedModel?.Model;
-                _steps.Add(new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = LastSentText ?? "" } });
+                if (!SendAppendsNoStep)
+                    _steps.Add(new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = LastSentText ?? "" } });
             }
             return Task.FromResult(new SendUserCascadeMessageResponse());
         }
@@ -141,6 +148,8 @@ public class AgyAskIntegrationTests
             {
                 for (var i = 0; i < step.AppendSteps; i++)
                     _steps.Add(new CascadeStep { Kind = 5, AssistantOutput = new CascadeAssistantOutput { Text = "progress" } });
+                if (step.AppendAfter is { } after)
+                    _steps.Add(after.Clone());
                 if (step.GoesIdle)
                 {
                     _steps.Add(new CascadeStep { Kind = 15, AssistantOutput = new CascadeAssistantOutput { Text = _replyText } });
@@ -979,6 +988,193 @@ public class AgyAskIntegrationTests
             Assert.Contains("modal", ex.Report.Hint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("long step", ex.Report.Hint, StringComparison.OrdinalIgnoreCase);
             Assert.Equal("compile the world", fake.LastSentText);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // ---- Turn ended, but agy never went FULLY idle (live 2026-09-17: four `rg` commands with no path blocked on
+    // stdin, auto-backgrounded, and held the conversation busy for 24 minutes after the reply step was DONE; the ask
+    // returned possible_modal and the finished reply was never delivered). Wire facts in clavity.proto (status = 4,
+    // assistant_output.tool_calls = 7).
+
+    private const int DoneStatus = 3;
+
+    /// <summary>A DONE planner step that requests NO tools: agy's turn is over.</summary>
+    private static CascadeStep TurnEnd(string text) => new()
+    {
+        Kind = 15, Status = DoneStatus, AssistantOutput = new CascadeAssistantOutput { Text = text },
+    };
+
+    /// <summary>A planner step identical to <see cref="TurnEnd"/> except for ONE field, so each control isolates it.</summary>
+    private static CascadeStep TurnEndWithToolCall(string text)
+    {
+        var s = TurnEnd(text);
+        s.AssistantOutput.ToolCalls.Add(new CascadeToolCall());
+        return s;
+    }
+
+    private static CascadeStep TurnEndNotDone(string text)
+    {
+        var s = TurnEnd(text);
+        s.Status = 2; // any non-DONE value: the step is still generating
+        return s;
+    }
+
+    private static FakeAskLs.WaitStep[] EndsTurnThenNeverIdles(CascadeStep last) => new[]
+    {
+        new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false, AppendAfter: last), // window 1: work + the reply step
+        new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false),                    // then: background tasks, no steps, never idle
+    };
+
+    [Fact]
+    public async Task AskAsync_DELIVERS_the_reply_when_the_turn_ended_but_background_tasks_keep_agy_from_going_fully_idle()
+    {
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(),
+                                 waitPlan: EndsTurnThenNeverIdles(TurnEnd("the finished panel reply")));
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var reply = await view.AskAsync("review it");
+            Assert.Equal("the finished panel reply", reply.Answer);
+            Assert.True(reply.PeerStillBusy, "a reply rescued from a not-fully-idle conversation must SAY so");
+            Assert.Equal(2, fake.WaitCalls); // one window to see the reply, one with no progress to confirm the turn is over
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_reply_that_went_fully_idle_normally_is_NOT_flagged_PeerStillBusy()
+    {
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "quick", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var reply = await new AgyView(new AgyViewOptions { CliLogPath = cliLog }).AskAsync("hi");
+            Assert.Equal("quick", reply.Answer);
+            Assert.False(reply.PeerStillBusy);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // DISTRACTORS: each differs from the rescued case by exactly ONE property, and each must still stall. A rescue
+    // that fired on any of them would hand the caller a half-finished turn as if it were the answer.
+    public static TheoryData<string> NotATurnEnd => new() { "tool-call", "not-done", "tool-kind" };
+
+    [Theory]
+    [MemberData(nameof(NotATurnEnd))]
+    public async Task A_last_step_that_is_NOT_a_turn_end_still_stalls(string variant)
+    {
+        var last = variant switch
+        {
+            "tool-call" => TurnEndWithToolCall("thinking, then calling a tool"),
+            "not-done" => TurnEndNotDone("still generating"),
+            // A DONE, tool-less step carrying reply-shaped output that is NOT a planner step: only the kind check rejects it.
+            "tool-kind" => new CascadeStep { Kind = 21, Status = DoneStatus, AssistantOutput = new CascadeAssistantOutput { Text = "x" } },
+            _ => throw new ArgumentOutOfRangeException(nameof(variant)),
+        };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(),
+                                 waitPlan: EndsTurnThenNeverIdles(last));
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("review it"));
+            Assert.Equal(IdleLimit.Stall, ex.Report.Limit);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_turn_end_from_BEFORE_our_send_does_not_count_as_the_reply()
+    {
+        // The PREVIOUS turn's reply is a perfect turn-end step. If agy never even picks up our message, the last step
+        // is our own user step - but a check that looked past it (or at the wrong index) would return the OLD reply.
+        // SendAppendsNoStep makes the old reply the LAST step, so only the index guard stands between it and the caller.
+        var initial = new[] { new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = "earlier ask" } },
+                              TurnEnd("the PREVIOUS turn's answer") };
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false) };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, initial, waitPlan: plan) { SendAppendsNoStep = true };
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("new ask"));
+            Assert.Equal(IdleLimit.Stall, ex.Report.Limit);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task The_rescue_also_holds_on_the_BUDGET_route_where_the_reply_lands_in_the_last_window()
+    {
+        // The loop-top absolute-max throw passes the LAST PROBE, which here is the one that saw the reply arrive.
+        // A rescue wired only into the no-progress branch would leave this route shipping possible_modal.
+        // Window 1 is clamped to the whole 400ms budget (stall window 1000ms), appends the reply, and the next
+        // iteration finds the budget gone.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, AppendAfter: TurnEnd("made it")) };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(1000),
+                IdleAbsoluteMax = TimeSpan.FromMilliseconds(400),
+            });
+            var reply = await view.AskAsync("review it");
+            Assert.Equal("made it", reply.Answer);
+            Assert.True(reply.PeerStillBusy);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AgyAsk_appends_a_PEER_STILL_BUSY_block_naming_the_background_task_cause()
+    {
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(),
+                                 waitPlan: EndsTurnThenNeverIdles(TurnEnd("done")));
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var result = await McpTools.AgyAsk(view, "review it", new CollectingProgress<ProgressNotificationValue>());
+            using (var doc = JsonDocument.Parse(((TextContentBlock)result.Content[0]).Text))
+            {
+                Assert.Equal("done", doc.RootElement.GetProperty("Answer").GetString());
+                Assert.True(doc.RootElement.GetProperty("PeerStillBusy").GetBoolean());
+            }
+            var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            var block = Assert.Single(texts, t => t.Contains("[PEER STILL BUSY]"));
+            Assert.Contains("background", block, StringComparison.OrdinalIgnoreCase);
         }
         finally { Directory.Delete(dir, true); }
     }

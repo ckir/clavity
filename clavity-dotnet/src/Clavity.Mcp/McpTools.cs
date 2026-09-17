@@ -66,6 +66,21 @@ public class McpTools
         var guidance = view.TryTakeGuidanceBlock();
         if (guidance is not null) blocks.Add(new TextContentBlock { Text = guidance });
 
+        // A reply delivered from a turn that ENDED while the conversation stayed busy. Independent of the 13b verdicts
+        // below: those judge the reply, this reports the peer's state - and the caller's next pre-fire agy_status will
+        // say "working" for a reason that has nothing to do with this reply.
+        if (reply13b is { PeerStillBusy: true })
+        {
+            blocks.Add(new TextContentBlock
+            {
+                Text = "[PEER STILL BUSY] agy's turn ended - its final reply step is complete and requests no tools - "
+                     + "but the conversation never went fully idle, so this reply was delivered without that signal. "
+                     + "The usual cause is background tasks agy started that never exited (e.g. a search command given "
+                     + "no path, blocked reading stdin). agy_status reports 'working' until they end, and the next ask "
+                     + "will wait on them too: have agy list and kill its running background tasks first."
+            });
+        }
+
         // 13b: the verdicts must REACH the caller. A flag nothing reads cannot stop a truncated review
         // being folded, which is the entire failure this step exists to end.
         //

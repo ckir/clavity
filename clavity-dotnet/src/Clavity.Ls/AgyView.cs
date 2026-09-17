@@ -225,12 +225,12 @@ public sealed class AgyView
                     throw;                 // a caller-cancel (Cancelled) is not a stale-catalog signal -> don't drop the cache; let it propagate (capstone F3).
                 }
 
-                await WaitForIdleWithProgressAsync(client, conversationId, before, timeout, progress, cancellationToken);
+                var peerStillBusy = await WaitForIdleWithProgressAsync(client, conversationId, before, timeout, progress, cancellationToken);
 
                 var full = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
                 var delta = full.Steps.Skip(before).ToList();
                 var projected = BoundedView.ProjectAskReply(full.CascadeId, delta);
-                return Evaluate13b(projected, expectTerminal, expectEcho);
+                return Evaluate13b(projected, expectTerminal, expectEcho) with { PeerStillBusy = peerStillBusy };
             }
             finally
             {
@@ -272,8 +272,13 @@ public sealed class AgyView
     /// absolute-max backstop bounds a step-producing runaway (TimeSpan.Zero => unbounded). A caller cancel propagates
     /// as cancellation, never possible_modal (F3). A per-window probe failure fails-toward possible_modal(stall) with
     /// a NULL diagnostic — never spins, never a second network hit (F2 + agy panel R4). The stall/absolute_max
-    /// diagnostic is built from the trajectory we ALREADY fetched this window (no redundant re-fetch — agy panel R5 F10).</summary>
-    private async Task WaitForIdleWithProgressAsync(
+    /// diagnostic is built from the trajectory we ALREADY fetched this window (no redundant re-fetch — agy panel R5 F10).
+    ///
+    /// <para>Returns true when the wait ended WITHOUT the server's fully-idle signal because agy's turn is over (see
+    /// <see cref="TurnEnded"/>): every would-be possible_modal that holds a probe checks it first. Only those routes -
+    /// the happy path still returns on the server's idle, and a turn end seen in a PROGRESS window still waits one more
+    /// window, so a planner step that is followed by more work is never mistaken for the answer.</para></summary>
+    private async Task<bool> WaitForIdleWithProgressAsync(
         LsClient client, string conversationId, int before, TimeSpan? stallOverride,
         IProgress<AgyWaitProgress>? progress, CancellationToken cancellationToken)
     {
@@ -292,7 +297,10 @@ public sealed class AgyView
             {
                 var remaining = absoluteMax - (DateTime.UtcNow - start);
                 if (remaining <= TimeSpan.Zero)
+                {
+                    if (lastProbe is not null && TurnEnded(lastProbe, before)) return true;
                     throw BuildModalHang(lastProbe, before, start, IdleLimit.AbsoluteMax);
+                }
                 // Remember HERE, where the clamp is actually decided, that the BUDGET rather than the stall
                 // window is what bounds this wait. The label below used to re-derive this by re-reading the
                 // clock, and that was wrong in a way only measurement shows: a clamped window ends exactly ON
@@ -329,7 +337,7 @@ public sealed class AgyView
             }
 
             if (!serverTimedOut)
-                return; // server reported fully idle: agy is done (happy path unchanged).
+                return false; // server reported fully idle: agy is done (happy path unchanged).
 
             CascadeTrajectory probe;
             try
@@ -389,6 +397,12 @@ public sealed class AgyView
 
             if (total > lastProgress)
                 lastProgress = total; // agy advanced -> reset the stall window and keep waiting.
+            // agy produced nothing for a whole window AND its last step ended the turn: the reply is complete, and what
+            // is keeping the conversation from going fully idle is not the turn - typically background shell tasks
+            // that never exited (live 2026-09-17: four path-less `rg` commands blocked on stdin held a finished review
+            // for 24 minutes, and the possible_modal below stranded it). Deliver it, flagged, instead of stalling.
+            else if (TurnEnded(probe, before))
+                return true;
             // The wait was bounded by the BUDGET (not the stall window), and the budget is actually spent.
             //
             // `windowWasBudgetClamped` is recorded at the clamp site, so the outer condition never re-reads the
@@ -414,6 +428,20 @@ public sealed class AgyView
             else
                 throw BuildModalHang(probe, before, start, IdleLimit.Stall);
         }
+    }
+
+    /// <summary>agy's turn is over: the trajectory has grown past our own injected user step (index
+    /// <paramref name="before"/>) and its LAST step is a DONE planner response that requests NO tools. Wire-verified
+    /// 2026-09-17 against the golden (agy 1.0.11) and a live 1.2.x trajectory, where exactly the 10 turn ends of 402
+    /// planner steps matched. Anything else - a tool step, a planner step that calls a tool, one still generating, or
+    /// the PREVIOUS turn's reply with ours not yet answered - is not a turn end.</summary>
+    public static bool TurnEnded(CascadeTrajectory trajectory, int before)
+    {
+        if (trajectory.Steps.Count <= before + 1) return false;
+        var last = trajectory.Steps[^1];
+        return last.Kind == StepKind.AssistantKind
+            && last.Status == StepKind.DoneStatus
+            && last.AssistantOutput is { ToolCalls.Count: 0 };
     }
 
     /// <summary>Build the possible_modal exception from an ALREADY-FETCHED trajectory (null => null diagnostic). PURE

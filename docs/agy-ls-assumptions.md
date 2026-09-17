@@ -192,6 +192,32 @@ Two further live gotchas:
   clavity now drives dynamically (`SendModelResolver` reads the trajectory newest-first → agy's default for a new
   conversation → legacy `1037`); the field numbers are pinned by `GetCascadeTrajectoryGoldenTests`.
 
+## 7. "Fully idle" includes BACKGROUND TASKS — a finished turn is NOT the same as an idle conversation
+
+**Measured live 2026-09-17 (agy 1.2.x, a real 976-step trajectory).** `WaitForConversationFullyIdle` does not
+resolve while agy holds a background task, even after its reply is complete. agy ran four `rg` commands with no
+path argument; each blocked reading stdin, was auto-backgrounded after its `WaitMsBeforeAsync` (5000ms) wait, and
+never exited. The reply step finished at 16:52:26Z, the conversation went idle only at 16:54:31Z — after the
+owner asked agy about the shells and it killed the four tasks. Throughout, `agy_ask` saw no new steps and reported
+`possible_modal`, stranding a complete review; `agy_status` reported `working` (correct: not fully idle) while
+agy's own prompt looked idle, because the TUI does not show background tasks.
+
+**Turn end is readable from the trajectory alone:** a step with `kind = 15`, `status = 3` (DONE) and NO
+`assistant_output.tool_calls`. Wire-verified two ways — `protoc --decode_raw` of the 1.0.11 golden
+(`tests/Clavity.Ls.Tests/TestData/GetCascadeTrajectory.bin`: field 4 is a varint on all 18 steps; its single
+tool-less kind-15 step is that capture's turn end) and of the live 1.2.x trajectory (field 4 on all 976 steps;
+exactly 10 of 402 planner steps lack field 7 — one per completed turn). Status `6` was observed on the four
+killed background tasks.
+
+`AgyView.TurnEnded` reads this on the routes that would otherwise throw `possible_modal`, delivering the reply
+with `AskReply.PeerStillBusy = true` (and an MCP `[PEER STILL BUSY]` block) instead. It is deliberately NOT
+consulted on the happy path: the server's idle signal still ends a normal wait.
+
+**Re-verify:** send an ask whose turn leaves a never-exiting background command, e.g. have agy run a search
+command with no path argument, and confirm the reply arrives flagged rather than as `possible_modal`. The field
+numbers are pinned by `GetCascadeTrajectoryGoldenTests`; the behaviour by the turn-end tests in
+`tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs`.
+
 **Re-verify (live, gated):** `tests/Clavity.Live.Acceptance/AgyAskLiveTests.cs` (Skip by default) drives the full
 production `AgyView.AskAsync` round-trip (and `SendModelResolutionLiveTests.cs` proves the dynamically-resolved id is
 accepted by a real send); run with `CLAVITY_LIVE_AGY=1` + `CLAVITY_LIVE_CLILOG=<per-session log>`

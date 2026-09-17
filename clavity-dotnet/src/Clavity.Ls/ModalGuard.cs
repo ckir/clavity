@@ -35,8 +35,10 @@ public sealed class SurfacingModalGuard : IModalGuard
               "the cap) for long reviews, or investigate a runaway if agy never stops producing steps."
             : $"no agy step progress on '{operation}' within the stall window ({elapsed} total). agy may be stuck on a " +
               "terminal modal (auth-refresh / quota / consent), OR running a single long step (a big compile / test / " +
-              "subagent that emits no intermediate step) — the step-count signal cannot distinguish them. Inspect the " +
-              "agy tab (e.g. with flaui-mcp); if your workload has long single steps, raise CLAVITY_AGY_IDLE_STALL_SECONDS. " +
+              "subagent that emits no intermediate step), OR holding a background task that never exited (a finished " +
+              "turn would have been delivered, so here agy's last step is not a completed reply) — the step-count signal " +
+              "cannot distinguish them. Inspect agy (agy_look for its last step; e.g. flaui-mcp for the tab - but confirm " +
+              "the tab is THIS workspace's agy); if your workload has long single steps, raise CLAVITY_AGY_IDLE_STALL_SECONDS. " +
               "Do NOT silently retry.";
         return new ModalGuardReport(operation, elapsed, hint, limit);
     }

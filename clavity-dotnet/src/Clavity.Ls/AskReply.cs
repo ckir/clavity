@@ -14,7 +14,12 @@ public sealed record AskReply(
     bool TerminalTokenMissing = false,
     // The peer did not quote the artifact's last substantive line near its verdict: it never reached the
     // end, or never read the artifact at all.
-    bool EchoMissing = false);
+    bool EchoMissing = false,
+    // agy's turn ENDED (its last step is a DONE planner response requesting no tools) but the conversation never
+    // went fully idle - background tasks, typically shell commands that never exited, were still running. The
+    // reply is delivered anyway instead of a possible_modal that strands it (live 2026-09-17). NOT a 13b verdict:
+    // it is a fact about the peer's state, so agy_status keeps saying "working" until those tasks end.
+    bool PeerStillBusy = false);
 
 /// <summary>One summarized step of the reply delta. Summary = bounded prose for assistant/user steps, else null.</summary>
 public sealed record ActivityItem(int Kind, string Label, string? Summary);
@@ -46,6 +51,9 @@ public static class StepKind
 {
     public const int UserKind = 14;
     public const int AssistantKind = 15;
+
+    /// <summary>CascadeStep.status value of a finished step (clavity.proto field 4, wire-verified 2026-09-17).</summary>
+    public const int DoneStatus = 3;
 
     public static string Class(int kind) => kind switch
     {
