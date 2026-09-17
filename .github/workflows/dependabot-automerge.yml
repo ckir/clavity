@@ -1,9 +1,13 @@
 name: dependabot-automerge
 
-# Enable GitHub auto-merge on Dependabot PRs for patch + minor updates only. MAJOR updates are left
-# for a human. Auto-merge waits for the branch-protection REQUIRED status checks before merging, so
-# this workflow is only as safe as main's branch protection (see wiring-rust-repo-automation skill):
-# with no required checks, GitHub would merge the PR the instant it opens.
+# Enable GitHub auto-merge on EVERY Dependabot PR, MAJOR included (owner decision 2026-09-18; it was
+# patch + minor only until then, with majors left for a human). Auto-merge waits for the
+# branch-protection REQUIRED status checks before merging, so this workflow is only as safe as main's
+# branch protection (see wiring-rust-repo-automation skill): with no required checks, GitHub would merge
+# the PR the instant it opens. That guarantee now carries the WHOLE weight of the decision — nothing
+# reads the update type any more, so a breaking major merges itself as soon as CI is green, and
+# `merge-gate` is the only thing between it and main. Widen the required checks, not this file, if that
+# ever feels too thin.
 #
 # Uses `pull_request` (NOT pull_request_target) + an explicit least-privilege permissions block, per
 # GitHub's documented recipe. Dependabot PRs get a read-only token by default; the block below grants
@@ -19,16 +23,12 @@ jobs:
     runs-on: ubuntu-latest
     if: github.actor == 'dependabot[bot]'
     steps:
-      - name: Fetch Dependabot metadata
-        id: meta
-        uses: dependabot/fetch-metadata@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Enable auto-merge (patch + minor only)
-        if: >-
-          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
-          steps.meta.outputs.update-type == 'version-update:semver-minor'
+      # The dependabot/fetch-metadata step that used to run here is GONE, not disabled: its only consumer
+      # was the patch/minor `if:` that used to gate the step below, and that is gone too. A step whose
+      # output nothing reads is the inert-mechanism shape this repo keeps paying for — it would sit here
+      # looking like a safety check while gating nothing. Restore it together with a real condition if
+      # the update type ever matters again.
+      - name: Enable auto-merge (all update types, major included)
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

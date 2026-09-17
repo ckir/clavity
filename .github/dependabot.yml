@@ -1,8 +1,10 @@
 # Dependabot config for the clavity monorepo.
 # Grouping rule (see wiring-rust-repo-automation skill): minor+patch are grouped into ONE PR per
 # ecosystem; MAJOR updates are excluded from the group by construction, so they arrive as individual
-# PRs. The auto-merge workflow (.github/workflows/dependabot-automerge.yml) merges only patch/minor,
-# so a major always lands as a separate PR that waits for a human.
+# PRs. Since 2026-09-18 the auto-merge workflow (.github/workflows/dependabot-automerge.yml) merges
+# EVERY update type, majors included — so a major still arrives as its own PR, but it no longer waits
+# for a human: it merges as soon as the required checks pass. The grouping below therefore controls
+# only how updates are BATCHED, never whether they need review.
 version: 2
 updates:
   # ---- Rust: clavity-classic workspace ----
