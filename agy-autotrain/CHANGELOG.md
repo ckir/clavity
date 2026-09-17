@@ -1,5 +1,5 @@
 # agy-autotrain - changelog
-## 0.5.0 — 2026-09-14
+## 0.5.0 - 2026-09-14
 
 ### Features
 - feat(release): retire Inno for 3 members -> root marketplace + plugin.json version truth (Inno-retirement U3/U4 part 1)

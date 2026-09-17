@@ -148,7 +148,27 @@ Describe 'Update-Changelog' {
             Notes=[pscustomobject]@{ Breaking=@(); Features=@('feat: x'); Fixes=@() } }
         New-Item -ItemType Directory (Join-Path $root 'm') | Out-Null
         $p = Update-Changelog $root $bump '2026-07-12'
-        (Get-Content -Raw $p) | Should -Match '## 0.2.0 — 2026-07-12'
+        (Get-Content -Raw $p) | Should -Match '## 0.2.0 - 2026-07-12'
+        Remove-Item -Recurse -Force $root
+    }
+
+    # THE SEPARATOR IS ASCII BY CONTRACT, not by taste. Two members (agy-autotrain, commonmemory) ship
+    # their CHANGELOG.md inside the injected-context domain, which check-injected-context.ps1 gates to
+    # pure ASCII. This writer emitted an em dash (U+2014), so EVERY release re-broke that gate: commit
+    # b2a6cc0 sanitised the files by hand and the very next release (clavity-v18, 7ec45fd) put the em
+    # dash straight back, red again on the first run whose path filter let the workflow start. Sanitising
+    # the OUTPUT can never hold while the GENERATOR emits it - this test is on the generator.
+    It 'emits a pure-ASCII section, so a release cannot re-break the injected-context gate' {
+        $root = New-TemporaryFile; Remove-Item $root; New-Item -ItemType Directory $root | Out-Null
+        $bump = [pscustomobject]@{ Key='agy-autotrain'; Channel=$null; Root='m'; Next='0.5.0';
+            Notes=[pscustomobject]@{ Breaking=@(); Features=@('feat: x'); Fixes=@('fix: y') } }
+        New-Item -ItemType Directory (Join-Path $root 'm') | Out-Null
+        $p = Update-Changelog $root $bump '2026-09-18'
+        $text = Get-Content -Raw $p
+        # Assert the CHARACTER, not "looks fine": a non-ASCII byte renders normally in most viewers,
+        # which is exactly why this kept shipping. Names the offenders so a failure is actionable.
+        $bad = [regex]::Matches($text, '[^\x00-\x7F]') | ForEach-Object { '0x{0:X4}' -f [int][char]$_.Value }
+        $bad -join ',' | Should -BeExactly '' -Because 'a shipped CHANGELOG must be pure ASCII'
         Remove-Item -Recurse -Force $root
     }
 }
