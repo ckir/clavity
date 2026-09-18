@@ -3,9 +3,31 @@
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
 
-**clavity** is a suite of tools that expand the capabilities of AI coding agents like Claude Code and Antigravity (`agy`).
-
 It provides bridges that let agents collaborate, such as Claude driving a live `agy` peer. It also offers plugins to help agents share memory and learn from everyday usage.
+
+## What it does
+Starts a Claude Code and an Antigravity Code instance at the same folder.
+Once started Claude Code gets the role of driver (implement, verify) and Antigravity (agy) gets the role of peer (review, recommend).
+
+## How it works
+Before use you MUST have [superpowers](https://github.com/obra/superpowers) installed.
+You MUST start by /brainstorming (Activates before writing code. Refines rough ideas through questions, explores alternatives, presents design in sections for validation. Saves design document). After the creation of the design document claude will run the agy-first skill and your design gets an automatic improvement review from agy.
+When claude creates the design document it will run the adversarial-panel-review and your design gets reviewed by "expert panels" via agy.
+After the specs review claude will write the implementation plan. Again same adversarial-panel-review treatment here (see the examples below).
+You choose the implementation mode (Subagent-Driven or Inline).
+After the implementation claude will run agy-capstone. Sit back and relax watching your code improving from naive to professional.
+After the agy-capstone the final step is the agy-test-audit. This will harden your test suites before claude declares the plan as completed.
+
+All the above can be waived by prompts. Say for example "Waive agy for this step" and claude will execute the step solo.
+In case you have problem to start agy (e.g. quota exhausted, Google's servers are down) you can switch to subagents mode by prompt. Say for example "Waive agy for this and use subagents".
+
+**Bonus** Automatic debugging for your repo. Claude will capture pre-existing defects in your code (both main and subagents). At the end of a plan just say "start the triage" and any defects found will end documented *ROADMAP.md or TODO.bd) ready for the next fixing plan when you want it.
+
+Tested using Opus 5 and Gemini 3.1 Pro (Other models should work but that's not tested).
+What if you don't like Gemini 3.1 Pro? Install the agy-autotrain and claude will learn to drive your favorite model by usage.
+Want claude and agy share memories? Install commonmemory (needs [`@agentmemory/agentmemory`](https://www.npmjs.com/package/@agentmemory/agentmemory))
+
+The rest of this file is written by claude technically correct but not by human. 
 
 ## Which product do I need?
 
@@ -16,10 +38,6 @@ These two tools are **mutually exclusive** — pick exactly one. They let Claude
 
 *   **[clavity-dotnet](clavity-dotnet/README.md) (Primary):** The modern .NET 10 rebuild. It exposes `agy` to Claude as an MCP server via a local Language Server. Each Claude instance drives its own isolated `agy`.
 *   **[clavity-classic](clavity-classic/README.md) (Failover):** The original Rust-based bridge. It uses a psmux doorbell and the agentmemory bus to drive a live `agy` peer in the same folder. Use this as a fallback if the .NET version breaks.
-
-### I want to reverse-engineer binaries with my agent
-This is no longer part of clavity — see **[re-ghidra-mcp-cc](https://github.com/ckir/aiplugins)** (in the
-`ckir/aiplugins` repo) for headless Ghidra reverse-engineering over MCP.
 
 ### I want my agents to learn and share knowledge (Opt-in Add-ons)
 *   **[agy-autotrain](agy-autotrain/README.md):** Auto-trains clavity's `agy` knowledge from everyday usage. It captures insights, verifies them, and compiles them into a project-agnostic manual.
