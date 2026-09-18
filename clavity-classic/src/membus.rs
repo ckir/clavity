@@ -75,10 +75,16 @@ impl MemBus {
         let secret = std::env::var("AGENTMEMORY_SECRET")
             .ok()
             .filter(|s| !s.is_empty());
-        let agent = ureq::builder()
-            .timeout_connect(Duration::from_secs(5))
-            .timeout_read(Duration::from_secs(15))
-            .build();
+        // ureq 3 replaced the single `timeout_read` with per-phase timeouts, so the old 15s read cap
+        // maps to BOTH recv_response and recv_body — capping only the first would leave a daemon that
+        // sends headers and then stalls mid-body hanging forever, which is exactly what the 2.x setting
+        // prevented. Connect keeps its own 5s.
+        let agent = ureq::Agent::config_builder()
+            .timeout_connect(Some(Duration::from_secs(5)))
+            .timeout_recv_response(Some(Duration::from_secs(15)))
+            .timeout_recv_body(Some(Duration::from_secs(15)))
+            .build()
+            .new_agent();
         Self {
             base,
             secret,
@@ -86,9 +92,11 @@ impl MemBus {
         }
     }
 
-    fn auth(&self, req: ureq::Request) -> ureq::Request {
+    /// Generic over ureq 3's request typestate (`WithoutBody` for GET, `WithBody` for POST) — in 2.x
+    /// both were the single `ureq::Request`, so one concrete signature covered every call site.
+    fn auth<B>(&self, req: ureq::RequestBuilder<B>) -> ureq::RequestBuilder<B> {
         match &self.secret {
-            Some(s) => req.set("Authorization", &format!("Bearer {s}")),
+            Some(s) => req.header("Authorization", &format!("Bearer {s}")),
             None => req,
         }
     }
@@ -124,16 +132,16 @@ impl MemBus {
         if let Some(rt) = reply_to {
             body["replyTo"] = serde_json::Value::String(rt.to_string());
         }
-        let resp = self
+        let text = self
             .auth(
                 self.agent
                     .post(&url)
-                    .set("Content-Type", "application/json"),
+                    .header("Content-Type", "application/json"),
             )
-            .send_string(&body.to_string())
-            .map_err(|e| format!("send signal: {e}"))?;
-        let text = resp
-            .into_string()
+            .send(body.to_string())
+            .map_err(|e| format!("send signal: {e}"))?
+            .into_body()
+            .read_to_string()
             .map_err(|e| format!("read send response: {e}"))?;
         let parsed: SendResp =
             serde_json::from_str(&text).map_err(|e| format!("parse send response: {e}: {text}"))?;
@@ -163,12 +171,12 @@ impl MemBus {
             url.push_str("&threadId=");
             url.push_str(&urlencode(t));
         }
-        let resp = self
+        let text = self
             .auth(self.agent.get(&url))
             .call()
-            .map_err(|e| format!("read signals: {e}"))?;
-        let text = resp
-            .into_string()
+            .map_err(|e| format!("read signals: {e}"))?
+            .into_body()
+            .read_to_string()
             .map_err(|e| format!("read signals response: {e}"))?;
         let parsed: ReadResp =
             serde_json::from_str(&text).map_err(|e| format!("parse read response: {e}: {text}"))?;

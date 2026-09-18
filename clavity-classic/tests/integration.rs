@@ -126,6 +126,10 @@ struct State {
     gets: Vec<String>, // recorded GET /signals paths (with query) — to assert thread-scoping
     last_req_id: Option<String>,
     last_sig_id: Option<String>,
+    /// Every request's `Authorization` header, one entry per request: `Some(value)` when sent,
+    /// `None` when absent. Recorded for ALL requests, not just POSTs, because the header rides on
+    /// the GET polls too and a port that dropped it there would still pass a POST-only assertion.
+    auth_headers: Vec<Option<String>>,
 }
 
 const REPLY_BODY: &str = "VERDICT: looks good";
@@ -141,7 +145,8 @@ fn start_fake_bus(reply: Reply) -> (String, Arc<Mutex<State>>) {
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };
-            let (method, path, body) = read_request(&mut stream);
+            let (method, path, body, auth) = read_request(&mut stream);
+            st.lock().unwrap().auth_headers.push(auth);
             let (code, json) = handle(&method, &path, &body, &reply, &st, &sig_seq);
             let resp = format!(
                 "HTTP/1.1 {code}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{json}",
@@ -155,7 +160,7 @@ fn start_fake_bus(reply: Reply) -> (String, Arc<Mutex<State>>) {
 }
 
 /// Parse one HTTP request: method, path (with query), and body (by Content-Length).
-fn read_request(stream: &mut std::net::TcpStream) -> (String, String, String) {
+fn read_request(stream: &mut std::net::TcpStream) -> (String, String, String, Option<String>) {
     let mut reader = BufReader::new(stream.try_clone().expect("clone stream"));
     let mut line = String::new();
     reader.read_line(&mut line).ok();
@@ -163,6 +168,7 @@ fn read_request(stream: &mut std::net::TcpStream) -> (String, String, String) {
     let method = parts.next().unwrap_or_default().to_string();
     let path = parts.next().unwrap_or_default().to_string();
     let mut content_length = 0usize;
+    let mut auth: Option<String> = None;
     loop {
         let mut h = String::new();
         if reader.read_line(&mut h).unwrap_or(0) == 0 {
@@ -174,12 +180,22 @@ fn read_request(stream: &mut std::net::TcpStream) -> (String, String, String) {
         if let Some(v) = h.to_ascii_lowercase().strip_prefix("content-length:") {
             content_length = v.trim().parse().unwrap_or(0);
         }
+        // Case-insensitive on the NAME, value kept verbatim: the assertion is about the exact
+        // bytes the client put on the wire.
+        if h.to_ascii_lowercase().starts_with("authorization:") {
+            auth = h.split_once(':').map(|(_, v)| v.trim().to_string());
+        }
     }
     let mut body = vec![0u8; content_length];
     if content_length > 0 {
         reader.read_exact(&mut body).ok();
     }
-    (method, path, String::from_utf8_lossy(&body).to_string())
+    (
+        method,
+        path,
+        String::from_utf8_lossy(&body).to_string(),
+        auth,
+    )
 }
 
 fn handle(
@@ -696,4 +712,80 @@ fn ask_stdout_warns_when_driver_cheatsheet_is_over_cap() {
     );
 
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The Authorization header — the ONE line of the ureq 2 -> 3 port that no existing test covered.
+// `MemBus::auth` is the only place the Bearer token is attached (`set` in 2.x, `header` in 3.x),
+// and it is generic over the request typestate, so GET and POST reach it by DIFFERENT paths.
+// Both assertions below are about bytes on the wire, recorded by the fake daemon itself.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn bearer_token_rides_every_request_when_the_secret_is_set() {
+    let (url, state) = start_fake_bus(Reply::FixedReqIdAfter(2, "req-auth".into()));
+    let out = clavity_bus(&url)
+        .args([
+            "await-reply",
+            "--req-id",
+            "req-auth",
+            "--thread-id",
+            "thr_auth",
+            "--timeout",
+            "10",
+            "--poll-interval",
+            "150",
+        ])
+        .env("AGENTMEMORY_SECRET", "s3cr3t")
+        .output()
+        .expect("run await-reply");
+    assert!(
+        out.status.success(),
+        "await-reply failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let seen = state.lock().unwrap().auth_headers.clone();
+    // Assert the VALUE on every request, not a count and not "at least one": the poll loop issues
+    // several GETs, and a port that attached the header to only the first would satisfy any
+    // weaker assertion while leaving later polls unauthenticated.
+    assert!(!seen.is_empty(), "the fake saw no requests at all");
+    assert!(
+        seen.iter().all(|h| h.as_deref() == Some("Bearer s3cr3t")),
+        "every request must carry the bearer token, got: {seen:?}"
+    );
+}
+
+#[test]
+fn no_authorization_header_when_no_secret_is_set() {
+    // The discriminating half: without this, the test above would also pass against a client that
+    // hard-coded the header, and the `None => req` arm of `MemBus::auth` would be unproven.
+    let (url, state) = start_fake_bus(Reply::FixedReqIdAfter(2, "req-noauth".into()));
+    let out = clavity_bus(&url)
+        .args([
+            "await-reply",
+            "--req-id",
+            "req-noauth",
+            "--thread-id",
+            "thr_noauth",
+            "--timeout",
+            "10",
+            "--poll-interval",
+            "150",
+        ])
+        .env_remove("AGENTMEMORY_SECRET")
+        .output()
+        .expect("run await-reply");
+    assert!(
+        out.status.success(),
+        "await-reply failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let seen = state.lock().unwrap().auth_headers.clone();
+    assert!(!seen.is_empty(), "the fake saw no requests at all");
+    assert!(
+        seen.iter().all(|h| h.is_none()),
+        "no request may carry an Authorization header without a secret, got: {seen:?}"
+    );
 }
