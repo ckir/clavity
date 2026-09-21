@@ -1,19 +1,50 @@
 ---
 name: agy-test-audit
-description: Use ONLY after AGY-CAPSTONE is GREEN and before declaring a development branch done - never mid-implementation. Convenes the live agy peer to audit the TEST SUITES for coverage exhaustiveness (untested reachable behaviours, vacuous/weak assertions, missing edge cases) over the branch diff, verifies every claimed gap by measurement, and surfaces verified gaps for the owner to scope. Distinct from the capstone's defect hunt: it asks "would the tests catch the next regression?". Ends with one ASCII [VERDICT] token. Best-effort prompt-discipline, manually invokable as /agy-test-audit; auto-fire is a separate marker-gated hook.
+description: Use ONLY after the AGY-CAPSTONE completion gate has passed - a human-adjudicated GREEN, or an owner round-cap waiver, which the marker does NOT distinguish - and before declaring a development branch done; never mid-implementation. Convenes the live agy peer to audit the TEST SUITES for coverage exhaustiveness (untested reachable behaviours, vacuous/weak assertions, missing edge cases) over the branch diff, verifies every claimed gap by measurement, and surfaces verified gaps for the owner to scope. Distinct from the capstone's defect hunt: it asks "would the tests catch the next regression?". Ends with one ASCII [VERDICT] token. Best-effort prompt-discipline, manually invokable as /agy-test-audit; auto-fire is a separate marker-gated hook.
 ---
 
 # agy-test-audit - audit the test safety-net before you call the branch done
 
 ## When to use
-Invoke this skill at exactly one moment: **after AGY-CAPSTONE reports GREEN, before you declare a
-development branch COMPLETE.** Its job is the question the capstone does NOT ask - not "are there defects
-in the shipped code?" but "**would the tests catch the next defect?**" It hunts untested reachable
-behaviours, vacuous or weak assertions, and missing edge cases in the committed test suites.
+Invoke this skill at exactly one moment: **after the AGY-CAPSTONE completion gate has passed, before you
+declare a development branch COMPLETE.** Its job is the question the capstone does NOT ask - not "are
+there defects in the shipped code?" but "**would the tests catch the next defect?**" It hunts untested
+reachable behaviours, vacuous or weak assertions, and missing edge cases in the committed test suites.
 
 Do **not** fire it mid-implementation or on routine intermediate commits - that traps you in premature
 completion breakpoints and burns a redundant paid consult. One audit per branch-finish, on the range the
-branch produced, after the capstone is GREEN over that same range.
+branch produced, over the same range the capstone gate passed on.
+
+### "The gate passed" is NOT "the capstone went GREEN" - establish which, before you brief the peer
+**Two different outcomes write the SAME `.clavity/agy-marks/agy-capstone.head` marker**, and every
+sentence above rides on that marker. `agy-capstone/SKILL.md` says so itself: "only a clean GREEN or a
+round-cap gate-waiver passes the gate", and a "`round-cap` completion-gate waiver ALSO writes the `.head`
+marker (it accepts 'done', like a confirmed GREEN)". A waiver means the human accepted "done" **with
+findings still live**. The marker cannot tell you which happened, and neither can the auto-fire hook,
+which reads only that marker - so **do not infer a clean sweep from the fact that you were nudged.**
+
+Establish the disposition before you write the brief:
+
+1. Read the waiver record: `.clavity/agy-marks/skipped.log`, looking for a line
+   `<iso-8601>  agy-capstone  WAIVED  HEAD=<sha>  round-cap` whose `<sha>` is the capstone's reviewed tip.
+2. Read the capstone's own row in `docs/agy-capstone-ledger.md` (columns: `date | range | rounds |
+   verdict | evidence`) for the range under audit.
+3. **Neither is proof, and know which way each fails.** `.clavity/` is gitignored, so a `git clean -fdx`
+   erases `skipped.log` and a waiver then looks exactly like a clean GREEN - absence of a WAIVED line is
+   NOT evidence of GREEN. The ledger is durable but self-asserted; its own header says "This is a RECORD,
+   not a proof." If both are silent or they disagree, say so plainly and **ask your human** which it was.
+
+Then carry the answer INTO the consult, because the peer sees only what your brief tells it:
+
+- **Clean GREEN:** brief as normal.
+- **Round-cap waiver, or undetermined:** say so in the brief, in one line - the code under audit shipped
+  with live findings, so the peer must not read "the capstone passed" as "the behaviour here is correct".
+- **Either way, this audit still runs.** A waiver makes the safety-net question MORE pressing, not less:
+  the tests are now the only thing standing between those live findings and the next regression.
+- **A gap closed after a waiver must not be closed by pinning current behaviour.** Writing a test that
+  asserts what a known-defective path does today cements the defect and makes the real fix look like a
+  regression. Where a gap sits on a path with live findings, record it as tracked debt (below) unless the
+  owner scopes the FIX first.
 
 This is **best-effort prompt-discipline, not a sandbox.** The `[VERDICT]` token is self-reported; its
 forcing functions make hollow compliance visible to your human. The bar is "materially better than
