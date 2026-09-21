@@ -224,3 +224,5 @@ accepted by a real send); run with `CLAVITY_LIVE_AGY=1` + `CLAVITY_LIVE_CLILOG=<
 and `--filter Category=LiveAgy` against a seeded, idle agy conversation. PASS = our message lands as a `kind=14`
 user step and agy appends ≥1 reply step. To re-read model ids: `grpcurl -plaintext -import-path <dir> -proto <minimal>
 -d '{}' 127.0.0.1:<httpPort> exa.language_server_pb.LanguageServerService/GetAvailableModels`.
+
+<!-- ci probe 2026-09-21: verifying that push/PR-triggered workflows still fire after the Actions run history was cleared. This line is not meant to land; the probe PR is closed without merging. -->
