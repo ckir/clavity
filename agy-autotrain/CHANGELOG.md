@@ -1,4 +1,12 @@
 # agy-autotrain - changelog
+## 0.6.0 - 2026-09-23
+
+### Features
+- feat(cheatsheet): add the five-independent-claims rule to the shipped core
+
+### Fixes
+- fix(release): emit an ASCII changelog header so a release stops re-breaking the injected-context gate
+
 ## 0.5.0 - 2026-09-14
 
 ### Features

@@ -1,4 +1,13 @@
 # dotnet changelog
+## 0.9.0 - 2026-09-23
+
+### Features
+- feat(cheatsheet): add the five-independent-claims rule to the shipped core
+
+### Fixes
+- fix(docs): re-measure the ROADMAP's ┬º14h line counts and seat citations
+- fix(skills): agy-test-audit must not claim the capstone went GREEN when it may have been waived
+
 
 ## 0.8.1 — 2026-09-17
 

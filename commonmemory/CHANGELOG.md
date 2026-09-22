@@ -1,4 +1,9 @@
 # commonmemory changelog
+## 0.4.1 - 2026-09-23
+
+### Fixes
+- fix(release): emit an ASCII changelog header so a release stops re-breaking the injected-context gate
+
 ## 0.4.0 - 2026-09-14
 
 ### Features

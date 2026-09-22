@@ -1,4 +1,12 @@
 # classic changelog
+## 0.8.0 - 2026-09-23
+
+### Features
+- feat(cheatsheet): add the five-independent-claims rule to the shipped core
+
+### Fixes
+- fix(skills): agy-test-audit must not claim the capstone went GREEN when it may have been waived
+
 
 ## 0.7.0 — 2026-09-14
 
