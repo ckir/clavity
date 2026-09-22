@@ -555,3 +555,55 @@ ledger is read to answer exactly that question.
 
 ⚠ **The waiver covers THIS change only.** A further implementation-source change in this range re-arms the
 rule.
+
+## release.ps1 `-Resume` - `4d2a94d..26f4bbd` - **2 rounds, ALIGNED proposed 2026-09-22**
+
+**Range.** `b7c8443` (the feature + its first test suites) and `26f4bbd` (round 1's fold). The range was
+RE-EXTENDED over the fold before round 2, so the final clean round covered its own fix commit. The
+docs-only commit `4d2a94d` is correctly excluded by the `A..B` form.
+
+**Evidence.** Fold commit `26f4bbd`; review transcript in this session; briefs in
+`.clavity/seams/resume-capstone.md` (rewritten per round); probes in
+`.clavity/scratch/resume-capstone/`. Gates at the reviewed sha: `check-roster` 0, `just test-scripts`
+1502/0/1 (at `b7c8443`), `just lint` 0, `just test` 0 (Ls 228, cargo 87, pytest 24),
+`Clavity.Integration.Tests` 96/96; after the fold, release-lib 37/0 + release 6/0 +
+test-suite-registration 9/0.
+
+**Round 1 - 3 findings, 1 survived.**
+- `silent-merge-flattening` **FOLDED** (`26f4bbd`). A plain `rebase --onto` drops merge commits: MEASURED
+  4 commits/1 merge -> 2/0, while `--rebase-merges` gives 3/1. Every FILE survived the flattening, so only
+  a TOPOLOGY assertion catches it; the regression test pins the merge COUNT. RED/GREEN: 37/37 with the
+  flag, "Expected 1 ... but got 0" without. Reachable - `main` carries 6 merges in the last 500.
+- `intermediate-commit-conflict` **REJECTED** on consequence. Mechanism real (merge-tree compares only
+  final trees, so a fix sequence with a conflicting INTERMEDIATE commit is predicted clean and halts the
+  replay) but measured THROUGH `Invoke-DropReleaseCandidate`: returns `$false`, aborts, HEAD restored,
+  on `main`, no rebase in progress, tree clean. A safe refusal, not the claimed corruption.
+- `orphan-local-tag` **REJECTED** as unreachable. `release.ps1` pushes main BEFORE tagging, so at a
+  tag-push failure `origin/main..HEAD` holds 0 candidates and `-Resume` refuses; F17 already catches the
+  stranded tag.
+
+**Round 2 - 2 findings, 0 survived as BLOCKING.**
+- `rebase-drops-empty-commits` (claimed BLOCKING) **REJECTED**. MEASURED on git 2.55.0: an
+  `--allow-empty` commit in the replay range is present before the drop (1) and after it (1). The peer's
+  proposed `--keep-empty` was both unnecessary and deprecated syntax.
+- `merge-tree-object-bloat` (DEBT) **DISCARDED-BELOW-FLOOR**. The claim is TRUE and measured - loose
+  objects 9 -> 10, one unreferenced tree per call - but it touches no correctness, safety, contract or
+  completeness property: the object is unreferenced and reclaimed by routine `git gc`, at one object per
+  `-Resume` invocation.
+
+**Two peer ALTERNATIVES were measured and rejected, because a suggested fix is a separate claim from the
+finding.** `git revert` instead of dropping: `origin/main..HEAD` STILL holds 1 candidate afterwards so
+precondition-0 still blocks, and `Get-BaselineSha` anchors to the DEAD candidate. Amending the subject to
+`chore(release-aborted):`: the block does clear, but `ver.txt` still reads `v2` - the bump stays applied,
+so the next compute would bump on top of it.
+
+**Kept against peer advice.** The peer argued twice (round 2 Q1 and Q3) that the `merge-tree` prediction
+should be DELETED, since the `rebase --abort` backstop is what actually provides safety. It stays,
+because the prediction runs at `release.ps1:38` and the resume dry-run exits at `:48` - so
+`just release-resume-dry` can report whether the replay is conflict-free WITHOUT mutating anything. The
+backstop cannot provide that; it only acts after a mutation has been attempted.
+
+**Isolation: SHARED-CONTEXT.** Both rounds and the mandatory `check-capstone-new-code` design consult ran
+on cascade `8f845d3a-f5df-43f8-8233-acfec15d74f0`, the same conversation that produced the original
+`-Resume` design consult. The peer therefore reviewed a design it had itself endorsed. Recorded, not
+gated (owner ruling 2026-09-04), and surfaced to the owner at the GREEN adjudication.
