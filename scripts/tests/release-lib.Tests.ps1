@@ -223,14 +223,13 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
             } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
         }
 
-        # AGY-TEST-AUDIT 2026-09-22 found the SOURCE defect (unpushed main -> git exits 128 -> this
-        # returned EMPTY over a stranded candidate, so the gate FAILED OPEN). AGY-CAPSTONE round 3 then
-        # caught the FIX's own edge: refusing outright blocks a VIRGIN repo's FIRST release, which is
-        # supported (Get-BaselineSha has a bootstrap arm returning '' for exactly that). These two rows
-        # pin BOTH halves, because either one alone is satisfied by a wrong implementation: returning
-        # empty always passes the first, refusing always passes... neither. They must both hold.
-        It 'no origin/main and no release commit: returns empty, so a FIRST release is not blocked' {
-            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resvirgin-" + [guid]::NewGuid().ToString('N'))
+        # AGY-TEST-AUDIT + AGY-CAPSTONE rounds 3-5, 2026-09-22. These two rows pin a DESIGN, not just a
+        # branch. Three successive attempts to INFER which commits are already pushed from an incomplete
+        # local view were each measured destructive or wrong, so the function now REFUSES whenever
+        # origin/main is absent, for any reason. The oracle is the throw, and the second row additionally
+        # asserts the SHIPPED COMMIT SURVIVES - which is the property all of this exists to protect.
+        It 'origin/main absent: REFUSES rather than guessing, and says how to recover' {
+            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resnoorigin-" + [guid]::NewGuid().ToString('N'))
             $bare = "$dir.git"
             New-Item -ItemType Directory -Path $dir | Out-Null
             git init -q --bare $bare | Out-Null
@@ -238,22 +237,25 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
             try {
                 git init -q -b main . | Out-Null
                 git config user.email t@t; git config user.name t; git config commit.gpgsign false
-                # A remote EXISTS (so release.ps1's `git fetch` succeeds) but main was never pushed.
+                # A remote EXISTS (so release.ps1's own `git fetch` succeeds) but main was never pushed.
                 git remote add origin $bare
                 'hello' | Set-Content f.txt; git add -A; git commit -q -m 'feat: the very first feature'
                 (git rev-parse --verify --quiet origin/main) | Should -BeNullOrEmpty -Because 'the fixture must actually lack origin/main, or this test pins nothing'
 
-                @(Get-DanglingReleaseCommits $dir) | Should -BeNullOrEmpty
+                { Get-DanglingReleaseCommits $dir } | Should -Throw -ExpectedMessage '*origin/main is not present*'
+                # The message must carry BOTH recoveries, since a stale view and a never-pushed repo need
+                # different commands and the refusal is the only place the user is told which to run.
+                { Get-DanglingReleaseCommits $dir } | Should -Throw -ExpectedMessage '*git fetch origin*'
+                { Get-DanglingReleaseCommits $dir } | Should -Throw -ExpectedMessage '*git push -u origin main*'
             } finally { Pop-Location; Remove-Item -Recurse -Force $dir; Remove-Item -Recurse -Force $bare }
         }
 
-        # AGY-CAPSTONE round 4, and the most dangerous row in this file. The round-3 fold widened the
-        # range to HEAD whenever origin/main was missing, on the axiom "no tracking ref => nothing was
-        # pushed". MEASURED FALSE: prune the tracking ref for a repo with a SHIPPED release and the
-        # function returned that shipped sha, with Test-ResumeState reporting Ok=$true on it - so
-        # -Resume would have rebased away an already-released commit. The remote is the only authority
-        # on what is pushed, so the missing-ref case must ASK it and REFUSE when it says main exists.
-        It 'origin/main pruned but PRESENT on the remote: refuses, rather than offering a SHIPPED release for dropping' {
+        # The case that made refusal the design. MEASURED before this fold: with a SHIPPED release pushed
+        # and the tracking ref then pruned, the function returned that shipped sha and Test-ResumeState
+        # reported Ok=$true on it - so -Resume would have rebased away a released commit. Silent history
+        # loss. `git log HEAD --not --remotes` was measured here too and is destructive in exactly this
+        # case, which is why it was not adopted despite being better on branch naming.
+        It 'origin/main pruned while a release is already SHIPPED: refuses, and the shipped commit survives' {
             $repo = New-ResumeRepo
             try {
                 'v1' | Set-Content shipped.txt
@@ -261,37 +263,13 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
                 git push -q origin main
                 $shipped = (git rev-parse HEAD).Trim()
 
-                # Simulate the tracking ref being pruned (remote branch deleted, remote renamed, shallow
-                # clone). The remote itself still HAS main, which is what makes the naive answer unsafe.
                 git update-ref -d refs/remotes/origin/main
                 (git rev-parse --verify --quiet origin/main) | Should -BeNullOrEmpty -Because 'the fixture must actually lack the tracking ref, or this test pins nothing'
-                @(git ls-remote --heads origin main) | Should -Not -BeNullOrEmpty -Because 'the remote MUST still have main, or this is the virgin case instead'
+                @(git ls-remote --heads origin main) | Should -Not -BeNullOrEmpty -Because 'the remote MUST still have main - that is what made the naive answer destructive'
 
-                { Get-DanglingReleaseCommits $repo.Dir } | Should -Throw -ExpectedMessage '*exists on the remote but not locally*'
-
-                # And the shipped commit must still be there afterwards - the point of refusing.
-                (git rev-parse HEAD).Trim() | Should -Be $shipped
+                { Get-DanglingReleaseCommits $repo.Dir } | Should -Throw -ExpectedMessage '*origin/main is not present*'
+                (git rev-parse HEAD).Trim() | Should -Be $shipped -Because 'refusing must leave the shipped release exactly where it was'
             } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
-        }
-
-        It 'no origin/main but a release commit IS present: still catches it (nothing pushed means nothing is safe)' {
-            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resstranded-" + [guid]::NewGuid().ToString('N'))
-            $bare = "$dir.git"
-            New-Item -ItemType Directory -Path $dir | Out-Null
-            git init -q --bare $bare | Out-Null
-            Push-Location $dir
-            try {
-                git init -q -b main . | Out-Null
-                git config user.email t@t; git config user.name t; git config commit.gpgsign false
-                git remote add origin $bare
-                'v1' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v1'
-                $sha = (git rev-parse HEAD).Trim()
-                (git rev-parse --verify --quiet origin/main) | Should -BeNullOrEmpty -Because 'the fixture must actually lack origin/main, or this test pins nothing'
-
-                # A push that never landed leaves the candidate stranded and UNPUSHED. Returning empty
-                # here is the original fail-open; the range must widen to all of HEAD, not vanish.
-                @(Get-DanglingReleaseCommits $dir) | Should -Be $sha
-            } finally { Pop-Location; Remove-Item -Recurse -Force $dir; Remove-Item -Recurse -Force $bare }
         }
 
         # AGY-TEST-AUDIT 2026-09-22: the explicit --basic-regexp flag carries a comment explaining that it
@@ -369,13 +347,12 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
             } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
         }
 
-        # AGY-TEST-AUDIT 2026-09-22 + AGY-CAPSTONE round 3. Companion to the two rows above, one level up:
-        # Test-ResumeState must not LAUNDER a stranded candidate into its friendly "there is no
+        # AGY-TEST-AUDIT + AGY-CAPSTONE rounds 3-5, 2026-09-22. Companion to the two refusal rows above,
+        # one level up: Test-ResumeState must not LAUNDER the refusal into its friendly "there is no
         # half-finished release to resume" string. MEASURED before the fold that is exactly what it did -
         # Ok=$false with a reason telling the developer the opposite of the truth, which is worse than a
-        # raw failure because it reads as a clean, actionable answer. It must now report the candidate as
-        # RESUMABLE, since -Resume is precisely the supported recovery for this state.
-        It 'no origin/main with a stranded candidate: reports it as RESUMABLE, not "no half-finished release"' {
+        # raw failure because it reads as a clean, actionable answer a developer would act on.
+        It 'origin/main absent: PROPAGATES the refusal instead of answering "no half-finished release"' {
             $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resnoorigin2-" + [guid]::NewGuid().ToString('N'))
             $bare = "$dir.git"
             New-Item -ItemType Directory -Path $dir | Out-Null
@@ -389,10 +366,10 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
                 $sha = (git rev-parse HEAD).Trim()
                 (git rev-parse --verify --quiet origin/main) | Should -BeNullOrEmpty -Because 'the fixture must actually lack origin/main, or this test pins nothing'
 
-                $state = Test-ResumeState $dir
-                $state.Ok  | Should -BeTrue
-                $state.Sha | Should -Be $sha
-                ($state.Problems -join ' ') | Should -Not -Match 'no half-finished release to resume' -Because 'that wording over a REAL stranded candidate is the confidently-wrong answer this fold removed'
+                { Test-ResumeState $dir } | Should -Throw -ExpectedMessage '*origin/main is not present*'
+
+                # And the candidate is still exactly where it was: a refusal changes nothing.
+                (git rev-parse HEAD).Trim() | Should -Be $sha
             } finally { Pop-Location; Remove-Item -Recurse -Force $dir; Remove-Item -Recurse -Force $bare }
         }
 

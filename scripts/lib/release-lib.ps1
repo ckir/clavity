@@ -371,57 +371,41 @@ function Update-Changelog([string]$repoRoot, [object]$bump, [string]$dateStr) {
 # a user with `grep.patternType=extended` configured would otherwise silently read `(release)` as a
 # capture group and match `chore:` alone.
 function Get-DanglingReleaseCommits([string]$RepoRoot) {
-    # PICK THE RANGE, rather than assuming origin/main exists. AGY-TEST-AUDIT 2026-09-22 MEASURED the
-    # original hole: with `main` never pushed, `origin/main` does not resolve, `git log origin/main..HEAD`
-    # exits 128 writing NOTHING to stdout, so this returned an EMPTY array while a stranded
-    # `chore(release)` sat on HEAD - the gate FAILED OPEN and Test-ResumeState answered "there is no
-    # half-finished release to resume", confidently wrong.
+    # origin/main is REQUIRED, and anything else is a REFUSAL. That bluntness is the design, arrived at
+    # by measurement after three AGY-CAPSTONE rounds each found a DESTRUCTIVE defect in the previous,
+    # cleverer attempt to infer which commits are already pushed:
     #
-    # AGY-CAPSTONE round 3 then caught the FIX's own edge: simply refusing on a non-zero exit blocks a
-    # VIRGIN repo's FIRST release, which is a supported scenario - `Get-BaselineSha` carries an explicit
-    # bootstrap arm returning '' for "no prior release", and `origin/main` appears nowhere else in the
-    # flow. So refusing there is a FALSE REFUSAL, not safety.
+    #   original          returned EMPTY when `git log origin/main..HEAD` failed, so with main never
+    #                     pushed the gate FAILED OPEN over a stranded candidate (AGY-TEST-AUDIT).
+    #   refuse-on-error   blocked a VIRGIN repo's FIRST release, a false refusal (capstone r3).
+    #   widen to HEAD     MEASURED destructive: with the tracking ref merely PRUNED it offered an
+    #                     already-SHIPPED release for dropping, and -Resume would have rebased it away
+    #                     (capstone r4).
+    #   ask the remote    still false - a repo that pushes to `master`, or tracks releases by tag, has no
+    #                     remote `main` while its history IS pushed, so the HEAD fallback was destructive
+    #                     again (capstone r5). `git log HEAD --not --remotes` was measured too: it fixes
+    #                     the branch-name case but is destructive in the pruned case, so it trades one
+    #                     hole for another.
     #
-    # Both answers were wrong because both assumed the question was "did git fail?". The real question is
-    # WHICH COMMITS ARE UNPUSHED. If origin/main does not resolve then NOTHING is pushed, so the unpushed
-    # set is the whole of HEAD's history - which correctly yields zero candidates for a first release AND
-    # correctly catches a candidate stranded by a push that never landed. One range change answers both.
-    # AGY-CAPSTONE round 4 found the round-3 fold's own edge, and it was DESTRUCTIVE. Falling back to
-    # `HEAD` whenever the tracking ref is missing assumes "no origin/main => nothing was ever pushed".
-    # That implication is FALSE: the ref also goes missing when the remote branch is deleted and pruned,
-    # when the remote is renamed, and in some shallow clones. MEASURED 2026-09-22 in exactly that state -
-    # a SHIPPED release was reported as a dangling candidate and `Test-ResumeState` returned Ok=$true on
-    # it, so `-Resume` would have rebased away an already-released commit. Local refs cannot answer
-    # "what is pushed"; only the remote can, so when the local answer is unavailable we ASK IT.
-    $range = 'origin/main..HEAD'
+    # Every one of those defects came from GUESSING the pushed set from an incomplete local view. There is
+    # no cheap local fact that answers it, so this refuses instead. A refusal is recoverable in one
+    # command; rebasing away a shipped release is not. OWNER-RULED 2026-09-22 after the alternatives were
+    # measured. The cost is that a brand-new repository must push main once before its first release,
+    # which the message below says outright.
+    #
+    # NOTE ON STDERR: no `2>$null` anywhere here, deliberately. Two separate rounds flagged a redirect on
+    # this function's git calls for destroying the only diagnostic that can explain an unanticipated
+    # failure, while the throw named a guessed cause. git's own `fatal:` line must reach the user.
     & git -C $RepoRoot rev-parse --verify --quiet origin/main *> $null
     if ($LASTEXITCODE -ne 0) {
-        $remoteMain = & git -C $RepoRoot ls-remote --heads origin main 2>$null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Get-DanglingReleaseCommits: origin/main is not present locally and 'git ls-remote origin' failed (exit $LASTEXITCODE) in '$RepoRoot' - cannot tell which commits are already pushed. Fix the remote, or run git fetch origin, and re-run."
-        }
-        if ($remoteMain) {
-            # The remote HAS main; our local view of it is just stale. Refusing is the only safe answer:
-            # scanning all of HEAD here is what marked a shipped release droppable.
-            throw "Get-DanglingReleaseCommits: origin/main exists on the remote but not locally (pruned, renamed or a shallow clone) in '$RepoRoot' - cannot tell which commits are already pushed without it. Run: git fetch origin"
-        }
-        # The remote genuinely has no main, so nothing has ever been pushed and the unpushed set is all
-        # of HEAD. This keeps a VIRGIN repo's FIRST release working (round 3's finding) while still
-        # catching a candidate stranded by a push that never landed.
-        $range = 'HEAD'
+        throw "Get-DanglingReleaseCommits: origin/main is not present in '$RepoRoot', so there is no trustworthy answer to which commits are already pushed - and guessing has been MEASURED destructive (it offered an already-shipped release for dropping). Run: git fetch origin. If this repository has never been pushed at all, push main once first: git push -u origin main"
     }
 
-    # stderr is deliberately NOT redirected: git's own `fatal:` line is the only diagnostic that can
-    # explain a failure this function did not anticipate, and an earlier revision of this fix silenced it
-    # while throwing a hardcoded guess about origin/main - which round 3 flagged as making any OTHER
-    # failure undiagnosable in the field.
-    $out = @(& git -C $RepoRoot log $range --basic-regexp --grep='^chore(release):' --format=%H)
+    $out = @(& git -C $RepoRoot log 'origin/main..HEAD' --basic-regexp --grep='^chore(release):' --format=%H)
     if ($LASTEXITCODE -ne 0) {
-        # Reached only when the range RESOLVED and git still failed (corruption, an unreadable object, a
-        # hostile config). Genuinely undetermined, so fail CLOSED: the caller must never read "I could
-        # not tell" as "there is nothing there". No cause is named here on purpose - git already printed
-        # the real one above, and guessing would send the reader down the wrong path.
-        throw "Get-DanglingReleaseCommits: 'git log $range' failed (exit $LASTEXITCODE) in '$RepoRoot' - cannot tell whether a half-finished release exists. See git's error above."
+        # The ref RESOLVED and git still failed (corruption, an unreadable object, a hostile config).
+        # Genuinely undetermined, so fail CLOSED. No cause is named on purpose - git printed the real one.
+        throw "Get-DanglingReleaseCommits: 'git log origin/main..HEAD' failed (exit $LASTEXITCODE) in '$RepoRoot' - cannot tell whether a half-finished release exists. See git's error above."
     }
     $out | Where-Object { $_ } | ForEach-Object { $_.Trim() }
 }
