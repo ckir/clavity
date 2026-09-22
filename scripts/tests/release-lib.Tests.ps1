@@ -247,6 +247,33 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
             } finally { Pop-Location; Remove-Item -Recurse -Force $dir; Remove-Item -Recurse -Force $bare }
         }
 
+        # AGY-CAPSTONE round 4, and the most dangerous row in this file. The round-3 fold widened the
+        # range to HEAD whenever origin/main was missing, on the axiom "no tracking ref => nothing was
+        # pushed". MEASURED FALSE: prune the tracking ref for a repo with a SHIPPED release and the
+        # function returned that shipped sha, with Test-ResumeState reporting Ok=$true on it - so
+        # -Resume would have rebased away an already-released commit. The remote is the only authority
+        # on what is pushed, so the missing-ref case must ASK it and REFUSE when it says main exists.
+        It 'origin/main pruned but PRESENT on the remote: refuses, rather than offering a SHIPPED release for dropping' {
+            $repo = New-ResumeRepo
+            try {
+                'v1' | Set-Content shipped.txt
+                git add -A; git commit -q -m 'chore(release): clavity-v9 [x 0.9.0]'
+                git push -q origin main
+                $shipped = (git rev-parse HEAD).Trim()
+
+                # Simulate the tracking ref being pruned (remote branch deleted, remote renamed, shallow
+                # clone). The remote itself still HAS main, which is what makes the naive answer unsafe.
+                git update-ref -d refs/remotes/origin/main
+                (git rev-parse --verify --quiet origin/main) | Should -BeNullOrEmpty -Because 'the fixture must actually lack the tracking ref, or this test pins nothing'
+                @(git ls-remote --heads origin main) | Should -Not -BeNullOrEmpty -Because 'the remote MUST still have main, or this is the virgin case instead'
+
+                { Get-DanglingReleaseCommits $repo.Dir } | Should -Throw -ExpectedMessage '*exists on the remote but not locally*'
+
+                # And the shipped commit must still be there afterwards - the point of refusing.
+                (git rev-parse HEAD).Trim() | Should -Be $shipped
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+
         It 'no origin/main but a release commit IS present: still catches it (nothing pushed means nothing is safe)' {
             $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resstranded-" + [guid]::NewGuid().ToString('N'))
             $bare = "$dir.git"

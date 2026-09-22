@@ -386,9 +386,30 @@ function Get-DanglingReleaseCommits([string]$RepoRoot) {
     # WHICH COMMITS ARE UNPUSHED. If origin/main does not resolve then NOTHING is pushed, so the unpushed
     # set is the whole of HEAD's history - which correctly yields zero candidates for a first release AND
     # correctly catches a candidate stranded by a push that never landed. One range change answers both.
-    $range = 'HEAD'
+    # AGY-CAPSTONE round 4 found the round-3 fold's own edge, and it was DESTRUCTIVE. Falling back to
+    # `HEAD` whenever the tracking ref is missing assumes "no origin/main => nothing was ever pushed".
+    # That implication is FALSE: the ref also goes missing when the remote branch is deleted and pruned,
+    # when the remote is renamed, and in some shallow clones. MEASURED 2026-09-22 in exactly that state -
+    # a SHIPPED release was reported as a dangling candidate and `Test-ResumeState` returned Ok=$true on
+    # it, so `-Resume` would have rebased away an already-released commit. Local refs cannot answer
+    # "what is pushed"; only the remote can, so when the local answer is unavailable we ASK IT.
+    $range = 'origin/main..HEAD'
     & git -C $RepoRoot rev-parse --verify --quiet origin/main *> $null
-    if ($LASTEXITCODE -eq 0) { $range = 'origin/main..HEAD' }
+    if ($LASTEXITCODE -ne 0) {
+        $remoteMain = & git -C $RepoRoot ls-remote --heads origin main 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Get-DanglingReleaseCommits: origin/main is not present locally and 'git ls-remote origin' failed (exit $LASTEXITCODE) in '$RepoRoot' - cannot tell which commits are already pushed. Fix the remote, or run git fetch origin, and re-run."
+        }
+        if ($remoteMain) {
+            # The remote HAS main; our local view of it is just stale. Refusing is the only safe answer:
+            # scanning all of HEAD here is what marked a shipped release droppable.
+            throw "Get-DanglingReleaseCommits: origin/main exists on the remote but not locally (pruned, renamed or a shallow clone) in '$RepoRoot' - cannot tell which commits are already pushed without it. Run: git fetch origin"
+        }
+        # The remote genuinely has no main, so nothing has ever been pushed and the unpushed set is all
+        # of HEAD. This keeps a VIRGIN repo's FIRST release working (round 3's finding) while still
+        # catching a candidate stranded by a push that never landed.
+        $range = 'HEAD'
+    }
 
     # stderr is deliberately NOT redirected: git's own `fatal:` line is the only diagnostic that can
     # explain a failure this function did not anticipate, and an earlier revision of this fix silenced it
