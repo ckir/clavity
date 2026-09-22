@@ -172,3 +172,213 @@ Describe 'Update-Changelog' {
         Remove-Item -Recurse -Force $root
     }
 }
+
+Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus / Invoke-DropReleaseCandidate (release.ps1 -Resume support)' {
+    BeforeAll {
+        # Each scenario needs a real origin remote: Get-DanglingReleaseCommits reads origin/main..HEAD,
+        # and release.ps1's own precondition-0 requires `git fetch` to succeed against a real remote.
+        function New-ResumeRepo {
+            $dir  = Join-Path ([System.IO.Path]::GetTempPath()) ("reslib-" + [guid]::NewGuid().ToString('N'))
+            $bare = "$dir.git"
+            New-Item -ItemType Directory -Path $dir | Out-Null
+            git init -q --bare $bare | Out-Null
+            Push-Location $dir
+            git init -q -b main . | Out-Null
+            git config user.email t@t; git config user.name t; git config commit.gpgsign false
+            git remote add origin $bare
+            'v1' | Set-Content version.txt
+            git add -A; git commit -q -m 'chore(release): clavity-v1'
+            git push -q origin main
+            return @{ Dir = $dir; Bare = $bare }
+        }
+    }
+
+    Context 'Get-DanglingReleaseCommits' {
+        It 'returns empty when there is no un-pushed chore(release) commit' {
+            $repo = New-ResumeRepo
+            try {
+                'x' | Set-Content f.txt; git add -A; git commit -q -m 'feat: x'
+                @(Get-DanglingReleaseCommits $repo.Dir) | Should -BeNullOrEmpty
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+
+        It 'returns matching SHAs newest-first, trimmed' {
+            $repo = New-ResumeRepo
+            try {
+                'v2' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+                $sha2 = (git rev-parse HEAD).Trim()
+                'v3' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v3 [x 0.3.0]'
+                $sha3 = (git rev-parse HEAD).Trim()
+                $found = @(Get-DanglingReleaseCommits $repo.Dir)
+                $found.Count | Should -Be 2
+                $found[0] | Should -Be $sha3
+                $found[1] | Should -Be $sha2
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+
+        # Precedent: scripts/tests/compute-release.Tests.ps1 'anchors to the subject start' - mirrored here
+        # because Get-DanglingReleaseCommits shares the same ^chore(release): subject-anchoring contract.
+        It 'anchors to the subject start, ignoring a body/mid-message mention' {
+            $repo = New-ResumeRepo
+            try {
+                'v2' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+                $realSha = (git rev-parse HEAD).Trim()
+                'x' | Set-Content f.txt; git add -A; git commit -q -m 'docs: update the chore(release): clavity-v process'
+                @(Get-DanglingReleaseCommits $repo.Dir) | Should -Be $realSha
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+    }
+
+    Context 'Test-ResumeState' {
+        It 'no dangling candidate: Ok=$false, Sha=$null, names "no half-finished release to resume"' {
+            $repo = New-ResumeRepo
+            try {
+                'x' | Set-Content f.txt; git add -A; git commit -q -m 'feat: x'
+                $st = Test-ResumeState $repo.Dir
+                $st.Ok  | Should -BeFalse
+                $st.Sha | Should -BeNullOrEmpty
+                ($st.Problems -match 'no half-finished release to resume').Count | Should -Be 1
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+
+        It 'exactly one dangling candidate: Ok=$true, Sha set to that commit, no Problems' {
+            $repo = New-ResumeRepo
+            try {
+                'v2' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+                $sha = (git rev-parse HEAD).Trim()
+                $st = Test-ResumeState $repo.Dir
+                $st.Ok  | Should -BeTrue
+                $st.Sha | Should -Be $sha
+                $st.Problems | Should -BeNullOrEmpty
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+
+        It 'dirty tracked (unstaged) tree: Ok=$false, names "uncommitted tracked changes"' {
+            $repo = New-ResumeRepo
+            try {
+                'v2' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+                'dirty' | Set-Content version.txt
+                $st = Test-ResumeState $repo.Dir
+                $st.Ok | Should -BeFalse
+                ($st.Problems -match 'uncommitted tracked changes').Count | Should -Be 1
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+
+        It 'staged-only change also counts as dirty (both halves of "clean" are checked)' {
+            $repo = New-ResumeRepo
+            try {
+                'v2' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+                'staged' | Set-Content version.txt; git add -A
+                $st = Test-ResumeState $repo.Dir
+                $st.Ok | Should -BeFalse
+                ($st.Problems -match 'uncommitted tracked changes').Count | Should -Be 1
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+
+        It 'two dangling candidates: Ok=$false, Sha=$null, names "refusing to guess"' {
+            $repo = New-ResumeRepo
+            try {
+                'v2' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+                'v3' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v3 [x 0.3.0]'
+                $st = Test-ResumeState $repo.Dir
+                $st.Ok  | Should -BeFalse
+                $st.Sha | Should -BeNullOrEmpty
+                ($st.Problems -match 'refusing to guess').Count | Should -Be 1
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+    }
+
+    Context 'Get-DropConflictStatus' {
+        It "returns the STRING 'clean' (not a bool) when HEAD IS the candidate" {
+            $repo = New-ResumeRepo
+            try {
+                'v2' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+                $sha = (git rev-parse HEAD).Trim()
+                $status = Get-DropConflictStatus $repo.Dir $sha
+                $status | Should -BeOfType ([string])
+                $status | Should -BeExactly 'clean'
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+
+        It "returns 'clean' when a non-conflicting fix sits on top of the candidate" {
+            $repo = New-ResumeRepo
+            try {
+                'v2' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+                $sha = (git rev-parse HEAD).Trim()
+                'fixed' | Set-Content docs.md; git add -A; git commit -q -m 'fix(docs): unrelated'
+                Get-DropConflictStatus $repo.Dir $sha | Should -BeExactly 'clean'
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+
+        It "returns 'conflict' when the fix on top touches the same region the candidate touched" {
+            $repo = New-ResumeRepo
+            try {
+                "# CL`n`n## 0.2.0`n- a`n" | Set-Content CHANGELOG.md
+                git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+                $sha = (git rev-parse HEAD).Trim()
+                "# CL`n`n## 0.2.0`n- a`n- b`n" | Set-Content CHANGELOG.md
+                git add -A; git commit -q -m 'fix(docs): touch changelog'
+                Get-DropConflictStatus $repo.Dir $sha | Should -BeExactly 'conflict'
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+
+        It "fails closed to 'unknown' (not a bool) when the SHA does not resolve" {
+            $repo = New-ResumeRepo
+            try {
+                $status = Get-DropConflictStatus $repo.Dir 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+                $status | Should -BeOfType ([string])
+                $status | Should -BeExactly 'unknown'
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+    }
+
+    Context 'Invoke-DropReleaseCandidate' {
+        It 'tip case: resets, returns $true, reverts version, keeps prior feat commit, stays on main' {
+            $repo = New-ResumeRepo
+            try {
+                'x' | Set-Content f.txt; git add -A; git commit -q -m 'feat: x'
+                'v2' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+                $sha = (git rev-parse HEAD).Trim()
+                $result = Invoke-DropReleaseCandidate $repo.Dir $sha
+                $result | Should -BeOfType ([bool])
+                $result | Should -BeTrue
+                (Get-Content version.txt -Raw).Trim() | Should -Be 'v1'
+                (git rev-parse --abbrev-ref HEAD) | Should -Be 'main'
+                (git log --oneline | Select-String 'feat: x' | Measure-Object).Count | Should -Be 1
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+
+        It 'non-conflicting fix on top: rebases onto the parent, keeps the fix, reverts version, stays on main' {
+            $repo = New-ResumeRepo
+            try {
+                'v2' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+                $sha = (git rev-parse HEAD).Trim()
+                'fixed' | Set-Content docs.md; git add -A; git commit -q -m 'fix(docs): unrelated'
+                $result = Invoke-DropReleaseCandidate $repo.Dir $sha
+                $result | Should -BeTrue
+                (Test-Path docs.md) | Should -BeTrue
+                (Get-Content version.txt -Raw).Trim() | Should -Be 'v1'
+                (git rev-parse --abbrev-ref HEAD) | Should -Be 'main'
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+
+        It 'conflicting replay: returns $false, aborts cleanly, leaves no rebase in progress, HEAD unmoved' {
+            $repo = New-ResumeRepo
+            try {
+                "# CL`n`n## 0.2.0`n- a`n" | Set-Content CHANGELOG.md
+                git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+                $sha = (git rev-parse HEAD).Trim()
+                "# CL`n`n## 0.2.0`n- a`n- b`n" | Set-Content CHANGELOG.md
+                git add -A; git commit -q -m 'fix(docs): touch changelog'
+                $before = (git rev-parse HEAD).Trim()
+                $result = Invoke-DropReleaseCandidate $repo.Dir $sha
+                $result | Should -BeOfType ([bool])
+                $result | Should -BeFalse
+                (git rev-parse HEAD).Trim() | Should -Be $before
+                (git rev-parse --abbrev-ref HEAD) | Should -Be 'main'
+                (Test-Path (Join-Path $repo.Dir '.git/rebase-merge')) | Should -BeFalse
+                (Test-Path (Join-Path $repo.Dir '.git/rebase-apply')) | Should -BeFalse
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+    }
+}

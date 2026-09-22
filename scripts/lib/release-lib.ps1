@@ -348,3 +348,116 @@ function Update-Changelog([string]$repoRoot, [object]$bump, [string]$dateStr) {
     Set-Content -Path $path -Value $out -NoNewline
     return $path
 }
+
+# --- Resume support (release.ps1 -Resume) -------------------------------------------------------
+# release.ps1 COMMITS the bumps + CHANGELOG entries BEFORE it gates, so a failed pre-flight strands a
+# `chore(release)` commit on main: unpushed, untagged, and blocking every further run via the
+# dangling-candidate precondition. -Resume clears that state.
+#
+# It RE-PREPARES rather than continues. The candidate is DROPPED and the normal compute -> preview ->
+# confirm -> bump -> commit -> pre-flight -> push path runs again from scratch. Two reasons, both
+# load-bearing:
+#   1. The tree CHANGED when the developer committed the fix, so every gate that passed before the fix
+#      is stale. Skipping the passed prefix would tag a tree no complete pre-flight ever saw.
+#   2. Continuing would ship a CHANGELOG generated before the fix commits existed, permanently omitting
+#      commits that are inside the tag - and a fix commit that happens to be a `feat:` or carry `!`
+#      would leave the semver bump silently wrong.
+# The cost is honest and is NOT a bug: -Resume re-runs the whole pre-flight. There is no fast path,
+# because a fast path is only sound for a tree that has not changed, and the tree always has.
+
+# The single reader of the dangling-candidate condition. release.ps1's precondition calls this too, so
+# the gate and the resume path can never disagree about what counts as a half-finished release.
+# --basic-regexp is explicit rather than defaulted: `^chore(release):` is a literal only under BRE, and
+# a user with `grep.patternType=extended` configured would otherwise silently read `(release)` as a
+# capture group and match `chore:` alone.
+function Get-DanglingReleaseCommits([string]$RepoRoot) {
+    @(& git -C $RepoRoot log 'origin/main..HEAD' --basic-regexp --grep='^chore(release):' --format=%H) |
+        Where-Object { $_ } | ForEach-Object { $_.Trim() }
+}
+
+# Structured, side-effect-free verdict on whether -Resume may proceed. Returns Ok/Sha/Problems so the
+# orchestrator prints and dies, and the tests can assert on the reasons rather than on exit codes.
+function Test-ResumeState([string]$RepoRoot) {
+    $problems = @()
+
+    # BOTH halves of "clean". A drop that runs over uncommitted work destroys it, and that is not
+    # hypothetical: during the 2026-09-22 v20 recovery a hand-run `git reset --hard HEAD~1` would have
+    # eaten the very ROADMAP fix the release was being re-run for, had it not been stashed first.
+    & git -C $RepoRoot diff --quiet;        $unstaged = ($LASTEXITCODE -ne 0)
+    & git -C $RepoRoot diff --cached --quiet; $staged = ($LASTEXITCODE -ne 0)
+    if ($unstaged -or $staged) {
+        $problems += 'working tree has uncommitted tracked changes - commit or stash them first (dropping the candidate would destroy them)'
+    }
+
+    $dangling = @(Get-DanglingReleaseCommits $RepoRoot)
+    if ($dangling.Count -eq 0) {
+        $problems += 'no un-pushed chore(release) commit in origin/main..HEAD - there is no half-finished release to resume'
+    } elseif ($dangling.Count -gt 1) {
+        # Never guess. Dropping the wrong candidate rewrites history the developer meant to keep.
+        $problems += "found $($dangling.Count) un-pushed chore(release) commits - refusing to guess which to drop: $($dangling -join ', ')"
+    }
+
+    [pscustomobject]@{
+        Ok       = ($problems.Count -eq 0)
+        Sha      = $(if ($dangling.Count -eq 1) { $dangling[0] } else { $null })
+        Problems = $problems
+    }
+}
+
+# Predict a replay conflict WITHOUT touching the tree.
+#
+# THIS IS THE GUARD THAT MAKES -Resume SAFE. A `git rebase` that halts mid-way leaves a DETACHED HEAD
+# with an unresolved index - a strictly WORSE state than the stable dangling commit the flag was called
+# to clear, because ordinary git operations then refuse until the developer aborts by hand.
+# MEASURED 2026-09-22 on git 2.55.0: dropping a release candidate underneath a fix commit that also
+# edited CHANGELOG.md left exactly that ("HEAD detached", "UU CHANGELOG.md").
+# `git merge-tree --write-tree` answers the same question as a pure computation. Verified BOTH ways on
+# that date - exit 1 on the conflicting case, exit 0 on a control whose fix touched an unrelated file -
+# because an oracle that cannot return its failing answer is not an oracle.
+#
+# Returns 'clean' | 'conflict' | 'unknown'. It FAILS CLOSED: any exit code that is not a definite 0 or 1
+# reports 'unknown', and the caller must refuse on that too. A guard that treats "I could not tell" as
+# "fine" certifies precisely what it stopped checking.
+function Get-DropConflictStatus([string]$RepoRoot, [string]$Sha) {
+    $head = (& git -C $RepoRoot rev-parse HEAD 2>$null)
+    $cand = (& git -C $RepoRoot rev-parse $Sha  2>$null)
+    if (-not $head -or -not $cand) { return 'unknown' }
+    # The candidate IS the tip: nothing replays over it, so no conflict is reachable.
+    if ($head.Trim() -eq $cand.Trim()) { return 'clean' }
+    # The try/catch is not decoration. This function reads $LASTEXITCODE, and whether a native command
+    # SETS that or THROWS depends on $PSNativeCommandUseErrorActionPreference, which is a per-session
+    # preference rather than a property of the code: with it $true under $ErrorActionPreference='Stop'
+    # (release.ps1 sets Stop at :5), merge-tree's exit 1 becomes a terminating error and the switch below
+    # is never reached. MEASURED 2026-09-22 on pwsh 7.6.6: the preference is False here and exit 1 is
+    # readable - but that is this machine's default today, not a contract, so catching keeps the verdict
+    # 'unknown' (which the caller REFUSES on) instead of letting the whole release abort on a throw.
+    try {
+        & git -C $RepoRoot merge-tree --write-tree --merge-base=$Sha "$Sha^" HEAD *> $null
+    } catch {
+        return 'unknown'
+    }
+    switch ($LASTEXITCODE) {
+        0       { return 'clean' }
+        1       { return 'conflict' }
+        default { return 'unknown' }
+    }
+}
+
+# Drop the candidate, preserving every commit made after it. Returns $true on success.
+# On the tip case a reset suffices; otherwise `rebase --onto <sha>^ <sha>` replays the fix commits onto
+# the candidate's parent. Prediction is not proof - merge-tree and rebase are different algorithms - so
+# a failure here ABORTS the rebase rather than leaving the detached-HEAD state described above.
+function Invoke-DropReleaseCandidate([string]$RepoRoot, [string]$Sha) {
+    $head = (& git -C $RepoRoot rev-parse HEAD).Trim()
+    $cand = (& git -C $RepoRoot rev-parse $Sha).Trim()
+    if ($head -eq $cand) {
+        & git -C $RepoRoot reset --hard "$Sha^" *> $null
+        return ($LASTEXITCODE -eq 0)
+    }
+    & git -C $RepoRoot rebase --onto "$Sha^" $Sha *> $null
+    if ($LASTEXITCODE -ne 0) {
+        & git -C $RepoRoot rebase --abort *> $null
+        return $false
+    }
+    return $true
+}

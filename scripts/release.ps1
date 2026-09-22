@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
 [CmdletBinding()]
-param([switch]$WhatIf)
+param([switch]$WhatIf, [switch]$Resume)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -15,7 +15,47 @@ git diff --quiet;        if ($LASTEXITCODE -ne 0) { Die "unstaged tracked change
 git diff --cached --quiet;if ($LASTEXITCODE -ne 0) { Die "staged changes present" }
 # Only a dangling un-pushed CHORE(RELEASE) commit blocks (plan-review R1) — un-pushed FEATURE commits are
 # the normal case (they get swept + pushed by this release). Spec precondition (c) is release-commit-scoped.
-if (git log 'origin/main..HEAD' --grep='^chore(release):' --oneline) { Die "un-pushed chore(release) commit on main — a prior release is half-finished; resolve first" }
+#
+# -Resume CLEARS that state instead of refusing. It must run HERE, ahead of the F17 check below: before
+# the drop the newest release commit is the dead candidate, which by definition has no remote tag, so
+# F17 would kill the run before -Resume ever got to fix it. After the drop the newest one is the last
+# SHIPPED release, which does have its tag, and F17 passes for the right reason.
+# The drop is the ONLY thing -Resume does. Everything after it - compute, preview, typed confirm, bump,
+# commit, the full pre-flight, push, tag - runs exactly as on a first release. See the block comment on
+# Get-DanglingReleaseCommits in lib/release-lib.ps1 for why it re-prepares instead of continuing.
+if ($Resume) {
+    $state = Test-ResumeState $RepoRoot
+    if (-not $state.Ok) {
+        foreach ($p in $state.Problems) { Write-Host "release: $p" -ForegroundColor Red }
+        Die "-Resume refused — nothing was changed"
+    }
+    $subject = (git log -n1 --format=%s $state.Sha)
+    $short   = $state.Sha.Substring(0, 7)
+    Write-Host "release: -Resume — dead candidate $short  $subject" -ForegroundColor Cyan
+
+    # Refuse on 'conflict' AND on 'unknown'. A rebase that halts leaves a detached HEAD with an
+    # unresolved index, which is worse than the stable state we were called to clear.
+    $conflict = Get-DropConflictStatus $RepoRoot $state.Sha
+    if ($conflict -ne 'clean') {
+        $why = if ($conflict -eq 'conflict') { 'replaying your commits onto its parent CONFLICTS' }
+               else { 'the replay could not be proven conflict-free' }
+        Write-Host "release: dropping $short is not safe — $why." -ForegroundColor Red
+        Write-Host "release: resolve by hand, then re-run without -Resume. To do it yourself:" -ForegroundColor Red
+        Write-Host "release:   git rebase --onto $short^ $short" -ForegroundColor Red
+        Die "-Resume refused — nothing was changed"
+    }
+
+    if ($WhatIf) {
+        Write-Host "release: -WhatIf — would drop $short and re-prepare from scratch. Nothing was changed." -ForegroundColor Yellow
+        exit 0
+    }
+    if (-not (Invoke-DropReleaseCandidate $RepoRoot $state.Sha)) {
+        Die "could not drop $short — the rebase was aborted, so the repository is as you left it"
+    }
+    Write-Host "release: dropped $short; re-preparing from scratch." -ForegroundColor Cyan
+} elseif (Get-DanglingReleaseCommits $RepoRoot) {
+    Die "un-pushed chore(release) commit on main — a prior release is half-finished; resolve first (or re-run with -Resume to drop the dead candidate and re-prepare)"
+}
 # F17: the last chore(release) commit must have a remote tag (else a prior tag-push failed / limbo) —
 # UNLESS the maintainer deliberately RETRACTED that serial (recorded in scripts/release-abandoned.txt), in
 # which case a missing remote tag is EXPECTED, not stuck. N is read from the immutable commit SUBJECT (not a
