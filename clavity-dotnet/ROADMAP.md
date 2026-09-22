@@ -1216,15 +1216,16 @@ assertion in `.github/workflows/build-agy-autotrain.yml`.
 by instruction.** ✅ **SHIPPED 2026-08-16** (`a652d8d` — "refactor(shield): 14c + 14h — disciplines write
 via agy-mark.sh and seat a panel"). **Closed retroactively on 2026-08-31**: the header read `OPEN` for
 fifteen days after the fix landed, and a sequencing spec scheduled it as live work as a result. Verified at
-HEAD: `agy-first/SKILL.md:103` reads "**Seat a panel, not a persona.**" with seat rotation at `:112`, and
-`agy-test-audit/SKILL.md:109` reads "**Seat the audit, do not send one voice.**" placed after the
+HEAD: `agy-first/SKILL.md:123` reads "**Seat a panel, not a persona.**" with seat rotation at `:132`, and
+`agy-test-audit/SKILL.md:185` reads "**Seat the audit, do not send one voice.**" placed after the
 `## The audit round` heading — the insertion point this entry itself prescribed. The old
 "Optional per-run mitigation: rotate the audit's lens" wording is gone.
 
 **Measured 2026-08-15** across both plugin variants (byte-identical, counts equal in each):
 
 **The line counts below were measured 2026-08-15, CORRECTED to their 2026-08-31 values, and CORRECTED
-AGAIN on 2026-09-03 after §21 shipped.** The originals (123 / 231 / 289 / 297) were the INSTALLED plugin's,
+AGAIN on 2026-09-03 after §21 shipped, and ONCE MORE on 2026-09-22 after `310979b` grew
+`agy-test-audit` 447 -> 478 and moved the two seat citations above (`:103` -> `:123`, `:109` -> `:185`).** The originals (123 / 231 / 289 / 297) were the INSTALLED plugin's,
 which had drifted from the repo under an unchanged version string — see Phase 0c.
 `scripts/check-roadmap-claims.ps1` fails if any of them rots again, and it did exactly that: §21 added
 lines to all four skills, the table kept the pre-§21 figures, every LOCAL gate I ran was green, and **CI
@@ -1239,7 +1240,7 @@ documents, recurring one section later. Re-measure against the REPO file, never 
 | skill | mandates seats? | evidence |
 |---|---|---|
 | `agy-first/SKILL.md` (234 lines) | **NO** | `:54-56` — "Default persona: bold inventive systems-designer; override when a sharper lens fits (security-auditor, perf-skeptic, API-contract-pedant)". Singular, and the three alternatives are ad-hoc, not palette seats. |
-| `agy-test-audit/SKILL.md` (447 lines) | **NO** | `:216` is the ONLY lens language in the file: "Optional per-run mitigation: rotate the audit's lens". Optional, and singular. **The fix is NOT confined to `:216`:** that line sits in the "Stated limitation - false negatives" section at the foot of the file, so replacing it alone would bury a framing instruction in a footer. The seat instruction belongs where the consult is framed - **insert at `:59`, immediately after the `## The audit round` heading and before its numbered item 1** - and `:216-217` is then reworded to point at it. |
+| `agy-test-audit/SKILL.md` (478 lines) | **NO** | `:216` is the ONLY lens language in the file: "Optional per-run mitigation: rotate the audit's lens". Optional, and singular. **The fix is NOT confined to `:216`:** that line sits in the "Stated limitation - false negatives" section at the foot of the file, so replacing it alone would bury a framing instruction in a footer. The seat instruction belongs where the consult is framed - **insert at `:59`, immediately after the `## The audit round` heading and before its numbered item 1** - and `:216-217` is then reworded to point at it. |
 | `agy-capstone/SKILL.md` (531 lines) | **YES — not defective** | `:89` reads, literally and in ASCII: `- **Seats (defect-class lenses).** Seat the proven adversarial-panel-review personas - Axiom Breaker`. `:92` seats those whose trigger the diff meets; `:103` rotates seats across rounds. **Quoted verbatim so it can be grepped:** an earlier version of this row rendered that line with an em-dash and an ellipsis, neither of which the file contains - it is ASCII-gated - so the "quote" matched nothing. |
 | `adversarial-panel-review/SKILL.md` (438 lines) | **YES** | the palette, selection rule, and anti-gaming guard live here. |
 
