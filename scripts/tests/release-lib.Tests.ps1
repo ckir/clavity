@@ -380,5 +380,34 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
                 (Test-Path (Join-Path $repo.Dir '.git/rebase-apply')) | Should -BeFalse
             } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
         }
+
+        # AGY-CAPSTONE round 1 regression (State Corruptor seat, 2026-09-22). A plain `rebase --onto`
+        # DROPS merge commits and replays their parents linearly, so recovering a release whose fix
+        # arrived as a merged branch silently rewrote the maintainer's topology. Pinned by TOPOLOGY, not
+        # by file contents: the flattening bug PRESERVED every file, so a content assertion stays green
+        # straight through it and would pin nothing. The oracle is the merge COUNT.
+        It 'preserves merge topology in the replayed commits (does not flatten a --no-ff merge)' {
+            $repo = New-ResumeRepo
+            try {
+                'v2' | Set-Content version.txt
+                git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+                $sha = (git rev-parse HEAD).Trim()
+
+                git checkout -q -b sidefix
+                'side' | Set-Content side.txt
+                git add -A; git commit -q -m 'fix: on a branch'
+                git checkout -q main
+                git merge -q --no-ff sidefix -m 'Merge branch sidefix'
+
+                @(git rev-list --merges HEAD).Count | Should -Be 1 -Because 'the fixture must actually contain a merge, or this test pins nothing'
+
+                Invoke-DropReleaseCandidate $repo.Dir $sha | Should -BeTrue
+
+                @(git rev-list --merges HEAD).Count | Should -Be 1 -Because 'the merge must SURVIVE the drop; a plain rebase --onto flattens it to 0'
+                (git rev-parse --abbrev-ref HEAD) | Should -Be 'main'
+                (Test-Path (Join-Path $repo.Dir 'side.txt')) | Should -BeTrue -Because 'the branch fix must still be present'
+                (Get-Content (Join-Path $repo.Dir 'version.txt') -Raw).Trim() | Should -Be 'v1' -Because 'the dropped candidate carried the v2 bump'
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
     }
 }

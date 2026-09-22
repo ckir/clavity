@@ -454,8 +454,24 @@ function Invoke-DropReleaseCandidate([string]$RepoRoot, [string]$Sha) {
         & git -C $RepoRoot reset --hard "$Sha^" *> $null
         return ($LASTEXITCODE -eq 0)
     }
-    & git -C $RepoRoot rebase --onto "$Sha^" $Sha *> $null
+    # --rebase-merges is REQUIRED, not a preference. AGY-CAPSTONE round 1 (2026-09-22, State Corruptor
+    # seat) found that a PLAIN `rebase --onto` silently DROPS merge commits and replays their parents
+    # linearly, so recovering a release whose fix arrived as a merged branch would quietly rewrite the
+    # maintainer's topology. MEASURED on git 2.55.0, dropping a candidate under a `--no-ff` merge:
+    # plain    -> 4 commits/1 merge became 2 commits/0 merges (topology destroyed)
+    # --rebase-merges -> 4 commits/1 merge became 3 commits/1 merge (release commit dropped, merge kept)
+    # It is a strict superset, which is why it is applied unconditionally rather than only when a merge
+    # is detected: MEASURED on the ordinary linear replay it behaves identically (exit 0, fix commit
+    # kept, bump dropped), and on a conflicting replay it still exits non-zero with the abort below
+    # restoring `main` clean. `main` carries merge commits in this repo, so this is reachable, not exotic.
+    & git -C $RepoRoot rebase --rebase-merges --onto "$Sha^" $Sha *> $null
     if ($LASTEXITCODE -ne 0) {
+        # Reached when the PREDICTION above said 'clean' and the replay disagreed anyway - the two run
+        # different algorithms, and merge-tree compares only the FINAL trees. MEASURED: a fix SEQUENCE
+        # whose intermediate commit conflicts with the candidate's parent, but whose final tree matches
+        # it, is predicted clean and then halts the replay. That is EXPECTED and is why this abort is
+        # the real safety net rather than the prediction: verified through this function, the caller
+        # gets $false with HEAD restored, still on main, no rebase in progress and a clean tree.
         & git -C $RepoRoot rebase --abort *> $null
         return $false
     }
