@@ -396,16 +396,33 @@ function Get-DanglingReleaseCommits([string]$RepoRoot) {
     # NOTE ON STDERR: no `2>$null` anywhere here, deliberately. Two separate rounds flagged a redirect on
     # this function's git calls for destroying the only diagnostic that can explain an unanticipated
     # failure, while the throw named a guessed cause. git's own `fatal:` line must reach the user.
-    & git -C $RepoRoot rev-parse --verify --quiet origin/main *> $null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Get-DanglingReleaseCommits: origin/main is not present in '$RepoRoot', so there is no trustworthy answer to which commits are already pushed - and guessing has been MEASURED destructive (it offered an already-shipped release for dropping). Run: git fetch origin. If this repository has never been pushed at all, push main once first: git push -u origin main"
+    # A git call can report failure TWO ways depending on $PSNativeCommandUseErrorActionPreference: by
+    # setting $LASTEXITCODE, or by THROWING a NativeCommandExitException (MEASURED 2026-09-22: that is the
+    # exact type). Both are EXPECTED here, so both are converted into one typed refusal below. Anything
+    # else - a typo, a null reference, a broken edit to this function - is NOT expected and must keep
+    # propagating with its stack trace intact, which is why callers filter on the type rather than
+    # catching bare. AGY-CAPSTONE round 7 measured a bare catch laundering `Undefined-Cmdlet` into a
+    # polite "release: ..." refusal, hiding a script bug behind a domain message.
+    try {
+        & git -C $RepoRoot rev-parse --verify --quiet origin/main *> $null
+        $refMissing = ($LASTEXITCODE -ne 0)
+    } catch [System.Management.Automation.NativeCommandExitException] {
+        $refMissing = $true
+    }
+    if ($refMissing) {
+        throw [System.InvalidOperationException]::new("Get-DanglingReleaseCommits: origin/main is not present in '$RepoRoot', so there is no trustworthy answer to which commits are already pushed - and guessing has been MEASURED destructive (it offered an already-shipped release for dropping). Run: git fetch origin. If this repository has never been pushed at all, push main once first: git push -u origin main")
     }
 
-    $out = @(& git -C $RepoRoot log 'origin/main..HEAD' --basic-regexp --grep='^chore(release):' --format=%H)
-    if ($LASTEXITCODE -ne 0) {
+    try {
+        $out = @(& git -C $RepoRoot log 'origin/main..HEAD' --basic-regexp --grep='^chore(release):' --format=%H)
+        $logFailed = ($LASTEXITCODE -ne 0)
+    } catch [System.Management.Automation.NativeCommandExitException] {
+        $out = @(); $logFailed = $true
+    }
+    if ($logFailed) {
         # The ref RESOLVED and git still failed (corruption, an unreadable object, a hostile config).
         # Genuinely undetermined, so fail CLOSED. No cause is named on purpose - git printed the real one.
-        throw "Get-DanglingReleaseCommits: 'git log origin/main..HEAD' failed (exit $LASTEXITCODE) in '$RepoRoot' - cannot tell whether a half-finished release exists. See git's error above."
+        throw [System.InvalidOperationException]::new("Get-DanglingReleaseCommits: 'git log origin/main..HEAD' failed in '$RepoRoot' - cannot tell whether a half-finished release exists. See git's error above.")
     }
     $out | Where-Object { $_ } | ForEach-Object { $_.Trim() }
 }
@@ -433,7 +450,10 @@ function Test-ResumeState([string]$RepoRoot) {
     $dangling = @()
     try {
         $dangling = @(Get-DanglingReleaseCommits $RepoRoot)
-    } catch {
+    } catch [System.InvalidOperationException] {
+        # ONLY the callee's own typed refusal is turned into a Problem. A bare catch here was measured
+        # (AGY-CAPSTONE round 7) to launder a programming error - an undefined command inside the callee
+        # came back as a polite refusal with its stack trace destroyed - so anything untyped propagates.
         $problems += $_.Exception.Message
         return [pscustomobject]@{ Ok = $false; Sha = $null; Problems = $problems }
     }

@@ -377,6 +377,22 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
             } finally { Pop-Location; Remove-Item -Recurse -Force $dir; Remove-Item -Recurse -Force $bare }
         }
 
+        # AGY-CAPSTONE round 7 (Mechanism Gamer). The catch that restores the contract must not be BARE.
+        # MEASURED with this exact fixture before the fold: an undefined command inside the callee came
+        # back as `Ok=$false` with "The term ... is not recognized" sitting in Problems - a script bug
+        # laundered into a domain refusal with its stack trace destroyed, which is the worst possible
+        # outcome for whoever has to debug it. Only the library's OWN typed refusal may be converted.
+        # The redefinition below shadows the callee for this scope, which is how PowerShell resolves it
+        # from inside Test-ResumeState.
+        It 'a PROGRAMMING error in the callee propagates, and is not laundered into a refusal' {
+            $repo = New-ResumeRepo
+            try {
+                function Get-DanglingReleaseCommits([string]$RepoRoot) { Undefined-Cmdlet-For-This-Test }
+
+                { Test-ResumeState $repo.Dir } | Should -Throw -ExpectedMessage '*Undefined-Cmdlet-For-This-Test*'
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+
         # AGY-CAPSTONE round 6 (Cascade Analyst). Test-ResumeState's contract is to RETURN every problem
         # so the orchestrator prints them all and dies once. Before this fold the callee's throw escaped
         # and DISCARDED the working-tree problem gathered moments earlier, so a developer with BOTH faults

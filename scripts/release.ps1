@@ -58,8 +58,11 @@ if ($Resume) {
     # this script arrives through Die as a single `release: ...` line, so an escaping throw would be the
     # one refusal that dumps a raw PowerShell stack trace instead - flagged as DEBT by AGY-CAPSTONE round
     # 3 and folded here. Catching changes no behaviour: Die exits non-zero exactly as the throw would.
+    # Typed, not bare: only the library's own refusal becomes a clean Die. A bare catch here was measured
+    # (AGY-CAPSTONE round 7) to launder a programming error into a polite refusal, hiding the stack trace
+    # a maintainer needs - so anything untyped keeps crashing loudly, as it should.
     try   { $dangling = @(Get-DanglingReleaseCommits $RepoRoot) }
-    catch { Die $_.Exception.Message }
+    catch [System.InvalidOperationException] { Die $_.Exception.Message }
     if ($dangling.Count) {
         Die "un-pushed chore(release) commit on main — a prior release is half-finished; resolve first (or re-run with -Resume to drop the dead candidate and re-prepare)"
     }
