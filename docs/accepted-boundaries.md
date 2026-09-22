@@ -114,3 +114,21 @@ Root and cross-product code: `scripts/`, root `docs/`, CI workflows.
   ⚠ RE-VALIDATE: this rests on the `default` arm continuing to return `'unknown'`. If that arm is ever
   narrowed, this guard becomes the only path and needs its own row.
   Raised by AGY-TEST-AUDIT 2026-09-22, driver branch census.
+
+- **`Get-DanglingReleaseCommits`'s second throw (range resolved, git still failed) has no test.**
+  Anchor: `scripts/lib/release-lib.ps1`, the `if ($LASTEXITCODE -ne 0)` that follows the
+  `git log 'origin/main..HEAD'` call.
+  COMPENSATION: its trigger is a repository whose `origin/main` RESOLVES and whose `git log` then still
+  fails - corruption, an unreadable object, a hostile config - and no fixture in this suite can produce
+  that without corrupting a real repo on disk, which would make the row environment-dependent. Two
+  independent things make its absence safe rather than merely unmeasured. First, BOTH call sites now
+  catch: `Test-ResumeState` turns any failure into a Problem with `Ok=$false`, and `release.ps1`'s gate
+  turns it into a `Die` - so the path fails CLOSED whether git reports by exit code or by throwing.
+  Second, that also disposes of the related observation that the throw is BYPASSED when
+  `$PSNativeCommandUseErrorActionPreference` is `$true` (the native error throws before `$LASTEXITCODE`
+  is read): the escaping `NativeCommandError` lands in the same two catches and produces the same clean
+  refusal, so the bypass changes the message, never the safety.
+  ⚠ RE-VALIDATE: this rests on both call sites keeping their catch. If either is removed, this branch
+  becomes the only thing standing between a corrupt repository and a fail-open gate, and needs a row.
+  Raised by AGY-TEST-AUDIT 2026-09-22 (driver prediction) and AGY-CAPSTONE round 6 (Mechanism Gamer +
+  Protocol Pedant).

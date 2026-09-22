@@ -352,7 +352,7 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
         # half-finished release to resume" string. MEASURED before the fold that is exactly what it did -
         # Ok=$false with a reason telling the developer the opposite of the truth, which is worse than a
         # raw failure because it reads as a clean, actionable answer a developer would act on.
-        It 'origin/main absent: PROPAGATES the refusal instead of answering "no half-finished release"' {
+        It 'origin/main absent: REPORTS the refusal as a Problem, never answering "no half-finished release"' {
             $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resnoorigin2-" + [guid]::NewGuid().ToString('N'))
             $bare = "$dir.git"
             New-Item -ItemType Directory -Path $dir | Out-Null
@@ -366,10 +366,42 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
                 $sha = (git rev-parse HEAD).Trim()
                 (git rev-parse --verify --quiet origin/main) | Should -BeNullOrEmpty -Because 'the fixture must actually lack origin/main, or this test pins nothing'
 
-                { Test-ResumeState $dir } | Should -Throw -ExpectedMessage '*origin/main is not present*'
+                $state = Test-ResumeState $dir
+                $state.Ok  | Should -BeFalse -Because 'the undetermined case must fail CLOSED'
+                $state.Sha | Should -BeNullOrEmpty
+                ($state.Problems -join ' ') | Should -Match 'origin/main is not present'
+                ($state.Problems -join ' ') | Should -Not -Match 'no half-finished release to resume' -Because 'that wording is the confidently-wrong answer this whole fold exists to remove'
 
                 # And the candidate is still exactly where it was: a refusal changes nothing.
                 (git rev-parse HEAD).Trim() | Should -Be $sha
+            } finally { Pop-Location; Remove-Item -Recurse -Force $dir; Remove-Item -Recurse -Force $bare }
+        }
+
+        # AGY-CAPSTONE round 6 (Cascade Analyst). Test-ResumeState's contract is to RETURN every problem
+        # so the orchestrator prints them all and dies once. Before this fold the callee's throw escaped
+        # and DISCARDED the working-tree problem gathered moments earlier, so a developer with BOTH faults
+        # was told about neither in a readable form. This row pins the BATCH property, which is exactly
+        # what an escaping throw destroys - and it asserts BOTH strings, because asserting only the count
+        # would pass for any two problems at all.
+        It 'dirty tree AND origin/main absent: reports BOTH problems, not just the one that threw' {
+            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resboth-" + [guid]::NewGuid().ToString('N'))
+            $bare = "$dir.git"
+            New-Item -ItemType Directory -Path $dir | Out-Null
+            git init -q --bare $bare | Out-Null
+            Push-Location $dir
+            try {
+                git init -q -b main . | Out-Null
+                git config user.email t@t; git config user.name t; git config commit.gpgsign false
+                git remote add origin $bare
+                'v1' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v1'
+                'dirty' | Set-Content version.txt          # uncommitted tracked change
+                (git rev-parse --verify --quiet origin/main) | Should -BeNullOrEmpty -Because 'the fixture must lack origin/main'
+                git diff --quiet; $LASTEXITCODE | Should -Not -Be 0 -Because 'the fixture must really be dirty, or only one problem exists and this row pins nothing'
+
+                $state = Test-ResumeState $dir
+                $state.Ok | Should -BeFalse
+                ($state.Problems -join ' ') | Should -Match 'uncommitted tracked changes' -Because 'the working-tree problem is the one an escaping throw discarded'
+                ($state.Problems -join ' ') | Should -Match 'origin/main is not present'
             } finally { Pop-Location; Remove-Item -Recurse -Force $dir; Remove-Item -Recurse -Force $bare }
         }
 

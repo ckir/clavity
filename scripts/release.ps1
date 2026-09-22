@@ -53,8 +53,16 @@ if ($Resume) {
         Die "could not drop $short — the rebase was aborted, so the repository is as you left it"
     }
     Write-Host "release: dropped $short; re-preparing from scratch." -ForegroundColor Cyan
-} elseif (Get-DanglingReleaseCommits $RepoRoot) {
-    Die "un-pushed chore(release) commit on main — a prior release is half-finished; resolve first (or re-run with -Resume to drop the dead candidate and re-prepare)"
+} else {
+    # Get-DanglingReleaseCommits throws when it cannot determine the pushed set. Every other refusal in
+    # this script arrives through Die as a single `release: ...` line, so an escaping throw would be the
+    # one refusal that dumps a raw PowerShell stack trace instead - flagged as DEBT by AGY-CAPSTONE round
+    # 3 and folded here. Catching changes no behaviour: Die exits non-zero exactly as the throw would.
+    try   { $dangling = @(Get-DanglingReleaseCommits $RepoRoot) }
+    catch { Die $_.Exception.Message }
+    if ($dangling.Count) {
+        Die "un-pushed chore(release) commit on main — a prior release is half-finished; resolve first (or re-run with -Resume to drop the dead candidate and re-prepare)"
+    }
 }
 # F17: the last chore(release) commit must have a remote tag (else a prior tag-push failed / limbo) —
 # UNLESS the maintainer deliberately RETRACTED that serial (recorded in scripts/release-abandoned.txt), in

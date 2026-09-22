@@ -424,7 +424,20 @@ function Test-ResumeState([string]$RepoRoot) {
         $problems += 'working tree has uncommitted tracked changes - commit or stash them first (dropping the candidate would destroy them)'
     }
 
-    $dangling = @(Get-DanglingReleaseCommits $RepoRoot)
+    # Get-DanglingReleaseCommits THROWS when it cannot determine the pushed set - by design, because
+    # guessing was measured destructive. But THIS function's contract is to RETURN a verdict carrying
+    # EVERY problem, so the orchestrator can print them all and die once. Letting the throw escape would
+    # discard the working-tree problem already accumulated above and replace a readable refusal with a
+    # raw stack trace. AGY-CAPSTONE round 6 (Cascade Analyst). Catching preserves both properties at
+    # once: the contract holds, and it still fails CLOSED, because the caught case returns Ok=$false.
+    $dangling = @()
+    try {
+        $dangling = @(Get-DanglingReleaseCommits $RepoRoot)
+    } catch {
+        $problems += $_.Exception.Message
+        return [pscustomobject]@{ Ok = $false; Sha = $null; Problems = $problems }
+    }
+
     if ($dangling.Count -eq 0) {
         $problems += 'no un-pushed chore(release) commit in origin/main..HEAD - there is no half-finished release to resume'
     } elseif ($dangling.Count -gt 1) {

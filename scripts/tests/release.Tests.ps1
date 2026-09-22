@@ -128,6 +128,38 @@ Describe 'release.ps1 -Resume (orchestrator end-to-end)' {
         } finally { Pop-Location; Remove-Item -Recurse -Force $s.Dir; Remove-Item -Recurse -Force $s.Bare }
     }
 
+    # AGY-CAPSTONE round 3 raised this as DEBT and round 6 folded it. Get-DanglingReleaseCommits now
+    # THROWS when it cannot determine the pushed set, and every OTHER refusal in release.ps1 arrives as a
+    # single `release: ...` line via Die - so an escaping throw was the one refusal that dumped a raw
+    # PowerShell stack trace at the user. The oracle is the ABSENCE of that trace plus the presence of the
+    # clean line: asserting only a non-zero exit would pass for the raw-trace version too, since both fail
+    # closed. Both call sites are covered - with -Resume (via Test-ResumeState) and without it (the gate).
+    # REACHABILITY, measured while writing this row and worth recording because it bounds the whole class:
+    # deleting only the local tracking ref does NOT reproduce the condition here, because release.ps1:12
+    # runs `git fetch --tags` and that RE-CREATES refs/remotes/origin/main before the gate is reached. So
+    # through the orchestrator the only reachable missing-origin/main state is one the REMOTE also lacks -
+    # which is why the remote branch is deleted below, not just the local ref. (A first draft of this row
+    # deleted only the local ref and failed with "no un-pushed chore(release) commit", which is how the
+    # fetch-restores-it behaviour was found.)
+    It '7. origin/main missing: BOTH paths refuse as a clean "release:" line, not a raw stack trace' {
+        $s = New-ReleaseScenario {
+            git push -q origin --delete main 2>$null
+            git update-ref -d refs/remotes/origin/main
+        }
+        try {
+            (git rev-parse --verify --quiet origin/main) | Should -BeNullOrEmpty -Because 'the fixture must actually lack origin/main, or this test pins nothing'
+
+            foreach ($argList in @(@('-Resume'), @())) {
+                $r = Invoke-ReleaseScript -Dir $s.Dir -ArgList $argList
+                $r.ExitCode | Should -Be 1
+                $r.Output | Should -Match 'release:.*origin/main is not present'
+                $r.Output | Should -Match 'git fetch origin'
+                $r.Output | Should -Not -Match 'Exception:' -Because 'a raw PowerShell exception header is exactly the DEBT this row pins'
+                $r.Output | Should -Not -Match 'at <ScriptBlock>'
+            }
+        } finally { Pop-Location; Remove-Item -Recurse -Force $s.Dir; Remove-Item -Recurse -Force $s.Bare }
+    }
+
     It '6. no -Resume, with a dangling candidate present: exit 1, names half-finished AND the -Resume affordance' {
         $s = New-ReleaseScenario {
             'v2' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
