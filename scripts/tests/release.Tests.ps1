@@ -160,6 +160,27 @@ Describe 'release.ps1 -Resume (orchestrator end-to-end)' {
         } finally { Pop-Location; Remove-Item -Recurse -Force $s.Dir; Remove-Item -Recurse -Force $s.Bare }
     }
 
+    # AGY-CAPSTONE round 9 (Mechanism Gamer, DEBT). The LIBRARY's catch filter is pinned in
+    # release-lib.Tests.ps1, but the ORCHESTRATOR's gate had no equivalent row - reverting `catch
+    # [ReleaseRefusalException]` here to a bare `catch` passed every row while silently re-opening the
+    # laundering defect rounds 7-8 closed. The fixture appends a redefinition to the SCRATCH COPY of the
+    # library (a later definition wins on dot-source), so the gate hits a genuine script bug rather than
+    # a refusal. The oracle is that the bug arrives RAW: a typed catch must not touch it.
+    It '8. a script bug at the gate crashes RAW, and is not laundered into a "release:" refusal' {
+        $s = New-ReleaseScenario {
+            Add-Content (Join-Path $PWD 'scripts/lib/release-lib.ps1') @'
+
+function Get-DanglingReleaseCommits([string]$RepoRoot) { Undefined-Cmdlet-At-The-Gate }
+'@
+        }
+        try {
+            $r = Invoke-ReleaseScript -Dir $s.Dir -ArgList @()
+            $r.ExitCode | Should -Not -Be 0 -Because 'a script bug must still stop the release'
+            $r.Output | Should -Match 'Undefined-Cmdlet-At-The-Gate' -Because 'the real error must reach the maintainer'
+            $r.Output | Should -Not -Match 'release:.*Undefined-Cmdlet-At-The-Gate' -Because 'a "release: " prefix here means Die swallowed a script bug and dressed it as a domain refusal - the exact laundering this pins'
+        } finally { Pop-Location; Remove-Item -Recurse -Force $s.Dir; Remove-Item -Recurse -Force $s.Bare }
+    }
+
     It '6. no -Resume, with a dangling candidate present: exit 1, names half-finished AND the -Resume affordance' {
         $s = New-ReleaseScenario {
             'v2' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
