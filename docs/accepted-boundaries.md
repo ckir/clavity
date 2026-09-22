@@ -78,3 +78,39 @@ Root and cross-product code: `scripts/`, root `docs/`, CI workflows.
   things staying true: that the path predicates never dereference, and that the absent-at-base guard
   still exists. The second one was EDITED on 2026-09-05 (it now retries against a rename origin before
   giving up), so it is exactly the kind of anchor that can move.
+
+- **The successful `-Resume` drop is never driven end-to-end through `release.ps1`.**
+  Anchor: `scripts/tests/release.Tests.ps1` (`New-ReleaseScenario`); all six rows exit via `Die` or
+  `-WhatIf` before the compute step.
+  COMPENSATION: the drop ITSELF is covered at unit level by the four `Invoke-DropReleaseCandidate` rows
+  in `scripts/tests/release-lib.Tests.ps1` (tip reset, non-conflicting replay, conflicting replay with a
+  clean abort, and merge-topology survival), and everything downstream of the drop is the ordinary
+  first-release path that predates `-Resume` and is gated by the existing release suites. An end-to-end
+  happy-path row would need the whole `build/members.json` + per-member plugin structure stood up in a
+  throwaway repo, against a suite whose rows already cost ~9,4s each because every one spawns a pwsh
+  running a COPY of `release.ps1`. OWNER-RULED 2026-09-22 after the peer argued the opposite position
+  ("proving the orchestrator can say no does not prove it can finish the job") — the argument is on the
+  record in `docs/agy-test-audit-ledger.md`, and this boundary is the owner's answer to it.
+  Raised by AGY-TEST-AUDIT 2026-09-22, frame-rejection question.
+
+- **`Get-DanglingReleaseCommits`'s `.Trim()` is unobservable and no row can kill its mutant.**
+  Anchor: `scripts/lib/release-lib.ps1`, the `ForEach-Object { $_.Trim() }` in
+  `Get-DanglingReleaseCommits`.
+  COMPENSATION: MEASURED 2026-09-22 — deleting the `.Trim()` leaves the suite fully GREEN, because
+  `git log --format=%H` emits no surrounding whitespace, so no fixture can produce an input that
+  distinguishes the two. Rather than write a row that pins nothing, the test that FALSELY CLAIMED to
+  cover it was renamed (it had been `... newest-first, trimmed`) and now asserts the contract that is
+  real and checkable: every returned element matches `^[0-9a-f]{40}$`, which would catch stray
+  whitespace if git ever emitted any.
+  Raised by AGY-TEST-AUDIT 2026-09-22, driver branch census.
+
+- **`Get-DropConflictStatus`'s `-not $head -or -not $cand` guard is defence-in-depth, not a gap.**
+  Anchor: `scripts/lib/release-lib.ps1`, `if (-not $head -or -not $cand) { return 'unknown' }`.
+  COMPENSATION: MEASURED 2026-09-22 — disabling the guard leaves the suite GREEN because the
+  fallthrough reaches `merge-tree`, which fails on the same bad ref and lands in the `default` switch
+  arm returning the SAME `'unknown'`. Two independent paths produce one answer, so a single-point mutant
+  cannot redden anything; that is multi-guard redundancy rather than a vacuous test, and the `default`
+  arm IS pinned (changing it to `'clean'` reddens the fail-closed row).
+  ⚠ RE-VALIDATE: this rests on the `default` arm continuing to return `'unknown'`. If that arm is ever
+  narrowed, this guard becomes the only path and needs its own row.
+  Raised by AGY-TEST-AUDIT 2026-09-22, driver branch census.

@@ -88,7 +88,13 @@ Describe 'release.ps1 -Resume (orchestrator end-to-end)' {
         } finally { Pop-Location; Remove-Item -Recurse -Force $s.Dir; Remove-Item -Recurse -Force $s.Bare }
     }
 
-    It '4. -Resume where the replay conflicts: exit 1, "not safe", HEAD unchanged, no rebase in progress' {
+    # AGY-TEST-AUDIT 2026-09-22 (Mechanism Gamer, peer finding, CONFIRMED by mutant). This test asserted
+    # only `-Match 'not safe'`, which release.ps1:42 emits for BOTH refusal verdicts - 'conflict' and
+    # 'unknown' differ solely in the $why clause chosen at :40-41. MEASURED: a mutant that misreports a
+    # real CONFLICT with the 'unknown' wording left this suite 6/6 GREEN, so the suite could not tell the
+    # feature's two refusal reasons apart. The fix is to assert the DISTINGUISHING clause, not the shared
+    # prefix - the general form being that a matcher must reject the near-miss, not merely accept the hit.
+    It '4. -Resume where the replay conflicts: exit 1, names CONFLICTS specifically, HEAD unchanged, no rebase in progress' {
         $s = New-ReleaseScenario {
             "# CL`n`n## 0.2.0`n- a`n" | Set-Content CHANGELOG.md
             git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
@@ -100,6 +106,8 @@ Describe 'release.ps1 -Resume (orchestrator end-to-end)' {
             $r = Invoke-ReleaseScript -Dir $s.Dir -ArgList @('-Resume')
             $r.ExitCode | Should -Be 1
             $r.Output | Should -Match 'not safe'
+            $r.Output | Should -Match 'replaying your commits onto its parent CONFLICTS'
+            $r.Output | Should -Not -Match 'could not be proven conflict-free'
             (git rev-parse HEAD).Trim() | Should -Be $before
             (git rev-parse --abbrev-ref HEAD) | Should -Be 'main'
             (Test-Path (Join-Path $s.Dir '.git/rebase-merge')) | Should -BeFalse

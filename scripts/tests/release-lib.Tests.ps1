@@ -202,7 +202,13 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
             } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
         }
 
-        It 'returns matching SHAs newest-first, trimmed' {
+        # AGY-TEST-AUDIT 2026-09-22: this test was named '... newest-first, trimmed' but asserted nothing
+        # about trimming. MEASURED: deleting the function's `.Trim()` leaves the whole suite 37/37 GREEN,
+        # because `git log --format=%H` never emits surrounding whitespace on this platform - so the
+        # `.Trim()` is unobservable defence and NO test can kill that mutant. The honest fix is to stop
+        # claiming it in the name and to pin the CONTRACT that actually matters instead: each element is
+        # a bare 40-character hex sha. See docs/accepted-boundaries.md for the recorded boundary.
+        It 'returns matching SHAs newest-first, each a bare 40-hex sha' {
             $repo = New-ResumeRepo
             try {
                 'v2' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
@@ -213,6 +219,48 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
                 $found.Count | Should -Be 2
                 $found[0] | Should -Be $sha3
                 $found[1] | Should -Be $sha2
+                foreach ($f in $found) { $f | Should -MatchExactly '^[0-9a-f]{40}$' }
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+
+        # AGY-TEST-AUDIT 2026-09-22, the SOURCE defect this audit found. Before the fold this function
+        # swallowed a non-zero git exit and returned an EMPTY array, so a repo whose `main` had never
+        # been pushed made release.ps1's precondition read "no half-finished release" over a REAL
+        # dangling candidate - the gate FAILED OPEN. The oracle is the THROW: returning empty here is
+        # indistinguishable from the genuine no-candidate case, which is exactly why it was invisible.
+        It 'FAILS CLOSED: throws instead of reporting "none" when origin/main does not resolve' {
+            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resnoorigin-" + [guid]::NewGuid().ToString('N'))
+            $bare = "$dir.git"
+            New-Item -ItemType Directory -Path $dir | Out-Null
+            git init -q --bare $bare | Out-Null
+            Push-Location $dir
+            try {
+                git init -q -b main . | Out-Null
+                git config user.email t@t; git config user.name t; git config commit.gpgsign false
+                # A remote EXISTS (so `git fetch` in release.ps1 succeeds) but main was never pushed,
+                # so the ref origin/main does not resolve.
+                git remote add origin $bare
+                'v1' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v1'
+                (git rev-parse --verify --quiet origin/main) | Should -BeNullOrEmpty -Because 'the fixture must actually lack origin/main, or this test pins nothing'
+                @(git log --format=%s) | Should -Contain 'chore(release): clavity-v1' -Because 'a REAL candidate must exist, so an empty return would be a FALSE negative rather than a true one'
+
+                { Get-DanglingReleaseCommits $dir } | Should -Throw -ExpectedMessage '*cannot tell whether a half-finished release exists*'
+            } finally { Pop-Location; Remove-Item -Recurse -Force $dir; Remove-Item -Recurse -Force $bare }
+        }
+
+        # AGY-TEST-AUDIT 2026-09-22: the explicit --basic-regexp flag carries a comment explaining that it
+        # guards against a host configured with grep.patternType=extended, but NO test set that config -
+        # MEASURED, deleting the flag left the suite 37/37 GREEN. Under ERE `^chore(release):` parses
+        # `(release)` as a capture group, so the pattern matches the literal 'chorerelease:' and a real
+        # `chore(release):` subject is MISSED - the gate would then fail open on a genuine candidate.
+        It 'honours --basic-regexp: still finds a candidate on a host with grep.patternType=extended' {
+            $repo = New-ResumeRepo
+            try {
+                git config grep.patternType extended
+                (git config --get grep.patternType) | Should -Be 'extended' -Because 'the hostile config must actually be set, or this test pins nothing'
+                'v2' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+                $sha = (git rev-parse HEAD).Trim()
+                @(Get-DanglingReleaseCommits $repo.Dir) | Should -Be $sha
             } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
         }
 
@@ -275,6 +323,28 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
             } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
         }
 
+        # AGY-TEST-AUDIT 2026-09-22. Companion to the fail-closed row above: Test-ResumeState must not
+        # LAUNDER the undetermined case into its friendly "there is no half-finished release to resume"
+        # problem string. MEASURED before the fold, that is exactly what it did - Ok=$false with a reason
+        # that tells the developer the opposite of the truth, which is worse than a raw failure because
+        # it reads as a clean, actionable answer. The oracle is that the throw PROPAGATES.
+        It 'propagates the undetermined case instead of reporting "no half-finished release"' {
+            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resnoorigin2-" + [guid]::NewGuid().ToString('N'))
+            $bare = "$dir.git"
+            New-Item -ItemType Directory -Path $dir | Out-Null
+            git init -q --bare $bare | Out-Null
+            Push-Location $dir
+            try {
+                git init -q -b main . | Out-Null
+                git config user.email t@t; git config user.name t; git config commit.gpgsign false
+                git remote add origin $bare
+                'v1' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v1'
+                (git rev-parse --verify --quiet origin/main) | Should -BeNullOrEmpty -Because 'the fixture must actually lack origin/main, or this test pins nothing'
+
+                { Test-ResumeState $dir } | Should -Throw -ExpectedMessage '*cannot tell whether a half-finished release exists*'
+            } finally { Pop-Location; Remove-Item -Recurse -Force $dir; Remove-Item -Recurse -Force $bare }
+        }
+
         It 'two dangling candidates: Ok=$false, Sha=$null, names "refusing to guess"' {
             $repo = New-ResumeRepo
             try {
@@ -322,12 +392,69 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
             } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
         }
 
-        It "fails closed to 'unknown' (not a bool) when the SHA does not resolve" {
+        # AGY-TEST-AUDIT 2026-09-22 corrected this test's NAME. It reads as though it exercises the
+        # `-not $head -or -not $cand` guard, but MEASURED it does not: `git rev-parse` ECHOES a
+        # well-formed 40-hex string back even for an absent object, so $cand is non-empty, the guard is
+        # skipped, and merge-tree exits 128 into the `default` switch arm. That arm is what this row
+        # actually pins - changing `default` to return 'clean' reddens exactly this test. The guard
+        # itself returns the same 'unknown' as the fallthrough (measured), i.e. defence-in-depth that no
+        # single-point mutant can kill; recorded as a boundary rather than papered over with a fake row.
+        It "fails closed to 'unknown' (not a bool) via the default arm when merge-tree exits >1" {
             $repo = New-ResumeRepo
             try {
                 $status = Get-DropConflictStatus $repo.Dir 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
                 $status | Should -BeOfType ([string])
                 $status | Should -BeExactly 'unknown'
+            } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
+        }
+
+        # AGY-TEST-AUDIT 2026-09-22. The tip short-circuit looked like a pure latency optimisation, so a
+        # test for it would normally be vacuous - MEASURED, deleting it leaves the suite 37/37 GREEN on
+        # every existing fixture. It is NOT an optimisation in one reachable case: when the tip candidate
+        # is ALSO the repository's root commit, `$Sha^` does not resolve, merge-tree exits 128 and the
+        # function would answer 'unknown' (which release.ps1:39 REFUSES on) instead of 'clean'. That
+        # turns a legitimately resumable first release into an unresumable one. MEASURED both ways.
+        It "returns 'clean' for a tip candidate that is ALSO the root commit (the short-circuit is load-bearing)" {
+            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("restiproot-" + [guid]::NewGuid().ToString('N'))
+            $bare = "$dir.git"
+            New-Item -ItemType Directory -Path $dir | Out-Null
+            git init -q --bare $bare | Out-Null
+            Push-Location $dir
+            try {
+                git init -q -b main . | Out-Null
+                git config user.email t@t; git config user.name t; git config commit.gpgsign false
+                git remote add origin $bare
+                'v1' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v1 [x 0.1.0]'
+                $root = (git rev-parse HEAD).Trim()
+                (git rev-parse --verify --quiet "$root^") | Should -BeNullOrEmpty -Because 'the candidate must really be the ROOT, or the short-circuit is not what is under test'
+
+                Get-DropConflictStatus $dir $root | Should -BeExactly 'clean'
+            } finally { Pop-Location; Remove-Item -Recurse -Force $dir; Remove-Item -Recurse -Force $bare }
+        }
+
+        # AGY-TEST-AUDIT 2026-09-22. The try/catch carries a comment saying it exists because
+        # $PSNativeCommandUseErrorActionPreference turns merge-tree's exit 1 into a TERMINATING error -
+        # but no test ever set that preference, so MEASURED, replacing the catch body with 'clean' left
+        # the suite 37/37 GREEN. This row flips the preference inside the It and carries its own CONTROL
+        # in the SAME process: the default-preference call must answer 'conflict' (proving the fixture
+        # really conflicts), and only then does the flipped call prove the catch arm caught something.
+        It "returns 'unknown' via the CATCH arm when native commands throw (preference flipped)" {
+            $repo = New-ResumeRepo
+            try {
+                'base' | Set-Content README.md; git add -A; git commit -q -m 'chore: base'
+                git push -q origin main
+                "# CL`n`n## 0.2.0`n- a`n" | Set-Content CHANGELOG.md
+                git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+                $sha = (git rev-parse HEAD).Trim()
+                "# CL`n`n## 0.2.0`n- a`n- b`n" | Set-Content CHANGELOG.md
+                git add -A; git commit -q -m 'fix(docs): touch changelog'
+
+                # CONTROL, same process: without the preference this fixture reaches the switch.
+                Get-DropConflictStatus $repo.Dir $sha | Should -BeExactly 'conflict' -Because 'the control must show the fixture genuinely conflicts, or the flipped arm below proves nothing'
+
+                $PSNativeCommandUseErrorActionPreference = $true
+                $ErrorActionPreference = 'Stop'
+                Get-DropConflictStatus $repo.Dir $sha | Should -BeExactly 'unknown' -Because 'with the preference on, merge-tree THROWS and only the catch arm can still return a verdict'
             } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
         }
     }

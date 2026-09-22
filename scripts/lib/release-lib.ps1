@@ -371,8 +371,18 @@ function Update-Changelog([string]$repoRoot, [object]$bump, [string]$dateStr) {
 # a user with `grep.patternType=extended` configured would otherwise silently read `(release)` as a
 # capture group and match `chore:` alone.
 function Get-DanglingReleaseCommits([string]$RepoRoot) {
-    @(& git -C $RepoRoot log 'origin/main..HEAD' --basic-regexp --grep='^chore(release):' --format=%H) |
-        Where-Object { $_ } | ForEach-Object { $_.Trim() }
+    $out = @(& git -C $RepoRoot log 'origin/main..HEAD' --basic-regexp --grep='^chore(release):' --format=%H 2>$null)
+    # FAIL CLOSED on a git failure. AGY-TEST-AUDIT 2026-09-22 MEASURED the hole this closes: in a repo
+    # whose `main` has never been pushed, `origin/main` does not resolve, `git log origin/main..HEAD`
+    # exits 128 and writes NOTHING to stdout - so this function returned an EMPTY array while a real
+    # dangling candidate sat on HEAD. release.ps1's precondition then read "no half-finished release"
+    # and the gate FAILED OPEN, and Test-ResumeState reported "there is no half-finished release to
+    # resume" - confidently wrong. Throwing is the fail-closed answer: the caller must not be allowed
+    # to read "I could not tell" as "there is nothing there".
+    if ($LASTEXITCODE -ne 0) {
+        throw "Get-DanglingReleaseCommits: 'git log origin/main..HEAD' failed (exit $LASTEXITCODE) in '$RepoRoot' - cannot tell whether a half-finished release exists. Does origin/main exist (git fetch origin)?"
+    }
+    $out | Where-Object { $_ } | ForEach-Object { $_.Trim() }
 }
 
 # Structured, side-effect-free verdict on whether -Resume may proceed. Returns Ok/Sha/Problems so the
