@@ -223,13 +223,14 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
             } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
         }
 
-        # AGY-TEST-AUDIT 2026-09-22, the SOURCE defect this audit found. Before the fold this function
-        # swallowed a non-zero git exit and returned an EMPTY array, so a repo whose `main` had never
-        # been pushed made release.ps1's precondition read "no half-finished release" over a REAL
-        # dangling candidate - the gate FAILED OPEN. The oracle is the THROW: returning empty here is
-        # indistinguishable from the genuine no-candidate case, which is exactly why it was invisible.
-        It 'FAILS CLOSED: throws instead of reporting "none" when origin/main does not resolve' {
-            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resnoorigin-" + [guid]::NewGuid().ToString('N'))
+        # AGY-TEST-AUDIT 2026-09-22 found the SOURCE defect (unpushed main -> git exits 128 -> this
+        # returned EMPTY over a stranded candidate, so the gate FAILED OPEN). AGY-CAPSTONE round 3 then
+        # caught the FIX's own edge: refusing outright blocks a VIRGIN repo's FIRST release, which is
+        # supported (Get-BaselineSha has a bootstrap arm returning '' for exactly that). These two rows
+        # pin BOTH halves, because either one alone is satisfied by a wrong implementation: returning
+        # empty always passes the first, refusing always passes... neither. They must both hold.
+        It 'no origin/main and no release commit: returns empty, so a FIRST release is not blocked' {
+            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resvirgin-" + [guid]::NewGuid().ToString('N'))
             $bare = "$dir.git"
             New-Item -ItemType Directory -Path $dir | Out-Null
             git init -q --bare $bare | Out-Null
@@ -237,14 +238,32 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
             try {
                 git init -q -b main . | Out-Null
                 git config user.email t@t; git config user.name t; git config commit.gpgsign false
-                # A remote EXISTS (so `git fetch` in release.ps1 succeeds) but main was never pushed,
-                # so the ref origin/main does not resolve.
+                # A remote EXISTS (so release.ps1's `git fetch` succeeds) but main was never pushed.
+                git remote add origin $bare
+                'hello' | Set-Content f.txt; git add -A; git commit -q -m 'feat: the very first feature'
+                (git rev-parse --verify --quiet origin/main) | Should -BeNullOrEmpty -Because 'the fixture must actually lack origin/main, or this test pins nothing'
+
+                @(Get-DanglingReleaseCommits $dir) | Should -BeNullOrEmpty
+            } finally { Pop-Location; Remove-Item -Recurse -Force $dir; Remove-Item -Recurse -Force $bare }
+        }
+
+        It 'no origin/main but a release commit IS present: still catches it (nothing pushed means nothing is safe)' {
+            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resstranded-" + [guid]::NewGuid().ToString('N'))
+            $bare = "$dir.git"
+            New-Item -ItemType Directory -Path $dir | Out-Null
+            git init -q --bare $bare | Out-Null
+            Push-Location $dir
+            try {
+                git init -q -b main . | Out-Null
+                git config user.email t@t; git config user.name t; git config commit.gpgsign false
                 git remote add origin $bare
                 'v1' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v1'
+                $sha = (git rev-parse HEAD).Trim()
                 (git rev-parse --verify --quiet origin/main) | Should -BeNullOrEmpty -Because 'the fixture must actually lack origin/main, or this test pins nothing'
-                @(git log --format=%s) | Should -Contain 'chore(release): clavity-v1' -Because 'a REAL candidate must exist, so an empty return would be a FALSE negative rather than a true one'
 
-                { Get-DanglingReleaseCommits $dir } | Should -Throw -ExpectedMessage '*cannot tell whether a half-finished release exists*'
+                # A push that never landed leaves the candidate stranded and UNPUSHED. Returning empty
+                # here is the original fail-open; the range must widen to all of HEAD, not vanish.
+                @(Get-DanglingReleaseCommits $dir) | Should -Be $sha
             } finally { Pop-Location; Remove-Item -Recurse -Force $dir; Remove-Item -Recurse -Force $bare }
         }
 
@@ -323,12 +342,13 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
             } finally { Pop-Location; Remove-Item -Recurse -Force $repo.Dir; Remove-Item -Recurse -Force $repo.Bare }
         }
 
-        # AGY-TEST-AUDIT 2026-09-22. Companion to the fail-closed row above: Test-ResumeState must not
-        # LAUNDER the undetermined case into its friendly "there is no half-finished release to resume"
-        # problem string. MEASURED before the fold, that is exactly what it did - Ok=$false with a reason
-        # that tells the developer the opposite of the truth, which is worse than a raw failure because
-        # it reads as a clean, actionable answer. The oracle is that the throw PROPAGATES.
-        It 'propagates the undetermined case instead of reporting "no half-finished release"' {
+        # AGY-TEST-AUDIT 2026-09-22 + AGY-CAPSTONE round 3. Companion to the two rows above, one level up:
+        # Test-ResumeState must not LAUNDER a stranded candidate into its friendly "there is no
+        # half-finished release to resume" string. MEASURED before the fold that is exactly what it did -
+        # Ok=$false with a reason telling the developer the opposite of the truth, which is worse than a
+        # raw failure because it reads as a clean, actionable answer. It must now report the candidate as
+        # RESUMABLE, since -Resume is precisely the supported recovery for this state.
+        It 'no origin/main with a stranded candidate: reports it as RESUMABLE, not "no half-finished release"' {
             $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resnoorigin2-" + [guid]::NewGuid().ToString('N'))
             $bare = "$dir.git"
             New-Item -ItemType Directory -Path $dir | Out-Null
@@ -339,9 +359,13 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
                 git config user.email t@t; git config user.name t; git config commit.gpgsign false
                 git remote add origin $bare
                 'v1' | Set-Content version.txt; git add -A; git commit -q -m 'chore(release): clavity-v1'
+                $sha = (git rev-parse HEAD).Trim()
                 (git rev-parse --verify --quiet origin/main) | Should -BeNullOrEmpty -Because 'the fixture must actually lack origin/main, or this test pins nothing'
 
-                { Test-ResumeState $dir } | Should -Throw -ExpectedMessage '*cannot tell whether a half-finished release exists*'
+                $state = Test-ResumeState $dir
+                $state.Ok  | Should -BeTrue
+                $state.Sha | Should -Be $sha
+                ($state.Problems -join ' ') | Should -Not -Match 'no half-finished release to resume' -Because 'that wording over a REAL stranded candidate is the confidently-wrong answer this fold removed'
             } finally { Pop-Location; Remove-Item -Recurse -Force $dir; Remove-Item -Recurse -Force $bare }
         }
 

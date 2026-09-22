@@ -371,16 +371,36 @@ function Update-Changelog([string]$repoRoot, [object]$bump, [string]$dateStr) {
 # a user with `grep.patternType=extended` configured would otherwise silently read `(release)` as a
 # capture group and match `chore:` alone.
 function Get-DanglingReleaseCommits([string]$RepoRoot) {
-    $out = @(& git -C $RepoRoot log 'origin/main..HEAD' --basic-regexp --grep='^chore(release):' --format=%H 2>$null)
-    # FAIL CLOSED on a git failure. AGY-TEST-AUDIT 2026-09-22 MEASURED the hole this closes: in a repo
-    # whose `main` has never been pushed, `origin/main` does not resolve, `git log origin/main..HEAD`
-    # exits 128 and writes NOTHING to stdout - so this function returned an EMPTY array while a real
-    # dangling candidate sat on HEAD. release.ps1's precondition then read "no half-finished release"
-    # and the gate FAILED OPEN, and Test-ResumeState reported "there is no half-finished release to
-    # resume" - confidently wrong. Throwing is the fail-closed answer: the caller must not be allowed
-    # to read "I could not tell" as "there is nothing there".
+    # PICK THE RANGE, rather than assuming origin/main exists. AGY-TEST-AUDIT 2026-09-22 MEASURED the
+    # original hole: with `main` never pushed, `origin/main` does not resolve, `git log origin/main..HEAD`
+    # exits 128 writing NOTHING to stdout, so this returned an EMPTY array while a stranded
+    # `chore(release)` sat on HEAD - the gate FAILED OPEN and Test-ResumeState answered "there is no
+    # half-finished release to resume", confidently wrong.
+    #
+    # AGY-CAPSTONE round 3 then caught the FIX's own edge: simply refusing on a non-zero exit blocks a
+    # VIRGIN repo's FIRST release, which is a supported scenario - `Get-BaselineSha` carries an explicit
+    # bootstrap arm returning '' for "no prior release", and `origin/main` appears nowhere else in the
+    # flow. So refusing there is a FALSE REFUSAL, not safety.
+    #
+    # Both answers were wrong because both assumed the question was "did git fail?". The real question is
+    # WHICH COMMITS ARE UNPUSHED. If origin/main does not resolve then NOTHING is pushed, so the unpushed
+    # set is the whole of HEAD's history - which correctly yields zero candidates for a first release AND
+    # correctly catches a candidate stranded by a push that never landed. One range change answers both.
+    $range = 'HEAD'
+    & git -C $RepoRoot rev-parse --verify --quiet origin/main *> $null
+    if ($LASTEXITCODE -eq 0) { $range = 'origin/main..HEAD' }
+
+    # stderr is deliberately NOT redirected: git's own `fatal:` line is the only diagnostic that can
+    # explain a failure this function did not anticipate, and an earlier revision of this fix silenced it
+    # while throwing a hardcoded guess about origin/main - which round 3 flagged as making any OTHER
+    # failure undiagnosable in the field.
+    $out = @(& git -C $RepoRoot log $range --basic-regexp --grep='^chore(release):' --format=%H)
     if ($LASTEXITCODE -ne 0) {
-        throw "Get-DanglingReleaseCommits: 'git log origin/main..HEAD' failed (exit $LASTEXITCODE) in '$RepoRoot' - cannot tell whether a half-finished release exists. Does origin/main exist (git fetch origin)?"
+        # Reached only when the range RESOLVED and git still failed (corruption, an unreadable object, a
+        # hostile config). Genuinely undetermined, so fail CLOSED: the caller must never read "I could
+        # not tell" as "there is nothing there". No cause is named here on purpose - git already printed
+        # the real one above, and guessing would send the reader down the wrong path.
+        throw "Get-DanglingReleaseCommits: 'git log $range' failed (exit $LASTEXITCODE) in '$RepoRoot' - cannot tell whether a half-finished release exists. See git's error above."
     }
     $out | Where-Object { $_ } | ForEach-Object { $_.Trim() }
 }
