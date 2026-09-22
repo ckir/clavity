@@ -243,6 +243,10 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
                 (git rev-parse --verify --quiet origin/main) | Should -BeNullOrEmpty -Because 'the fixture must actually lack origin/main, or this test pins nothing'
 
                 { Get-DanglingReleaseCommits $dir } | Should -Throw -ExpectedMessage '*origin/main is not present*'
+                # The TYPE is part of the contract, not an implementation detail: both callers filter on
+                # it, and a generic BCL type would let an unrelated structural error wear the refusal's
+                # clothes (AGY-CAPSTONE rounds 7-8). Pinning it here means a revert to a BCL type reddens.
+                { Get-DanglingReleaseCommits $dir } | Should -Throw -ExceptionType ([ReleaseRefusalException])
                 # The message must carry BOTH recoveries, since a stale view and a never-pushed repo need
                 # different commands and the refusal is the only place the user is told which to run.
                 { Get-DanglingReleaseCommits $dir } | Should -Throw -ExpectedMessage '*git fetch origin*'

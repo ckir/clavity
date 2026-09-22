@@ -365,6 +365,17 @@ function Update-Changelog([string]$repoRoot, [object]$bump, [string]$dateStr) {
 # The cost is honest and is NOT a bug: -Resume re-runs the whole pre-flight. There is no fast path,
 # because a fast path is only sound for a tree that has not changed, and the tree always has.
 
+# The refusal this section raises, as a BESPOKE type rather than a BCL one. AGY-CAPSTONE round 8:
+# `InvalidOperationException` is what .NET itself raises for invalid-state operations, so a future .NET
+# call added inside the try blocks below could raise one for a purely structural reason and have it
+# laundered into a domain refusal - the round-7 defect again, with a narrower aperture. A bespoke type
+# has no such overlap by construction. MEASURED 2026-09-22 that a class declared in this file survives
+# dot-sourcing and is usable as a `catch` filter in a script that dot-sources it, which is exactly how
+# release.ps1 consumes this library.
+class ReleaseRefusalException : System.Exception {
+    ReleaseRefusalException([string]$m) : base($m) {}
+}
+
 # The single reader of the dangling-candidate condition. release.ps1's precondition calls this too, so
 # the gate and the resume path can never disagree about what counts as a half-finished release.
 # --basic-regexp is explicit rather than defaulted: `^chore(release):` is a literal only under BRE, and
@@ -410,7 +421,7 @@ function Get-DanglingReleaseCommits([string]$RepoRoot) {
         $refMissing = $true
     }
     if ($refMissing) {
-        throw [System.InvalidOperationException]::new("Get-DanglingReleaseCommits: origin/main is not present in '$RepoRoot', so there is no trustworthy answer to which commits are already pushed - and guessing has been MEASURED destructive (it offered an already-shipped release for dropping). Run: git fetch origin. If this repository has never been pushed at all, push main once first: git push -u origin main")
+        throw [ReleaseRefusalException]::new("Get-DanglingReleaseCommits: origin/main is not present in '$RepoRoot', so there is no trustworthy answer to which commits are already pushed - and guessing has been MEASURED destructive (it offered an already-shipped release for dropping). Run: git fetch origin. If this repository has never been pushed at all, push main once first: git push -u origin main")
     }
 
     try {
@@ -422,7 +433,7 @@ function Get-DanglingReleaseCommits([string]$RepoRoot) {
     if ($logFailed) {
         # The ref RESOLVED and git still failed (corruption, an unreadable object, a hostile config).
         # Genuinely undetermined, so fail CLOSED. No cause is named on purpose - git printed the real one.
-        throw [System.InvalidOperationException]::new("Get-DanglingReleaseCommits: 'git log origin/main..HEAD' failed in '$RepoRoot' - cannot tell whether a half-finished release exists. See git's error above.")
+        throw [ReleaseRefusalException]::new("Get-DanglingReleaseCommits: 'git log origin/main..HEAD' failed in '$RepoRoot' - cannot tell whether a half-finished release exists. See git's error above.")
     }
     $out | Where-Object { $_ } | ForEach-Object { $_.Trim() }
 }
@@ -450,7 +461,7 @@ function Test-ResumeState([string]$RepoRoot) {
     $dangling = @()
     try {
         $dangling = @(Get-DanglingReleaseCommits $RepoRoot)
-    } catch [System.InvalidOperationException] {
+    } catch [ReleaseRefusalException] {
         # ONLY the callee's own typed refusal is turned into a Problem. A bare catch here was measured
         # (AGY-CAPSTONE round 7) to launder a programming error - an undefined command inside the callee
         # came back as a polite refusal with its stack trace destroyed - so anything untyped propagates.

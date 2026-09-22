@@ -62,7 +62,7 @@ if ($Resume) {
     # (AGY-CAPSTONE round 7) to launder a programming error into a polite refusal, hiding the stack trace
     # a maintainer needs - so anything untyped keeps crashing loudly, as it should.
     try   { $dangling = @(Get-DanglingReleaseCommits $RepoRoot) }
-    catch [System.InvalidOperationException] { Die $_.Exception.Message }
+    catch [ReleaseRefusalException] { Die $_.Exception.Message }
     if ($dangling.Count) {
         Die "un-pushed chore(release) commit on main — a prior release is half-finished; resolve first (or re-run with -Resume to drop the dead candidate and re-prepare)"
     }
