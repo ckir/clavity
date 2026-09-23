@@ -73,8 +73,6 @@ load once and accumulates across files.
   the fact lived in TWO places and only one was obvious. Join the `## Measured runtimes` table against the
   recipe if you need a current number; the per-row figures ARE enforced by
   `test-suite-registration.Tests.ps1`, and nothing enforces a total.
-  **`clavity-install.Tests.ps1` HAS NO ROW IN THAT TABLE**, which is why any suite count and any test count
-  computed here will disagree about what "the slow half" means.
   **`clavity-install.Tests.ps1` HAS NO ROW IN THAT TABLE**, which is why the suite count and the test count
   disagree about what "the slow half" means. It is the one entry the recipe names from outside
   `scripts/tests`, and `test-suite-registration.Tests.ps1` pins rows for the directory it globs, so this

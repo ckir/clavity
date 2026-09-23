@@ -3239,6 +3239,32 @@ radius:** one CI workflow + one test.
 
 ---
 
+### §46 - The user-facing-docs checker cannot exclude the top-level `archive/`, so it warns forever - PROMOTED FROM ANOMALY TRIAGE 2026-09-23, not yet scheduled
+
+`scripts/check-user-facing-docs.ps1:22` excludes frozen historical docs with the pattern
+`(?i)(^|/)docs/archive/`. That REQUIRES a `docs/` prefix, so it matches `docs/archive/**` and a member's
+`<member>/docs/archive/**`, but never the repository's TOP-LEVEL `archive/` directory.
+
+MEASURED 2026-09-23: `archive/inno-installers/README.md` is tracked, and the checker emits
+`! tracked doc 'archive/inno-installers/README.md' looks user-facing but is absent from
+docs/user-facing-docs.txt` on every run while still exiting 0.
+
+Why it is worth tracking rather than tolerating: the warning is permanent and unactionable, and a gate
+that always prints the same complaint trains its maintainers to skim past its output. That is the same
+alarm-fatigue failure the repo has paid for before, and it costs nothing until the run that carries a
+REAL warning nobody reads.
+
+Not fixed inline at triage, deliberately. The change makes a guard check LESS, and this repo's guard law
+requires mutating any guard you widen - so it needs its own row in
+`scripts/tests/check-user-facing-docs.Tests.ps1` proving the checker still flags a genuinely missing
+user-facing doc after the exclusion is broadened. A one-line regex edit without that row is exactly the
+fail-open shape the law exists to stop.
+
+Candidate fix, unverified: add a root-anchored exclusion for the top-level archive directory alongside the
+existing `docs/archive/` entry, rather than loosening the existing pattern - a bare `archive/` anywhere in
+the path would also silence a legitimately user-facing doc that merely lives under some future
+`<member>/archive/`.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
