@@ -50,6 +50,10 @@ pre-push:
       run: pwsh -NoProfile -File scripts/check-versions-all.ps1
     check-plugin-namespace:
       run: pwsh -NoProfile -File scripts/check-plugin-namespace.ps1
+    skill-frontmatter:
+      # A SKILL.md description over ~461 chars is LOADED but never ADVERTISED by Claude Code - no error,
+      # the skill just never fires. One pwsh start plus one `git ls-files`, so seconds-range.
+      run: just check-skill-frontmatter
 pre-commit:
   commands:
     ruff:

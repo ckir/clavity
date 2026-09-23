@@ -104,6 +104,13 @@ jobs:
         # the driver-cheatsheet EXTEND path, and nothing else noticed.
         run: pwsh -File scripts/check-dangling-consumers.ps1
 
+      - name: Skill-frontmatter gate
+        shell: pwsh
+        # A SKILL.md description over ~461 chars is loaded but never advertised in Claude Code's skill
+        # list, with no error anywhere - so the skill silently never fires. MEASURED 2026-09-23 on
+        # agy-capstone (517) and agy-test-audit (750), the two completion gates.
+        run: pwsh -File scripts/check-skill-frontmatter.ps1
+
       - name: Install Pester v6
         shell: powershell
         # Pin the v6 LINE. -MinimumVersion alone resolves to the newest version >= the floor, so an

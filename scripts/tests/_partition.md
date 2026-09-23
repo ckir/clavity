@@ -14,7 +14,7 @@ suite executes first absorbs pwsh + Pester cold-start for the whole run: `agy-af
 stable within 15%; four were not. A ">= 20s means SLOW" rule classifies those four differently depending
 only on sort order, so it is not reproducible and is not used.
 
-**Batching is not a saving.** The fast half as it stood on 2026-08-02 — 13 suites then, **25 now** — run as
+**Batching is not a saving.** The fast half as it stood on 2026-08-02 — 13 suites then, **28 as of 2026-09-23** (counted from the recipe; it said 25 while the recipe listed 27) — run as
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
@@ -611,6 +611,10 @@ discipline-reaching-report.Tests.ps1              6,2s   31 tests   <- FAST. Was
                                                                       capstone tests are not in it.
 scripts-readme-inventory.Tests.ps1                0,1s    3 tests   <- FAST, re-measured 2026-08-05
 gitignore-policy.Tests.ps1                        6,6s    4 tests   <- FAST, added 2026-09-02
+check-skill-frontmatter.Tests.ps1                   ?   16 tests   <- FAST, added 2026-09-23. RUNTIME NOT MEASURED under the timing discipline; one
+                                                                      contended solo run put every row at 0,3-3,4s. Each
+                                                                      row builds a throwaway git repo and runs the linter
+                                                                      IN-PROCESS - no child pwsh.
 check-peer-reply-citations.Tests.ps1             49,2s   39 tests   <- SLOW, added 2026-09-02 (34 -> 39 on 2026-09-13, §21 citation-checker gaps: empty-quote, NUL-in-file, schema-boundary rows)
   COUNT RAISED 2026-09-02 by AGY-CAPSTONE R8, 32 -> 34, the last round. The dash pin added one commit
   earlier was itself fooled by a docstring decoy - MEASURED, it passed while certifying a broken
