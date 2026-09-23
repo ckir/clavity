@@ -57,5 +57,6 @@ invariants, and `Get-HookMessages` binds `msg[A-Za-z0-9_]*` only. A message asse
 looks exactly like compliance. Widening the extractor is a deliberate non-goal (the shape space is
 open-ended), so the convention is the contract.
 
-A hook that reports only via stderr and a non-zero exit is out of scope and needs no `msg` variable -
-`agy-liveness-check.sh` and `agy-anomaly-reminder.sh` are the two examples in this repo.
+A hook that reports only via stderr and a non-zero exit is out of scope and needs no `msg` variable.
+`agy-liveness-check.sh` and `agy-anomaly-reminder.sh` no longer fit this shape - both now emit the
+JSON envelope (`systemMessage`) at exit 0, per their own headers.

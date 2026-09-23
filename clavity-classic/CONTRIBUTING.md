@@ -16,8 +16,9 @@ cargo fmt --all                          # format (CI checks `--check`)
 cargo build --release                    # the shippable single binary (no test fakes)
 ```
 
-The bare `cargo build` and `test` are the fast local loop. CI enforces only `fmt`, `clippy`,
-`test --all`, and `build --release` on `ubuntu-latest` and `windows-latest`.
+The bare `cargo build` and `test` are the fast local loop. CI enforces `fmt`, `clippy`,
+`test --all`, `build --release`, and the Python bridge tests (`uv run --project agy-mcp-bridge
+--frozen pytest`) on `ubuntu-latest` and `windows-latest`.
 
 ### Diagnostics
 
@@ -116,5 +117,6 @@ The binary is mostly portable; OS-specific assumptions are centralized in `src/p
 ## Pull requests
 
 Fork → branch → make `cargo test --all --features test-fakes`, `cargo clippy --all-targets
---features test-fakes -- -D warnings`, and `cargo fmt --all --check` all pass → open a PR. In the
-description, say **how you verified** — unit only, or the live acceptance runbook (and on which OS).
+--features test-fakes -- -D warnings`, `cargo fmt --all --check`, and `uv run --project
+agy-mcp-bridge --frozen pytest` all pass → open a PR. In the description, say **how you
+verified** — unit only, or the live acceptance runbook (and on which OS).

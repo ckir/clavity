@@ -58,7 +58,9 @@ claude plugin install commonmemory@clavity
 ```
 
 clavity-dotnet fetches its `clavity-ls` binary on first run from the matching `clavity-v<N>` GitHub
-release (win-x64 / linux-x64 / osx-arm64 / osx-x64, checksum-verified), so nothing lands on your PATH.
+release (win-x64 / linux-x64 / osx-arm64 / osx-x64), so nothing lands on your PATH. Checksum-verified
+when a `.sha256` companion asset is published and `sha256sum` is on PATH; otherwise the fetch proceeds
+unverified.
 
 Upgrading from an old `<member>-setup-<version>.exe` installer? See
 [`docs/migrating-from-the-inno-installers.md`](docs/migrating-from-the-inno-installers.md).
@@ -78,7 +80,7 @@ Installing clavity-dotnet or clavity-classic? Their review disciplines are multi
 If you want to build from source or contribute to the project, see [CONTRIBUTING.md](CONTRIBUTING.md).
 To add a new tool to the umbrella, follow the [hosting playbook](docs/hosting-a-tool.md).
 
-The repository uses a two-tier `just` task runner (`just test`, `just lint`, `just release`). Before push, `lefthook` runs nine local gates to keep the `main` branch green. The heavier gates — `just lint` and `just test-scripts` — run in CI and the release pre-flight, not pre-push, because git holds the SSH connection open while a hook runs.
+The repository uses a two-tier `just` task runner (`just test`, `just lint`, `just release`). Before push, `lefthook` runs the gates listed below to keep the `main` branch green. The heavier gates — `just lint` and `just test-scripts` — run in CI and the release pre-flight, not pre-push, because git holds the SSH connection open while a hook runs.
 
 | Pre-push gate | Catches |
 |---|---|
@@ -88,11 +90,13 @@ The repository uses a two-tier `just` task runner (`just test`, `just lint`, `ju
 | `just check-member-docs` | missing required docs or bad CHANGELOG format |
 | `just check-user-facing-docs` | a curated user-facing doc is missing, or a do-not-touch / unvoiced doc is on the list |
 | `just check-register-hash` | stale tamper-check hash for the installer registrar |
+| `just check-knowledge-store` | a deleted or unreachable knowledge-store rule file |
+| `just check-dangling-consumers` | a reader pointed at a runtime filename with no declared producer |
 | `just check-installer-ascii` | non-ASCII in the Windows PowerShell 5.1 installer surface |
 | `check-versions-all.ps1` | version-source drift, across all members |
 | `scripts/check-plugin-namespace.ps1` | stray old plugin namespace/skill-dir/identity references left after the SP-0 rename |
 
-Pre-commit only runs `ruff` on staged Python files.
+Pre-commit runs `ruff` on staged Python files, plus `curate-in-progress` and `cheatsheet-parity` checks when the driver-cheatsheet files are staged.
 
 ## License
 

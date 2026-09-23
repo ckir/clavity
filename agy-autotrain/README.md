@@ -107,7 +107,7 @@ both procedures are one command.
 **The observations inbox:**
 
 ```powershell
-$k = "$env:LOCALAPPDATA\Programs\agy-autotrain\plugins\agy-autotrain\knowledge"
+$k = "$HOME\.clavity"
 Get-ChildItem "$k\agy-observations.md.*.bak" | Sort-Object LastWriteTime -Descending
 Copy-Item "$k\agy-observations.md.<stamp>.bak" "$k\agy-observations.md"
 ```

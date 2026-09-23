@@ -13,10 +13,10 @@ please allow time to investigate and ship a fix before any public disclosure.
 
 ## Scope
 
-clavity ships installers and drives external tools (Antigravity, Ghidra, a headless JVM, coding
-agents) over local IPC and a signal bus. In scope: the clavity code itself, its installers, its
-plugins/hooks/skills, and the MCP bridge. Out of scope: vulnerabilities in the external tools
-themselves (Antigravity, Ghidra, the JDK, the agents) — report those to their respective vendors.
+clavity ships installers and drives external tools (Antigravity, coding agents) over local IPC and
+a signal bus. In scope: the clavity code itself, its installers, its plugins/hooks/skills, and the
+MCP bridge. Out of scope: vulnerabilities in the external tools themselves (Antigravity, the
+agents) — report those to their respective vendors.
 
 ## Supported versions
 

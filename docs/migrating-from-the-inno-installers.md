@@ -63,8 +63,9 @@ Consequences:
   alias, or shortcut that invoked it directly.
 - The fetch needs `curl` and `tar`. If either is missing, the fetch fails open with a note on
   stderr, and the MCP server will not start until you place the binary by hand.
-- The download is checksum-verified and keyed by a version stamp, so a plugin upgrade
-  re-fetches.
+- The download is keyed by a version stamp, so a plugin upgrade re-fetches. It is
+  checksum-verified when a `.sha256` companion asset is published and `sha256sum` is on PATH;
+  otherwise the fetch proceeds unverified.
 
 ## See also
 

@@ -147,14 +147,14 @@ only when the server process starts, so changing it takes a reconnect, not a res
   (stderr warning). SEED and GROWTH each fit under 32 KiB alone but their combination doesn't;
   GROWTH is dropped for this injection and only SEED is used. Trim GROWTH (e.g. via `agy-curate`'s
   promotion rubric) to fit the remaining budget.
-- **`driver-cheatsheet exceeds 16384 bytes; using baseline floor`** (stderr warning). The learned
+- **`driver-cheatsheet GROWTH exceeds 16384 bytes; using baseline floor`** (stderr warning). The learned
   cheatsheet at `%USERPROFILE%\.clavity\driver-cheatsheet.growth.md` is over its 16 KiB cap, so it is ignored
   and the shipped baseline is injected instead. Your curated additions stop reaching agy until you
   trim it — the only symptom otherwise is that learned rules quietly stop applying.
-- **`driver-cheatsheet read failed: <error>`** (stderr warning). Same outcome as above, from an I/O
-  error rather than size (the classic variant words this one as `driver-cheatsheet unreadable
-  (<error>)`). An ABSENT cheatsheet is normal and silent — the baseline floor is the shipped default,
-  not an error.
+- **`driver-cheatsheet GROWTH read failed: <error>`** (stderr warning). Same outcome as above, from an I/O
+  error rather than size (the classic variant words this one as `clavity: driver-cheatsheet GROWTH
+  unreadable (<error>); using baseline floor`). An ABSENT cheatsheet is normal and silent — the
+  baseline floor is the shipped default, not an error.
 
 ## Hook ownership
 

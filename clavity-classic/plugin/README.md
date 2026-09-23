@@ -56,7 +56,8 @@ git clone https://github.com/ckir/clavity && cd clavity
 cargo install --path clavity-classic   # puts `clavity` on PATH (or use the clavity-classic standalone installer)
 ```
 
-**2. psmux** — install a tmux/psmux build; ensure `tmux` (or `psmux` / `pmux`) is on your PATH.
+**2. psmux** — install a tmux/psmux build; ensure the binary is reachable as `tmux` on your PATH,
+or point the `AGY_TMUX_BIN` env var at it.
 
 **3. Wire up the agentmemory bus in BOTH agents** — see [MCP configuration](#mcp-configuration)
 below. **Nothing works without it**; it is clavity's data channel, not an optional extra.
@@ -194,13 +195,13 @@ Much smaller once `escape-time` is fixed (Install step 4).
   (stderr warning). SEED and GROWTH each fit under 32 KiB alone but their combination doesn't;
   GROWTH is dropped for this injection and only SEED is used. Trim GROWTH (e.g. via `agy-curate`'s
   promotion rubric) to fit the remaining budget.
-- **`driver-cheatsheet exceeds 16384 bytes; using baseline floor`** (stderr warning). The learned
+- **`clavity: driver-cheatsheet GROWTH exceeds 16384 bytes; using baseline floor`** (stderr warning). The learned
   cheatsheet at `%USERPROFILE%\.clavity\driver-cheatsheet.growth.md` is over its 16 KiB cap, so it is ignored
   and the shipped baseline is injected instead. Your curated additions stop reaching agy until you
   trim it — the only symptom otherwise is that learned rules quietly stop applying.
-- **`driver-cheatsheet unreadable (<error>); using baseline floor`** (stderr warning). Same outcome as
+- **`clavity: driver-cheatsheet GROWTH unreadable (<error>); using baseline floor`** (stderr warning). Same outcome as
   above, from an I/O error rather than size (the dotnet variant words this one as
-  `driver-cheatsheet read failed: <error>`). An ABSENT cheatsheet is normal and silent — the baseline
+  `driver-cheatsheet GROWTH read failed: <error>`). An ABSENT cheatsheet is normal and silent — the baseline
   floor is the shipped default, not an error.
 - **Recovery:** from any *other* shell, `clavity cancel` sends Esc to agy through the psmux server.
 

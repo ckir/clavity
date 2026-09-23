@@ -228,4 +228,4 @@ README does not duplicate them.
 [PolyForm Noncommercial License 1.0.0](LICENSE) © Costas Kirgoussios — free for non-commercial use
 (personal, academic, non-profit). Matches `clavity-classic/Cargo.toml`'s
 `license = "PolyForm-Noncommercial-1.0.0"` and the umbrella
-[root README](../README.md#license); all five products ship under the same licence.
+[root README](../README.md#license); all four products ship under the same licence.

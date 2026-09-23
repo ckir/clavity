@@ -41,7 +41,7 @@ To build from source instead of using a release:
 
 ```powershell
 dotnet build                          # from clavity-dotnet/
-dotnet test tests/Clavity.Ls.Tests    # unit tests — matches ci-dotnet.yml
+dotnet test tests/Clavity.Ls.Tests    # unit tests — ci-dotnet.yml also runs Clavity.Integration.Tests
 ```
 
 The release `clavity-ls` binaries are produced by a single-file publish per RID (from
