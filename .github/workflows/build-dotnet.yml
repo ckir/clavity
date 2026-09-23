@@ -87,13 +87,15 @@ jobs:
           out=$("publish/$bin" --help 2>&1) || { echo "clavity-ls --help exited $?" >&2; exit 1; }
           [ -n "$out" ] || { echo "clavity-ls --help produced no output" >&2; exit 1; }
           echo "smoke OK (${{ matrix.rid }}): ${out:0:90}"
-          # Normalise the in-archive name to clavity-ls; the fetch hook extracts `clavity-ls` and places it
-          # at ${CLAUDE_PLUGIN_DATA}/bin/clavity-ls.exe (the .exe suffix is required only on Windows).
-          [ "$bin" = clavity-ls ] || mv "publish/$bin" publish/clavity-ls
+          # Ship the binary under its NATIVE name: clavity-ls.exe from win-x64, clavity-ls from every
+          # other RID. An extensionless PE is NOT executable through PATHEXT, so normalising the name
+          # away handed anyone who downloads the win-x64 asset directly a binary Windows will not run.
+          # The fetch hook accepts either name and places it at ${CLAUDE_PLUGIN_DATA}/bin/clavity-ls.exe
+          # (the .exe suffix is required only on Windows).
           mkdir -p dist
           v="${{ needs.validate.outputs.version }}"
           pkg="clavity-ls-${{ matrix.rid }}-$v.tar.gz"
-          tar -C publish -czf "dist/$pkg" clavity-ls
+          tar -C publish -czf "dist/$pkg" "$bin"
           ( cd dist && sha256sum "$pkg" > "$pkg.sha256" )
           ls -la dist
 

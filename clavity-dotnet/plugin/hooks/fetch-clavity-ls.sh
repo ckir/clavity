@@ -69,7 +69,10 @@ if [ -n "$_shaurl" ] && command -v sha256sum >/dev/null 2>&1 && curl -fsSL "$_sh
 fi
 
 tar -C "$_tmp" -xzf "$_tmp/$ASSET" 2>/dev/null || { _note "extract failed for $ASSET"; exit 0; }
-_bin="$_tmp/clavity-ls"; [ -f "$_bin" ] || _bin=$(find "$_tmp" -maxdepth 2 -type f -name 'clavity-ls*' | head -1)
+# The archive ships the binary under its NATIVE name: clavity-ls.exe from win-x64, clavity-ls from every
+# other RID. Releases up to clavity-v20 normalised every RID to clavity-ls, so accept both, then glob.
+_bin="$_tmp/clavity-ls.exe"; [ -f "$_bin" ] || _bin="$_tmp/clavity-ls"
+[ -f "$_bin" ] || _bin=$(find "$_tmp" -maxdepth 2 -type f -name 'clavity-ls*' | head -1)
 [ -f "$_bin" ] || { _note "archive $ASSET contained no clavity-ls binary"; exit 0; }
 chmod +x "$_bin" 2>/dev/null
 cp -f "$_bin" "$TARGET" 2>/dev/null || { _note "could not place binary at $TARGET"; exit 0; }
