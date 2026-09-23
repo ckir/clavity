@@ -18,7 +18,8 @@
 
   Per SKILL.md it checks: the file exists in the working tree; frontmatter present; exactly one `name`
   and one `description`; `name` equals the skill's directory name (one pair of surrounding YAML quotes is
-  stripped first, as a YAML reader would); `description` is literal text on a single line - a folded
+  stripped first, as a YAML reader would); `description` is literal text on a single line (a quote it
+  opens must close on that line) - a folded
   `>`/`|` or continuation-line scalar, and a YAML alias/anchor/tag (`*` / `&` / `!`), are REJECTED,
   because a YAML reader would expand them into text this script never counted; `description` is at most
   -MaxBytes UTF-8 bytes.
@@ -135,6 +136,15 @@ foreach ($rel in $targets) {
     # exit 0 on a 600-byte expansion before this check existed).
     if ($desc -eq '' -or $rawValues.description -match '^[>|*&!]') {
         $problems.Add("${rel}: description is empty, a block scalar ('>' / '|'), or a YAML alias/anchor/tag ('*' / '&' / '!') - write the literal text on the description: line itself")
+        continue
+    }
+    # A quote opened and not closed on the SAME line is a multi-line quoted scalar: YAML may continue it
+    # onto an UNINDENTED line (which the continuation check above cannot see), and a `---` line inside it
+    # ends the frontmatter match early, so the text counted here is a prefix of what a YAML reader sees
+    # (MEASURED: exit 0 on both shapes with a 600-byte tail, capstone round 2).
+    $rd = $rawValues.description
+    if ($rd -match '^["'']' -and -not ($rd.Length -ge 2 -and $rd[-1] -eq $rd[0])) {
+        $problems.Add("${rel}: description opens a quote it does not close on the same line - keep the whole quoted value on ONE line")
         continue
     }
 

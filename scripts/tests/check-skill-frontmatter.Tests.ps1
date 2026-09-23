@@ -192,6 +192,24 @@ Describe 'check-skill-frontmatter.ps1' {
         $r.Code | Should -Be 1
     }
 
+    # --- capstone round 2 fold (60dc20d..adcca2e): a quoted scalar left open was a MEASURED false GREEN ---
+
+    It 'fails a quoted description whose `---` line ends the frontmatter match early (was a false GREEN)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: `"short`n---`n$('y' * 600)`"`n---`n# body`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'alpha/SKILL\.md: description opens a quote it does not close on the same line'
+        $r.Code | Should -Be 1
+    }
+
+    It 'fails a quoted description continued on an UNINDENTED line, and passes a closed one (distractor)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: 'short`n$('y' * 600)'`n---`n"
+                                      'p/skills/beta/SKILL.md'  = "---`nname: beta`ndescription: 'closed on its own line'`n---`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'alpha/SKILL\.md: description opens a quote'
+        $r.Out | Should -Not -Match 'beta/SKILL\.md'
+        $r.Code | Should -Be 1
+    }
+
     It 'CANNOT ANSWER (exit 2) when discovery finds zero skills - never a vacuous pass' {
         $script:Root = New-Fixture
         $r = Invoke-Lint -Root $script:Root
