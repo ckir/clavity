@@ -599,6 +599,70 @@ Describe 'Shared-oracle injection (per-doc blind-spot fix)' {
         Build-SharedOracles -RepoRoot $root | Should -Match '\.github/workflows/'
     }
 
+    It 'emits BYTE-IDENTICAL oracles ONCE, under a joint header naming every path' {
+        # ~8 KB of a HARD 32767-char command-line limit was being spent on a literal duplicate: two declared
+        # oracles are a deliberately mirrored pair and were md5-identical (MEASURED 2026-09-23, 8254 of the
+        # block's 25017 chars). Dedupe must not cost the auditor the knowledge that BOTH paths carry it.
+        $root = Join-Path $TestDrive ('oracle-dup-' + [Guid]::NewGuid())
+        $rels = @(Get-SharedOraclePaths)
+        foreach ($rel in $rels) {
+            $full = Join-Path $root $rel
+            New-Item -ItemType Directory -Path (Split-Path $full -Parent) -Force | Out-Null
+            $body = if ($rel -eq $rels[0] -or $rel -eq $rels[1]) { 'SHARED-BODY' }
+                    else { "UNIQUE-$($rel -replace '[\/]','_')" }
+            Set-Content -LiteralPath $full $body
+        }
+        $block = Build-SharedOracles -RepoRoot $root
+        ([regex]::Matches($block, 'SHARED-BODY')).Count |
+            Should -Be 1 -Because 'a byte-identical pair must be inlined once, not twice'
+        $joint = @($block -split "`n" | Where-Object { $_ -like '=== ORACLE*' -and $_ -like "*$($rels[0])*" })
+        $joint.Count | Should -Be 1
+        $joint[0] | Should -BeLike "*$($rels[1])*" -Because 'the auditor must still learn the content covers BOTH paths'
+    }
+
+    It 'never merges oracles that DIFFER, even by one character (negative control)' {
+        # Without this, a dedupe keyed on something looser than exact content would silently drop a real
+        # oracle and the test above would still pass.
+        $root = Join-Path $TestDrive ('oracle-diff-' + [Guid]::NewGuid())
+        $rels = @(Get-SharedOraclePaths); $i = 0
+        foreach ($rel in $rels) {
+            $full = Join-Path $root $rel
+            New-Item -ItemType Directory -Path (Split-Path $full -Parent) -Force | Out-Null
+            Set-Content -LiteralPath $full ('BODY' + $i); $i++
+        }
+        $block = Build-SharedOracles -RepoRoot $root
+        @($block -split "`n" | Where-Object { $_ -like '=== ORACLE (authoritative*' }).Count |
+            Should -Be $rels.Count -Because 'distinct content keeps one header per file'
+    }
+
+    It 'announces each MISSING oracle separately rather than collapsing them' {
+        # A MISSING body embeds its own path, so grouping must never fold two absent oracles into one
+        # marker - that would under-report exactly the blind spot the block exists to close.
+        $root = Join-Path $TestDrive ('oracle-miss2-' + [Guid]::NewGuid())
+        New-Item -ItemType Directory -Path $root -Force | Out-Null
+        $block = Build-SharedOracles -RepoRoot $root
+        foreach ($rel in Get-SharedOraclePaths) {
+            $block | Should -Match ([regex]::Escape("MISSING AT AUDIT TIME: $rel"))
+        }
+    }
+
+    It 'the prompt budget sits below the hard Windows command-line ceiling' {
+        # MEASURED 2026-09-23 with both controls: a 1000-char argument starts, 40000 throws Win32Exception
+        # 206 'The filename or extension is too long'. The budget must leave room for the exe name, -p,
+        # --model, --allowedTools and quoting - it cannot BE the ceiling.
+        Get-MaxPromptChars | Should -BeLessThan 32767
+    }
+
+    It 'the REAL repo renders an audit prompt inside the budget (anti-rot gate)' {
+        # THE GATE EX-01 LACKED. The oracle files grow with every agy version, and the overflow failed
+        # SILENTLY: Process.Start threw before the CLI ran, a bare catch returned empty Raw AND empty Err,
+        # and every doc landed as a false AUDIT-INCONCLUSIVE with the run still exiting 0.
+        $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
+        $tpl = Get-Content (Join-Path $PSScriptRoot '..' 'docs-audit-prompt.md') -Raw
+        $len = (Build-AuditPrompt -Template $tpl -DocPath 'docs/docs-spec.md' -RepoRoot $repoRoot).Length
+        $len | Should -BeLessOrEqual (Get-MaxPromptChars) -Because "rendered prompt is $len chars; shrink the shared-oracle block in docs-audit-lib.ps1"
+    }
+
     It 'Build-AuditPrompt fills every slot and carries the doc path + oracle text' {
         $root = Join-Path $TestDrive ('oracle-prompt-' + [Guid]::NewGuid())
         foreach ($rel in Get-SharedOraclePaths) {

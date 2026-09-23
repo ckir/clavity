@@ -331,11 +331,26 @@ $script:SharedOracleFiles = @(
 
 function Get-SharedOraclePaths { return $script:SharedOracleFiles }
 
+# The rendered prompt rides on the CHILD PROCESS COMMAND LINE, which Windows CreateProcess caps at 32767
+# chars for the WHOLE line - exe, every argument and quoting included, not just the prompt. MEASURED
+# 2026-09-23 with both controls: a 1000-char argument starts fine, 40000 throws Win32Exception 206 "The
+# filename or extension is too long", and so does 33202 (the then-current 29202 plus 4 KB of oracle growth).
+# The budget sits below the hard ceiling to leave room for the other arguments and quoting.
+$script:MaxPromptChars = 30000
+function Get-MaxPromptChars { return $script:MaxPromptChars }
+
 function Build-SharedOracles([string]$RepoRoot) {
     # Emit each oracle file's live content under a labelled header. A MISSING file is announced LOUDLY,
     # never silently dropped — an absent oracle reads to the auditor as "no constraint", which is exactly
     # how the blind spot re-opens. LF-joined so the block is stable regardless of host newline style.
-    $parts = foreach ($rel in $script:SharedOracleFiles) {
+    # BYTE-IDENTICAL files are emitted ONCE under a joint header naming every path that carries that
+    # content. The clavity-classic / clavity-dotnet agy-assumptions.md pair is mirrored by repo policy, so
+    # inlining both spent ~8 KB of a HARD 32767-char process command-line limit on a literal duplicate
+    # (MEASURED 2026-09-23: 8254 of the block's 25017 chars). The auditor loses nothing - the joint header
+    # states the content is the live content of EVERY path listed. Ordinal comparer: the default hashtable
+    # comparer is case-INSENSITIVE and would merge two oracles differing only in case.
+    $groups = [System.Collections.Specialized.OrderedDictionary]::new([System.StringComparer]::Ordinal)
+    foreach ($rel in $script:SharedOracleFiles) {
         $full = Join-Path $RepoRoot $rel
         # Get-Content -Raw on a 0-byte file yields AutomationNull, whose [string] cast is null (NOT "") — so
         # BOTH ($raw.TrimEnd()) and (([string]$raw).TrimEnd()) throw and crash the WHOLE run, not just this
@@ -346,7 +361,15 @@ function Build-SharedOracles([string]$RepoRoot) {
                     if ($null -ne $raw) { $raw.TrimEnd() } else { '' }
                 }
                 else { "[ORACLE FILE MISSING AT AUDIT TIME: $rel]" }
-        "=== ORACLE (authoritative current source): $rel ===`n$body"
+        # A MISSING body embeds its OWN path, so two missing files can never collide into one group - each
+        # stays individually announced, which is the loud behaviour above.
+        if ($groups.Contains($body)) { $groups[$body] = @($groups[$body]) + $rel } else { $groups[$body] = @($rel) }
+    }
+    $parts = foreach ($body in @($groups.Keys)) {
+        $rels = @($groups[$body])
+        $label = if ($rels.Count -eq 1) { $rels[0] }
+                 else { ($rels -join ' AND ') + ' (BYTE-IDENTICAL - this is the live content of every path listed)' }
+        "=== ORACLE (authoritative current source): $label ===`n$body"
     }
     # The structured CI/build workflows caused zero false cleans — point at them by path, don't inline 25k
     # tokens of YAML that would bury the load-bearing files above.

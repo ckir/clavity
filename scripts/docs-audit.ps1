@@ -121,8 +121,14 @@ function Invoke-DocAudit {
     # findings JSON store as mojibake (`ΓÇö` under CP437). Set BOTH — a diagnostic on stderr can carry one too.
     $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
     $psi.StandardErrorEncoding  = [System.Text.Encoding]::UTF8
+    # MEASURED 2026-09-23: an absent CLI is Win32Exception NativeErrorCode 2; an over-long command line is
+    # 206. 2 degrades to AUDIT-INCONCLUSIVE as designed (agy R1-F4). 206 is a REPO defect that the pre-flight
+    # budget check in Invoke-Main should already have refused, so it must never reach the store quietly.
+    # Either way KEEP the message: the old catch was BARE and returned Err='' as well, so the operator got an
+    # EMPTY diagnostic - destroying the one field that exists to say why (capstone C9). A non-Win32 failure is
+    # a programming error and is NO LONGER swallowed here; it propagates to Invoke-Main, which keeps its text.
     try { $proc = [System.Diagnostics.Process]::Start($psi) }
-    catch { return @{ Raw = ''; Err = ''; TimedOut = $false } }   # absent CLI (Win32Exception) => empty => AUDIT-INCONCLUSIVE (agy R1-F4)
+    catch [System.ComponentModel.Win32Exception] { return @{ Raw = ''; Err = $_.Exception.Message; TimedOut = $false } }
     # Drain BOTH streams async: stderr is redirected, so if it is never read a chatty stderr can fill its pipe
     # buffer and dead-lock the child while stdout drains (self-caught pre-round-4).
     $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
@@ -216,6 +222,22 @@ function Invoke-Main {
     if (-not $SkipAudit -and -not $AuditStub -and -not (Get-Command claude -ErrorAction SilentlyContinue)) {
         Write-Host "docs-audit: the 'claude' CLI is not on PATH — the accuracy audit cannot run. Install and authenticate it, or re-run with -SkipAudit. Refusing rather than logging $(@($docs).Count) false 'inconclusive' rows." -ForegroundColor Red
         exit 3
+    }
+    # PRE-FLIGHT: the rendered prompt is passed as a COMMAND-LINE ARGUMENT, and Windows caps a process
+    # command line at 32767 chars. Over that, Process.Start throws Win32Exception 206 BEFORE the CLI runs -
+    # and every doc would then land as a false 'inconclusive' with the run still exiting 0. The prompt is
+    # doc-independent except for the doc path, so ONE probe covers the whole batch; probe the LONGEST path
+    # so the check is conservative. Refusing loudly here is the same call the CLI check above makes, for the
+    # same reason: a toolchain limit must not be logged as "these docs are unauditable".
+    if (-not $SkipAudit -and -not $AuditStub -and @($docs).Count -gt 0) {
+        $longestDoc = @($docs | Sort-Object -Property Length -Descending)[0]
+        $probeTpl    = Get-Content (Join-Path $PSScriptRoot 'docs-audit-prompt.md') -Raw
+        $probeLen    = (Build-AuditPrompt -Template $probeTpl -DocPath $longestDoc -RepoRoot $repo).Length
+        $maxPrompt   = Get-MaxPromptChars
+        if ($probeLen -gt $maxPrompt) {
+            Write-Host "docs-audit: the rendered audit prompt is $probeLen chars, over the $maxPrompt-char budget (Windows caps a process command line at 32767). Shrink the shared-oracle block in docs-audit-lib.ps1. Refusing rather than logging $(@($docs).Count) false 'inconclusive' rows." -ForegroundColor Red
+            exit 4
+        }
     }
     $lock = Get-AuditLockPath $repo
     if (-not (Enter-AuditLock -LockPath $lock -NowUtc $now -MaxAgeSec $LockMaxAgeSec)) {
