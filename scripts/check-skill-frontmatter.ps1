@@ -113,9 +113,15 @@ try {
         $m = [regex]::Match($text, '\A---\n(?<fm>.*?)\n---(\n|\z)', 'Singleline')
         if (-not $m.Success) { $problems.Add("${rel}: no YAML frontmatter (--- ... ---) at the top of the file"); continue }
 
-        $yqOut = ($m.Groups['fm'].Value | & yq -o=json -I=0 '.' 2>&1 | Out-String).Trim()
-        if ($LASTEXITCODE -ne 0) {
-            $problems.Add("${rel}: frontmatter is not valid YAML ($yqOut) - Claude Code then loads the skill with EMPTY metadata and never advertises it. Quote any value containing ': '.")
+        # stdout and stderr are SPLIT, never parsed together: yq prints WARNINGS to stderr on a SUCCESSFUL
+        # parse (MEASURED: a YAML merge key `<<:` warns about --yaml-fix-merge-anchor-to-spec), and one
+        # merged into the JSON made ConvertFrom-Json throw and kill the whole run (capstone round 1).
+        $yqAll = @($m.Groups['fm'].Value | & yq -o=json -I=0 '.' 2>&1)
+        $yqExit = $LASTEXITCODE
+        $yqOut = ($yqAll | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | Out-String).Trim()
+        $yqErr = ($yqAll | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } | Out-String).Trim()
+        if ($yqExit -ne 0) {
+            $problems.Add("${rel}: frontmatter is not valid YAML ($yqErr) - Claude Code then loads the skill with EMPTY metadata and never advertises it. Quote any value containing ': '.")
             continue
         }
         $meta = $yqOut | ConvertFrom-Json

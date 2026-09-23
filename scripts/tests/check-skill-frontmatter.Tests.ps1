@@ -117,6 +117,18 @@ Describe 'check-skill-frontmatter.ps1' {
         $r.Code | Should -Be 1
     }
 
+    It 'passes valid YAML that makes yq WARN on stderr, and still reports the other files (was a crash)' {
+        # A YAML merge key `<<:` is valid, and Claude Code accepts it, but yq prints a WARNING to stderr on
+        # a successful parse. Merged into stdout it broke ConvertFrom-Json and killed the whole run
+        # (capstone round 1, 80bda9f..535ba9e) - so beta's real defect went unreported too.
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nbase: &b {description: hi}`nname: alpha`n<<: *b`n---`n"
+                                      'p/skills/beta/SKILL.md'  = (Skill 'beta' 'a: b') }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Not -Match 'alpha/SKILL\.md'
+        $r.Out | Should -Match 'beta/SKILL\.md: frontmatter is not valid YAML'
+        $r.Code | Should -Be 1
+    }
+
     # --- name / structure ---
 
     It 'fails when name does not match the directory (case-sensitive)' {
