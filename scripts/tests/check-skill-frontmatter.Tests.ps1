@@ -8,6 +8,8 @@
 # so the exclusion path is exercised by every row, and the stale-exclusion guard does not fire by accident.
 # EXIT CODE ALONE IS NOT ENOUGH: a pwsh parse error also exits 1, so every failing row also pins the
 # message that proves WHICH check fired.
+#
+# The oracle is `yq` (mikefarah v4), so this suite needs it on PATH, exactly like the gate does.
 
 BeforeAll {
     $script:Lint = Join-Path $PSScriptRoot '..' 'check-skill-frontmatter.ps1'
@@ -29,20 +31,24 @@ BeforeAll {
     }
 
     function Invoke-Lint {
-        param([string]$Root, [int]$MaxBytes = 440)
-        $out = & $script:Lint -Root $Root -MaxBytes $MaxBytes 6>&1 | Out-String
+        param([string]$Root)
+        $out = & $script:Lint -Root $Root 6>&1 | Out-String
         return [pscustomobject]@{ Code = $LASTEXITCODE; Out = $out }
     }
 
     function Skill([string]$Name, [string]$Desc) { "---`nname: $Name`ndescription: $Desc`n---`n`n# $Name body`n" }
+
+    # THE REGRESSION, verbatim: agy-capstone's description as it shipped at 60dc20d. Claude Code dropped it
+    # (CRLF checkout) because of the unquoted `: ` in "not the plan artifact): the peer".
+    $script:OriginalCapstone = 'Use ONLY before declaring a plan or implementation COMPLETE - never on routine intermediate commits. Runs a convergent, rounds-until-green adversarial review of the already-COMMITTED code (executable code + tests, not the plan artifact): the peer reasons and cites file:line, the driver measures every finding before folding. A hard round cap plus human-adjudicated GREEN gate the completion claim. Ends with one ASCII [VERDICT] token. Best-effort prompt-discipline, manually invokable; auto-fire is added separately.'
 }
 
 Describe 'check-skill-frontmatter.ps1' {
     AfterEach { if ($script:Root) { Remove-Item -Recurse -Force $script:Root -ErrorAction SilentlyContinue; $script:Root = $null } }
 
-    It 'passes on the REAL repository (the live oracle - the shipped skills are within budget)' {
+    It 'passes on the REAL repository (the live oracle - every shipped frontmatter parses)' {
         $r = Invoke-Lint -Root $script:RepoRoot
-        $r.Out | Should -Match 'check-skill-frontmatter: OK - \d+ SKILL\.md checked \(1 excluded\)'
+        $r.Out | Should -Match 'check-skill-frontmatter: OK - \d+ SKILL\.md checked \(1 excluded\), all frontmatter valid YAML'
         $r.Code | Should -Be 0
     }
 
@@ -53,29 +59,65 @@ Describe 'check-skill-frontmatter.ps1' {
         $r.Code | Should -Be 0
     }
 
-    It 'passes at EXACTLY the budget and fails one byte over (boundary)' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'alpha' ('x' * 20)) }
-        (Invoke-Lint -Root $script:Root -MaxBytes 20).Code | Should -Be 0
-        $r = Invoke-Lint -Root $script:Root -MaxBytes 19
-        $r.Out | Should -Match 'description too long: 20 bytes \(limit 19\)'
-        $r.Code | Should -Be 1
-    }
+    # --- the defect this gate exists for ---
 
-    It 'measures UTF-8 BYTES, not characters' {
-        # 10 x U+20AC = 10 chars but 30 bytes: must FAIL a 20-byte budget.
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'alpha' ([string][char]0x20AC * 10)) }
-        $r = Invoke-Lint -Root $script:Root -MaxBytes 20
-        $r.Out | Should -Match 'description too long: 30 bytes'
-        $r.Code | Should -Be 1
-    }
-
-    It 'fails the pre-fix agy-test-audit description (750 chars) at the default budget' {
-        $script:Root = New-Fixture @{ 'p/skills/agy-test-audit/SKILL.md' = (Skill 'agy-test-audit' ('y' * 750)) }
+    It 'fails the ORIGINAL agy-capstone description under LF AND CRLF, and passes it once quoted (the regression)' {
+        $bad = Skill 'agy-capstone' $script:OriginalCapstone
+        $script:Root = New-Fixture @{ 'p/skills/agy-capstone/SKILL.md' = $bad; 'q/skills/agy-capstone/SKILL.md' = ($bad -replace "`n", "`r`n") }
         $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match 'agy-test-audit/SKILL\.md: SKILL\.md description too long: 750 bytes \(limit 440\)'
-        $r.Out | Should -Match 'silently dropped by Claude Code'
+        $r.Out | Should -Match 'p/skills/agy-capstone/SKILL\.md: frontmatter is not valid YAML'
+        $r.Out | Should -Match 'q/skills/agy-capstone/SKILL\.md: frontmatter is not valid YAML'
+        $r.Out | Should -Match 'mapping values are not allowed'
+        $r.Code | Should -Be 1
+        Remove-Item -Recurse -Force $script:Root
+        $script:Root = New-Fixture @{ 'p/skills/agy-capstone/SKILL.md' = ((Skill 'agy-capstone' "`"$($script:OriginalCapstone)`"") -replace "`n", "`r`n") }
+        (Invoke-Lint -Root $script:Root).Code | Should -Be 0 -Because 'length was never the defect - the quoted 517-char original is valid'
+    }
+
+    It 'fails a short unquoted colon-space, and passes the same text single-quoted (distractor)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'alpha' 'a plan: the peer')
+                                      'p/skills/beta/SKILL.md'  = (Skill 'beta' "'a plan: the peer'") }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'alpha/SKILL\.md: frontmatter is not valid YAML'
+        $r.Out | Should -Not -Match 'beta/SKILL\.md'
         $r.Code | Should -Be 1
     }
+
+    # --- the parsed value's TYPE: yq accepts these, Claude Code does not ---
+
+    It 'fails a LIST description and a NUMBER description (valid YAML, not a string)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'alpha' '[a, b]')
+                                      'p/skills/beta/SKILL.md'  = (Skill 'beta' '42') }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match "alpha/SKILL\.md: 'description' must be a non-empty string \(got: \[`"a`",`"b`"\]\)"
+        $r.Out | Should -Match "beta/SKILL\.md: 'description' must be a non-empty string \(got: 42\)"
+        $r.Code | Should -Be 1
+    }
+
+    It 'fails a description that is only a comment (null) or an empty string' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'alpha' '# nothing here')
+                                      'p/skills/beta/SKILL.md'  = (Skill 'beta' '""') }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match "alpha/SKILL\.md: 'description' must be a non-empty string \(got: null\)"
+        $r.Out | Should -Match "beta/SKILL\.md: 'description' must be a non-empty string"
+        $r.Code | Should -Be 1
+    }
+
+    It 'fails a missing name key' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`ndescription: a`n---`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match "alpha/SKILL\.md: 'name' must be a non-empty string \(got: missing\)"
+        $r.Code | Should -Be 1
+    }
+
+    It 'fails frontmatter that is valid YAML but not a mapping' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`njust a string`n---`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'alpha/SKILL\.md: frontmatter is valid YAML but not a mapping'
+        $r.Code | Should -Be 1
+    }
+
+    # --- name / structure ---
 
     It 'fails when name does not match the directory (case-sensitive)' {
         $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'Alpha' 'ok') }
@@ -84,78 +126,15 @@ Describe 'check-skill-frontmatter.ps1' {
         $r.Code | Should -Be 1
     }
 
-    It 'fails a folded block-scalar description' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: >`n  folded text`n---`n" }
-        $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match "'description' continues onto a later line"
-        $r.Out | Should -Match 'block scalar'
-        $r.Code | Should -Be 1
-    }
-
-    It 'fails a plain description that continues onto an indented line' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: short head`n  hidden tail that a YAML parser would join`n---`n" }
-        $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match "'description' continues onto a later line"
-        $r.Code | Should -Be 1
-    }
-
-    It 'handles CRLF files the same as LF' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = ((Skill 'alpha' ('x' * 20)) -replace "`n", "`r`n") }
-        (Invoke-Lint -Root $script:Root -MaxBytes 20).Code | Should -Be 0
-        (Invoke-Lint -Root $script:Root -MaxBytes 19).Code | Should -Be 1
+    It 'compares the PARSED name, so a quoted name matches its directory' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: `"alpha`"`ndescription: ok`n---`n" }
+        (Invoke-Lint -Root $script:Root).Code | Should -Be 0
     }
 
     It 'fails a SKILL.md with no frontmatter that is not excluded' {
         $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "# alpha, no frontmatter`n" }
         $r = Invoke-Lint -Root $script:Root
         $r.Out | Should -Match 'p/skills/alpha/SKILL\.md: no YAML frontmatter'
-        $r.Code | Should -Be 1
-    }
-
-    It 'fails a duplicated description key' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: a`ndescription: b`n---`n" }
-        $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match "expected exactly one 'description:' in frontmatter, found 2"
-        $r.Code | Should -Be 1
-    }
-
-    It 'fails a missing name key' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`ndescription: a`n---`n" }
-        $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match "expected exactly one 'name:' in frontmatter, found 0"
-        $r.Code | Should -Be 1
-    }
-
-    It 'checks a skill ANYWHERE in the tree, not only under plugin/skills (scope fails closed)' {
-        $script:Root = New-Fixture @{ 'some/new/place/beta/SKILL.md' = (Skill 'beta' ('z' * 30)) }
-        $r = Invoke-Lint -Root $script:Root -MaxBytes 20
-        $r.Out | Should -Match 'some/new/place/beta/SKILL\.md: SKILL\.md description too long'
-        $r.Code | Should -Be 1
-    }
-
-    # --- capstone round 1 folds (60dc20d..3e9b299): each row was a MEASURED crash, false-green or false-red ---
-
-    It 'fails a YAML ALIAS description, which a YAML reader expands past the budget (was a false GREEN)' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`nx: &long $('y' * 600)`ndescription: *long`n---`n" }
-        $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match "YAML alias/anchor/tag"
-        $r.Code | Should -Be 1
-    }
-
-    It 'fails an anchored description, and does NOT flag a QUOTED leading asterisk (distractor)' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: &a text`n---`n"
-                                      'p/skills/beta/SKILL.md'  = "---`nname: beta`ndescription: `"*bold* is literal text here`"`n---`n" }
-        $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match 'alpha/SKILL\.md: description is empty, a block scalar'
-        $r.Out | Should -Not -Match 'beta/SKILL\.md'
-        $r.Code | Should -Be 1
-    }
-
-    It 'strips one pair of YAML quotes from name and description (was a false RED on name: "a")' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: `"alpha`"`ndescription: '$('x' * 20)'`n---`n" }
-        (Invoke-Lint -Root $script:Root -MaxBytes 20).Code | Should -Be 0 -Because 'the 2 quote bytes are not part of the value'
-        $r = Invoke-Lint -Root $script:Root -MaxBytes 19
-        $r.Out | Should -Match 'description too long: 20 bytes'
         $r.Code | Should -Be 1
     }
 
@@ -166,6 +145,68 @@ Describe 'check-skill-frontmatter.ps1' {
         $r.Code | Should -Be 1
     }
 
+    # --- shapes where a naive frontmatter split disagrees with a YAML reader ---
+
+    It 'fails a quoted description whose `---` line ends the frontmatter block early' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: `"short`n---`n$('y' * 600)`"`n---`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'alpha/SKILL\.md: frontmatter is not valid YAML'
+        $r.Code | Should -Be 1
+    }
+
+    It 'fails an indented tail after a column-0 comment (a YAML reader rejects it)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: ok`n# c`n  tail`n---`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'alpha/SKILL\.md: frontmatter is not valid YAML'
+        $r.Code | Should -Be 1
+    }
+
+    # --- encodings and paths ---
+
+    It 'passes valid CRLF and BOM-prefixed files' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = ((Skill 'alpha' 'fine') -replace "`n", "`r`n")
+                                      'p/skills/beta/SKILL.md'  = ([char]0xFEFF + (Skill 'beta' 'fine')) }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'OK - 2 SKILL\.md checked'
+        $r.Code | Should -Be 0
+    }
+
+    It 'reads a NON-ASCII directory and description, and names that path when it fails' {
+        $dir = 'caf' + [char]0xE9
+        $script:Root = New-Fixture @{ "p/skills/$dir/SKILL.md" = (Skill $dir ('d' + [char]0xE9 + 'j' + [char]0xE0 + ' ' + [char]0x20AC)) }
+        # A HOSTILE caller: the script inherits $OutputEncoding, and pwsh 7's UTF-8 default would otherwise
+        # mask a missing UTF-8 setting in the script (MEASURED: that mutant survived until this line).
+        # With ASCII piped to yq the name reads 'caf?' and no longer matches its directory.
+        $OutputEncoding = [System.Text.ASCIIEncoding]::new()
+        # Same for the PROCESS-wide stdout decoding: force this box's real default (CP437) so a missing
+        # UTF-8 setting in the script mangles git's path and yq's JSON (that mutant also survived before).
+        $savedConsole = [Console]::OutputEncoding
+        try {
+            [Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding(437)
+            $r0 = Invoke-Lint -Root $script:Root
+        } finally { [Console]::OutputEncoding = $savedConsole }
+        $r0.Out | Should -Match 'OK - 1 SKILL\.md checked'
+        $r0.Code | Should -Be 0
+        Remove-Item -Recurse -Force $script:Root
+        $script:Root = New-Fixture @{ "p/skills/$dir/SKILL.md" = (Skill $dir 'a: b') }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match "p/skills/$dir/SKILL\.md: frontmatter is not valid YAML"
+        $r.Code | Should -Be 1
+    }
+
+    It 'restores the caller''s process-wide [Console]::OutputEncoding (in-process run)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'alpha' 'ok') }
+        $saved = [Console]::OutputEncoding
+        try {
+            # Start from a value the script does NOT set, or the restore is untestable.
+            [Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding(437)
+            $null = Invoke-Lint -Root $script:Root
+            [Console]::OutputEncoding.CodePage | Should -Be 437
+        } finally { [Console]::OutputEncoding = $saved }
+    }
+
+    # --- scope ---
+
     It 'fails a tracked SKILL.md deleted from the working tree instead of crashing' {
         $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'alpha' 'ok'); 'p/skills/beta/SKILL.md' = (Skill 'beta' 'ok') }
         Remove-Item -LiteralPath (Join-Path $script:Root 'p/skills/beta/SKILL.md')
@@ -174,123 +215,25 @@ Describe 'check-skill-frontmatter.ps1' {
         $r.Code | Should -Be 1
     }
 
-    It 'reads a skill under a NON-ASCII directory instead of crashing on a git-quoted path' {
-        $dir = 'caf' + [char]0xE9
-        $script:Root = New-Fixture @{ "p/skills/$dir/SKILL.md" = (Skill $dir ('x' * 30)) }
-        (Invoke-Lint -Root $script:Root -MaxBytes 30).Code | Should -Be 0
-        $r = Invoke-Lint -Root $script:Root -MaxBytes 29
-        $r.Out | Should -Match "p/skills/$dir/SKILL\.md: SKILL\.md description too long: 30 bytes"
-        $r.Code | Should -Be 1
-    }
-
     It 'checks a lowercase skill.md, but not a file merely ENDING in skill.md (distractor)' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/skill.md' = (Skill 'alpha' ('x' * 30))
-                                      'p/skills/beta/notaskill.md' = (Skill 'wrong' ('x' * 30)) }
-        $r = Invoke-Lint -Root $script:Root -MaxBytes 20
-        $r.Out | Should -Match 'p/skills/alpha/skill\.md: SKILL\.md description too long'
+        $script:Root = New-Fixture @{ 'p/skills/alpha/skill.md' = (Skill 'alpha' 'a: b')
+                                      'p/skills/beta/notaskill.md' = (Skill 'wrong' 'a: b') }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'p/skills/alpha/skill\.md: frontmatter is not valid YAML'
         $r.Out | Should -Not -Match 'notaskill'
         $r.Code | Should -Be 1
     }
 
-    # --- capstone round 2 fold (60dc20d..adcca2e): a quoted scalar left open was a MEASURED false GREEN ---
-
-    It 'fails a quoted description whose `---` line ends the frontmatter match early (was a false GREEN)' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: `"short`n---`n$('y' * 600)`"`n---`n# body`n" }
+    It 'checks a skill ANYWHERE in the tree, not only under plugin/skills' {
+        $script:Root = New-Fixture @{ 'some/new/place/beta/SKILL.md' = (Skill 'beta' 'a: b') }
         $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match 'alpha/SKILL\.md: description opens a quote it does not close on the same line'
+        $r.Out | Should -Match 'some/new/place/beta/SKILL\.md: frontmatter is not valid YAML'
         $r.Code | Should -Be 1
     }
 
-    It 'fails a quoted description continued on an UNINDENTED line, and passes a closed one (distractor)' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: 'short`n$('y' * 600)'`n---`n"
-                                      'p/skills/beta/SKILL.md'  = "---`nname: beta`ndescription: 'closed on its own line'`n---`n" }
-        $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match 'alpha/SKILL\.md: description opens a quote'
-        $r.Out | Should -Not -Match 'beta/SKILL\.md'
-        $r.Code | Should -Be 1
-    }
+    # --- cannot answer: exit 2, never a vacuous pass ---
 
-    # --- capstone round 3 folds (60dc20d..0a9baf3): the closing quote is FOUND, continuation is SCANNED ---
-
-    It 'fails a quoted description whose line ends in an ESCAPED quote (still open - was a false GREEN)' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: `"start \`"`n---`n$('y' * 600)`"`n---`n" }
-        $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match 'alpha/SKILL\.md: description opens a quote it does not close on the same line'
-        $r.Code | Should -Be 1
-    }
-
-    It 'passes a closed quoted description followed by a # comment, counting only the quoted text (was a false RED)' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: `"$('x' * 20)`" # a trailing note`n---`n" }
-        (Invoke-Lint -Root $script:Root -MaxBytes 20).Code | Should -Be 0 -Because 'the comment and the quotes are not part of the value'
-        $r = Invoke-Lint -Root $script:Root -MaxBytes 19
-        $r.Out | Should -Match 'description too long: 20 bytes'
-        $r.Code | Should -Be 1
-    }
-
-    It 'fails text after the closing quote that is not a comment, and passes a doubled single quote (distractor)' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: `"ok`" trailing words`n---`n"
-                                      'p/skills/beta/SKILL.md'  = "---`nname: beta`ndescription: 'it''s fine'`n---`n" }
-        $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match 'alpha/SKILL\.md: description opens a quote .* or text follows the closing quote'
-        $r.Out | Should -Not -Match 'beta/SKILL\.md'
-        $r.Code | Should -Be 1
-    }
-
-    It 'fails a plain description continued after a BLANK line (was a false GREEN)' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: start`n`n  $('y' * 600)`n---`n" }
-        $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match "alpha/SKILL\.md: 'description' continues onto a later line"
-        $r.Code | Should -Be 1
-    }
-
-    It 'does NOT treat an indented block under a LATER key as a description continuation (distractor)' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: ok`n`nmetadata:`n  type: x`n---`n" }
-        $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match 'OK - 1 SKILL\.md checked'
-        $r.Code | Should -Be 0
-    }
-
-    # --- capstone round 4 folds (60dc20d..7d05407): YAML comments are not part of the value ---
-
-    It 'fails a description that is ONLY a comment - YAML reads it as empty (was a false GREEN)' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: # nothing here`n---`n" }
-        $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match 'alpha/SKILL\.md: description is empty'
-        $r.Code | Should -Be 1
-    }
-
-    It 'does not count a plain inline comment, but keeps a # with no space before it (distractor)' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: $('x' * 20) # $('c' * 40)`n---`n" }
-        (Invoke-Lint -Root $script:Root -MaxBytes 20).Code | Should -Be 0 -Because 'the ` # ...` comment is not part of the value'
-        (Invoke-Lint -Root $script:Root -MaxBytes 19).Code | Should -Be 1
-        Remove-Item -Recurse -Force $script:Root
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: $('x' * 20)#tag`n---`n" }
-        $r = Invoke-Lint -Root $script:Root -MaxBytes 20
-        $r.Out | Should -Match 'description too long: 24 bytes' -Because 'x#tag is literal text in YAML'
-        $r.Code | Should -Be 1
-    }
-
-    It 'skips an indented comment line after the description, but still fails text after it (was a false RED)' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: ok`n  # a note`n---`n"
-                                      'p/skills/beta/SKILL.md'  = "---`nname: beta`ndescription: ok`n  # a note`n  $('y' * 600)`n---`n" }
-        $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Not -Match 'alpha/SKILL\.md'
-        $r.Out | Should -Match "beta/SKILL\.md: 'description' continues onto a later line"
-        $r.Code | Should -Be 1
-    }
-
-    # --- capstone round 5 fold: a COLUMN-0 comment does not end the continuation scan ---
-
-    It 'fails an indented tail after a column-0 comment, and passes a column-0 comment before the next key (distractor)' {
-        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: ok`n# c`n  $('y' * 600)`n---`n"
-                                      'p/skills/beta/SKILL.md'  = "---`nname: beta`ndescription: ok`n# c`nmetadata:`n  type: x`n---`n" }
-        $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match "alpha/SKILL\.md: 'description' continues onto a later line"
-        $r.Out | Should -Not -Match 'beta/SKILL\.md'
-        $r.Code | Should -Be 1
-    }
-
-    It 'CANNOT ANSWER (exit 2) when discovery finds zero skills - never a vacuous pass' {
+    It 'CANNOT ANSWER (exit 2) when discovery finds zero skills' {
         $script:Root = New-Fixture
         $r = Invoke-Lint -Root $script:Root
         $r.Out | Should -Match 'CANNOT ANSWER: found 0 SKILL\.md files'
@@ -309,6 +252,35 @@ Describe 'check-skill-frontmatter.ps1' {
         New-Item -ItemType Directory -Path $script:Root | Out-Null
         $r = Invoke-Lint -Root $script:Root
         $r.Out | Should -Match 'CANNOT ANSWER: git ls-files failed'
+        $r.Code | Should -Be 2
+    }
+
+    It 'CANNOT ANSWER (exit 2) when yq is not on PATH' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'alpha' 'a: b') }
+        $saved = $env:PATH
+        try {
+            # Keep every PATH entry EXCEPT the ones that hold a yq, so git still resolves.
+            $env:PATH = (($saved -split [IO.Path]::PathSeparator) | Where-Object {
+                $_ -and -not (Get-ChildItem -LiteralPath $_ -Filter 'yq*' -File -ErrorAction SilentlyContinue | Where-Object { $_.BaseName -eq 'yq' })
+            }) -join [IO.Path]::PathSeparator
+            Get-Command yq -ErrorAction SilentlyContinue | Should -BeNullOrEmpty -Because 'the row is only meaningful once yq is really gone'
+            $r = Invoke-Lint -Root $script:Root
+        } finally { $env:PATH = $saved }
+        $r.Out | Should -Match 'CANNOT ANSWER: yq is not on PATH'
+        $r.Code | Should -Be 2
+    }
+
+    It 'CANNOT ANSWER (exit 2) when the yq on PATH is not mikefarah v4' -Skip:(-not $IsWindows) {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'alpha' 'a: b') }
+        $fake = Join-Path ([System.IO.Path]::GetTempPath()) ("fakeyq-" + [Guid]::NewGuid())
+        New-Item -ItemType Directory -Path $fake | Out-Null
+        Set-Content -LiteralPath (Join-Path $fake 'yq.cmd') -Value '@echo yq 3.4.3' -Encoding ascii
+        $saved = $env:PATH
+        try {
+            $env:PATH = $fake + [IO.Path]::PathSeparator + $saved
+            $r = Invoke-Lint -Root $script:Root
+        } finally { $env:PATH = $saved; Remove-Item -Recurse -Force $fake -ErrorAction SilentlyContinue }
+        $r.Out | Should -Match "CANNOT ANSWER: yq on PATH is not mikefarah yq v4 \(got: 'yq 3\.4\.3'\)"
         $r.Code | Should -Be 2
     }
 }

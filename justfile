@@ -137,7 +137,7 @@ check-knowledge-store:
 check-dangling-consumers:
     pwsh -NoProfile -File scripts/check-dangling-consumers.ps1
 
-# Fail if a SKILL.md description is long enough that Claude Code loads the skill but never ADVERTISES it.
+# Fail if a SKILL.md frontmatter is not valid YAML - Claude Code then loads the skill but never ADVERTISES it.
 check-skill-frontmatter:
     pwsh -NoProfile -File scripts/check-skill-frontmatter.ps1
 
