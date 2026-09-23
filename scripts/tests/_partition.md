@@ -1054,7 +1054,7 @@ check-seed-artifacts-synced.Tests.ps1            74,0s   12 tests   <- re-measur
                                                                       that half ever needs trimming.
 check-seed-budget.Tests.ps1                       8,4s    4 tests   <- FAST, re-measured 2026-08-05
 check-user-facing-docs.Tests.ps1                 10,4s   15 tests   <- FAST, re-measured 2026-08-05
-compute-release.Tests.ps1                        25,0s    7 tests   <- SLOW, re-measured 2026-08-06
+compute-release.Tests.ps1                        25,0s    8 tests   <- SLOW, re-measured 2026-08-06
 docs-audit.Tests.ps1                            130,0s   85 tests   <- SLOW, re-measured 2026-08-06
 drain-knowledge.Tests.ps1                        40,5s    8 tests   <- SLOW, re-measured 2026-08-06
 drain-lib.Tests.ps1                               4,2s   36 tests   <- FAST, re-measured 2026-08-24 WARM.

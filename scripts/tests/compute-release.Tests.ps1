@@ -134,3 +134,38 @@ Describe 'compute emit (sweep + Nothing + non-conventional)' {
         } finally { Pop-Location; Remove-Item -Recurse -Force $repo }
     }
 }
+
+Describe 'commit text is decoded as UTF-8, not the console code page' {
+    # THE clavity-v20 MOJIBAKE. git stores commit text as UTF-8, but PowerShell decodes a native command's
+    # stdout with [Console]::OutputEncoding - MEASURED as ibm437 on the release box. U+00A7 SECTION SIGN
+    # (C2 A7) therefore came back as U+252C U+00BA, was written verbatim into the chore(release) commit
+    # body, and shipped that way into the PUBLISHED clavity-v20 release notes.
+    It 'keeps a non-ASCII subject intact even when the console is CP437' {
+        $sect = [string][char]0x00A7      # U+00A7 SECTION SIGN - what the commit really contains
+        $boxd = [string][char]0x252C      # U+252C - the CP437 mis-decode's first char
+        $saved = [Console]::OutputEncoding
+        $repo = New-TempRepo
+        try {
+            # Force the HOSTILE condition rather than depending on this machine's ambient default, so the
+            # test proves the engine defends itself instead of proving the box happens to be configured well.
+            [Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding(437)
+
+            New-Item -ItemType Directory -Force -Path 'clavity-classic/installer' | Out-Null
+            Set-Content 'clavity-classic/installer/clavity-classic.iss' '#define AppVersion "0.1.2"' -NoNewline
+            git add -A; git commit -q -m 'chore(release): clavity-v7'; git tag clavity-v7
+            'x' | Set-Content 'clavity-classic/feature.txt'; git add -A
+            git commit -q -m "fix(classic): re-measure the ${sect}14h line counts"
+
+            $r = & $script:Engine -RepoRoot $repo
+            $notes = (($r.Bumps | Where-Object Key -eq 'classic').Notes | Out-String)
+
+            # PRECONDITION: the fixture really carries the section sign. Without this the test could pass
+            # against notes that never contained it at all.
+            $notes | Should -Match ([regex]::Escape($sect)) -Because 'the section sign must survive the read'
+            $notes | Should -Not -Match ([regex]::Escape($boxd)) -Because 'U+252C is the CP437 mis-decode that shipped in clavity-v20'
+        } finally {
+            [Console]::OutputEncoding = $saved
+            Pop-Location; Remove-Item -Recurse -Force $repo
+        }
+    }
+}

@@ -10,6 +10,14 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+# Decode native-command output as UTF-8. git stores commit text as UTF-8, but PowerShell decodes a native
+# command's stdout using [Console]::OutputEncoding - MEASURED 2026-09-23 as **ibm437** on the release box.
+# So `git log --format=%s` returned U+00A7 SECTION SIGN (bytes C2 A7) as U+252C U+00BA, that mangled text
+# was written verbatim into the chore(release) commit body, and the workflow copied it straight into the
+# PUBLISHED clavity-v20 release notes. Repro, both arms: ibm437 -> E2 94 AC C2 BA, utf-8 -> C2 A7.
+# BOM-free: [Text.Encoding]::UTF8 would emit one. This is process-global by design - every git read in this
+# run needs it - and it is set in the entry script, not the dot-sourced lib, so sourcing has no side effect.
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 . (Join-Path $PSScriptRoot 'lib' 'release-lib.ps1')
 
 $baseline = Get-BaselineSha $RepoRoot
