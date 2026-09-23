@@ -20,6 +20,7 @@ $script:DoNotTouchPatterns = @(
     '(?i)(^|/)knowledge/',                     # driver-owned SEED + learning-loop working files
     '(?i)(^|/)SKILL\.md$',                     # behavioural contracts
     '(?i)(^|/)docs/archive/',                  # frozen historical
+    '(?i)^archive/',                           # top-level retired-source archive; root-anchored on purpose
     '(?i)(^|/)docs/superpowers/',              # working artifacts
     '(?i)(^|/)\.clavity/',                     # working artifacts
     '(?i)(^|/)tests/fixtures/',                # test data

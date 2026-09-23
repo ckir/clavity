@@ -93,6 +93,11 @@ This file is also the authority over the **user-facing subset** that the `docs-r
   `clavity-classic/docs/superpowers/**` (5 files, 2,215 lines of superseded design docs) classified as
   in-scope product documentation — the root `docs/superpowers/` is gitignored, but the member-nested
   copy was tracked and matched nothing here. Those files now live in `clavity-classic/docs/archive/`.
+- `archive/**` — the repository's TOP-LEVEL archive of retired sources (currently the pre-retirement Inno
+  installers). Root-anchored ON PURPOSE, and separate from the `**/docs/archive/**` entry above: a bare
+  `archive/` at any depth would also silence a genuinely user-facing doc under some future
+  `<member>/archive/`. Added 2026-09-23 — before it, `archive/inno-installers/README.md` drew a permanent
+  "looks user-facing but is absent from the list" warning from `scripts/check-user-facing-docs.ps1`.
 - `**/tests/fixtures/**` — test data.
 - `*/agy-mcp-bridge/VENDORED-FROM.md` — vendored provenance.
 - `**/docs/superpowers/**`, `**/.clavity/**` — working artifacts, not product docs. Same leading-`**/`

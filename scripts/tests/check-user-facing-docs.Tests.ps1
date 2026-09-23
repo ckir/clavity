@@ -35,6 +35,10 @@ Describe 'Test-IsDoNotTouch' {
         Test-IsDoNotTouch 'clavity-classic/docs/archive/old.md'         | Should -BeTrue
         Test-IsDoNotTouch 'ghidrust/crates/x/tests/fixtures/README.md'  | Should -BeTrue
         Test-IsDoNotTouch 'docs/docs-spec.md'                           | Should -BeTrue
+        Test-IsDoNotTouch 'archive/inno-installers/README.md'          | Should -BeTrue
+        # ROOT-ANCHORED, and this negative is the point of the row: a bare `archive/` at any depth
+        # would silence a real user-facing doc under a future <member>/archive/. ROADMAP section 46.
+        Test-IsDoNotTouch 'clavity-dotnet/archive/README.md'            | Should -BeFalse
     }
     It 'does NOT flag any of the 25 user-facing shapes' {
         foreach ($p in @('README.md','clavity-classic/plugin/README.md','clavity-dotnet/CONTRIBUTING.md',

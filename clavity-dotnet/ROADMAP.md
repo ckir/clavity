@@ -3239,7 +3239,7 @@ radius:** one CI workflow + one test.
 
 ---
 
-### §46 - The user-facing-docs checker cannot exclude the top-level `archive/`, so it warns forever - PROMOTED FROM ANOMALY TRIAGE 2026-09-23, not yet scheduled
+### §46 — The user-facing-docs checker cannot exclude the top-level `archive/`, so it warns forever — ✅ **SHIPPED 2026-09-23** (promoted from anomaly triage the same day, then fixed with its guard mutation)
 
 `scripts/check-user-facing-docs.ps1:22` excludes frozen historical docs with the pattern
 `(?i)(^|/)docs/archive/`. That REQUIRES a `docs/` prefix, so it matches `docs/archive/**` and a member's
@@ -3254,16 +3254,29 @@ that always prints the same complaint trains its maintainers to skim past its ou
 alarm-fatigue failure the repo has paid for before, and it costs nothing until the run that carries a
 REAL warning nobody reads.
 
-Not fixed inline at triage, deliberately. The change makes a guard check LESS, and this repo's guard law
-requires mutating any guard you widen - so it needs its own row in
-`scripts/tests/check-user-facing-docs.Tests.ps1` proving the checker still flags a genuinely missing
-user-facing doc after the exclusion is broadened. A one-line regex edit without that row is exactly the
-fail-open shape the law exists to stop.
+It was deliberately NOT fixed at triage, because widening a guard makes it check LESS and this repo's
+guard law requires mutating any guard you widen. It was fixed the same day WITH that mutation, in three
+places that must agree or they drift:
 
-Candidate fix, unverified: add a root-anchored exclusion for the top-level archive directory alongside the
-existing `docs/archive/` entry, rather than loosening the existing pattern - a bare `archive/` anywhere in
-the path would also silence a legitimately user-facing doc that merely lives under some future
-`<member>/archive/`.
+- `docs/docs-spec.md` gains an `archive/**` do-not-touch bullet. The checker's patterns only MIRROR that
+  list by convention and nothing pins the two together, so changing one alone is how they diverge.
+- `scripts/check-user-facing-docs.ps1` gains `'(?i)^archive/'`, ROOT-ANCHORED rather than a looser bare
+  `archive/` at any depth, which would also silence a genuinely user-facing doc under a future
+  `<member>/archive/`.
+- `scripts/tests/check-user-facing-docs.Tests.ps1` gains BOTH halves: the positive
+  (`archive/inno-installers/README.md` IS do-not-touch) and the NEGATIVE control
+  (`clavity-dotnet/archive/README.md` is NOT). The negative is the point of the row - it pins the
+  root-anchoring, not merely the exclusion.
+
+MEASURED after the fix: the permanent warning is gone and the checker reports
+`user-facing docs ok (27 listed; all exist; none do-not-touch)`. Suite 15/0. The new pattern's blast radius
+is exactly ONE tracked file, `archive/inno-installers/README.md`. GUARD MUTATION: deleting the exclusion
+reddens exactly the row that asserts it, so the row is not vacuous; and the pre-existing row that warns on
+an unlisted user-facing doc still passes, so widening did not blind the guard.
+
+The first mutation attempt SKIPPED with `ANCHOR COUNT=0` because the harness assumed CRLF while that file
+is LF. It reported the skip rather than passing silently, which is the only reason the gap was noticed - a
+mutation harness that cannot fail loudly proves nothing.
 
 ## Non-goals / accepted limitations
 
