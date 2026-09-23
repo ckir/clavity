@@ -112,9 +112,14 @@ foreach ($rel in $targets) {
             $v = $v.Substring(1, $v.Length - 2)
         }
         $values[$k] = $v
-        # An indented line straight after the key makes it a multi-line (plain or block) scalar.
-        if ($i + 1 -lt $lines.Count -and $lines[$i + 1] -match '^[ \t]+\S') {
-            $problems.Add("${rel}: '$k' continues onto the next line - keep it on ONE line so its length is unambiguous")
+        # ANY non-blank indented line before the next column-0 line continues the scalar. Checking only
+        # the NEXT line missed a blank line followed by an indented tail (MEASURED false GREEN, capstone
+        # round 3), because YAML lets a multi-line plain scalar carry blank lines.
+        for ($n = $i + 1; $n -lt $lines.Count -and $lines[$n] -notmatch '^\S'; $n++) {
+            if ($lines[$n] -match '\S') {
+                $problems.Add("${rel}: '$k' continues onto a later line - keep it on ONE line so its length is unambiguous")
+                break
+            }
         }
     }
 
@@ -142,10 +147,29 @@ foreach ($rel in $targets) {
     # onto an UNINDENTED line (which the continuation check above cannot see), and a `---` line inside it
     # ends the frontmatter match early, so the text counted here is a prefix of what a YAML reader sees
     # (MEASURED: exit 0 on both shapes with a 600-byte tail, capstone round 2).
+    # The closing quote is FOUND BY SCANNING, not by looking at the last character: a line ending in an
+    # escaped `\"` is still open (MEASURED false GREEN, capstone round 3), and a closed value followed by
+    # a `# comment` is legitimate YAML (MEASURED false RED). Double quotes escape with a backslash; single
+    # quotes escape by doubling. Only whitespace or a comment may follow the closing quote.
     $rd = $rawValues.description
-    if ($rd -match '^["'']' -and -not ($rd.Length -ge 2 -and $rd[-1] -eq $rd[0])) {
-        $problems.Add("${rel}: description opens a quote it does not close on the same line - keep the whole quoted value on ONE line")
-        continue
+    if ($rd -match '^["'']') {
+        $q = $rd[0]
+        $close = -1
+        $j = 1
+        while ($j -lt $rd.Length) {
+            if ($q -eq '"' -and $rd[$j] -eq '\') { $j += 2; continue }
+            if ($rd[$j] -eq $q) {
+                if ($q -eq "'" -and $j + 1 -lt $rd.Length -and $rd[$j + 1] -eq "'") { $j += 2; continue }
+                $close = $j
+                break
+            }
+            $j++
+        }
+        if ($close -lt 0 -or $rd.Substring($close + 1) -notmatch '^\s*(#.*)?$') {
+            $problems.Add("${rel}: description opens a quote it does not close on the same line, or text follows the closing quote - keep the whole quoted value on ONE line")
+            continue
+        }
+        $desc = $rd.Substring(1, $close - 1)
     }
 
     $bytes = [System.Text.Encoding]::UTF8.GetByteCount($desc)

@@ -87,7 +87,7 @@ Describe 'check-skill-frontmatter.ps1' {
     It 'fails a folded block-scalar description' {
         $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: >`n  folded text`n---`n" }
         $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match "'description' continues onto the next line"
+        $r.Out | Should -Match "'description' continues onto a later line"
         $r.Out | Should -Match 'block scalar'
         $r.Code | Should -Be 1
     }
@@ -95,7 +95,7 @@ Describe 'check-skill-frontmatter.ps1' {
     It 'fails a plain description that continues onto an indented line' {
         $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: short head`n  hidden tail that a YAML parser would join`n---`n" }
         $r = Invoke-Lint -Root $script:Root
-        $r.Out | Should -Match "'description' continues onto the next line"
+        $r.Out | Should -Match "'description' continues onto a later line"
         $r.Code | Should -Be 1
     }
 
@@ -208,6 +208,46 @@ Describe 'check-skill-frontmatter.ps1' {
         $r.Out | Should -Match 'alpha/SKILL\.md: description opens a quote'
         $r.Out | Should -Not -Match 'beta/SKILL\.md'
         $r.Code | Should -Be 1
+    }
+
+    # --- capstone round 3 folds (60dc20d..0a9baf3): the closing quote is FOUND, continuation is SCANNED ---
+
+    It 'fails a quoted description whose line ends in an ESCAPED quote (still open - was a false GREEN)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: `"start \`"`n---`n$('y' * 600)`"`n---`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'alpha/SKILL\.md: description opens a quote it does not close on the same line'
+        $r.Code | Should -Be 1
+    }
+
+    It 'passes a closed quoted description followed by a # comment, counting only the quoted text (was a false RED)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: `"$('x' * 20)`" # a trailing note`n---`n" }
+        (Invoke-Lint -Root $script:Root -MaxBytes 20).Code | Should -Be 0 -Because 'the comment and the quotes are not part of the value'
+        $r = Invoke-Lint -Root $script:Root -MaxBytes 19
+        $r.Out | Should -Match 'description too long: 20 bytes'
+        $r.Code | Should -Be 1
+    }
+
+    It 'fails text after the closing quote that is not a comment, and passes a doubled single quote (distractor)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: `"ok`" trailing words`n---`n"
+                                      'p/skills/beta/SKILL.md'  = "---`nname: beta`ndescription: 'it''s fine'`n---`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'alpha/SKILL\.md: description opens a quote .* or text follows the closing quote'
+        $r.Out | Should -Not -Match 'beta/SKILL\.md'
+        $r.Code | Should -Be 1
+    }
+
+    It 'fails a plain description continued after a BLANK line (was a false GREEN)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: start`n`n  $('y' * 600)`n---`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match "alpha/SKILL\.md: 'description' continues onto a later line"
+        $r.Code | Should -Be 1
+    }
+
+    It 'does NOT treat an indented block under a LATER key as a description continuation (distractor)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: ok`n`nmetadata:`n  type: x`n---`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'OK - 1 SKILL\.md checked'
+        $r.Code | Should -Be 0
     }
 
     It 'CANNOT ANSWER (exit 2) when discovery finds zero skills - never a vacuous pass' {
