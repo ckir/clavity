@@ -1,6 +1,6 @@
 ---
 name: agy-test-audit
-description: Use ONLY after the AGY-CAPSTONE gate has passed - a GREEN or an owner round-cap waiver - and before declaring a development branch done; never mid-implementation. Audits the committed TEST SUITES for coverage exhaustiveness: untested behaviours, vacuous assertions, missing edge cases, each gap verified by measurement. Asks what the capstone does not: would the tests catch the next regression? Ends with one ASCII [VERDICT] token.
+description: "Use ONLY after the AGY-CAPSTONE gate has passed - a GREEN or an owner round-cap waiver - and before declaring a development branch done; never mid-implementation. Audits the committed TEST SUITES for coverage exhaustiveness: untested behaviours, vacuous assertions, missing edge cases, each gap verified by measurement. Asks what the capstone does not: would the tests catch the next regression? Ends with one ASCII [VERDICT] token."
 ---
 
 # agy-test-audit - audit the test safety-net before you call the branch done
