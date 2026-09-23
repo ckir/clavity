@@ -58,7 +58,8 @@ finer-grained mode is under consideration.
 
 ## Install / registration
 
-Requires the `clavity-ls` binary on PATH (installed by the clavity installer). Golden-header injection +
+The plugin fetches the platform-matched `clavity-ls` binary on first session start into
+`${CLAUDE_PLUGIN_DATA}/bin/clavity-ls.exe`. Golden-header injection +
 the permanent-learning loop are the optional **agy-autotrain** add-on; this core plugin works without it.
 
 > **superpowers prerequisite (auto-fire only).** The agy disciplines (agy-first / agy-capstone) AUTO-FIRE via
@@ -66,10 +67,16 @@ the permanent-learning loop are the optional **agy-autotrain** add-on; this core
 > disciplines stay manually invokable (`agy-first` / `agy-capstone`). A boot-time notice tells you if it is
 > not detected as enabled.
 
-Ships via the `clavity-dotnet` standalone installer (`clavity-dotnet-setup-<VERSION>.exe`), which
-registers this plugin against a local, scoped marketplace for each detected agent (Claude Code / agy) —
-there is no remote marketplace to add. See [`clavity-dotnet/README.md`](../README.md) for the Quick
-Start.
+Ships via `claude plugin` from this repository's marketplace:
+
+```
+claude plugin marketplace add ckir/clavity
+claude plugin install clavity@clavity
+```
+
+See [`clavity-dotnet/README.md`](../README.md) for the Quick Start. Upgrading from the retired
+`clavity-dotnet-setup-<VERSION>.exe` installer? See
+[`docs/migrating-from-the-inno-installers.md`](../../docs/migrating-from-the-inno-installers.md).
 
 ## MCP configuration
 
@@ -79,15 +86,17 @@ Start.
 {
   "mcpServers": {
     "clavity-ls": {
-      "command": "clavity-ls",
+      "command": "${CLAUDE_PLUGIN_DATA}/bin/clavity-ls.exe",
       "args": ["--mcp"],
-      "env": { "CLAVITY_AGY_IDLE_MAX_SECONDS": "1800" }
+      "env": {
+        "CLAVITY_AGY_IDLE_MAX_SECONDS": "1800"
+      }
     }
   }
 }
 ```
 
-Claude starts this process automatically once the plugin is enabled and `clavity-ls` is on PATH — an
+Claude starts this process automatically once the plugin is enabled and the binary has been fetched - an
 integrator does not invoke `--mcp` by hand. At runtime the server reads `CLAVITY_AGY_LOG` and
 `CLAVITY_SESSION_ID` (set by `clavity-ls start` for that session), `CLAVITY_GOLDEN_HEADER` (an optional
 override), and `CLAVITY_AGY_IDLE_MAX_SECONDS` - the env block above raises the idle-wait ceiling from its

@@ -14,8 +14,10 @@ installer. Contributions are markdown edits to those.
 | --- | --- |
 | `rules/commonmemory.md` | The rules file injected into agent context. |
 | `skills/` | The `commonmemory` skill definition. |
-| `installer/` | The Inno Setup installer that registers the plugin. |
 | `plugin.json` | The plugin manifest. |
+
+The Inno Setup installer was retired 2026-09-14 in favour of `claude plugin` install; its sources are
+archived under [`archive/inno-installers/commonmemory/`](../archive/inno-installers/commonmemory/).
 
 ## Pull requests
 

@@ -41,8 +41,10 @@ runner. Without one, run the unit tier only.
 | `src/` | C# source — the `Clavity.Ls` language server and its siblings. |
 | `tests/` | The three test tiers (`Clavity.Ls.Tests`, `Clavity.Integration.Tests`, `Clavity.Live.Acceptance`). |
 | `plugin/` | The Claude plugin manifest, skills, and `knowledge/` manuals. |
-| `installer/` | Packaging logic and the installer builder. |
 | `clavity.slnx` | The .NET solution file. |
+
+The Inno Setup installer was retired 2026-09-14 in favour of `claude plugin` install; its sources are
+archived under [`archive/inno-installers/clavity-dotnet/`](../archive/inno-installers/clavity-dotnet/).
 
 ## Things that will bite you
 

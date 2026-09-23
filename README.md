@@ -60,6 +60,9 @@ claude plugin install commonmemory@clavity
 clavity-dotnet fetches its `clavity-ls` binary on first run from the matching `clavity-v<N>` GitHub
 release (win-x64 / linux-x64 / osx-arm64 / osx-x64, checksum-verified), so nothing lands on your PATH.
 
+Upgrading from an old `<member>-setup-<version>.exe` installer? See
+[`docs/migrating-from-the-inno-installers.md`](docs/migrating-from-the-inno-installers.md).
+
 **One ships a standalone Windows installer** — clavity-classic:
 
 1. Go to the [Releases](../../releases) page. The `clavity-v<N>` umbrella release carries the installer.
