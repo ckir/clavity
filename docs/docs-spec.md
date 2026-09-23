@@ -7,14 +7,14 @@ Two authorities this file defers to, and does not duplicate:
 - **Which docs each member carries** — [`hosting-a-tool.md` § Per-member documentation](hosting-a-tool.md#per-member-documentation).
 - **Section order within a doc** — the templates in `clavity-dotnet/templates/tool-skeleton/`.
 
-This file is also the authority over the **user-facing subset** that the `docs-rationalize` tool targets: [`docs/user-facing-docs.txt`](user-facing-docs.txt) — 29 files, a subset of the table below, validated by `scripts/check-user-facing-docs.ps1`.
+This file is also the authority over the **user-facing subset** that the `docs-rationalize` tool targets: [`docs/user-facing-docs.txt`](user-facing-docs.txt) — a subset of the table below, validated by `scripts/check-user-facing-docs.ps1`. That file is the authority on its own contents; a count restated here rots, per this spec's own "prefer globs to counts" rule (it read "29 files" while the list held 27).
 
 ## Docs (audience → voice)
 
 | Doc | Audience | Voice |
 |---|---|---|
 | `README.md` | Orient, choose a product, get running — then route out (≤ ~90 lines) | terse-technical |
-| `<member>/README.md` | A repo reader evaluating or building that member. For the **code+plugin** members (dotnet, classic) this file does **not** ship — their `.iss` ships `..\plugin\*`. For the **plugin-only** members (agy-autotrain, commonmemory) it **does** — their `.iss` ships `..\*` recursively, so write those two for an installed operator too | terse-technical |
+| `<member>/README.md` | A repo reader evaluating or building that member. What ships is decided by the member's plugin `source` in `build/members.json`. For the **code+plugin** members (dotnet, classic) that source is `<member>/plugin`, so this file sits outside it and does **not** ship. For the **plugin-only** members (agy-autotrain, commonmemory) the source is the member root, so it **does** — write those two for an installed operator too | terse-technical |
 | `<member>/plugin/README.md` | The integrator wiring the plugin — **and the installed operator, because this file ships** | terse-technical |
 | `<member>/CONTRIBUTING.md` | A contributor to that member — its toolchain, test tiers, failure modes. Defers to umbrella `CONTRIBUTING.md` for licence/DCO/release | terse-technical |
 | `<member>/CLAUDE.md` | The agent working in that folder — load-bearing facts and traps only | terse, dense |
