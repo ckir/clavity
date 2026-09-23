@@ -133,6 +133,65 @@ Describe 'check-skill-frontmatter.ps1' {
         $r.Code | Should -Be 1
     }
 
+    # --- capstone round 1 folds (60dc20d..3e9b299): each row was a MEASURED crash, false-green or false-red ---
+
+    It 'fails a YAML ALIAS description, which a YAML reader expands past the budget (was a false GREEN)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`nx: &long $('y' * 600)`ndescription: *long`n---`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match "YAML alias/anchor/tag"
+        $r.Code | Should -Be 1
+    }
+
+    It 'fails an anchored description, and does NOT flag a QUOTED leading asterisk (distractor)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: &a text`n---`n"
+                                      'p/skills/beta/SKILL.md'  = "---`nname: beta`ndescription: `"*bold* is literal text here`"`n---`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'alpha/SKILL\.md: description is empty, a block scalar'
+        $r.Out | Should -Not -Match 'beta/SKILL\.md'
+        $r.Code | Should -Be 1
+    }
+
+    It 'strips one pair of YAML quotes from name and description (was a false RED on name: "a")' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: `"alpha`"`ndescription: '$('x' * 20)'`n---`n" }
+        (Invoke-Lint -Root $script:Root -MaxBytes 20).Code | Should -Be 0 -Because 'the 2 quote bytes are not part of the value'
+        $r = Invoke-Lint -Root $script:Root -MaxBytes 19
+        $r.Out | Should -Match 'description too long: 20 bytes'
+        $r.Code | Should -Be 1
+    }
+
+    It 'fails a SKILL.md at the repository root instead of crashing' {
+        $script:Root = New-Fixture @{ 'SKILL.md' = (Skill 'root' 'ok') }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'SKILL\.md: sits at the repository root'
+        $r.Code | Should -Be 1
+    }
+
+    It 'fails a tracked SKILL.md deleted from the working tree instead of crashing' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'alpha' 'ok'); 'p/skills/beta/SKILL.md' = (Skill 'beta' 'ok') }
+        Remove-Item -LiteralPath (Join-Path $script:Root 'p/skills/beta/SKILL.md')
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'p/skills/beta/SKILL\.md: tracked but missing from the working tree'
+        $r.Code | Should -Be 1
+    }
+
+    It 'reads a skill under a NON-ASCII directory instead of crashing on a git-quoted path' {
+        $dir = 'caf' + [char]0xE9
+        $script:Root = New-Fixture @{ "p/skills/$dir/SKILL.md" = (Skill $dir ('x' * 30)) }
+        (Invoke-Lint -Root $script:Root -MaxBytes 30).Code | Should -Be 0
+        $r = Invoke-Lint -Root $script:Root -MaxBytes 29
+        $r.Out | Should -Match "p/skills/$dir/SKILL\.md: SKILL\.md description too long: 30 bytes"
+        $r.Code | Should -Be 1
+    }
+
+    It 'checks a lowercase skill.md, but not a file merely ENDING in skill.md (distractor)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/skill.md' = (Skill 'alpha' ('x' * 30))
+                                      'p/skills/beta/notaskill.md' = (Skill 'wrong' ('x' * 30)) }
+        $r = Invoke-Lint -Root $script:Root -MaxBytes 20
+        $r.Out | Should -Match 'p/skills/alpha/skill\.md: SKILL\.md description too long'
+        $r.Out | Should -Not -Match 'notaskill'
+        $r.Code | Should -Be 1
+    }
+
     It 'CANNOT ANSWER (exit 2) when discovery finds zero skills - never a vacuous pass' {
         $script:Root = New-Fixture
         $r = Invoke-Lint -Root $script:Root

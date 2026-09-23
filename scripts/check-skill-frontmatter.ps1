@@ -16,12 +16,14 @@
   bytes, tokens, name+description) is unknown - so this measures UTF-8 BYTES, which is never less than
   the character count, with margin below 461.
 
-  Per SKILL.md it checks: frontmatter present; exactly one `name` and one `description`; `name` equals
-  the skill's directory name; `description` is a single line (a folded `>`/`|` or continuation-line
-  scalar is REJECTED - how a YAML parser joins it may not match what this counts); `description` is at
-  most -MaxBytes UTF-8 bytes.
+  Per SKILL.md it checks: the file exists in the working tree; frontmatter present; exactly one `name`
+  and one `description`; `name` equals the skill's directory name (one pair of surrounding YAML quotes is
+  stripped first, as a YAML reader would); `description` is literal text on a single line - a folded
+  `>`/`|` or continuation-line scalar, and a YAML alias/anchor/tag (`*` / `&` / `!`), are REJECTED,
+  because a YAML reader would expand them into text this script never counted; `description` is at most
+  -MaxBytes UTF-8 bytes.
 
-  SCOPE FAILS CLOSED. Targets are every TRACKED `*SKILL.md` (git ls-files), minus the explicit
+  SCOPE FAILS CLOSED. Targets are every TRACKED file named SKILL.md in ANY case (git ls-files), minus the explicit
   $Exclusions below - so a skill added anywhere is checked by default. Zero targets, a git failure, or an
   exclusion that matches no tracked file is exit 2 (cannot answer), never a vacuous pass.
 .PARAMETER Root
@@ -51,8 +53,21 @@ function Stop-CannotAnswer([string]$msg) {
     exit 2
 }
 
-$tracked = @(& git -C $Root ls-files -- '*SKILL.md' 2>$null)
-if ($LASTEXITCODE -ne 0) { Stop-CannotAnswer "git ls-files failed in '$Root' (exit $LASTEXITCODE)" }
+# UTF-8 on the way IN, NUL-separated, quotepath off. PowerShell decodes native stdout with
+# [Console]::OutputEncoding (ibm437 on a stock Windows console), and git C-quotes a non-ASCII path by
+# default - either one alone turns `cafe-with-accent/SKILL.md` into a path that does not exist (MEASURED:
+# the read threw). `:(icase)` because a case-insensitive filesystem loads a `skill.md` too; the leaf
+# filter then keeps only files actually NAMED SKILL.md, since the pattern's `*` also matches `xskill.md`.
+$prevEncoding = [Console]::OutputEncoding
+try {
+    [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+    $lsOut = (& git -C $Root -c core.quotepath=off ls-files -z -- ':(icase)*skill.md' 2>$null) -join ''
+    $gitExit = $LASTEXITCODE
+} finally {
+    [Console]::OutputEncoding = $prevEncoding
+}
+if ($gitExit -ne 0) { Stop-CannotAnswer "git ls-files failed in '$Root' (exit $gitExit)" }
+$tracked = @($lsOut -split "`0" | Where-Object { $_ -ne '' -and (Split-Path -Leaf $_) -ieq 'SKILL.md' })
 
 foreach ($ex in $Exclusions.Keys) {
     if ($tracked -notcontains $ex) {
@@ -69,19 +84,33 @@ $problems = [System.Collections.Generic.List[string]]::new()
 
 foreach ($rel in $targets) {
     $path = Join-Path $Root $rel
+    # Tracked but deleted and not yet staged: the shipped commit may still carry it, so FAIL rather than
+    # skip it (a skip would pass content nobody checked) or crash on the read.
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        $problems.Add("${rel}: tracked but missing from the working tree - commit the deletion or restore the file, so what is checked is what ships")
+        continue
+    }
     $text = [System.IO.File]::ReadAllText($path) -replace "`r`n", "`n"
     $m = [regex]::Match($text, '\A---\n(?<fm>.*?)\n---(\n|\z)', 'Singleline')
     if (-not $m.Success) { $problems.Add("${rel}: no YAML frontmatter (--- ... ---) at the top of the file"); continue }
 
     $lines = $m.Groups['fm'].Value -split "`n"
     $values = @{}
+    $rawValues = @{}
     $counts = @{ name = 0; description = 0 }
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $km = [regex]::Match($lines[$i], '^(?<k>name|description):[ \t]*(?<v>.*)$')
         if (-not $km.Success) { continue }
         $k = $km.Groups['k'].Value
         $counts[$k]++
-        $values[$k] = $km.Groups['v'].Value.Trim()
+        $v = $km.Groups['v'].Value.Trim()
+        $rawValues[$k] = $v
+        # One pair of surrounding YAML quotes is not part of the value (MEASURED: `name: "a"` false-redded
+        # against directory `a`). Escapes inside the quotes are not interpreted - a deliberate limit.
+        if ($v.Length -ge 2 -and (($v[0] -eq '"' -and $v[-1] -eq '"') -or ($v[0] -eq "'" -and $v[-1] -eq "'"))) {
+            $v = $v.Substring(1, $v.Length - 2)
+        }
+        $values[$k] = $v
         # An indented line straight after the key makes it a multi-line (plain or block) scalar.
         if ($i + 1 -lt $lines.Count -and $lines[$i + 1] -match '^[ \t]+\S') {
             $problems.Add("${rel}: '$k' continues onto the next line - keep it on ONE line so its length is unambiguous")
@@ -93,14 +122,19 @@ foreach ($rel in $targets) {
     }
     if ($counts.name -ne 1 -or $counts.description -ne 1) { continue }
 
-    $dir = Split-Path -Leaf (Split-Path -Parent $rel)
-    if ($values.name -cne $dir) {
+    $parent = Split-Path -Parent $rel
+    if (-not $parent) {
+        $problems.Add("${rel}: sits at the repository root - a skill must live in its own <name>/ directory")
+    } elseif ($values.name -cne ($dir = Split-Path -Leaf $parent)) {
         $problems.Add("${rel}: name '$($values.name)' does not match its directory '$dir'")
     }
 
     $desc = $values.description
-    if ($desc -eq '' -or $desc -match '^[>|]') {
-        $problems.Add("${rel}: description is empty or a block scalar ('>' / '|') - write it on the description: line itself")
+    # Tested on the RAW value: inside quotes, a leading '*' is literal text, not an alias. An alias
+    # `*long` is 5 bytes here and whatever `&long` anchored once a YAML reader expands it (MEASURED:
+    # exit 0 on a 600-byte expansion before this check existed).
+    if ($desc -eq '' -or $rawValues.description -match '^[>|*&!]') {
+        $problems.Add("${rel}: description is empty, a block scalar ('>' / '|'), or a YAML alias/anchor/tag ('*' / '&' / '!') - write the literal text on the description: line itself")
         continue
     }
 
