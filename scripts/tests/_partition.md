@@ -611,7 +611,7 @@ discipline-reaching-report.Tests.ps1              6,2s   31 tests   <- FAST. Was
                                                                       capstone tests are not in it.
 scripts-readme-inventory.Tests.ps1                0,1s    3 tests   <- FAST, re-measured 2026-08-05
 gitignore-policy.Tests.ps1                        6,6s    4 tests   <- FAST, added 2026-09-02
-check-skill-frontmatter.Tests.ps1                   ?   30 tests   <- FAST, added 2026-09-23 (16 -> 23 -> 25 -> 30 same day, AGY-CAPSTONE rounds 1-3 folds). RUNTIME NOT MEASURED under the timing discipline; one
+check-skill-frontmatter.Tests.ps1                   ?   33 tests   <- FAST, added 2026-09-23 (16 -> 23 -> 25 -> 30 -> 33 same day, AGY-CAPSTONE rounds 1-4 folds). RUNTIME NOT MEASURED under the timing discipline; one
                                                                       contended solo run put every row at 0,3-3,4s. Each
                                                                       row builds a throwaway git repo and runs the linter
                                                                       IN-PROCESS - no child pwsh.

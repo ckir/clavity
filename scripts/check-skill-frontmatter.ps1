@@ -105,18 +105,27 @@ foreach ($rel in $targets) {
         $k = $km.Groups['k'].Value
         $counts[$k]++
         $v = $km.Groups['v'].Value.Trim()
+        # A PLAIN value ends where ` #` (or a leading `#`) starts a YAML comment, so the comment is not part
+        # of the value. MEASURED: `description: # nothing` is an EMPTY description to a YAML reader but was
+        # counted as 9 bytes and passed (false GREEN); `text # note` counted the note (false RED). A `#` with
+        # no whitespace before it (`x#tag`) is literal text in YAML and is kept. Quoted values are left
+        # whole here - their closing quote is found by the scan further down.
+        if ($v -notmatch '^["'']') { $v = ($v -replace '(^|[ \t]+)#.*$', '').TrimEnd() }
         $rawValues[$k] = $v
         # One pair of surrounding YAML quotes is not part of the value (MEASURED: `name: "a"` false-redded
-        # against directory `a`). Escapes inside the quotes are not interpreted - a deliberate limit.
+        # against directory `a`). This strip does NOT interpret escapes; for `description` the closing
+        # quote is re-found further down by a scan that DOES honour `\"` and `''`.
         if ($v.Length -ge 2 -and (($v[0] -eq '"' -and $v[-1] -eq '"') -or ($v[0] -eq "'" -and $v[-1] -eq "'"))) {
             $v = $v.Substring(1, $v.Length - 2)
         }
         $values[$k] = $v
         # ANY non-blank indented line before the next column-0 line continues the scalar. Checking only
         # the NEXT line missed a blank line followed by an indented tail (MEASURED false GREEN, capstone
-        # round 3), because YAML lets a multi-line plain scalar carry blank lines.
+        # round 3), because YAML lets a multi-line plain scalar carry blank lines. A COMMENT line is not
+        # part of the value (MEASURED false RED, round 4), so it is skipped - but scanning continues past
+        # it, so indented text after a comment still fails.
         for ($n = $i + 1; $n -lt $lines.Count -and $lines[$n] -notmatch '^\S'; $n++) {
-            if ($lines[$n] -match '\S') {
+            if ($lines[$n] -match '\S' -and $lines[$n] -notmatch '^\s*#') {
                 $problems.Add("${rel}: '$k' continues onto a later line - keep it on ONE line so its length is unambiguous")
                 break
             }

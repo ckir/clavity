@@ -250,6 +250,35 @@ Describe 'check-skill-frontmatter.ps1' {
         $r.Code | Should -Be 0
     }
 
+    # --- capstone round 4 folds (60dc20d..7d05407): YAML comments are not part of the value ---
+
+    It 'fails a description that is ONLY a comment - YAML reads it as empty (was a false GREEN)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: # nothing here`n---`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'alpha/SKILL\.md: description is empty'
+        $r.Code | Should -Be 1
+    }
+
+    It 'does not count a plain inline comment, but keeps a # with no space before it (distractor)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: $('x' * 20) # $('c' * 40)`n---`n" }
+        (Invoke-Lint -Root $script:Root -MaxBytes 20).Code | Should -Be 0 -Because 'the ` # ...` comment is not part of the value'
+        (Invoke-Lint -Root $script:Root -MaxBytes 19).Code | Should -Be 1
+        Remove-Item -Recurse -Force $script:Root
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: $('x' * 20)#tag`n---`n" }
+        $r = Invoke-Lint -Root $script:Root -MaxBytes 20
+        $r.Out | Should -Match 'description too long: 24 bytes' -Because 'x#tag is literal text in YAML'
+        $r.Code | Should -Be 1
+    }
+
+    It 'skips an indented comment line after the description, but still fails text after it (was a false RED)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: ok`n  # a note`n---`n"
+                                      'p/skills/beta/SKILL.md'  = "---`nname: beta`ndescription: ok`n  # a note`n  $('y' * 600)`n---`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Not -Match 'alpha/SKILL\.md'
+        $r.Out | Should -Match "beta/SKILL\.md: 'description' continues onto a later line"
+        $r.Code | Should -Be 1
+    }
+
     It 'CANNOT ANSWER (exit 2) when discovery finds zero skills - never a vacuous pass' {
         $script:Root = New-Fixture
         $r = Invoke-Lint -Root $script:Root
