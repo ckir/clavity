@@ -279,6 +279,17 @@ Describe 'check-skill-frontmatter.ps1' {
         $r.Code | Should -Be 1
     }
 
+    # --- capstone round 5 fold: a COLUMN-0 comment does not end the continuation scan ---
+
+    It 'fails an indented tail after a column-0 comment, and passes a column-0 comment before the next key (distractor)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: ok`n# c`n  $('y' * 600)`n---`n"
+                                      'p/skills/beta/SKILL.md'  = "---`nname: beta`ndescription: ok`n# c`nmetadata:`n  type: x`n---`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match "alpha/SKILL\.md: 'description' continues onto a later line"
+        $r.Out | Should -Not -Match 'beta/SKILL\.md'
+        $r.Code | Should -Be 1
+    }
+
     It 'CANNOT ANSWER (exit 2) when discovery finds zero skills - never a vacuous pass' {
         $script:Root = New-Fixture
         $r = Invoke-Lint -Root $script:Root

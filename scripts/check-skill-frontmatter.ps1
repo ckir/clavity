@@ -123,8 +123,10 @@ foreach ($rel in $targets) {
         # the NEXT line missed a blank line followed by an indented tail (MEASURED false GREEN, capstone
         # round 3), because YAML lets a multi-line plain scalar carry blank lines. A COMMENT line is not
         # part of the value (MEASURED false RED, round 4), so it is skipped - but scanning continues past
-        # it, so indented text after a comment still fails.
-        for ($n = $i + 1; $n -lt $lines.Count -and $lines[$n] -notmatch '^\S'; $n++) {
+        # it, so indented text after a comment still fails. That holds for a COLUMN-0 comment too: stopping
+        # there let `# c` + an indented tail pass, which a YAML reader rejects (MEASURED with PyYAML:
+        # ParserError, capstone round 5). Only a column-0 line that is NOT a comment ends the scan.
+        for ($n = $i + 1; $n -lt $lines.Count -and ($lines[$n] -notmatch '^\S' -or $lines[$n] -match '^#'); $n++) {
             if ($lines[$n] -match '\S' -and $lines[$n] -notmatch '^\s*#') {
                 $problems.Add("${rel}: '$k' continues onto a later line - keep it on ONE line so its length is unambiguous")
                 break
