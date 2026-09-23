@@ -129,6 +129,22 @@ Describe 'check-skill-frontmatter.ps1' {
         $r.Code | Should -Be 1
     }
 
+    It 'reports invalid YAML (exit 1) and a non-repo (exit 2) even when the caller turns native errors fatal' {
+        # A caller with $PSNativeCommandUseErrorActionPreference ON made yq's exit 1 a terminating error
+        # that killed the run (capstone round 2). The script pins it off in its own scope.
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'alpha' 'a: b'); 'p/skills/beta/SKILL.md' = (Skill 'beta' 'c: d') }
+        $PSNativeCommandUseErrorActionPreference = $true
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'alpha/SKILL\.md: frontmatter is not valid YAML'
+        $r.Out | Should -Match 'beta/SKILL\.md: frontmatter is not valid YAML' -Because 'the run must continue past the first failing file'
+        $r.Code | Should -Be 1
+        $nogit = Join-Path ([System.IO.Path]::GetTempPath()) ("skillfm-nogit-" + [Guid]::NewGuid())
+        New-Item -ItemType Directory -Path $nogit | Out-Null
+        try { $r2 = Invoke-Lint -Root $nogit } finally { Remove-Item -Recurse -Force $nogit -ErrorAction SilentlyContinue }
+        $r2.Out | Should -Match 'CANNOT ANSWER: git ls-files failed'
+        $r2.Code | Should -Be 2
+    }
+
     # --- name / structure ---
 
     It 'fails when name does not match the directory (case-sensitive)' {

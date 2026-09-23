@@ -46,6 +46,11 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+# Pinned OFF, script-scoped: this script reads every native exit code itself. A caller that sets it ON
+# would otherwise turn yq's exit 1 on INVALID YAML - the very thing this gate reports - into a terminating
+# NativeCommandExitException that kills the run, and git's failure outside a repo into a crash instead of
+# exit 2 (MEASURED, capstone round 2 over 80bda9f..db5ac71; the peer found it independently).
+$PSNativeCommandUseErrorActionPreference = $false
 
 # Repo-relative, forward slashes, exactly as git ls-files prints them. Each needs a reason.
 $Exclusions = [ordered]@{
