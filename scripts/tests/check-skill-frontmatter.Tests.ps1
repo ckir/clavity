@@ -7,7 +7,9 @@
 # Every fixture carries the one real exclusion (clavity-classic/agy-mcp-bridge/SKILL.md, frontmatter-less)
 # so the exclusion path is exercised by every row, and the stale-exclusion guard does not fire by accident.
 # EXIT CODE ALONE IS NOT ENOUGH: a pwsh parse error also exits 1, so every failing row also pins the
-# message that proves WHICH check fired.
+# message that proves WHICH check fired. A message PRESENT is not enough either: a dropped `continue`
+# lets one bad file fall through to the next check and add a second, misleading FAIL while the row still
+# matches the first - so rows with ONE bad file also pin the FAIL count (Get-FailCount; test audit 2026-09-24).
 #
 # The oracle is `yq` (mikefarah v4), so this suite needs it on PATH, exactly like the gate does.
 
@@ -35,6 +37,8 @@ BeforeAll {
         $out = & $script:Lint -Root $Root 6>&1 | Out-String
         return [pscustomobject]@{ Code = $LASTEXITCODE; Out = $out }
     }
+
+    function Get-FailCount([string]$Out) { ([regex]::Matches($Out, 'check-skill-frontmatter: FAIL: ')).Count }
 
     function Skill([string]$Name, [string]$Desc) { "---`nname: $Name`ndescription: $Desc`n---`n`n# $Name body`n" }
 
@@ -80,6 +84,7 @@ Describe 'check-skill-frontmatter.ps1' {
         $r = Invoke-Lint -Root $script:Root
         $r.Out | Should -Match 'alpha/SKILL\.md: frontmatter is not valid YAML'
         $r.Out | Should -Not -Match 'beta/SKILL\.md'
+        Get-FailCount $r.Out | Should -Be 1 -Because 'invalid YAML must stop there, not fall through to the mapping check'
         $r.Code | Should -Be 1
     }
 
@@ -94,12 +99,24 @@ Describe 'check-skill-frontmatter.ps1' {
         $r.Code | Should -Be 1
     }
 
-    It 'fails a description that is only a comment (null) or an empty string' {
+    It 'fails a description that is only a comment (null), an empty string, or only whitespace' {
         $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'alpha' '# nothing here')
-                                      'p/skills/beta/SKILL.md'  = (Skill 'beta' '""') }
+                                      'p/skills/beta/SKILL.md'  = (Skill 'beta' '""')
+                                      'p/skills/gamma/SKILL.md' = (Skill 'gamma' '"   "') }
         $r = Invoke-Lint -Root $script:Root
         $r.Out | Should -Match "alpha/SKILL\.md: 'description' must be a non-empty string \(got: null\)"
         $r.Out | Should -Match "beta/SKILL\.md: 'description' must be a non-empty string"
+        $r.Out | Should -Match "gamma/SKILL\.md: 'description' must be a non-empty string \(got: `"   `"\)"
+        $r.Code | Should -Be 1
+    }
+
+    It 'fails a LIST name and a NUMBER name (valid YAML, not a string), once each' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: [a, b]`ndescription: ok`n---`n"
+                                      'p/skills/beta/SKILL.md'  = "---`nname: 42`ndescription: ok`n---`n" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match "alpha/SKILL\.md: 'name' must be a non-empty string \(got: \[`"a`",`"b`"\]\)"
+        $r.Out | Should -Match "beta/SKILL\.md: 'name' must be a non-empty string \(got: 42\)"
+        Get-FailCount $r.Out | Should -Be 2 -Because 'a non-string name must not ALSO be compared with its directory'
         $r.Code | Should -Be 1
     }
 
@@ -114,6 +131,7 @@ Describe 'check-skill-frontmatter.ps1' {
         $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`njust a string`n---`n" }
         $r = Invoke-Lint -Root $script:Root
         $r.Out | Should -Match 'alpha/SKILL\.md: frontmatter is valid YAML but not a mapping'
+        Get-FailCount $r.Out | Should -Be 1 -Because 'a non-mapping must stop there, not fall through to the key checks'
         $r.Code | Should -Be 1
     }
 
@@ -163,7 +181,24 @@ Describe 'check-skill-frontmatter.ps1' {
         $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "# alpha, no frontmatter`n" }
         $r = Invoke-Lint -Root $script:Root
         $r.Out | Should -Match 'p/skills/alpha/SKILL\.md: no YAML frontmatter'
+        Get-FailCount $r.Out | Should -Be 1 -Because 'a missing block must stop there, not be parsed as empty YAML'
         $r.Code | Should -Be 1
+    }
+
+    It 'fails frontmatter that does not start on the FIRST line (a leading blank line or comment)' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = ("`n" + (Skill 'alpha' 'fine'))
+                                      'p/skills/beta/SKILL.md'  = ("<!-- note -->`n" + (Skill 'beta' 'fine')) }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'alpha/SKILL\.md: no YAML frontmatter'
+        $r.Out | Should -Match 'beta/SKILL\.md: no YAML frontmatter'
+        $r.Code | Should -Be 1
+    }
+
+    It 'passes a file that ENDS at the closing --- with no trailing newline' {
+        $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = "---`nname: alpha`ndescription: fine`n---" }
+        $r = Invoke-Lint -Root $script:Root
+        $r.Out | Should -Match 'OK - 1 SKILL\.md checked'
+        $r.Code | Should -Be 0
     }
 
     It 'fails a SKILL.md at the repository root instead of crashing' {
@@ -298,17 +333,22 @@ Describe 'check-skill-frontmatter.ps1' {
         $r.Code | Should -Be 2
     }
 
-    It 'CANNOT ANSWER (exit 2) when the yq on PATH is not mikefarah v4' -Skip:(-not $IsWindows) {
+    # BOTH halves of the version check: the python wrapper fails 'mikefarah', a future mikefarah v5 fails
+    # 'version v4.' - either alone would let an `-or` weakened to `-and` pass (test audit 2026-09-24).
+    It 'CANNOT ANSWER (exit 2) when the yq on PATH is not mikefarah v4 (<Version>)' -Skip:(-not $IsWindows) -ForEach @(
+        @{ Version = 'yq 3.4.3' }
+        @{ Version = 'yq (https://github.com/mikefarah/yq/) version v5.0.0' }
+    ) {
         $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'alpha' 'a: b') }
         $fake = Join-Path ([System.IO.Path]::GetTempPath()) ("fakeyq-" + [Guid]::NewGuid())
         New-Item -ItemType Directory -Path $fake | Out-Null
-        Set-Content -LiteralPath (Join-Path $fake 'yq.cmd') -Value '@echo yq 3.4.3' -Encoding ascii
+        Set-Content -LiteralPath (Join-Path $fake 'yq.cmd') -Value "@echo $Version" -Encoding ascii
         $saved = $env:PATH
         try {
             $env:PATH = $fake + [IO.Path]::PathSeparator + $saved
             $r = Invoke-Lint -Root $script:Root
         } finally { $env:PATH = $saved; Remove-Item -Recurse -Force $fake -ErrorAction SilentlyContinue }
-        $r.Out | Should -Match "CANNOT ANSWER: yq on PATH is not mikefarah yq v4 \(got: 'yq 3\.4\.3'\)"
+        $r.Out | Should -Match ("CANNOT ANSWER: yq on PATH is not mikefarah yq v4 \(got: '" + [regex]::Escape($Version) + "'\)")
         $r.Code | Should -Be 2
     }
 }
