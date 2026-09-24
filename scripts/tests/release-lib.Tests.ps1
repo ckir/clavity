@@ -131,7 +131,7 @@ Describe 'Group-Notes (F10 grouping)' {
 
 Describe 'Format-ReleaseNotes (CC1 aggregated body)' {
     It 'renders per-member grouped sections' {
-        $bump = [pscustomobject]@{ Key='classic'; Channel=$null; Current='0.1.2'; Next='0.2.0'; Level='minor';
+        $bump = [pscustomobject]@{ Key='classic'; Current='0.1.2'; Next='0.2.0'; Level='minor';
             Notes=[pscustomobject]@{ Breaking=@(); Features=@('feat: nice'); Fixes=@('fix: bug') } }
         $md = Format-ReleaseNotes @($bump)
         $md | Should -Match 'classic 0.1.2 -> 0.2.0'
@@ -144,7 +144,7 @@ Describe 'Format-ReleaseNotes (CC1 aggregated body)' {
 Describe 'Update-Changelog' {
     It 'creates and prepends newest-first' {
         $root = New-TemporaryFile; Remove-Item $root; New-Item -ItemType Directory $root | Out-Null
-        $bump = [pscustomobject]@{ Key='classic'; Channel=$null; Root='m'; Next='0.2.0';
+        $bump = [pscustomobject]@{ Key='classic'; Root='m'; Next='0.2.0';
             Notes=[pscustomobject]@{ Breaking=@(); Features=@('feat: x'); Fixes=@() } }
         New-Item -ItemType Directory (Join-Path $root 'm') | Out-Null
         $p = Update-Changelog $root $bump '2026-07-12'
@@ -160,7 +160,7 @@ Describe 'Update-Changelog' {
     # the OUTPUT can never hold while the GENERATOR emits it - this test is on the generator.
     It 'emits a pure-ASCII section, so a release cannot re-break the injected-context gate' {
         $root = New-TemporaryFile; Remove-Item $root; New-Item -ItemType Directory $root | Out-Null
-        $bump = [pscustomobject]@{ Key='agy-autotrain'; Channel=$null; Root='m'; Next='0.5.0';
+        $bump = [pscustomobject]@{ Key='agy-autotrain'; Root='m'; Next='0.5.0';
             Notes=[pscustomobject]@{ Breaking=@(); Features=@('feat: x'); Fixes=@('fix: y') } }
         New-Item -ItemType Directory (Join-Path $root 'm') | Out-Null
         $p = Update-Changelog $root $bump '2026-09-18'

@@ -60,7 +60,7 @@ foreach ($m in Get-Members) {
     # plugin.json for the three `claude plugin` members (Inno-retirement, 2026-09-14).
     $current = if ($m.VerKind -eq 'iss') { Read-IssVersion (Join-Path $RepoRoot $m.VerFile) }
                else                      { Read-JsonVersion (Join-Path $RepoRoot $m.VerFile) }
-    $bumps += [pscustomobject]@{ Key=$m.Key; Channel=$null; Root=$m.Root; Current=$current;
+    $bumps += [pscustomobject]@{ Key=$m.Key; Root=$m.Root; Current=$current;
         Next=(Step-SemverVersion $current $level); Level=$level; CommitCount=$conv.Count; Notes=(Group-Notes $conv) }
 }
 

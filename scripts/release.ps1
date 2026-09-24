@@ -107,8 +107,7 @@ if ($r.NonConventional.Count) {
 $target = "clavity-v$($r.Serial)"
 Write-Host "Preparing $target" -ForegroundColor Cyan
 $r.Bumps | ForEach-Object {
-    $label = if ($_.Channel) { "$($_.Key) ($($_.Channel))" } else { $_.Key }
-    Write-Host ("  {0,-24} {1} -> {2}  ({3}, {4} commits)" -f $label,$_.Current,$_.Next,$_.Level,$_.CommitCount)
+    Write-Host ("  {0,-24} {1} -> {2}  ({3}, {4} commits)" -f $_.Key,$_.Current,$_.Next,$_.Level,$_.CommitCount)
 }
 Write-Host "`n--- release notes preview ---`n$(Format-ReleaseNotes $r.Bumps)`n" -ForegroundColor DarkGray
 
@@ -123,9 +122,8 @@ $script:Computed = $r; $script:Target = $target
 
 $dateStr = (Get-Date -Format 'yyyy-MM-dd')
 foreach ($b in $script:Computed.Bumps) {
-    if ($b.Channel) { & just bump-ghidrust $b.Channel $b.Next }   # ghidrust per channel
-    else            { & just bump $b.Key $b.Next }
-    if ($LASTEXITCODE -ne 0) { Die "bump failed for $($b.Key) $($b.Channel)" }
+    & just bump $b.Key $b.Next
+    if ($LASTEXITCODE -ne 0) { Die "bump failed for $($b.Key)" }
     [void](Update-Changelog $RepoRoot $b $dateStr)
 }
 
@@ -138,7 +136,7 @@ foreach ($root in ($script:Computed.Bumps.Root | Select-Object -Unique)) {
 
 # Subject = baseline anchor; body = aggregated notes (CC1). Write body to a temp file for -F to avoid
 # quoting hazards, then commit with -m subject -F bodyfile order preserved via two -F/-m? Use file for both.
-$members = ($script:Computed.Bumps | ForEach-Object { $l = if ($_.Channel) { "$($_.Key)/$($_.Channel)" } else { $_.Key }; "$l $($_.Next)" }) -join ', '
+$members = ($script:Computed.Bumps | ForEach-Object { "$($_.Key) $($_.Next)" }) -join ', '
 $subject = "chore(release): $($script:Target) [$members]"
 $body    = Format-ReleaseNotes $script:Computed.Bumps
 $msgFile = New-TemporaryFile

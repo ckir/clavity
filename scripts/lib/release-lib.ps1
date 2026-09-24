@@ -15,10 +15,10 @@ Set-StrictMode -Version Latest
 # ghidrust was RETIRED from this monorepo (2026-09-14, full retirement — superseded by re-ghidra-mcp-cc in
 # ckir/aiplugins); it was the only dual-channel member, so the channel machinery below went with it.
 $script:Members = @(
-    [pscustomobject]@{ Key='dotnet';        Marketplace='clavity-dotnet';  Root='clavity-dotnet';  VerFile='clavity-dotnet/plugin/plugin.json';         VerKind='json'; Ghidrust=$false }
-    [pscustomobject]@{ Key='classic';       Marketplace='clavity-classic'; Root='clavity-classic'; VerFile='clavity-classic/installer/clavity-classic.iss'; VerKind='iss';  Ghidrust=$false }
-    [pscustomobject]@{ Key='agy-autotrain'; Marketplace='agy-autotrain';   Root='agy-autotrain';   VerFile='agy-autotrain/plugin.json';                 VerKind='json'; Ghidrust=$false }
-    [pscustomobject]@{ Key='commonmemory';  Marketplace='commonmemory';    Root='commonmemory';    VerFile='commonmemory/plugin.json';                  VerKind='json'; Ghidrust=$false }
+    [pscustomobject]@{ Key='dotnet';        Marketplace='clavity-dotnet';  Root='clavity-dotnet';  VerFile='clavity-dotnet/plugin/plugin.json';         VerKind='json' }
+    [pscustomobject]@{ Key='classic';       Marketplace='clavity-classic'; Root='clavity-classic'; VerFile='clavity-classic/installer/clavity-classic.iss'; VerKind='iss' }
+    [pscustomobject]@{ Key='agy-autotrain'; Marketplace='agy-autotrain';   Root='agy-autotrain';   VerFile='agy-autotrain/plugin.json';                 VerKind='json' }
+    [pscustomobject]@{ Key='commonmemory';  Marketplace='commonmemory';    Root='commonmemory';    VerFile='commonmemory/plugin.json';                  VerKind='json' }
 )
 function Get-Members { $script:Members }
 
@@ -310,8 +310,7 @@ function Assert-RosterMatchesMembers([string]$MembersJsonPath) {
 function Format-ReleaseNotes([object[]]$bumps) {
     $sb = [System.Text.StringBuilder]::new()
     foreach ($b in $bumps) {
-        $label = if ($b.Channel) { "$($b.Key) ($($b.Channel))" } else { $b.Key }
-        [void]$sb.AppendLine("## $label $($b.Current) -> $($b.Next)")
+        [void]$sb.AppendLine("## $($b.Key) $($b.Current) -> $($b.Next)")
         foreach ($grp in @('Breaking','Features','Fixes')) {
             $items = $b.Notes.$grp
             if ($items.Count) {
@@ -328,7 +327,6 @@ function Format-ReleaseNotes([object[]]$bumps) {
 # stamp time; keep the function pure/testable).
 function Update-Changelog([string]$repoRoot, [object]$bump, [string]$dateStr) {
     $path = Join-Path $repoRoot (Join-Path $bump.Root 'CHANGELOG.md')
-    $label = if ($bump.Channel) { "$($bump.Key) ($($bump.Channel))" } else { $bump.Key }
     # ASCII hyphen, NOT an em dash: agy-autotrain/ and commonmemory/ ship their CHANGELOG.md inside the
     # injected-context domain, which is gated to pure ASCII. The em dash this used to emit re-broke that
     # gate on every release (b2a6cc0 sanitised the files; clavity-v18 put it straight back). Pinned by
@@ -338,8 +336,7 @@ function Update-Changelog([string]$repoRoot, [object]$bump, [string]$dateStr) {
         $items = $bump.Notes.$grp
         if ($items.Count) { $section += "### $grp`n"; foreach ($i in $items) { $section += "- $i`n" }; $section += "`n" }
     }
-    # Fallback H1 uses the member KEY, not $label — a ghidrust CHANGELOG is shared by both channels, so a
-    # channel-specific title ('# ghidrust (binary) changelog') would be permanently wrong (plan-review R2).
+    # Fallback H1 when the member has no CHANGELOG yet.
     $existing = if (Test-Path $path) { Get-Content -Raw $path } else { "# $($bump.Key) changelog`n`n" }
     # Inject AFTER the H1 title, not above it (plan-review R1: blind prepend pushes the `# … changelog`
     # heading further down on every release).

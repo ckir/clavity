@@ -68,19 +68,16 @@ function Set-PyprojectVersion([string]$relPath) {
     Write-Host "  toml $relPath [project] -> $Version"
 }
 
-function Invoke-CargoSetVersion([string]$crateDirRel, [switch]$Workspace) {
+function Invoke-CargoSetVersion([string]$crateDirRel) {
     if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { Die "cargo not found on PATH" }
     if (-not (cargo set-version --help 2>$null)) { Die "cargo-edit not installed (cargo install cargo-edit --locked)" }
     Push-Location (Join-Path $RepoRoot $crateDirRel)
     try {
-        # A VIRTUAL workspace root (ghidrust/Cargo.toml has no [package]) has no "current package",
-        # so `cargo set-version` needs --workspace to bump every member; a single-package manifest
-        # (clavity-classic) has a current package and uses the default (no --workspace).
-        if ($Workspace) { & cargo set-version --workspace $Version }
-        else            { & cargo set-version $Version }
+        # A single-package manifest (clavity-classic) has a current package, so no --workspace is needed.
+        & cargo set-version $Version
         if ($LASTEXITCODE -ne 0) { Die "cargo set-version failed in $crateDirRel" }
     } finally { Pop-Location }
-    Write-Host "  cargo set-version $Version ($crateDirRel$(if ($Workspace) { ' --workspace' } else { '' })) [Cargo.toml + Cargo.lock]"
+    Write-Host "  cargo set-version $Version ($crateDirRel) [Cargo.toml + Cargo.lock]"
 }
 
 function Invoke-UvLock([string]$bridgeDirRel) {

@@ -31,8 +31,8 @@ Describe 'Assert-RosterMatchesMembers (CC2 drift gate)' {
         # a 6th row that satisfies name-equality but duplicates member 5's Key/Root (agy copy-paste failure mode)
         Mock Get-Members {
             @(
-                [pscustomobject]@{ Key='dotnet'; Marketplace='clavity-dotnet'; Root='clavity-dotnet'; Iss='x'; Ghidrust=$false }
-                [pscustomobject]@{ Key='dotnet'; Marketplace='new-plugin';     Root='clavity-dotnet'; Iss='x'; Ghidrust=$false }
+                [pscustomobject]@{ Key='dotnet'; Marketplace='clavity-dotnet'; Root='clavity-dotnet'; Iss='x' }
+                [pscustomobject]@{ Key='dotnet'; Marketplace='new-plugin';     Root='clavity-dotnet'; Iss='x' }
             )
         }
         $j = @{ members = @(@{ name='clavity-dotnet' }, @{ name='new-plugin' }) } | ConvertTo-Json -Depth 5

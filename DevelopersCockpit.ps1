@@ -40,24 +40,28 @@ function Write-C([string]$Text = '', [string]$Color = 'Gray') {
 # Member sets (see spec §Action set)
 # ---------------------------------------------------------------------------
 # Buildable = have a member justfile, so build/test/lint/fmt aggregate over them via root `just`.
-$script:Buildable = @('dotnet', 'classic', 'ghidrust')
-# Versioned = all five; `just bump <member> <version>` (ghidrust via `just bump-ghidrust <channel> <version>`).
-$script:Versioned = @('dotnet', 'classic', 'ghidrust', 'agy-autotrain', 'commonmemory')
+$script:Buildable = @('dotnet', 'classic')
+# Versioned = every member; `just bump <member> <version>` (ghidrust, fully retired 2026-09-14, is gone).
+$script:Versioned = @('dotnet', 'classic', 'agy-autotrain', 'commonmemory')
 
 # Banner version sources — display-only reads (spec §Banner). check-versions.ps1 remains the sole gate.
+# The same files scripts/lib/release-lib.ps1 reads: only clavity-classic still has an Inno .iss; the
+# Inno-retired members (2026-09-14) keep their version in plugin.json.
 $script:BannerMembers = @(
-    [pscustomobject]@{ Name = 'dotnet';        Iss = 'clavity-dotnet/installer/clavity-dotnet.iss' }
-    [pscustomobject]@{ Name = 'classic';       Iss = 'clavity-classic/installer/clavity-classic.iss' }
-    [pscustomobject]@{ Name = 'ghidrust';      Iss = 'ghidrust/installer/ghidrust.iss' }
-    [pscustomobject]@{ Name = 'agy-autotrain'; Iss = 'agy-autotrain/installer/agy-autotrain.iss' }
-    [pscustomobject]@{ Name = 'commonmemory';  Iss = 'commonmemory/installer/commonmemory.iss' }
+    [pscustomobject]@{ Name = 'dotnet';        File = 'clavity-dotnet/plugin/plugin.json' }
+    [pscustomobject]@{ Name = 'classic';       File = 'clavity-classic/installer/clavity-classic.iss' }
+    [pscustomobject]@{ Name = 'agy-autotrain'; File = 'agy-autotrain/plugin.json' }
+    [pscustomobject]@{ Name = 'commonmemory';  File = 'commonmemory/plugin.json' }
 )
 
-function Get-MemberVersion([string]$IssPath) {
+function Get-MemberVersion([string]$Path) {
     # Best-effort, display-only: an unreadable/missing source shows '?' and never aborts.
     try {
-        $c = Get-Content -Raw -ErrorAction Stop -- $IssPath
-        if ($c -match '#define\s+AppVersion\s+"([^"]+)"') { return $Matches[1] }
+        $c = Get-Content -Raw -ErrorAction Stop -- $Path
+        if ($Path -like '*.json') {
+            $v = ($c | ConvertFrom-Json -ErrorAction Stop).version
+            if ($v) { return $v }
+        } elseif ($c -match '#define\s+AppVersion\s+"([^"]+)"') { return $Matches[1] }
     } catch { }
     return '?'
 }
@@ -119,17 +123,9 @@ function Invoke-VersionCheckAll {
 function Invoke-BumpMember {
     $m = Read-Choice "  member ($($script:Versioned -join '/'))" $script:Versioned
     if (-not $m) { return }
-    if ($m -eq 'ghidrust') {
-        $ch = Read-Choice '  channel (binary/plugin)' @('binary', 'plugin')
-        if (-not $ch) { return }
-        $v = Read-Trimmed '  new version (X.Y.Z)'
-        if (-not $v) { Write-C '  aborted.' 'DarkGray'; return }
-        Invoke-Cmd "just bump-ghidrust $ch $v"
-    } else {
-        $v = Read-Trimmed '  new version (X.Y.Z)'
-        if (-not $v) { Write-C '  aborted.' 'DarkGray'; return }
-        Invoke-Cmd "just bump $m $v"
-    }
+    $v = Read-Trimmed '  new version (X.Y.Z)'
+    if (-not $v) { Write-C '  aborted.' 'DarkGray'; return }
+    Invoke-Cmd "just bump $m $v"
 }
 
 function Invoke-TagPush {
@@ -267,7 +263,7 @@ $script:Actions = @(
 function Render-Menu {
     if ($script:Interactive) { Clear-Host }
     Write-Host ''
-    $parts = $script:BannerMembers | ForEach-Object { "$($_.Name) $(Get-MemberVersion $_.Iss)" }
+    $parts = $script:BannerMembers | ForEach-Object { "$($_.Name) $(Get-MemberVersion $_.File)" }
     Write-C ('DEVELOPERS COCKPIT — clavity   [{0}]' -f ($parts -join ' | ')) 'Cyan'
     Write-Host ''
     for ($t = 0; $t -lt $script:Tiers.Count; $t++) {
