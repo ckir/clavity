@@ -1,4 +1,12 @@
 # dotnet changelog
+## 0.9.1 - 2026-09-24
+
+### Fixes
+- fix(skills): quote the two completion-gate descriptions - the REAL cause was invalid YAML
+- fix(skills): shorten the two completion-gate descriptions so Claude Code advertises them
+- fix(release): ship the win-x64 binary as clavity-ls.exe, not extensionless
+- fix(docs-gate): exclude the top-level archive/, root-anchored, with its mutation
+
 ## 0.9.0 - 2026-09-23
 
 ### Features
