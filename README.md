@@ -7,7 +7,10 @@
 
 ## HUMAN ONLY
 
-It provides bridges that let agents collaborate, such as Claude driving a live `agy` peer. It also offers plugins to help agents share memory and learn from everyday usage.
+### WARNING
+In Latest versions of Antigravity the "--prompt-interactive" option is not working as expected. The workaround until I fix it is simple.
+Copy/paste the exact content of this file **[pairing](https://raw.githubusercontent.com/ckir/clavity/refs/heads/main/clavity-dotnet/pairing/agy-pairing-INSTALL.md)** to Antigravity's prompt before start your work on Claude Code or use the classic version.
+
 
 ### What it does
 Starts a Claude Code and an Antigravity Code instance at the same folder.
