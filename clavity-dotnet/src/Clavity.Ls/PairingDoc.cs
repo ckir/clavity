@@ -31,7 +31,8 @@ public static class PairingDoc
     /// <summary>Write the embedded doc to <c>&lt;dir&gt;/agy-pairing-INSTALL.md</c> (creating <paramref name="dir"/>)
     /// and return that path. Skips the write when the file already holds these bytes; otherwise writes a temp file
     /// and moves it into place, so a concurrent <c>clavity start</c> never lets agy read a half-written doc.
-    /// IO failures propagate - the caller must not launch agy with a prompt pointing at nothing.</summary>
+    /// IO failures propagate - the caller must not launch agy with a prompt pointing at nothing.
+    /// @produces "agy-pairing-INSTALL.md"</summary>
     public static string Materialize(string dir)
     {
         Directory.CreateDirectory(dir);

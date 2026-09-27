@@ -14,7 +14,8 @@
 
   <ItemGroup>
     <!-- The agy pairing instructions travel INSIDE the binary (PairingDoc), so `clavity start` works however
-         clavity-ls was installed. LogicalName pins the resource name PairingDoc reads. -->
+         clavity-ls was installed. LogicalName pins the resource name PairingDoc reads.
+         @produces "Clavity.Ls.agy-pairing-INSTALL.md" -->
     <EmbeddedResource Include="..\..\pairing\agy-pairing-INSTALL.md" LogicalName="Clavity.Ls.agy-pairing-INSTALL.md" />
   </ItemGroup>
 
