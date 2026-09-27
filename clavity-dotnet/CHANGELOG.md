@@ -1,4 +1,10 @@
 # dotnet changelog
+## 0.9.2 - 2026-09-28
+
+### Fixes
+- fix(pairing-doc): declare @produces for the pairing doc and its embedded resource
+- fix(launcher): embed the agy pairing doc so `start` always sends the -i prompt
+
 ## 0.9.1 - 2026-09-24
 
 ### Fixes
