@@ -25,6 +25,8 @@
 
   <ItemGroup>
     <None Include="TestData\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The pairing doc's source of truth, so PairingDocTests can pin the embedded copy against it. -->
+    <None Include="..\..\pairing\agy-pairing-INSTALL.md" Link="agy-pairing-INSTALL.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

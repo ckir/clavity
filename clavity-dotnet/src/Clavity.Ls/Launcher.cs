@@ -37,7 +37,9 @@ public sealed class LaunchOptions
     /// stays here so the Launcher itself remains policy-free and unit-testable both ways.</summary>
     public bool SkipPermissions { get; init; }
     /// <summary>If set, agy is launched with <c>-i "Fetch and follow the instructions at &lt;path&gt;"</c> so it
-    /// self-publishes its LS endpoint (port + CSRF token) at session start. Null → no acquire prompt.</summary>
+    /// self-publishes its LS endpoint (port + CSRF token) at session start. Null → no acquire prompt. The
+    /// <c>start</c> command always supplies it (<see cref="PairingDoc.Materialize"/>); null stays legal here only
+    /// so the Launcher remains policy-free.</summary>
     public string? AgyInstallDocPath { get; init; }
 }
 

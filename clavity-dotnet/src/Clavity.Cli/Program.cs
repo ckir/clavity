@@ -107,9 +107,20 @@ if (args.Length > 0 && args[0] == "start")
     var agyEndpointPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".clavity", $"agy-endpoint.{sessionId}.json");
 
-    var installRoot = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
-    var agyInstallDoc = Path.Combine(
-        installRoot, "plugins", Clavity.Ls.Install.PluginInstaller.PluginName, "pairing", "agy-pairing-INSTALL.md");
+    // The pairing doc is embedded in this binary and written out on every start (PairingDoc). Without it agy gets
+    // no -i prompt, never publishes its endpoint, and the pairing is dead on arrival - so refuse, loudly, rather
+    // than launch a half-working session (the old install-root lookup failed SILENTLY on every non-Inno install).
+    string agyInstallDoc;
+    try
+    {
+        agyInstallDoc = PairingDoc.Materialize(Path.GetDirectoryName(agyEndpointPath)!);
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+    {
+        Console.Error.WriteLine($"clavity: cannot write the agy pairing instructions ({ex.Message}) - not launching.");
+        return 1;
+    }
+
     var plan = Launcher.Build(new LaunchOptions
     {
         Folder = folder,
@@ -121,7 +132,7 @@ if (args.Length > 0 && args[0] == "start")
         // User decision 2026-06-30: agy ALWAYS launches with --dangerously-skip-permissions so unattended
         // bus/LS consults never stall on per-tool approval prompts. (Supersedes spec §4 "NOT default".)
         SkipPermissions = true,
-        AgyInstallDocPath = File.Exists(agyInstallDoc) ? agyInstallDoc : null,
+        AgyInstallDocPath = agyInstallDoc,
     });
 
     Spawn(plan.AgyTab, wait: false);    // agy tab boots asynchronously; human owns it.
