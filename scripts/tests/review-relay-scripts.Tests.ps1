@@ -93,3 +93,50 @@ Describe 'new-round.ps1' {
         (Invoke-Relay $script:NewRound @('-Review', 'demo', '-Artifact', 'nope.md', '-ProjectRoot', $p)).Exit | Should -Be 1
     }
 }
+
+Describe 'collect.ps1' {
+    BeforeEach {
+        $script:P = New-Project
+        (Invoke-Relay $script:NewRound @('-Review', 'demo', '-Artifact', 'design.md', '-ProjectRoot', $script:P)).Exit | Should -Be 0
+        $script:RoundDir = Join-Path $script:P '.review-relay' 'demo' 'round-01'
+        $script:Meta = Get-Content -Raw (Join-Path $script:RoundDir 'round.json') | ConvertFrom-Json
+        $script:Inbox = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $script:Inbox | Out-Null
+        $started = if ($script:Meta.startedAt -is [datetime]) { $script:Meta.startedAt.ToUniversalTime() } else { [DateTime]::Parse($script:Meta.startedAt).ToUniversalTime() }
+        $script:After = $started.AddSeconds(5)
+        $script:Before = $started.AddHours(-1)
+    }
+    It 'exits 2 when no capture was saved after the round started' {
+        Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox
+        (Get-Item (Join-Path $script:Inbox 'gemini-inline.md')).LastWriteTimeUtc = $script:Before
+        (Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)).Exit | Should -Be 2
+    }
+    It 'collects captures, checks the read proof, and leaves the originals in place' {
+        $reply = (Get-Content -Raw (Join-Path $script:Fx 'contract-reply.md')).Replace('@@CODE@@', $script:Meta.endMarker).Replace('@@LAST@@', 'the last line.')
+        Set-Content -LiteralPath (Join-Path $script:Inbox 'contract.md') -Value $reply -NoNewline
+        Copy-Item (Join-Path $script:Fx 'gemini-inline.md'), (Join-Path $script:Fx 'not-aisave.md') $script:Inbox
+        Get-ChildItem $script:Inbox | ForEach-Object { $_.LastWriteTimeUtc = $script:After }
+        $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r.Exit | Should -Be 0 -Because $r.Out
+        $collected = Get-Content -Raw (Join-Path $script:RoundDir 'collected.md')
+        $collected | Should -Match '\| example \| PASS \| 412 \| NOT READY \| 1 \| 0 \| 1 \|'
+        $collected | Should -Match '\| gemini \| MISSING \| - \| 1 BLOCKING, 0 MATERIAL, 1 MINOR \| 1 \| 0 \| 1 \|'
+        $collected | Should -Not -Match 'Meeting notes'
+        @(Get-ChildItem (Join-Path $script:RoundDir 'replies')).Count | Should -Be 2
+        @(Get-ChildItem $script:Inbox).Count | Should -Be 3
+    }
+    It 'prefers -Inbox over REVIEW_RELAY_INBOX' {
+        Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox
+        (Get-Item (Join-Path $script:Inbox 'gemini-inline.md')).LastWriteTimeUtc = $script:After
+        $empty = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $empty | Out-Null
+        $env:REVIEW_RELAY_INBOX = $empty
+        try {
+            (Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P)).Exit | Should -Be 2
+            (Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)).Exit | Should -Be 0
+        } finally { Remove-Item Env:REVIEW_RELAY_INBOX }
+    }
+    It 'refuses an unknown review' {
+        (Invoke-Relay $script:Collect @('-Review', 'nope', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)).Exit | Should -Be 1
+    }
+}

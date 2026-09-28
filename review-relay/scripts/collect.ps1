@@ -1,0 +1,80 @@
+#!/usr/bin/env pwsh
+<#
+.SYNOPSIS
+  Collect a review-relay round: find the AiSave captures saved for it and summarise them side by side.
+.DESCRIPTION
+  Spec: docs/superpowers/specs/2026-09-28-review-relay-design.md, sections 5.2 and 6.
+  Exit codes: 0 success, 1 usage or state error, 2 no capture found.
+#>
+[CmdletBinding(SupportsShouldProcess)]
+param(
+    [Parameter(Mandatory)][ValidatePattern('^[a-z0-9][a-z0-9-]*$')][string]$Review,
+    [int]$Round,
+    [string]$Inbox,
+    [string]$ProjectRoot = (Get-Location).Path
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'lib' 'relay-lib.ps1')
+
+function Stop-Collect([string]$Message) { Write-Host "collect: $Message" -ForegroundColor Red; exit 1 }
+
+$root = (Resolve-Path -LiteralPath $ProjectRoot).ProviderPath
+$ws = Join-Path $root '.review-relay' $Review
+if (-not (Test-Path -LiteralPath (Join-Path $ws 'review.json'))) { Stop-Collect "no review named '$Review' in $root" }
+$rounds = @(Get-ChildItem -LiteralPath $ws -Directory -Filter 'round-*' | Sort-Object Name)
+if ($rounds.Count -eq 0) { Stop-Collect 'no rounds yet: run new-round.ps1 first' }
+$roundDir = if ($Round) { Join-Path $ws ('round-{0:D2}' -f $Round) } else { $rounds[-1].FullName }
+if (-not (Test-Path -LiteralPath (Join-Path $roundDir 'round.json'))) { Stop-Collect "round $Round does not exist" }
+$rm = Get-Content -LiteralPath (Join-Path $roundDir 'round.json') -Raw | ConvertFrom-Json
+$started = if ($rm.startedAt -is [datetime]) { $rm.startedAt.ToUniversalTime() } else { [DateTime]::Parse($rm.startedAt, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime() }
+
+$inboxDir = Resolve-RelayInbox $Inbox
+if (-not (Test-Path -LiteralPath $inboxDir -PathType Container)) { Stop-Collect "inbox folder not found: $inboxDir" }
+
+$captures = @(
+    foreach ($f in @(Get-ChildItem -LiteralPath $inboxDir -File -Filter '*.md' | Where-Object { $_.LastWriteTimeUtc -gt $started } | Sort-Object LastWriteTimeUtc)) {
+        $c = Read-AiSaveCapture $f.FullName
+        if ($c) { [pscustomobject]@{ File = $f; Capture = $c } }
+    }
+)
+if ($captures.Count -eq 0) {
+    Write-Host "collect: no AiSave captures in $inboxDir saved after $($started.ToString('o'))"
+    exit 2
+}
+
+$rows = [System.Collections.Generic.List[string]]::new()
+$bodies = [System.Collections.Generic.List[string]]::new()
+$n = 0
+foreach ($item in $captures) {
+    $n++
+    $c = $item.Capture
+    $copyName = '{0:D2}-{1}' -f $n, $item.File.Name
+    $proof = Get-RelayReadProof -Reply $c.Reply -EndMarkerCode $rm.endMarker -ExpectedLastLine $rm.expectedLastLine
+    $verdict = Get-RelayVerdict $c.Reply
+    $counts = Get-RelayCounts -Findings @(Get-RelayFindings $c.Reply) -Verdict $verdict
+    $reported = if ($null -ne $proof.ReportedLineCount) { $proof.ReportedLineCount } else { '-' }
+    $rows.Add("| $n | $($c.Platform) | $($proof.Result) | $reported | $verdict | $($counts.BLOCKING) | $($counts.MATERIAL) | $($counts.MINOR) |")
+    $bodies.Add("## $n. $($c.Platform) - $($c.Title)`n`nSource: ``replies/$copyName`` ($($c.Url))`n`n$($c.Reply)`n")
+    if ($PSCmdlet.ShouldProcess((Join-Path $roundDir 'replies' $copyName), 'copy capture')) {
+        Copy-Item -LiteralPath $item.File.FullName -Destination (Join-Path $roundDir 'replies' $copyName)
+    }
+}
+
+$summary = @(
+    "# review-relay: $Review, round $($rm.round)"
+    ''
+    "Collected $([DateTime]::UtcNow.ToString('o')) from ``$inboxDir``. Expected end marker ``$($rm.endMarker)``; expected last content line: ``$($rm.expectedLastLine)``; artifact line count $($rm.expectedLineCount) (information only)."
+    ''
+    '| # | Site | Read proof | Reported lines | Verdict | BLOCKING | MATERIAL | MINOR |'
+    '|---|---|---|---|---|---|---|---|'
+    $rows
+    ''
+    $bodies
+) -join "`n"
+
+if ($PSCmdlet.ShouldProcess((Join-Path $roundDir 'collected.md'), 'write summary')) {
+    [IO.File]::WriteAllText((Join-Path $roundDir 'collected.md'), $summary, [Text.UTF8Encoding]::new($false))
+    Write-Host "collect: $($captures.Count) capture(s) -> $(Join-Path $roundDir 'collected.md')"
+}
+exit 0
