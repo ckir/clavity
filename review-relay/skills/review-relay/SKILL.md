@@ -43,9 +43,12 @@ Run:
 Exit code 2 means nothing new was found: ask the owner where the replies were saved (pass `-Inbox <folder>`).
 Read `.review-relay/<name>/collected.md` and report each site's read proof and verdict in one short table.
 
-Read proof: `PASS` means the reviewer reached the end of the artifact. `NO-MARKER` or `MISSING` usually
-means it saw a truncated copy or skipped Step 0; weigh its findings accordingly and say so. The line count
-a reviewer reports is information only; web models often miscount lines while quoting correctly.
+Read proof: `PASS` means the reply quoted the end marker and the last content line. With the uploaded file,
+that shows the reviewer reached the end of the artifact. With the all-in-one text it proves less: the marker
+sits at the end of the pasted text, so a reply can echo the tail without reading the middle. `NO-MARKER` or
+`MISSING` usually means it saw a truncated copy or skipped Step 0. Weigh findings accordingly, and say which
+variant each reviewer used. The line count a reviewer reports is information only; web models often miscount
+lines while quoting correctly.
 
 ## 4. Verify before folding
 

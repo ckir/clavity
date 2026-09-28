@@ -22,24 +22,32 @@ function Stop-Collect([string]$Message) { Write-Host "collect: $Message" -Foregr
 $root = (Resolve-Path -LiteralPath $ProjectRoot).ProviderPath
 $ws = Join-Path $root '.review-relay' $Review
 if (-not (Test-Path -LiteralPath (Join-Path $ws 'review.json'))) { Stop-Collect "no review named '$Review' in $root" }
-$rounds = @(Get-ChildItem -LiteralPath $ws -Directory -Filter 'round-*' | Sort-Object Name)
+$rounds = @(Get-ChildItem -LiteralPath $ws -Directory -Filter 'round-*' |
+    Where-Object { $_.Name -match '^round-\d+$' } | Sort-Object { [int]($_.Name.Substring(6)) })
 if ($rounds.Count -eq 0) { Stop-Collect 'no rounds yet: run new-round.ps1 first' }
 $roundDir = if ($Round) { Join-Path $ws ('round-{0:D2}' -f $Round) } else { $rounds[-1].FullName }
 if (-not (Test-Path -LiteralPath (Join-Path $roundDir 'round.json'))) { Stop-Collect "round $Round does not exist" }
 $rm = try { Get-Content -LiteralPath (Join-Path $roundDir 'round.json') -Raw | ConvertFrom-Json } catch { Stop-Collect "round.json is not valid JSON: $($_.Exception.Message)" }
 $started = if ($rm.startedAt -is [datetime]) { $rm.startedAt.ToUniversalTime() } else { [DateTime]::Parse($rm.startedAt, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime() }
+$thisNo = [int]((Split-Path -Leaf $roundDir).Substring(6))
+$next = @($rounds | Where-Object { [int]($_.Name.Substring(6)) -gt $thisNo }) | Select-Object -First 1
+$ended = $null
+if ($next -and (Test-Path -LiteralPath (Join-Path $next.FullName 'round.json'))) {
+    $nm = try { Get-Content -LiteralPath (Join-Path $next.FullName 'round.json') -Raw | ConvertFrom-Json } catch { Stop-Collect "$($next.Name)/round.json is not valid JSON: $($_.Exception.Message)" }
+    $ended = if ($nm.startedAt -is [datetime]) { $nm.startedAt.ToUniversalTime() } else { [DateTime]::Parse($nm.startedAt, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime() }
+}
 
 $inboxDir = Resolve-RelayInbox $Inbox
 if (-not (Test-Path -LiteralPath $inboxDir -PathType Container)) { Stop-Collect "inbox folder not found: $inboxDir" }
 
 $captures = @(
-    foreach ($f in @(Get-ChildItem -LiteralPath $inboxDir -File -Filter '*.md' | Where-Object { $_.LastWriteTimeUtc -gt $started } | Sort-Object LastWriteTimeUtc)) {
+    foreach ($f in @(Get-ChildItem -LiteralPath $inboxDir -File -Filter '*.md' | Where-Object { $_.LastWriteTimeUtc -gt $started -and ($null -eq $ended -or $_.LastWriteTimeUtc -lt $ended) } | Sort-Object LastWriteTimeUtc)) {
         $c = try { Read-AiSaveCapture $f.FullName } catch { Write-Warning "collect: skipped $($f.Name): $($_.Exception.Message)"; $null }
         if ($c) { [pscustomobject]@{ File = $f; Capture = $c } }
     }
 )
 if ($captures.Count -eq 0) {
-    Write-Host "collect: no AiSave captures in $inboxDir saved after $($started.ToString('o'))"
+    Write-Host "collect: no AiSave captures in $inboxDir saved after $($started.ToString('o'))$(if ($ended) { " and before $($ended.ToString('o'))" })"
     exit 2
 }
 

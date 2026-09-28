@@ -44,11 +44,13 @@ if (Test-Path -LiteralPath $reviewJson) {
 }
 if ($Kind) { $meta.kind = $Kind }
 
-$existing = @(Get-ChildItem -LiteralPath $ws -Directory -Filter 'round-*' -ErrorAction SilentlyContinue | Sort-Object Name)
-if ($existing.Count -gt 0 -and -not $Force -and -not (Test-Path -LiteralPath (Join-Path $existing[-1].FullName 'collected.md'))) {
-    Stop-Round "round $($existing.Count) has not been collected yet (run collect.ps1, or pass -Force)"
+$existing = @(Get-ChildItem -LiteralPath $ws -Directory -Filter 'round-*' -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match '^round-\d+$' } | Sort-Object { [int]($_.Name.Substring(6)) })
+$lastNo = if ($existing.Count -gt 0) { [int]($existing[-1].Name.Substring(6)) } else { 0 }
+if ($lastNo -gt 0 -and -not $Force -and -not (Test-Path -LiteralPath (Join-Path $existing[-1].FullName 'collected.md'))) {
+    Stop-Round "round $lastNo has not been collected yet (run collect.ps1, or pass -Force)"
 }
-$round = $existing.Count + 1
+$round = $lastNo + 1
 $roundDir = Join-Path $ws ('round-{0:D2}' -f $round)
 
 if ($meta.sourceType -eq 'diff') {

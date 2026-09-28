@@ -130,6 +130,21 @@ Describe 'new-round.ps1' {
             { Get-Content -Raw $f | ConvertFrom-Json } | Should -Not -Throw
         }
     }
+    It 'numbers a new round after the highest existing one and never rewrites an existing round' {
+        $p = New-Project
+        (Invoke-Relay $script:NewRound @('-Review', 'demo', '-Artifact', 'design.md', '-ProjectRoot', $p)).Exit | Should -Be 0
+        $ws = Join-Path $p '.review-relay' 'demo'
+        Set-Content (Join-Path $ws 'round-01' 'collected.md') 'collected'
+        (Invoke-Relay $script:NewRound @('-Review', 'demo', '-ProjectRoot', $p, '-Force')).Exit | Should -Be 0
+        $round2Marker = (Get-Content -Raw (Join-Path $ws 'round-02' 'round.json') | ConvertFrom-Json).endMarker
+
+        Remove-Item -LiteralPath (Join-Path $ws 'round-01') -Recurse -Force
+
+        $r = Invoke-Relay $script:NewRound @('-Review', 'demo', '-ProjectRoot', $p, '-Force')
+        $r.Exit | Should -Be 0 -Because $r.Out
+        Test-Path (Join-Path $ws 'round-03') | Should -BeTrue
+        (Get-Content -Raw (Join-Path $ws 'round-02' 'round.json') | ConvertFrom-Json).endMarker | Should -BeExactly $round2Marker
+    }
 }
 
 Describe 'collect.ps1' {
@@ -216,5 +231,31 @@ Describe 'collect.ps1' {
         $r2.Exit | Should -Be 0 -Because $r2.Out
         $names = @(Get-ChildItem (Join-Path $script:RoundDir 'replies') | Sort-Object Name).Name
         $names | Should -BeExactly @('01-contract.md', '02-gemini-inline.md')
+    }
+    It 'collects only the captures saved during that round, not after the next round started' {
+        Start-Sleep -Milliseconds 50
+        Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox
+        (Get-Item (Join-Path $script:Inbox 'gemini-inline.md')).LastWriteTimeUtc = [DateTime]::UtcNow
+        $r1 = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r1.Exit | Should -Be 0 -Because $r1.Out
+
+        Start-Sleep -Milliseconds 50
+        $r2 = Invoke-Relay $script:NewRound @('-Review', 'demo', '-ProjectRoot', $script:P)
+        $r2.Exit | Should -Be 0 -Because $r2.Out
+        $round2Dir = Join-Path $script:P '.review-relay' 'demo' 'round-02'
+
+        Start-Sleep -Milliseconds 50
+        Copy-Item (Join-Path $script:Fx 'meta-inline.md') $script:Inbox
+        (Get-Item (Join-Path $script:Inbox 'meta-inline.md')).LastWriteTimeUtc = [DateTime]::UtcNow
+
+        $r3 = Invoke-Relay $script:Collect @('-Review', 'demo', '-Round', 1, '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r3.Exit | Should -Be 0 -Because $r3.Out
+        @(Get-ChildItem (Join-Path $script:RoundDir 'replies')).Name | Should -BeExactly @('01-gemini-inline.md')
+        $collected1 = Get-Content -Raw (Join-Path $script:RoundDir 'collected.md')
+        @([regex]::Matches($collected1, '(?m)^\|\s*\d+\s*\|')).Count | Should -Be 1
+
+        $r4 = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r4.Exit | Should -Be 0 -Because $r4.Out
+        @(Get-ChildItem (Join-Path $round2Dir 'replies')).Name | Should -BeExactly @('01-meta-inline.md')
     }
 }

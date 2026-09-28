@@ -616,7 +616,7 @@ check-skill-frontmatter.Tests.ps1                   ?   31 tests   <- FAST, adde
                                                                       row builds a throwaway git repo and runs the linter
                                                                       IN-PROCESS - no child pwsh.
 review-relay-lib.Tests.ps1                           ?   39 tests   <- FAST, ADDED 2026-09-28 (review-relay). NO SOLO TIME - NOT MEASURED. In-process library calls only.
-review-relay-scripts.Tests.ps1                       ?   18 tests   <- FAST, ADDED 2026-09-28 (review-relay). NO SOLO TIME - NOT MEASURED. Each row starts a child pwsh.
+review-relay-scripts.Tests.ps1                       ?   20 tests   <- FAST, ADDED 2026-09-28 (review-relay). NO SOLO TIME - NOT MEASURED. Each row starts a child pwsh.
 check-peer-reply-citations.Tests.ps1             49,2s   39 tests   <- SLOW, added 2026-09-02 (34 -> 39 on 2026-09-13, §21 citation-checker gaps: empty-quote, NUL-in-file, schema-boundary rows)
   COUNT RAISED 2026-09-02 by AGY-CAPSTONE R8, 32 -> 34, the last round. The dash pin added one commit
   earlier was itself fooled by a docstring decoy - MEASURED, it passed while certifying a broken
