@@ -145,6 +145,16 @@ Describe 'new-round.ps1' {
         Test-Path (Join-Path $ws 'round-03') | Should -BeTrue
         (Get-Content -Raw (Join-Path $ws 'round-02' 'round.json') | ConvertFrom-Json).endMarker | Should -BeExactly $round2Marker
     }
+    It 'writes the review-relay tag as the first line of both prompt files, and the artifact name appears once in the upload prompt (T, S2, S-a)' {
+        $p = New-Project
+        $r = Invoke-Relay $script:NewRound @('-Review', 'demo', '-Artifact', 'design.md', '-ProjectRoot', $p)
+        $r.Exit | Should -Be 0 -Because $r.Out
+        $round = Join-Path $p '.review-relay' 'demo' 'round-01'
+        (Get-Content (Join-Path $round 'prompt-upload.md'))[0] | Should -BeExactly 'review-relay tag: demo/round-01 (bookkeeping only - ignore this line)'
+        (Get-Content (Join-Path $round 'prompt-inline.md'))[0] | Should -BeExactly 'review-relay tag: demo/round-01 (bookkeeping only - ignore this line)'
+        $uploadInstruction = (Get-Content (Join-Path $round 'prompt-upload.md'))[1]
+        @([regex]::Matches($uploadInstruction, [regex]::Escape('design.md'))).Count | Should -Be 1
+    }
 }
 
 Describe 'collect.ps1' {
@@ -172,11 +182,20 @@ Describe 'collect.ps1' {
         $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
         $r.Exit | Should -Be 0 -Because $r.Out
         $collected = Get-Content -Raw (Join-Path $script:RoundDir 'collected.md')
-        $collected | Should -Match '\| example \| PASS \| 412 \| NOT READY \| 1 \| 0 \| 1 \|'
-        $collected | Should -Match '\| gemini \| MISSING \| - \| 1 BLOCKING, 0 MATERIAL, 1 MINOR \| 1 \| 0 \| 1 \|'
+        $collected | Should -Match '\| example \| PASS \| 412 \| NOT READY \| 1 \| 0 \| 1 \| 0 \|'
+        $collected | Should -Match '\| gemini \| MISSING \| - \| 1 BLOCKING, 0 MATERIAL, 1 MINOR \| 1 \| 0 \| 1 \| 0 \|'
         $collected | Should -Not -Match 'Meeting notes'
         @(Get-ChildItem (Join-Path $script:RoundDir 'replies')).Count | Should -Be 2
         @(Get-ChildItem $script:Inbox).Count | Should -Be 3
+    }
+    It 'shows the UNKNOWN column in the collected.md header (#3, S-e)' {
+        Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox
+        (Get-Item (Join-Path $script:Inbox 'gemini-inline.md')).LastWriteTimeUtc = $script:After
+        $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r.Exit | Should -Be 0 -Because $r.Out
+        $collected = Get-Content -Raw (Join-Path $script:RoundDir 'collected.md')
+        $collected | Should -Match ([regex]::Escape('| # | Site | Read proof | Reported lines | Verdict | BLOCKING | MATERIAL | MINOR | UNKNOWN |'))
+        $collected | Should -Match ([regex]::Escape('|---|---|---|---|---|---|---|---|---|'))
     }
     It 'prefers -Inbox over REVIEW_RELAY_INBOX' {
         Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox
@@ -192,7 +211,7 @@ Describe 'collect.ps1' {
     It 'refuses an unknown review' {
         (Invoke-Relay $script:Collect @('-Review', 'nope', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)).Exit | Should -Be 1
     }
-    It 'skips an unreadable capture and still collects the others' {
+    It 'refuses when a capture in the round window cannot be read, and writes nothing (#2, S-d)' {
         $reply = (Get-Content -Raw (Join-Path $script:Fx 'contract-reply.md')).Replace('@@CODE@@', $script:Meta.endMarker).Replace('@@LAST@@', 'the last line.')
         Set-Content -LiteralPath (Join-Path $script:Inbox 'contract.md') -Value $reply -NoNewline
         Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox
@@ -201,10 +220,11 @@ Describe 'collect.ps1' {
         $stream = [IO.File]::Open($lockedPath, 'Open', 'Read', 'None')
         try {
             $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
-            $r.Exit | Should -Be 0 -Because $r.Out
-            $collected = Get-Content -Raw (Join-Path $script:RoundDir 'collected.md')
-            @([regex]::Matches($collected, '(?m)^\|\s*\d+\s*\|')).Count | Should -Be 1
+            $r.Exit | Should -Be 1
             $r.Out | Should -Match 'gemini-inline\.md'
+            Test-Path (Join-Path $script:RoundDir 'collected.md') | Should -BeFalse
+            @(Get-ChildItem (Join-Path $script:RoundDir 'replies') -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '^\d{2}-' }).Count | Should -Be 0
         } finally {
             $stream.Dispose()
         }
@@ -257,5 +277,66 @@ Describe 'collect.ps1' {
         $r4 = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
         $r4.Exit | Should -Be 0 -Because $r4.Out
         @(Get-ChildItem (Join-Path $round2Dir 'replies')).Name | Should -BeExactly @('01-meta-inline.md')
+    }
+}
+
+Describe 'collect.ps1 round tagging (T)' {
+    BeforeAll {
+        function New-TaggedCapture([string]$Name, [string]$Review, [int]$Round) {
+            $text = @"
+---
+title: "tagged"
+date: 2026-09-28
+url: https://example.invalid/tagged
+platform: example
+---
+
+## Human
+
+review-relay tag: $Review/round-{0:D2} (bookkeeping only - ignore this line)
+
+## Assistant
+
+Some reply text.
+"@ -f $Round
+            Set-Content -LiteralPath (Join-Path $script:Inbox $Name) -Value $text -NoNewline
+        }
+        function Get-RoundStartedAtUtc([string]$RoundDir) {
+            $m = Get-Content -Raw (Join-Path $RoundDir 'round.json') | ConvertFrom-Json
+            if ($m.startedAt -is [datetime]) { $m.startedAt.ToUniversalTime() } else { [DateTime]::Parse($m.startedAt, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime() }
+        }
+    }
+    BeforeEach {
+        $script:P = New-Project
+        (Invoke-Relay $script:NewRound @('-Review', 'demo', '-Artifact', 'design.md', '-ProjectRoot', $script:P)).Exit | Should -Be 0
+        $script:Ws = Join-Path $script:P '.review-relay' 'demo'
+        $script:Round1Dir = Join-Path $script:Ws 'round-01'
+        Set-Content (Join-Path $script:Round1Dir 'collected.md') 'collected'
+        (Invoke-Relay $script:NewRound @('-Review', 'demo', '-ProjectRoot', $script:P)).Exit | Should -Be 0
+        $script:Round2Dir = Join-Path $script:Ws 'round-02'
+        Start-Sleep -Milliseconds 50
+        $script:Inbox = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $script:Inbox | Out-Null
+    }
+    It 'a capture tagged for round 1 but saved after round 2 started: -Round 1 includes it, a plain collect (round 2) excludes it (S-b)' {
+        New-TaggedCapture -Name 'late-tag.md' -Review 'demo' -Round 1
+        (Get-Item (Join-Path $script:Inbox 'late-tag.md')).LastWriteTimeUtc = [DateTime]::UtcNow
+        $r1 = Invoke-Relay $script:Collect @('-Review', 'demo', '-Round', 1, '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r1.Exit | Should -Be 0 -Because $r1.Out
+        @(Get-ChildItem (Join-Path $script:Round1Dir 'replies')).Name | Should -BeExactly @('01-late-tag.md')
+
+        $r2 = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r2.Exit | Should -Be 2
+    }
+    It 'excludes a capture tagged for another review even when saved inside the round window (S-c)' {
+        # Place the file strictly BETWEEN round 1's start and round 2's start, so the OLD
+        # window-only filter would have included it - only the new tag check excludes it.
+        $t1 = Get-RoundStartedAtUtc $script:Round1Dir
+        $t2 = Get-RoundStartedAtUtc $script:Round2Dir
+        $mid = $t1.AddTicks(($t2 - $t1).Ticks / 2)
+        New-TaggedCapture -Name 'other-review.md' -Review 'other' -Round 1
+        (Get-Item (Join-Path $script:Inbox 'other-review.md')).LastWriteTimeUtc = $mid
+        $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-Round', 1, '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r.Exit | Should -Be 2
     }
 }

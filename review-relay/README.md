@@ -39,6 +39,11 @@ under `.review-relay/<review-name>/`.
   (`-Inbox <folder>`), and that you saved after running `new-round.ps1`.
 - **A reviewer shows `NO-MARKER`**: its copy was probably cut off, or it skipped Step 0. Re-send the upload
   variant, or treat its findings with caution.
+- **`collect.ps1` exits 1 naming a file it could not read**: the capture is still downloading or open in
+  another program. Nothing was written; run `collect.ps1` again once the file is free.
+- **A reply saved late, after the next round started**: it is still collected into its own round when its
+  prompt carried the `review-relay tag:` line (run `collect.ps1 -Round <n>`). An untagged capture goes by
+  file time instead.
 - **Counts show `unknown`**: the reply did not use a recognised finding format; read it in `collected.md`.
 
 ## Docs

@@ -615,8 +615,8 @@ check-skill-frontmatter.Tests.ps1                   ?   31 tests   <- FAST, adde
                                                                       contended solo run put every row at 0,3-3,4s. Each
                                                                       row builds a throwaway git repo and runs the linter
                                                                       IN-PROCESS - no child pwsh.
-review-relay-lib.Tests.ps1                           ?   39 tests   <- FAST, ADDED 2026-09-28 (review-relay). NO SOLO TIME - NOT MEASURED. In-process library calls only.
-review-relay-scripts.Tests.ps1                       ?   20 tests   <- FAST, ADDED 2026-09-28 (review-relay). NO SOLO TIME - NOT MEASURED. Each row starts a child pwsh.
+review-relay-lib.Tests.ps1                           ?   49 tests   <- FAST, ADDED 2026-09-28 (review-relay). COUNT 39 -> 49: the verified-fix batch (round tag, unreadable-capture refusal, UNKNOWN column, placeholder validation, S1 last-line rule, S3 dash-explanation verdict). NO SOLO TIME - NOT MEASURED. In-process library calls only.
+review-relay-scripts.Tests.ps1                       ?   24 tests   <- FAST, ADDED 2026-09-28 (review-relay). COUNT 20 -> 24: same verified-fix batch (+1 tag/artifact-name test, +1 UNKNOWN-column header test, +2 round-tagging tests; one test was REPLACED not added - see change log). NO SOLO TIME - NOT MEASURED. Each row starts a child pwsh.
 check-peer-reply-citations.Tests.ps1             49,2s   39 tests   <- SLOW, added 2026-09-02 (34 -> 39 on 2026-09-13, §21 citation-checker gaps: empty-quote, NUL-in-file, schema-boundary rows)
   COUNT RAISED 2026-09-02 by AGY-CAPSTONE R8, 32 -> 34, the last round. The dash pin added one commit
   earlier was itself fooled by a docstring decoy - MEASURED, it passed while certifying a broken

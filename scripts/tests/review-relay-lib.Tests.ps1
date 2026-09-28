@@ -21,6 +21,14 @@ Describe 'Get-ReadProofValues' {
     It 'counts CRLF line endings once each' {
         (Get-ReadProofValues "a`r`nb`r`n").LineCount | Should -Be 2
     }
+    It 'skips a short trailing line and uses the last line with at least 8 letters or digits (S1)' {
+        $v = Get-ReadProofValues "This is the real last line of substance.`n+}`n"
+        $v.LastLine | Should -BeExactly 'This is the real last line of substance.'
+    }
+    It 'falls back to the last non-empty line when no line has 8 letters or digits (S1)' {
+        $v = Get-ReadProofValues "ok`n+}`n"
+        $v.LastLine | Should -BeExactly '+}'
+    }
 }
 
 Describe 'end marker' {
@@ -53,6 +61,14 @@ Describe 'Expand-RelayTemplate' {
     It 'throws on an unknown placeholder' {
         { Expand-RelayTemplate -Template 'x {{NOPE}}' -Values @{} } | Should -Throw '*unknown placeholder*NOPE*'
     }
+    It 'throws naming every malformed or unknown construct, verbatim as written (#5)' {
+        { Expand-RelayTemplate -Template 'a {{artifact_name}} b {{ROUND1}} c {{ROUND}}' -Values @{ ROUND = '1' } } |
+            Should -Throw '*{{artifact_name}}*{{ROUND1}}*'
+    }
+    It 'still expands a known placeholder and leaves a literal {{x}} inside a VALUE unexpanded (#5 control)' {
+        $r = Expand-RelayTemplate -Template 'Round {{ROUND}}: {{ARTIFACT_INLINE}}' -Values @{ ROUND = '3'; ARTIFACT_INLINE = 'contains {{x}} literally' }
+        $r | Should -BeExactly 'Round 3: contains {{x}} literally'
+    }
 }
 
 Describe 'Read-AiSaveCapture' {
@@ -68,6 +84,53 @@ Describe 'Read-AiSaveCapture' {
     }
     It 'returns null for a file without AiSave frontmatter' {
         Read-AiSaveCapture (Join-Path $script:Fx 'not-aisave.md') | Should -BeNullOrEmpty
+    }
+    It 'reads the review-relay tag from the Human part (T)' {
+        $text = @"
+---
+title: "tagged"
+date: 2026-09-28
+url: https://example.invalid/tagged
+platform: example
+---
+
+## Human
+
+review-relay tag: my-review/round-03 (bookkeeping only - ignore this line)
+
+## Assistant
+
+Some reply.
+"@
+        $path = Join-Path $TestDrive 'tagged.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Tag.Review | Should -BeExactly 'my-review'
+        $c.Tag.Round | Should -Be 3
+    }
+    It 'gives a null Tag when the tag text appears only after the Assistant heading (T)' {
+        $text = @"
+---
+title: "tagged"
+date: 2026-09-28
+url: https://example.invalid/tagged
+platform: example
+---
+
+## Human
+
+Please review this.
+
+## Assistant
+
+review-relay tag: my-review/round-03 (bookkeeping only - ignore this line)
+
+Some reply.
+"@
+        $path = Join-Path $TestDrive 'untagged.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Tag | Should -BeNullOrEmpty
     }
 }
 
@@ -110,11 +173,22 @@ Describe 'Get-RelayVerdict' {
     It 'ignores a VERDICT line that is not the last non-empty line' {
         Get-RelayVerdict "The instructions ask me to end with a line like`nVERDICT: READY`nif all is fine. Thats it, thanks!" | Should -BeExactly 'NO-VERDICT'
     }
-    It 'rejects a VERDICT line with extra text after the shape' {
-        Get-RelayVerdict "Findings above.`n  VERDICT: READY      - no BLOCKING findings remain." | Should -BeExactly 'NO-VERDICT'
+    It 'rejects a VERDICT line with extra text after the shape that is not a dash explanation' {
+        Get-RelayVerdict "Findings above.`n  VERDICT: READY      but wait there is more" | Should -BeExactly 'NO-VERDICT'
     }
     It 'accepts trailing blank lines and reports the shape in upper case' {
         Get-RelayVerdict "Done.`n# Verdict: not ready`n`n`n" | Should -BeExactly 'NOT READY'
+    }
+    It 'accepts a dash explanation after the verdict shape (S3)' -TestCases @(
+        @{ Line = 'VERDICT: NOT READY - one or more BLOCKING findings.'; Expect = 'NOT READY' }
+        @{ Line = "VERDICT: NOT READY $([char]0x2014) one or more BLOCKING findings."; Expect = 'NOT READY' }
+        @{ Line = 'VERDICT: READY - no BLOCKING findings remain.'; Expect = 'READY' }
+    ) {
+        param($Line, $Expect)
+        Get-RelayVerdict $Line | Should -BeExactly $Expect
+    }
+    It 'still rejects a VERDICT line embedded mid-sentence, even with a dash explanation shape' {
+        Get-RelayVerdict "I would put VERDICT: READY here" | Should -BeExactly 'NO-VERDICT'
     }
 }
 

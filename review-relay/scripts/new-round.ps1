@@ -86,9 +86,9 @@ if ($round -gt 1) {
     $block = if (Test-Path -LiteralPath $ledgerPath) { Get-AlreadyAddressed (Get-Content -LiteralPath $ledgerPath -Raw) } else { $null }
     $addressed = if ($block) { $block } else { '(The ledger records no addressed findings yet.)' }
 }
-$common = @{ ARTIFACT_NAME = $uploadName; ROUND = [string]$round; ALREADY_ADDRESSED = $addressed }
+$common = @{ ARTIFACT_NAME = $uploadName; ROUND = [string]$round; ALREADY_ADDRESSED = $addressed; REVIEW_TAG = ('{0}/round-{1:D2}' -f $Review, $round) }
 try {
-    $uploadPrompt = Expand-RelayTemplate -Template $template -Values ($common + @{ ARTIFACT_REFERENCE = "in the attached file ``$uploadName``"; ARTIFACT_INLINE = '' })
+    $uploadPrompt = Expand-RelayTemplate -Template $template -Values ($common + @{ ARTIFACT_REFERENCE = 'in the attached file'; ARTIFACT_INLINE = '' })
     $inlinePrompt = Expand-RelayTemplate -Template $template -Values ($common + @{
             ARTIFACT_REFERENCE = 'below'
             ARTIFACT_INLINE    = "`n===== DOCUMENT BEGINS: $uploadName =====`n$marked===== DOCUMENT ENDS =====`n"

@@ -8,15 +8,22 @@ function ConvertTo-LfText {
 }
 
 function Get-ReadProofValues {
-    # Spec 6.1: LineCount = newline characters (like wc -l); LastLine = last line with a
-    # non-whitespace character, trailing whitespace removed, leading whitespace kept.
+    # Spec 6.1: LineCount = newline characters (like wc -l). LastLine (S1) = the last line
+    # containing at least 8 letters or digits ([\p{L}\p{N}]), trailing whitespace removed and
+    # leading kept; if no line qualifies, fall back to the last line with a non-whitespace character.
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
     $t = ConvertTo-LfText $Text
     $count = ([regex]::Matches($t, "`n")).Count
-    $last = $null
     $lines = $t -split "`n"
+    $last = $null
     for ($i = $lines.Count - 1; $i -ge 0; $i--) {
-        if ($lines[$i] -match '\S') { $last = $lines[$i].TrimEnd(); break }
+        $alnum = ([regex]::Matches($lines[$i], '[\p{L}\p{N}]')).Count
+        if ($alnum -ge 8) { $last = $lines[$i].TrimEnd(); break }
+    }
+    if ($null -eq $last) {
+        for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+            if ($lines[$i] -match '\S') { $last = $lines[$i].TrimEnd(); break }
+        }
     }
     [pscustomobject]@{ LineCount = $count; LastLine = $last }
 }
@@ -50,10 +57,13 @@ function Get-AlreadyAddressed {
 }
 
 function Expand-RelayTemplate {
-    # Spec 7: fill {{NAME}} placeholders in one pass; an unknown placeholder is an error.
+    # Spec 7 (#5): find every {{...}} construct; one is unknown if its inner text is not exactly
+    # ^[A-Z_]+$ or is not a key of $Values. Substitution stays a single pass over the TEMPLATE only
+    # (values are never re-scanned), so a literal {{x}} inside a value survives unexpanded.
     param([Parameter(Mandatory)][string]$Template, [Parameter(Mandatory)][hashtable]$Values)
-    $names = @([regex]::Matches($Template, '\{\{([A-Z_]+)\}\}') | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
-    $unknown = @($names | Where-Object { -not $Values.ContainsKey($_) })
+    $all = @([regex]::Matches($Template, '\{\{(.*?)\}\}'))
+    $unknown = @($all | Where-Object { -not (($_.Groups[1].Value -cmatch '^[A-Z_]+$') -and $Values.ContainsKey($_.Groups[1].Value)) } |
+        ForEach-Object { $_.Value } | Select-Object -Unique)
     if ($unknown.Count -gt 0) { throw "unknown placeholder(s) in template: $($unknown -join ', ')" }
     $evaluator = [System.Text.RegularExpressions.MatchEvaluator]({ param($m) [string]$Values[$m.Groups[1].Value] }.GetNewClosure())
     [regex]::Replace($Template, '\{\{([A-Z_]+)\}\}', $evaluator)
@@ -84,11 +94,18 @@ function Read-AiSaveCapture {
     foreach ($k in 'title', 'date', 'url', 'platform') { if (-not $meta.ContainsKey($k)) { return $null } }
     $heads = [regex]::Matches($text, '(?m)^## Assistant[ \t]*$')
     $reply = $null
+    $humanPart = $text
     if ($heads.Count -gt 0) {
         $h = $heads[$heads.Count - 1]
+        $humanPart = $text.Substring(0, $h.Index)
         $reply = Remove-SitePreamble $text.Substring($h.Index + $h.Length)
     }
-    [pscustomobject]@{ Path = $Path; Platform = $meta['platform']; Url = $meta['url']; Title = $meta['title']; Date = $meta['date']; Reply = $reply }
+    # Spec T: a review round tag, matched only in the Human part (before the last ## Assistant
+    # heading) so a tag quoted inside the reply cannot count. First match wins.
+    $tag = $null
+    $tm = [regex]::Match($humanPart, '(?m)review-relay tag: ([a-z0-9][a-z0-9-]*)/round-(\d+)')
+    if ($tm.Success) { $tag = [pscustomobject]@{ Review = $tm.Groups[1].Value; Round = [int]$tm.Groups[2].Value } }
+    [pscustomobject]@{ Path = $Path; Platform = $meta['platform']; Url = $meta['url']; Title = $meta['title']; Date = $meta['date']; Reply = $reply; Tag = $tag }
 }
 
 function Get-RelayFindings {
@@ -130,7 +147,8 @@ function Get-RelayVerdict {
     if ([string]::IsNullOrEmpty($Reply)) { return 'NO-VERDICT' }
     $lines = @((ConvertTo-LfText $Reply) -split "`n" | Where-Object { $_.Trim() -ne '' })
     if ($lines.Count -eq 0) { return 'NO-VERDICT' }
-    $m = [regex]::Match($lines[-1], '(?i)^[ \t>#*]*VERDICT:[ \t]*(READY|NOT READY|\d+\s+BLOCKING,\s*\d+\s+MATERIAL,\s*\d+\s+MINOR)[ \t*]*$')
+    # S3: a verdict may carry a trailing " - explanation" (hyphen, en dash, or em dash).
+    $m = [regex]::Match($lines[-1], '(?i)^[ \t>#*]*VERDICT:[ \t]*(READY|NOT READY|\d+\s+BLOCKING,\s*\d+\s+MATERIAL,\s*\d+\s+MINOR)(?:[ \t]+[-\u2013\u2014][ \t].*)?[ \t*]*$')
     if (-not $m.Success) { return 'NO-VERDICT' }
     $m.Groups[1].Value.ToUpperInvariant()
 }
