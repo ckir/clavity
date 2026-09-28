@@ -201,6 +201,26 @@ Describe 'new-round.ps1' {
             $env:REVIEW_RELAY_CLIPBOARD_FILE = $script:Clip
         }
     }
+    It 'a failed round leaves review.json unchanged (H1)' {
+        $p = New-Project
+        Set-Content -LiteralPath (Join-Path $p 'a.md') -Value "# A`n`nSome content.`n" -NoNewline
+        Set-Content -LiteralPath (Join-Path $p 'b.md') -Value "# B`n`nOther content.`n" -NoNewline
+        (Invoke-Relay $script:NewRound @('-Review', 'demo', '-Artifact', 'a.md', '-ProjectRoot', $p)).Exit | Should -Be 0
+        $ws = Join-Path $p '.review-relay' 'demo'
+        Set-Content (Join-Path $ws 'round-01' 'collected.md') 'collected'
+        $sourceBefore = (Get-Content -Raw (Join-Path $ws 'review.json') | ConvertFrom-Json).source
+
+        $badClip = Join-Path $TestDrive ([guid]::NewGuid().ToString('N')) 'clip.txt'
+        $env:REVIEW_RELAY_CLIPBOARD_FILE = $badClip
+        try {
+            $r = Invoke-Relay $script:NewRound @('-Review', 'demo', '-Artifact', 'b.md', '-ProjectRoot', $p)
+            $r.Exit | Should -Be 1 -Because $r.Out
+            Test-Path -LiteralPath (Join-Path $ws 'round-02') | Should -BeFalse
+            (Get-Content -Raw (Join-Path $ws 'review.json') | ConvertFrom-Json).source | Should -BeExactly $sourceBefore
+        } finally {
+            $env:REVIEW_RELAY_CLIPBOARD_FILE = $script:Clip
+        }
+    }
 }
 
 Describe 'collect.ps1' {
@@ -256,6 +276,13 @@ Describe 'collect.ps1' {
     }
     It 'refuses an unknown review' {
         (Invoke-Relay $script:Collect @('-Review', 'nope', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)).Exit | Should -Be 1
+    }
+    It 'refuses -Round 0 and writes no collected.md in any round (H3)' {
+        Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox
+        (Get-Item (Join-Path $script:Inbox 'gemini-inline.md')).LastWriteTimeUtc = $script:After
+        $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-Round', 0, '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r.Exit | Should -Not -Be 0
+        Test-Path (Join-Path $script:RoundDir 'collected.md') | Should -BeFalse
     }
     It 'refuses when a capture in the round window cannot be read, and writes nothing (#2, S-d)' {
         $reply = (Get-Content -Raw (Join-Path $script:Fx 'contract-reply.md')).Replace('@@CODE@@', $script:Meta.endMarker).Replace('@@LAST@@', 'the last line.')

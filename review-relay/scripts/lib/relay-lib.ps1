@@ -61,7 +61,7 @@ function Expand-RelayTemplate {
     # ^[A-Z_]+$ or is not a key of $Values. Substitution stays a single pass over the TEMPLATE only
     # (values are never re-scanned), so a literal {{x}} inside a value survives unexpanded.
     param([Parameter(Mandatory)][string]$Template, [Parameter(Mandatory)][hashtable]$Values)
-    $all = @([regex]::Matches($Template, '\{\{(.*?)\}\}'))
+    $all = @([regex]::Matches($Template, '(?s)\{\{(.*?)\}\}'))
     $unknown = @($all | Where-Object { -not (($_.Groups[1].Value -cmatch '^[A-Z_]+$') -and $Values.ContainsKey($_.Groups[1].Value)) } |
         ForEach-Object { $_.Value } | Select-Object -Unique)
     if ($unknown.Count -gt 0) { throw "unknown placeholder(s) in template: $($unknown -join ', ')" }
@@ -92,15 +92,39 @@ function Read-AiSaveCapture {
         if ($line -match '^([A-Za-z]+):\s*(.*)$') { $meta[$Matches[1]] = $Matches[2].Trim().Trim('"') }
     }
     foreach ($k in 'title', 'date', 'url', 'platform') { if (-not $meta.ContainsKey($k)) { return $null } }
-    $heads = [regex]::Matches($text, '(?m)^## Assistant[ \t]*$')
+
+    # H2: the AiSave format has no unambiguous delimiter - a reply's own Markdown can render an
+    # <h2> as "## Human"/"## Assistant" and an <hr> as "---", so only a genuine turn heading may be
+    # treated as a boundary. A line exactly '## Human' or '## Assistant' (trailing spaces/tabs
+    # allowed) is a TURN HEADING when it is the first occurrence of its own label in the file, or
+    # when it is preceded by exactly the lines '---' and one empty line (the text before it ends
+    # with "\n---\n\n"). Every other such line is content.
+    $allTurnLines = @([regex]::Matches($text, '(?m)^## (Human|Assistant)[ \t]*$'))
+    $seenLabel = @{}
+    $heads = [System.Collections.Generic.List[object]]::new()
+    foreach ($m in $allTurnLines) {
+        $label = $m.Groups[1].Value
+        $isFirstOfLabel = -not $seenLabel.ContainsKey($label)
+        $seenLabel[$label] = $true
+        if ($isFirstOfLabel -or $text.Substring(0, $m.Index).EndsWith("---`n`n")) {
+            $heads.Add($m)
+        }
+    }
+    $humanHeads = @($heads | Where-Object { $_.Groups[1].Value -eq 'Human' })
+    $searchFrom = if ($humanHeads.Count -gt 0) { $humanHeads[-1].Index } else { 0 }
+    $assistantHead = $heads | Where-Object { $_.Groups[1].Value -eq 'Assistant' -and $_.Index -gt $searchFrom } | Select-Object -First 1
+
     $reply = $null
     $humanPart = $text
-    if ($heads.Count -gt 0) {
-        $h = $heads[$heads.Count - 1]
-        $humanPart = $text.Substring(0, $h.Index)
-        $reply = Remove-SitePreamble $text.Substring($h.Index + $h.Length)
+    if ($assistantHead) {
+        $humanPart = $text.Substring(0, $assistantHead.Index)
+        $restStart = $assistantHead.Index + $assistantHead.Length
+        $nextHead = $heads | Where-Object { $_.Index -gt $assistantHead.Index } | Select-Object -First 1
+        $rawReply = if ($nextHead) { $text.Substring($restStart, $nextHead.Index - $restStart) } else { $text.Substring($restStart) }
+        if ($nextHead) { $rawReply = $rawReply -replace '\n---\s*$', '' }
+        $reply = Remove-SitePreamble $rawReply
     }
-    # Spec T: a review round tag, matched only in the Human part (before the last ## Assistant
+    # Spec T: a review round tag, matched only in the Human part (before the chosen Assistant turn
     # heading) so a tag quoted inside the reply cannot count. First match wins.
     $tag = $null
     $tm = [regex]::Match($humanPart, '(?m)review-relay tag: ([a-z0-9][a-z0-9-]*)/round-(\d+)')

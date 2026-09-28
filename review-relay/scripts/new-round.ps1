@@ -118,8 +118,8 @@ if ($PSCmdlet.ShouldProcess($roundDir, 'create review round')) {
             expectedLineCount = $proof.LineCount
         }
         [IO.File]::WriteAllText((Join-Path $roundDir 'round.json'), (($roundMeta | ConvertTo-Json) -replace "`r`n", "`n"), $utf8)
-        [IO.File]::WriteAllText($reviewJson, (($meta | ConvertTo-Json) -replace "`r`n", "`n"), $utf8)
         $clip = if ($NoClipboard) { $false } else { Set-RelayClipboard $inlinePrompt }
+        [IO.File]::WriteAllText($reviewJson, (($meta | ConvertTo-Json) -replace "`r`n", "`n"), $utf8)
         Write-Host "review-relay: round $round of '$Review' is ready"
         Write-Host "  upload this file : $(Join-Path $roundDir 'upload' $uploadName)"
         Write-Host "  short prompt     : $(Join-Path $roundDir 'prompt-upload.md')"

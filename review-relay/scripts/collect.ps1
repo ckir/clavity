@@ -9,7 +9,7 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(Mandatory)][ValidatePattern('^[a-z0-9][a-z0-9-]*$')][string]$Review,
-    [int]$Round,
+    [ValidateRange(1, [int]::MaxValue)][int]$Round,
     [string]$Inbox,
     [string]$ProjectRoot = (Get-Location).Path
 )
@@ -29,7 +29,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $ws 'review.json'))) { Stop-Collect 
 $rounds = @(Get-ChildItem -LiteralPath $ws -Directory -Filter 'round-*' |
     Where-Object { $_.Name -match '^round-\d+$' } | Sort-Object { [int]($_.Name.Substring(6)) })
 if ($rounds.Count -eq 0) { Stop-Collect 'no rounds yet: run new-round.ps1 first' }
-$roundDir = if ($Round) { Join-Path $ws ('round-{0:D2}' -f $Round) } else { $rounds[-1].FullName }
+$roundDir = if ($PSBoundParameters.ContainsKey('Round')) { Join-Path $ws ('round-{0:D2}' -f $Round) } else { $rounds[-1].FullName }
 if (-not (Test-Path -LiteralPath (Join-Path $roundDir 'round.json'))) { Stop-Collect "round $(Split-Path -Leaf $roundDir) has no round.json (was new-round interrupted?)" }
 
 $lockPath = Join-Path $roundDir '.collect.lock'

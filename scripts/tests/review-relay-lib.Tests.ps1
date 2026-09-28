@@ -69,6 +69,9 @@ Describe 'Expand-RelayTemplate' {
         $r = Expand-RelayTemplate -Template 'Round {{ROUND}}: {{ARTIFACT_INLINE}}' -Values @{ ROUND = '3'; ARTIFACT_INLINE = 'contains {{x}} literally' }
         $r | Should -BeExactly 'Round 3: contains {{x}} literally'
     }
+    It 'catches a placeholder split across lines (H4)' {
+        { Expand-RelayTemplate -Template "{{BAD`n}}" -Values @{} } | Should -Throw '*unknown placeholder*'
+    }
 }
 
 Describe 'Read-AiSaveCapture' {
@@ -131,6 +134,75 @@ Some reply.
         Set-Content -LiteralPath $path -Value $text -NoNewline
         $c = Read-AiSaveCapture $path
         $c.Tag | Should -BeNullOrEmpty
+    }
+    It 'treats a plain "## Assistant" line inside the reply as content, not a boundary, when it is not preceded by a separator (H2)' {
+        $text = @"
+---
+title: "embedded heading"
+date: 2026-09-28
+url: https://example.invalid/embedded
+platform: example
+---
+
+## Human
+
+Please review this.
+
+## Assistant
+
+Findings below.
+
+1. [BLOCKING] x
+
+## Assistant
+
+This looks like a heading but is just content, not a real reply.
+
+VERDICT: NOT READY
+"@
+        $path = Join-Path $TestDrive 'embedded-heading.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Reply | Should -Match '1\. \[BLOCKING\] x'
+        @(Get-RelayFindings $c.Reply | ForEach-Object Severity) | Should -Contain 'BLOCKING'
+    }
+    It 'takes the reply from the NEW exchange in a two-exchange capture, not the old one (H2)' {
+        $text = @"
+---
+title: "two exchanges"
+date: 2026-09-28
+url: https://example.invalid/two-exchanges
+platform: example
+---
+
+## Human
+
+First question.
+
+## Assistant
+
+Old reply content that must not appear in the parsed reply. OLD-MARKER-TEXT.
+
+---
+
+## Human
+
+Second question, a follow-up.
+
+---
+
+## Assistant
+
+New reply content. NEW-MARKER-TEXT.
+
+VERDICT: READY
+"@
+        $path = Join-Path $TestDrive 'two-exchanges.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Reply | Should -Match 'NEW-MARKER-TEXT'
+        $c.Reply | Should -Not -Match 'OLD-MARKER-TEXT'
+        $c.Reply | Should -Not -Match 'Old reply content'
     }
 }
 
