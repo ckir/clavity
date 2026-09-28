@@ -46,7 +46,7 @@ The rest of this file is technical documentation for AI agents and developers. F
 
 ### Which product do I need?
 
-This repository contains four independent products. You only need to install the ones you actually want to use.
+This repository contains five independent products. You only need to install the ones you actually want to use.
 
 #### I want Claude Code to drive a live `agy` peer
 These two tools are **mutually exclusive** — pick exactly one. They let Claude Code delegate tasks, get second opinions, or collaborate with `agy`.
@@ -61,7 +61,7 @@ These two tools are **mutually exclusive** — pick exactly one. They let Claude
 
 ### How to get started
 
-The four products install one of two ways. **Three install with `claude plugin`** —
+The five products install one of two ways. **Four install with `claude plugin`** —
 clavity-dotnet, agy-autotrain, commonmemory and review-relay — from this repository's marketplace.
 Cross-platform (Windows, Linux, macOS):
 

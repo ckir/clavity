@@ -114,7 +114,7 @@ the exact check used to verify Windows; reproduce it (adapt the shell to your OS
 ### Installer refuse-guard canary (real Claude Code)
 
 Applies to the one member that still ships a standalone Inno installer — `clavity-classic`; the
-other three install via the `claude plugin` marketplace and have no installer to canary.
+other four install via the `claude plugin` marketplace and have no installer to canary.
 
 The install/uninstall **refuse guard** (Bug 2) detects a running Claude Code by the process name
 `claude.exe` (see [`docs/installer-assumptions.md`](docs/installer-assumptions.md)). CI can only prove

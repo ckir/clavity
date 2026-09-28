@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-CI guard (Acceptance #7 / C9): asserts build/members.json has exactly 4 members, each with a
-name/source/marketplaceName, and that all 4 marketplaceName values are pairwise DISTINCT (a
+CI guard (Acceptance #7 / C9): asserts build/members.json has exactly 5 members, each with a
+name/source/marketplaceName, and that all 5 marketplaceName values are pairwise DISTINCT (a
 collision silently steals the namespace and breaks every previously-installed member's plugin
-resolution — Failure mode B). Was 5 until ghidrust's full retirement (2026-09-14).
+resolution — Failure mode B). Was 5 until ghidrust's full retirement (2026-09-14), 4 until review-relay joined (2026-09-28).
 #>
 $ErrorActionPreference = "Stop"
 $root = Get-Content "$PSScriptRoot/../build/members.json" -Raw | ConvertFrom-Json
@@ -21,4 +21,4 @@ $distinct = $names | Select-Object -Unique
 if ($distinct.Count -ne 5) {
     throw "marketplaceName collision: expected 5 distinct names, found $($distinct.Count) ($($names -join ', '))"
 }
-Write-Host "OK: 4 members, 4 distinct marketplaceName values: $($distinct -join ', ')"
+Write-Host "OK: 5 members, 5 distinct marketplaceName values: $($distinct -join ', ')"

@@ -4,7 +4,7 @@
 # Narrower than docs-spec.md's full voice-table (which also voices CLAUDE.md, ROADMAP.md, internal docs).
 # See docs/docs-spec.md and docs/superpowers/specs/2026-07-22-docs-rationalize-tool-design.md.
 
-# --- End-user / operator / integrator (10) ---
+# --- End-user / operator / integrator (11) ---
 # (ghidrust/README.md + ghidrust/plugin/README.md removed 2026-09-14: ghidrust fully retired.)
 README.md
 agy-autotrain/README.md

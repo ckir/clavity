@@ -11,7 +11,8 @@ Set-StrictMode -Version Latest
 # CANONICAL CURRENT-VERSION READ: `VerFile` + `VerKind` ('iss' | 'json'). Was `Iss` for every member, but
 # the Inno-retirement migration (2026-09-14) removed the .iss for clavity-dotnet, agy-autotrain and
 # commonmemory — those three install via `claude plugin` and their version truth lives in plugin.json.
-# clavity-classic is now the ONLY member that keeps its .iss (still Inno).
+# clavity-classic is now the ONLY member that keeps its .iss (still Inno). review-relay (added 2026-09-28) is
+# plugin-only from the start, versioned by its plugin.json.
 # ghidrust was RETIRED from this monorepo (2026-09-14, full retirement — superseded by re-ghidra-mcp-cc in
 # ckir/aiplugins); it was the only dual-channel member, so the channel machinery below went with it.
 $script:Members = @(
