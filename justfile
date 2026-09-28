@@ -49,7 +49,7 @@ check-user-facing-docs:
 check-links:
     mlc
 
-# Bump every version source for a member to <version>, then self-verify (dotnet/classic/agy-autotrain/commonmemory).
+# Bump every version source for a member to <version>, then self-verify (dotnet/classic/agy-autotrain/commonmemory/review-relay).
 bump member version:
     pwsh -NoProfile -File scripts/bump-version.ps1 {{member}} {{version}}
 

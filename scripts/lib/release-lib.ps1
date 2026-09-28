@@ -329,7 +329,7 @@ function Format-ReleaseNotes([object[]]$bumps) {
 # stamp time; keep the function pure/testable).
 function Update-Changelog([string]$repoRoot, [object]$bump, [string]$dateStr) {
     $path = Join-Path $repoRoot (Join-Path $bump.Root 'CHANGELOG.md')
-    # ASCII hyphen, NOT an em dash: agy-autotrain/ and commonmemory/ ship their CHANGELOG.md inside the
+    # ASCII hyphen, NOT an em dash: agy-autotrain/, commonmemory/ and review-relay/ ship their CHANGELOG.md inside the
     # injected-context domain, which is gated to pure ASCII. The em dash this used to emit re-broke that
     # gate on every release (b2a6cc0 sanitised the files; clavity-v18 put it straight back). Pinned by
     # release-lib.Tests.ps1 'emits a pure-ASCII section'.

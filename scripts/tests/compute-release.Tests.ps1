@@ -61,7 +61,7 @@ Describe 'compute emit (sweep + Nothing + non-conventional)' {
     # "nothing to release", stranding 69ee30f — a fix for plugin registration failing on every install.
     # REPINNED (2026-09-14): after the Inno-retirement AND the ghidrust full retirement, clavity-classic is
     # the ONLY member with an Inno installer, so register-invoke.iss ships into clavity-classic ALONE. The
-    # three `claude plugin` members (dotnet, agy-autotrain, commonmemory) do not use the Inno registrar.
+    # `claude plugin` members (dotnet, agy-autotrain, commonmemory, review-relay) do not use the Inno registrar.
     It 'attributes a shared-installer commit to exactly the members that ship it' {
         $repo = New-TempRepo
         try {
@@ -75,8 +75,8 @@ Describe 'compute emit (sweep + Nothing + non-conventional)' {
             $r = & $script:Engine -RepoRoot $repo
 
             $r.Nothing | Should -BeFalse
-            # The three `claude plugin` members do not ship the Inno registrar and must NOT bump.
-            foreach ($k in @('dotnet','agy-autotrain','commonmemory')) {
+            # The `claude plugin` members do not ship the Inno registrar and must NOT bump.
+            foreach ($k in @('dotnet','agy-autotrain','commonmemory','review-relay')) {
                 @($r.Bumps | ForEach-Object { $_.Key }) | Should -Not -Contain $k -Because "$k installs via 'claude plugin' and does not ship register-invoke.iss"
             }
             $b = @($r.Bumps | Where-Object Key -eq 'classic')
