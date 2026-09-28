@@ -20,6 +20,11 @@
       "name": "commonmemory",
       "source": "./commonmemory",
       "description": "Optional add-on: a shared notebook so Claude and agy share facts across the pairing over the agentmemory store."
+    },
+    {
+      "name": "review-relay",
+      "source": "./review-relay",
+      "description": "Assisted copy-paste review rounds with web AI models: Claude prepares each round and verifies the findings; you carry the text and save replies with AiSave."
     }
   ]
 }

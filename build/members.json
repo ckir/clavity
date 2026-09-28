@@ -30,6 +30,12 @@
       "source": "./commonmemory",
       "description": "Optional add-on: a shared notebook so Claude and agy share facts across the pairing.",
       "marketplaceName": "clavity-commonmemory"
+    },
+    {
+      "name": "review-relay",
+      "source": "./review-relay",
+      "description": "Assisted copy-paste review rounds with web AI models, with Claude as the main role.",
+      "marketplaceName": "clavity-review-relay"
     }
   ]
 }

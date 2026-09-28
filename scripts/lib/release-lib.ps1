@@ -19,6 +19,7 @@ $script:Members = @(
     [pscustomobject]@{ Key='classic';       Marketplace='clavity-classic'; Root='clavity-classic'; VerFile='clavity-classic/installer/clavity-classic.iss'; VerKind='iss' }
     [pscustomobject]@{ Key='agy-autotrain'; Marketplace='agy-autotrain';   Root='agy-autotrain';   VerFile='agy-autotrain/plugin.json';                 VerKind='json' }
     [pscustomobject]@{ Key='commonmemory';  Marketplace='commonmemory';    Root='commonmemory';    VerFile='commonmemory/plugin.json';                  VerKind='json' }
+    [pscustomobject]@{ Key='review-relay';  Marketplace='review-relay';    Root='review-relay';    VerFile='review-relay/plugin.json';                  VerKind='json' }
 )
 function Get-Members { $script:Members }
 

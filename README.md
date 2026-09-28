@@ -57,11 +57,12 @@ These two tools are **mutually exclusive** — pick exactly one. They let Claude
 #### I want my agents to learn and share knowledge (Opt-in Add-ons)
 *   **[agy-autotrain](agy-autotrain/README.md):** Auto-trains clavity's `agy` knowledge from everyday usage. It captures insights, verifies them, and compiles them into a project-agnostic manual.
 *   **[commonmemory](commonmemory/README.md):** A shared cross-agent memory convention. Teaches Claude and `agy` to tag notes (decisions, gotchas, bug fixes) and proactively share context via the agent memory signal bus.
+*   **[review-relay](review-relay/README.md):** Assisted copy-paste review rounds with web AI models (ChatGPT, Meta AI, Gemini, or any other). Claude prepares each round and verifies the findings against the real text; you carry the text to the sites and save replies with AiSave.
 
 ### How to get started
 
 The four products install one of two ways. **Three install with `claude plugin`** —
-clavity-dotnet, agy-autotrain and commonmemory — from this repository's marketplace.
+clavity-dotnet, agy-autotrain, commonmemory and review-relay — from this repository's marketplace.
 Cross-platform (Windows, Linux, macOS):
 
 ```
@@ -69,6 +70,7 @@ claude plugin marketplace add ckir/clavity
 claude plugin install clavity@clavity          # clavity-dotnet
 claude plugin install agy-autotrain@clavity
 claude plugin install commonmemory@clavity
+claude plugin install review-relay@clavity
 ```
 
 clavity-dotnet fetches its `clavity-ls` binary on first run from the matching `clavity-v<N>` GitHub
@@ -99,7 +101,7 @@ Pre-commit runs `ruff` on staged Python files, plus `curate-in-progress` and `ch
 
 ### License
 
-This project is licensed under the **PolyForm Noncommercial License 1.0.0** — free for non-commercial use (personal, academic, non-profit). See [LICENSE](LICENSE). All four products (clavity-dotnet, clavity-classic, agy-autotrain, commonmemory) ship under the same licence.
+This project is licensed under the **PolyForm Noncommercial License 1.0.0** — free for non-commercial use (personal, academic, non-profit). See [LICENSE](LICENSE). All five products (clavity-dotnet, clavity-classic, agy-autotrain, commonmemory, review-relay) ship under the same licence.
 
 _Trademarks:_ Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of Anthropic. This is an independent project — not affiliated with, endorsed by, or sponsored by Google or Anthropic.
 

@@ -36,7 +36,7 @@ if (-not (Test-Path -PathType Leaf $checker)) {
 
 # Same order the lefthook `&&` chain used. Kept explicit rather than derived from a roster file so this
 # hook entry point has no dependency that could make it silently check FEWER members than it claims.
-$members = @('dotnet', 'classic', 'agy-autotrain', 'commonmemory')
+$members = @('dotnet', 'classic', 'agy-autotrain', 'commonmemory', 'review-relay')
 
 $LASTEXITCODE = 0
 foreach ($member in $members) {

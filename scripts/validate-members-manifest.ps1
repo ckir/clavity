@@ -8,7 +8,7 @@ resolution — Failure mode B). Was 5 until ghidrust's full retirement (2026-09-
 $ErrorActionPreference = "Stop"
 $root = Get-Content "$PSScriptRoot/../build/members.json" -Raw | ConvertFrom-Json
 $members = $root.members
-if ($members.Count -ne 4) { throw "expected 4 members in build/members.json, found $($members.Count)" }
+if ($members.Count -ne 5) { throw "expected 5 members in build/members.json, found $($members.Count)" }
 
 foreach ($m in $members) {
     if (-not $m.name) { throw "a member is missing 'name'" }
@@ -18,7 +18,7 @@ foreach ($m in $members) {
 
 $names = $members | ForEach-Object { $_.marketplaceName }
 $distinct = $names | Select-Object -Unique
-if ($distinct.Count -ne 4) {
-    throw "marketplaceName collision: expected 4 distinct names, found $($distinct.Count) ($($names -join ', '))"
+if ($distinct.Count -ne 5) {
+    throw "marketplaceName collision: expected 5 distinct names, found $($distinct.Count) ($($names -join ', '))"
 }
 Write-Host "OK: 4 members, 4 distinct marketplaceName values: $($distinct -join ', ')"

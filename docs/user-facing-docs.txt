@@ -9,6 +9,7 @@
 README.md
 agy-autotrain/README.md
 commonmemory/README.md
+review-relay/README.md
 clavity-classic/README.md
 clavity-dotnet/README.md
 clavity-classic/plugin/README.md
