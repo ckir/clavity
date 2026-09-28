@@ -206,6 +206,136 @@ VERDICT: READY
     }
 }
 
+Describe 'Read-AiSaveCapture (aisave-dev/1 marker format)' {
+    It 'reads the real AiSaveDev fixture via the marker path' {
+        $c = Read-AiSaveCapture (Join-Path $script:Fx 'aisavedev-chatgpt-real.md')
+        $c.Format | Should -BeExactly 'aisave-dev/1'
+        $c.Tag.Review | Should -BeExactly 'capstone-r2'
+        $c.Tag.Round | Should -Be 4
+        $c.Reply | Should -Not -Match '<!-- aisave:'
+        Get-RelayVerdict $c.Reply | Should -BeExactly 'NOT READY'
+        # 5 findings in the real capture: items 1-2 are BLOCKING, items 3-5 are MINOR (verified by
+        # reading the real fixture).
+        @(Get-RelayFindings $c.Reply | ForEach-Object Severity) | Should -Be @('BLOCKING', 'BLOCKING', 'MINOR', 'MINOR', 'MINOR')
+    }
+
+    It 'cross-checks: the H2-path reply (AiSave) equals the marker-path reply (AiSaveDev) of the same conversation, modulo whitespace' {
+        $h2 = (Read-AiSaveCapture (Join-Path $script:Fx 'aisave-chatgpt-real.md')).Reply
+        $marker = (Read-AiSaveCapture (Join-Path $script:Fx 'aisavedev-chatgpt-real.md')).Reply
+        $normH2 = ($h2 -replace '\s+', ' ').Trim()
+        $normMarker = ($marker -replace '\s+', ' ').Trim()
+        $normH2 | Should -BeExactly $normMarker
+    }
+
+    It 'returns the WHOLE reply, including embedded fake H2 headings that are not real markers' {
+        $nonce = 'abc123def456'
+        $text = @"
+---
+title: "synthetic"
+date: 2026-09-28
+url: https://example.invalid/synthetic
+platform: example
+format: aisave-dev/1
+nonce: $nonce
+---
+
+<!-- aisave:$nonce turn=1 role=human -->
+## Human
+
+Please review this.
+
+---
+
+<!-- aisave:$nonce turn=2 role=assistant -->
+## Assistant
+
+Real reply start.
+
+---
+
+## Human
+
+fake
+
+---
+
+## Assistant
+
+also fake
+
+VERDICT: READY
+
+<!-- aisave:$nonce end -->
+"@
+        $path = Join-Path $TestDrive 'synthetic-embedded.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Format | Should -BeExactly 'aisave-dev/1'
+        $c.Reply | Should -Match ([regex]::Escape("Real reply start.`n`n---`n`n## Human`n`nfake`n`n---`n`n## Assistant`n`nalso fake"))
+    }
+
+    It 'falls back to the H2 path when the nonce is malformed' {
+        $text = @"
+---
+title: "malformed nonce"
+date: 2026-09-28
+url: https://example.invalid/malformed-nonce
+platform: example
+format: aisave-dev/1
+nonce: xyz
+---
+
+## Human
+
+Please review this.
+
+## Assistant
+
+Fallback reply text.
+
+VERDICT: READY
+"@
+        $path = Join-Path $TestDrive 'malformed-nonce.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Format | Should -BeExactly 'aisave'
+        $c.Reply | Should -Match 'Fallback reply text\.'
+    }
+
+    It 'falls back to the H2 path when a valid nonce has no end marker' {
+        $nonce = 'aaaaaaaaaaaa'
+        $text = @"
+---
+title: "no end marker"
+date: 2026-09-28
+url: https://example.invalid/no-end-marker
+platform: example
+format: aisave-dev/1
+nonce: $nonce
+---
+
+<!-- aisave:$nonce turn=1 role=human -->
+## Human
+
+Please review this.
+
+---
+
+<!-- aisave:$nonce turn=2 role=assistant -->
+## Assistant
+
+Fallback reply text without an end marker.
+
+VERDICT: READY
+"@
+        $path = Join-Path $TestDrive 'no-end-marker.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Format | Should -BeExactly 'aisave'
+        $c.Reply | Should -Match 'Fallback reply text without an end marker\.'
+    }
+}
+
 Describe 'Get-RelayFindings' {
     It 'recognises the <Name> finding shape' -TestCases @(
         @{ Name = 'gemini-inline.md';      Severities = @('BLOCKING', 'MINOR') }

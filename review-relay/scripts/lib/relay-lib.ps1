@@ -93,43 +93,88 @@ function Read-AiSaveCapture {
     }
     foreach ($k in 'title', 'date', 'url', 'platform') { if (-not $meta.ContainsKey($k)) { return $null } }
 
-    # H2: the AiSave format has no unambiguous delimiter - a reply's own Markdown can render an
-    # <h2> as "## Human"/"## Assistant" and an <hr> as "---", so only a genuine turn heading may be
-    # treated as a boundary. A line exactly '## Human' or '## Assistant' (trailing spaces/tabs
-    # allowed) is a TURN HEADING when it is the first occurrence of its own label in the file, or
-    # when it is preceded by exactly the lines '---' and one empty line (the text before it ends
-    # with "\n---\n\n"). Every other such line is content.
-    $allTurnLines = @([regex]::Matches($text, '(?m)^## (Human|Assistant)[ \t]*$'))
-    $seenLabel = @{}
-    $heads = [System.Collections.Generic.List[object]]::new()
-    foreach ($m in $allTurnLines) {
-        $label = $m.Groups[1].Value
-        $isFirstOfLabel = -not $seenLabel.ContainsKey($label)
-        $seenLabel[$label] = $true
-        if ($isFirstOfLabel -or $text.Substring(0, $m.Index).EndsWith("---`n`n")) {
-            $heads.Add($m)
-        }
-    }
-    $humanHeads = @($heads | Where-Object { $_.Groups[1].Value -eq 'Human' })
-    $searchFrom = if ($humanHeads.Count -gt 0) { $humanHeads[-1].Index } else { 0 }
-    $assistantHead = $heads | Where-Object { $_.Groups[1].Value -eq 'Assistant' -and $_.Index -gt $searchFrom } | Select-Object -First 1
-
     $reply = $null
     $humanPart = $text
-    if ($assistantHead) {
-        $humanPart = $text.Substring(0, $assistantHead.Index)
-        $restStart = $assistantHead.Index + $assistantHead.Length
-        $nextHead = $heads | Where-Object { $_.Index -gt $assistantHead.Index } | Select-Object -First 1
-        $rawReply = if ($nextHead) { $text.Substring($restStart, $nextHead.Index - $restStart) } else { $text.Substring($restStart) }
-        if ($nextHead) { $rawReply = $rawReply -replace '\n---\s*$', '' }
-        $reply = Remove-SitePreamble $rawReply
+    $format = 'aisave'
+    $usedMarkerPath = $false
+
+    # MARKER path: an AiSaveDev (format: aisave-dev/1) capture carries an unambiguous per-turn
+    # marker, so it never needs the H2 heuristics below. It is used only when the frontmatter
+    # names the format AND carries a well-formed nonce, and only when a complete marker skeleton
+    # (an end marker, plus an assistant marker after the last human marker) is actually present -
+    # otherwise this falls back to the H2 path unchanged.
+    if ($meta.ContainsKey('format') -and $meta['format'] -eq 'aisave-dev/1' -and
+        $meta.ContainsKey('nonce') -and $meta['nonce'] -cmatch '^[0-9a-f]{12}$') {
+        $nonceEsc = [regex]::Escape($meta['nonce'])
+        $turnRx = [regex]('(?m)^<!-- aisave:' + $nonceEsc + ' turn=(\d+) role=([a-z]+) -->[ \t]*$')
+        $endRx = [regex]('(?m)^<!-- aisave:' + $nonceEsc + ' end -->[ \t]*$')
+        $turnMarkers = @($turnRx.Matches($text))
+        $endMatch = $endRx.Match($text)
+        if ($endMatch.Success) {
+            $humanMarkers = @($turnMarkers | Where-Object { $_.Groups[2].Value -eq 'human' })
+            $searchFromIdx = if ($humanMarkers.Count -gt 0) { $humanMarkers[-1].Index } else { -1 }
+            $assistantMarker = $turnMarkers | Where-Object { $_.Groups[2].Value -eq 'assistant' -and $_.Index -gt $searchFromIdx } | Select-Object -First 1
+            if ($assistantMarker) {
+                $usedMarkerPath = $true
+                $humanPart = $text.Substring(0, $assistantMarker.Index)
+                $restStart = $assistantMarker.Index + $assistantMarker.Length
+                $rest = $text.Substring($restStart)
+                if ($rest.StartsWith("`n")) { $rest = $rest.Substring(1) }
+                $nl = $rest.IndexOf("`n")
+                $firstLine = if ($nl -ge 0) { $rest.Substring(0, $nl) } else { $rest }
+                if ($firstLine.TrimEnd() -eq '## Assistant') {
+                    $rest = if ($nl -ge 0) { $rest.Substring($nl + 1) } else { '' }
+                }
+                $restStartAbs = $text.Length - $rest.Length
+                $laterIdx = @($turnMarkers | Where-Object { $_.Index -gt $assistantMarker.Index } | ForEach-Object { $_.Index })
+                $laterIdx += $endMatch.Index
+                $nextIdx = ($laterIdx | Sort-Object)[0]
+                $rawReply = $text.Substring($restStartAbs, $nextIdx - $restStartAbs)
+                $rawReply = $rawReply -replace '\n---\s*$', ''
+                $reply = Remove-SitePreamble $rawReply
+                $format = 'aisave-dev/1'
+            }
+        }
     }
+
+    if (-not $usedMarkerPath) {
+        # H2: the AiSave format has no unambiguous delimiter - a reply's own Markdown can render an
+        # <h2> as "## Human"/"## Assistant" and an <hr> as "---", so only a genuine turn heading may be
+        # treated as a boundary. A line exactly '## Human' or '## Assistant' (trailing spaces/tabs
+        # allowed) is a TURN HEADING when it is the first occurrence of its own label in the file, or
+        # when it is preceded by exactly the lines '---' and one empty line (the text before it ends
+        # with "\n---\n\n"). Every other such line is content.
+        $allTurnLines = @([regex]::Matches($text, '(?m)^## (Human|Assistant)[ \t]*$'))
+        $seenLabel = @{}
+        $heads = [System.Collections.Generic.List[object]]::new()
+        foreach ($m in $allTurnLines) {
+            $label = $m.Groups[1].Value
+            $isFirstOfLabel = -not $seenLabel.ContainsKey($label)
+            $seenLabel[$label] = $true
+            if ($isFirstOfLabel -or $text.Substring(0, $m.Index).EndsWith("---`n`n")) {
+                $heads.Add($m)
+            }
+        }
+        $humanHeads = @($heads | Where-Object { $_.Groups[1].Value -eq 'Human' })
+        $searchFrom = if ($humanHeads.Count -gt 0) { $humanHeads[-1].Index } else { 0 }
+        $assistantHead = $heads | Where-Object { $_.Groups[1].Value -eq 'Assistant' -and $_.Index -gt $searchFrom } | Select-Object -First 1
+
+        if ($assistantHead) {
+            $humanPart = $text.Substring(0, $assistantHead.Index)
+            $restStart = $assistantHead.Index + $assistantHead.Length
+            $nextHead = $heads | Where-Object { $_.Index -gt $assistantHead.Index } | Select-Object -First 1
+            $rawReply = if ($nextHead) { $text.Substring($restStart, $nextHead.Index - $restStart) } else { $text.Substring($restStart) }
+            if ($nextHead) { $rawReply = $rawReply -replace '\n---\s*$', '' }
+            $reply = Remove-SitePreamble $rawReply
+        }
+    }
+
     # Spec T: a review round tag, matched only in the Human part (before the chosen Assistant turn
-    # heading) so a tag quoted inside the reply cannot count. First match wins.
+    # heading/marker) so a tag quoted inside the reply cannot count. First match wins.
     $tag = $null
     $tm = [regex]::Match($humanPart, '(?m)review-relay tag: ([a-z0-9][a-z0-9-]*)/round-(\d+)')
     if ($tm.Success) { $tag = [pscustomobject]@{ Review = $tm.Groups[1].Value; Round = [int]$tm.Groups[2].Value } }
-    [pscustomobject]@{ Path = $Path; Platform = $meta['platform']; Url = $meta['url']; Title = $meta['title']; Date = $meta['date']; Reply = $reply; Tag = $tag }
+    [pscustomobject]@{ Path = $Path; Platform = $meta['platform']; Url = $meta['url']; Title = $meta['title']; Date = $meta['date']; Reply = $reply; Tag = $tag; Format = $format }
 }
 
 function Get-RelayFindings {
