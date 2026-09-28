@@ -27,8 +27,8 @@ Run:
     (or -Diff <range> for code; later rounds need only -Review <name>)
 
 Tell the owner, using the paths it prints:
-- which file to **upload** together with the short prompt (`prompt-upload.md`), for sites that accept files;
-- that the **all-in-one** text is already on the clipboard (`prompt-inline.md`), for sites where pasting
+- which file to **upload** together with the short prompt (`.review-relay/<name>/prompt-upload.md`), for sites that accept files;
+- that the **all-in-one** text is already on the clipboard (`.review-relay/<name>/prompt-inline.md`), for sites where pasting
   is easier;
 - to save every reply with AiSave, and to tell you when they are done.
 
@@ -41,7 +41,7 @@ Run:
     pwsh -NoProfile -File "<BASE>/../../scripts/collect.ps1" -Review <name>
 
 Exit code 2 means nothing new was found: ask the owner where the replies were saved (pass `-Inbox <folder>`).
-Read `collected.md` and report each site's read proof and verdict in one short table.
+Read `.review-relay/<name>/collected.md` and report each site's read proof and verdict in one short table.
 
 Read proof: `PASS` means the reviewer reached the end of the artifact. `NO-MARKER` or `MISSING` usually
 means it saw a truncated copy or skipped Step 0; weigh its findings accordingly and say so. The line count
