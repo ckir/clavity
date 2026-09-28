@@ -44,6 +44,9 @@ docs/superpowers/plans/*
 !docs/superpowers/plans/2026-09-06-s27-marker-write-gate.md
 docs/session-notes/
 .clavity/
+# review-relay round workspaces (snapshots, prompts, captured web-model replies). Owner ruling 2026-09-28,
+# asked on first use per the review-relay spec; the scripts never edit .gitignore themselves.
+/.review-relay/
 
 # docs-rationalize audit tool (SP2) — per-run generated working artifacts (owner ruling: gitignored).
 # Regenerated on every `just docs-audit`; never committed, never user-facing.
