@@ -204,6 +204,81 @@ VERDICT: READY
         $c.Reply | Should -Not -Match 'OLD-MARKER-TEXT'
         $c.Reply | Should -Not -Match 'Old reply content'
     }
+    It 'reads the tag from the CURRENT exchange only, not an earlier one in a reused chat (K1, heading path)' {
+        $text = @"
+---
+title: "two rounds"
+date: 2026-09-28
+url: https://example.invalid/two-rounds
+platform: example
+---
+
+## Human
+
+review-relay tag: demo/round-01
+
+## Assistant
+
+Reply 1 content. OLD-REPLY-TEXT.
+
+---
+
+## Human
+
+review-relay tag: demo/round-02
+
+---
+
+## Assistant
+
+Reply 2 content. NEW-REPLY-TEXT.
+
+VERDICT: READY
+"@
+        $path = Join-Path $TestDrive 'two-rounds.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Tag.Review | Should -BeExactly 'demo'
+        $c.Tag.Round | Should -Be 2
+        $c.Reply | Should -Match 'NEW-REPLY-TEXT'
+        $c.Reply | Should -Not -Match 'OLD-REPLY-TEXT'
+    }
+    It 'gives a null Tag when only an earlier exchange carried a tag, not round 1 (K1, heading path)' {
+        $text = @"
+---
+title: "attachment prompt"
+date: 2026-09-28
+url: https://example.invalid/attachment-prompt
+platform: example
+---
+
+## Human
+
+review-relay tag: demo/round-01
+
+## Assistant
+
+Reply 1 content.
+
+---
+
+## Human
+
+Second prompt pasted as an attachment, no tag text here.
+
+---
+
+## Assistant
+
+Reply 2 content.
+
+VERDICT: READY
+"@
+        $path = Join-Path $TestDrive 'attachment-prompt.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Tag | Should -BeNullOrEmpty
+    }
 }
 
 Describe 'Read-AiSaveCapture (aisave-dev/1 marker format)' {
@@ -334,6 +409,54 @@ VERDICT: READY
         $c.Format | Should -BeExactly 'aisave'
         $c.Reply | Should -Match 'Fallback reply text without an end marker\.'
     }
+
+    It 'reads the tag from the CURRENT exchange only, not an earlier one in a reused chat (K1, marker path)' {
+        $nonce = 'abcdef123456'
+        $text = @"
+---
+title: "two rounds marker"
+date: 2026-09-28
+url: https://example.invalid/two-rounds-marker
+platform: example
+format: aisave-dev/1
+nonce: $nonce
+---
+
+<!-- aisave:$nonce turn=1 role=human -->
+## Human
+
+review-relay tag: demo/round-01
+
+<!-- aisave:$nonce turn=2 role=assistant -->
+## Assistant
+
+Reply 1 content. OLD-REPLY-TEXT.
+
+---
+
+<!-- aisave:$nonce turn=3 role=human -->
+## Human
+
+review-relay tag: demo/round-02
+
+<!-- aisave:$nonce turn=4 role=assistant -->
+## Assistant
+
+Reply 2 content. NEW-REPLY-TEXT.
+
+VERDICT: READY
+
+<!-- aisave:$nonce end -->
+"@
+        $path = Join-Path $TestDrive 'two-rounds-marker.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Format | Should -BeExactly 'aisave-dev/1'
+        $c.Tag.Review | Should -BeExactly 'demo'
+        $c.Tag.Round | Should -Be 2
+        $c.Reply | Should -Match 'NEW-REPLY-TEXT'
+        $c.Reply | Should -Not -Match 'OLD-REPLY-TEXT'
+    }
 }
 
 Describe 'Get-RelayFindings' {
@@ -357,6 +480,12 @@ Describe 'Get-RelayFindings' {
     }
     It 'keeps a Finding open across a deeper sub-heading until its severity line' {
         @(Get-RelayFindings "### Finding 1: Something bad`n`n###### Note`nSome nested detail.`n`n- **Severity:** MINOR`n`nVERDICT: NOT READY" | ForEach-Object Severity) | Should -Be @('MINOR')
+    }
+    It 'recognises the severity tag bolded inside the brackets (S6)' {
+        @(Get-RelayFindings "1. [**BLOCKING**] [State Corruptor] - x`n`n2. [MATERIAL] y`n`n3. [**MINOR**] [Test Skeptic] - y" | ForEach-Object Severity) | Should -Be @('BLOCKING', 'MATERIAL', 'MINOR')
+    }
+    It 'does not count a bracketed severity word inside prose that is not a numbered finding (S6 control)' {
+        @(Get-RelayFindings "the [**BLOCKING**] tag is not itself a finding.`nVERDICT: READY").Count | Should -Be 0
     }
 }
 

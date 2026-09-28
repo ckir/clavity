@@ -119,12 +119,15 @@ if ($PSCmdlet.ShouldProcess($roundDir, 'create review round')) {
         }
         [IO.File]::WriteAllText((Join-Path $roundDir 'round.json'), (($roundMeta | ConvertTo-Json) -replace "`r`n", "`n"), $utf8)
         $clip = if ($NoClipboard) { $false } else { Set-RelayClipboard $inlinePrompt }
-        [IO.File]::WriteAllText($reviewJson, (($meta | ConvertTo-Json) -replace "`r`n", "`n"), $utf8)
+        $tmpJson = "$reviewJson.tmp"
+        [IO.File]::WriteAllText($tmpJson, (($meta | ConvertTo-Json) -replace "`r`n", "`n"), $utf8)
+        Move-Item -LiteralPath $tmpJson -Destination $reviewJson -Force
         Write-Host "review-relay: round $round of '$Review' is ready"
         Write-Host "  upload this file : $(Join-Path $roundDir 'upload' $uploadName)"
         Write-Host "  short prompt     : $(Join-Path $roundDir 'prompt-upload.md')"
         Write-Host "  all-in-one text  : $(Join-Path $roundDir 'prompt-inline.md')$(if ($clip) { ' (on the clipboard)' })"
     } catch {
+        Remove-Item -LiteralPath "$reviewJson.tmp" -Force -ErrorAction SilentlyContinue
         $why = $_.Exception.Message
         Remove-Item -LiteralPath $roundDir -Recurse -Force -ErrorAction SilentlyContinue
         if (Test-Path -LiteralPath $roundDir) {

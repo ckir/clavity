@@ -97,6 +97,7 @@ function Read-AiSaveCapture {
     $humanPart = $text
     $format = 'aisave'
     $usedMarkerPath = $false
+    $tagSearchStart = 0
 
     # MARKER path: an AiSaveDev (format: aisave-dev/1) capture carries an unambiguous per-turn
     # marker, so it never needs the H2 heuristics below. It is used only when the frontmatter
@@ -117,6 +118,7 @@ function Read-AiSaveCapture {
             if ($assistantMarker) {
                 $usedMarkerPath = $true
                 $humanPart = $text.Substring(0, $assistantMarker.Index)
+                $tagSearchStart = if ($searchFromIdx -ge 0) { $searchFromIdx } else { 0 }
                 $restStart = $assistantMarker.Index + $assistantMarker.Length
                 $rest = $text.Substring($restStart)
                 if ($rest.StartsWith("`n")) { $rest = $rest.Substring(1) }
@@ -161,6 +163,7 @@ function Read-AiSaveCapture {
 
         if ($assistantHead) {
             $humanPart = $text.Substring(0, $assistantHead.Index)
+            $tagSearchStart = $searchFrom
             $restStart = $assistantHead.Index + $assistantHead.Length
             $nextHead = $heads | Where-Object { $_.Index -gt $assistantHead.Index } | Select-Object -First 1
             $rawReply = if ($nextHead) { $text.Substring($restStart, $nextHead.Index - $restStart) } else { $text.Substring($restStart) }
@@ -169,10 +172,12 @@ function Read-AiSaveCapture {
         }
     }
 
-    # Spec T: a review round tag, matched only in the Human part (before the chosen Assistant turn
-    # heading/marker) so a tag quoted inside the reply cannot count. First match wins.
+    # Spec T: a review round tag, matched only in the CURRENT exchange's Human part - from the last
+    # Human turn marker/heading before the chosen Assistant turn (0 if none) up to that Assistant
+    # turn - so a tag from an earlier exchange in a reused chat, or one quoted inside the reply,
+    # cannot count. First match wins.
     $tag = $null
-    $tm = [regex]::Match($humanPart, '(?m)review-relay tag: ([a-z0-9][a-z0-9-]*)/round-(\d+)')
+    $tm = [regex]::Match($text.Substring($tagSearchStart, $humanPart.Length - $tagSearchStart), '(?m)review-relay tag: ([a-z0-9][a-z0-9-]*)/round-(\d+)')
     if ($tm.Success) { $tag = [pscustomobject]@{ Review = $tm.Groups[1].Value; Round = [int]$tm.Groups[2].Value } }
     [pscustomobject]@{ Path = $Path; Platform = $meta['platform']; Url = $meta['url']; Title = $meta['title']; Date = $meta['date']; Reply = $reply; Tag = $tag; Format = $format }
 }
@@ -188,7 +193,7 @@ function Get-RelayFindings {
     $pendingDepth = 0
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $l = $lines[$i]
-        if ($l -match '^\s*(?:#{1,6}\s*)?\**\d+\.\**\s*\**\[(?i:(BLOCKING|MATERIAL|MINOR))\]') {
+        if ($l -match '^\s*(?:#{1,6}\s*)?\**\d+\.\**\s*\**\[\**(?i:(BLOCKING|MATERIAL|MINOR))\**\]') {
             $found.Add([pscustomobject]@{ Line = $i + 1; Severity = $Matches[1].ToUpperInvariant() })
         } elseif ($l -match '^\s*\d+\.\s+\**(?i:(BLOCKING|MATERIAL|MINOR))\**\s*$') {
             $found.Add([pscustomobject]@{ Line = $i + 1; Severity = $Matches[1].ToUpperInvariant() })
