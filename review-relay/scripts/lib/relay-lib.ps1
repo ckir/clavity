@@ -165,7 +165,10 @@ function Read-AiSaveCapture {
             $humanPart = $text.Substring(0, $assistantHead.Index)
             $tagSearchStart = $searchFrom
             $restStart = $assistantHead.Index + $assistantHead.Length
-            $nextHead = $heads | Where-Object { $_.Index -gt $assistantHead.Index } | Select-Object -First 1
+            # R6-1: only a later HUMAN turn heading ends the reply. A real new exchange always starts
+            # with the human's turn; a separator-preceded "## Assistant" after the chosen one is the
+            # reply's own <hr> + <h2>, and cutting there hid a later BLOCKING finding.
+            $nextHead = $heads | Where-Object { $_.Index -gt $assistantHead.Index -and $_.Groups[1].Value -eq 'Human' } | Select-Object -First 1
             $rawReply = if ($nextHead) { $text.Substring($restStart, $nextHead.Index - $restStart) } else { $text.Substring($restStart) }
             if ($nextHead) { $rawReply = $rawReply -replace '\n---\s*$', '' }
             $reply = Remove-SitePreamble $rawReply

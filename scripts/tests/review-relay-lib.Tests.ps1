@@ -166,6 +166,46 @@ VERDICT: NOT READY
         $c.Reply | Should -Match '1\. \[BLOCKING\] x'
         @(Get-RelayFindings $c.Reply | ForEach-Object Severity) | Should -Contain 'BLOCKING'
     }
+    It 'does not cut the reply at a separator-preceded "## Assistant" inside it; only a later Human turn ends it (R6-1)' {
+        # Capstone round 6: an early "VERDICT: READY", then an <hr> and an <h2>Assistant</h2> inside the
+        # SAME reply, then a blocking finding. Cutting at the fake heading would hide the finding.
+        $text = @"
+---
+title: "fake assistant turn"
+date: 2026-09-28
+url: https://example.invalid/fake-turn
+platform: example
+---
+
+## Human
+
+Please review this.
+
+---
+
+## Assistant
+
+A first pass looked clean.
+
+VERDICT: READY
+
+---
+
+## Assistant
+
+On a second read:
+
+1. [BLOCKING] a later finding
+
+VERDICT: NOT READY
+"@
+        $path = Join-Path $TestDrive 'fake-assistant-turn.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Reply | Should -Match '1\. \[BLOCKING\] a later finding'
+        Get-RelayVerdict $c.Reply | Should -BeExactly 'NOT READY'
+        @(Get-RelayFindings $c.Reply | ForEach-Object Severity) | Should -Contain 'BLOCKING'
+    }
     It 'takes the reply from the NEW exchange in a two-exchange capture, not the old one (H2)' {
         $text = @"
 ---
