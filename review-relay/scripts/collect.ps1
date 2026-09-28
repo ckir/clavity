@@ -31,6 +31,14 @@ $rounds = @(Get-ChildItem -LiteralPath $ws -Directory -Filter 'round-*' |
 if ($rounds.Count -eq 0) { Stop-Collect 'no rounds yet: run new-round.ps1 first' }
 $roundDir = if ($Round) { Join-Path $ws ('round-{0:D2}' -f $Round) } else { $rounds[-1].FullName }
 if (-not (Test-Path -LiteralPath (Join-Path $roundDir 'round.json'))) { Stop-Collect "round $(Split-Path -Leaf $roundDir) has no round.json (was new-round interrupted?)" }
+
+$lockPath = Join-Path $roundDir '.collect.lock'
+try {
+    $lock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+} catch {
+    Stop-Collect "another collect is running for $(Split-Path -Leaf $roundDir) (could not lock $lockPath); nothing was written"
+}
+
 $rm = try { Get-Content -LiteralPath (Join-Path $roundDir 'round.json') -Raw | ConvertFrom-Json } catch { Stop-Collect "round.json is not valid JSON: $($_.Exception.Message)" }
 $started = ConvertTo-RoundStartedAtUtc $rm.startedAt
 $thisNo = [int]((Split-Path -Leaf $roundDir).Substring(6))
@@ -70,11 +78,7 @@ $captures = @(
             $readErr = $_
         }
         if ($readErr) {
-            if ($inWindow) {
-                Stop-Collect "could not read $($f.Name) ($($readErr.Exception.Message)); it may still be downloading or open in another program. Nothing was written - run collect again."
-            }
-            Write-Warning "collect: skipped $($f.Name): $($readErr.Exception.Message)"
-            continue
+            Stop-Collect "could not read $($f.Name) ($($readErr.Exception.Message)); it may still be downloading or open in another program. Nothing was written - run collect again."
         }
         if ($null -eq $c) { continue }
         # Spec T: a tagged capture is included only when its Review/Round match this run, regardless
@@ -90,6 +94,7 @@ $captures = @(
 )
 if ($captures.Count -eq 0) {
     Write-Host "collect: no AiSave captures in $inboxDir saved after $($started.ToString('o'))$(if ($ended) { " and before $($ended.ToString('o'))" })"
+    $lock.Dispose()
     exit 2
 }
 
@@ -97,6 +102,8 @@ $rows = [System.Collections.Generic.List[string]]::new()
 $bodies = [System.Collections.Generic.List[string]]::new()
 $n = 0
 $repliesDir = Join-Path $roundDir 'replies'
+$summaryPath = Join-Path $roundDir 'collected.md'
+if ((Test-Path -LiteralPath $summaryPath) -and $PSCmdlet.ShouldProcess($summaryPath, 'remove previous summary')) { Remove-Item -LiteralPath $summaryPath }
 foreach ($old in @(Get-ChildItem -LiteralPath $repliesDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d{2}-' })) {
     if ($PSCmdlet.ShouldProcess($old.FullName, 'remove previous copy')) { Remove-Item -LiteralPath $old.FullName }
 }
@@ -132,8 +139,9 @@ $summary = @(
     $bodies
 ) -join "`n"
 
-if ($PSCmdlet.ShouldProcess((Join-Path $roundDir 'collected.md'), 'write summary')) {
-    [IO.File]::WriteAllText((Join-Path $roundDir 'collected.md'), $summary, [Text.UTF8Encoding]::new($false))
-    Write-Host "collect: $($captures.Count) capture(s) -> $(Join-Path $roundDir 'collected.md')"
+if ($PSCmdlet.ShouldProcess($summaryPath, 'write summary')) {
+    [IO.File]::WriteAllText($summaryPath, $summary, [Text.UTF8Encoding]::new($false))
+    Write-Host "collect: $($captures.Count) capture(s) -> $summaryPath"
 }
+$lock.Dispose()
 exit 0

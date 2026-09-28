@@ -124,6 +124,13 @@ if ($PSCmdlet.ShouldProcess($roundDir, 'create review round')) {
         Write-Host "  upload this file : $(Join-Path $roundDir 'upload' $uploadName)"
         Write-Host "  short prompt     : $(Join-Path $roundDir 'prompt-upload.md')"
         Write-Host "  all-in-one text  : $(Join-Path $roundDir 'prompt-inline.md')$(if ($clip) { ' (on the clipboard)' })"
-    } catch { Remove-Item -LiteralPath $roundDir -Recurse -Force -ErrorAction SilentlyContinue; Stop-Round "could not create round $round ($($_.Exception.Message)); the partial round folder was removed" }
+    } catch {
+        $why = $_.Exception.Message
+        Remove-Item -LiteralPath $roundDir -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $roundDir) {
+            Stop-Round "could not create round $round ($why); the partial round folder $roundDir could NOT be removed - delete it by hand before the next round"
+        }
+        Stop-Round "could not create round $round ($why); the partial round folder was removed"
+    }
 }
 exit 0

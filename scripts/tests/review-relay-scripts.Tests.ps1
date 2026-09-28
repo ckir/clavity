@@ -318,6 +318,42 @@ Please review this.
         $names = @(Get-ChildItem (Join-Path $script:RoundDir 'replies') | Sort-Object Name).Name
         $names | Should -BeExactly @('01-contract.md', '02-gemini-inline.md')
     }
+    It 'refuses a second collect while one holds the round lock (G2)' {
+        $reply = (Get-Content -Raw (Join-Path $script:Fx 'contract-reply.md')).Replace('@@CODE@@', $script:Meta.endMarker).Replace('@@LAST@@', 'the last line.')
+        Set-Content -LiteralPath (Join-Path $script:Inbox 'contract.md') -Value $reply -NoNewline
+        (Get-Item (Join-Path $script:Inbox 'contract.md')).LastWriteTimeUtc = $script:After
+        $lockPath = Join-Path $script:RoundDir '.collect.lock'
+        $lock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        try {
+            $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+            $r.Exit | Should -Be 1
+            $r.Out | Should -Match 'another collect is running'
+            Test-Path (Join-Path $script:RoundDir 'collected.md') | Should -BeFalse
+        } finally {
+            $lock.Dispose()
+        }
+        # control: with the lock released, the same collect now succeeds
+        $r2 = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r2.Exit | Should -Be 0 -Because $r2.Out
+        Test-Path (Join-Path $script:RoundDir 'collected.md') | Should -BeTrue
+    }
+    It 'a failed rebuild leaves no stale collected.md (G4)' {
+        Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox
+        (Get-Item (Join-Path $script:Inbox 'gemini-inline.md')).LastWriteTimeUtc = $script:After
+        $r1 = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r1.Exit | Should -Be 0 -Because $r1.Out
+        Test-Path (Join-Path $script:RoundDir 'collected.md') | Should -BeTrue
+        $oldReply = Join-Path $script:RoundDir 'replies' '01-gemini-inline.md'
+        Test-Path $oldReply | Should -BeTrue
+        $stream = [IO.File]::Open($oldReply, 'Open', 'Read', 'None')
+        try {
+            $r2 = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+            $r2.Exit | Should -Not -Be 0
+            Test-Path (Join-Path $script:RoundDir 'collected.md') | Should -BeFalse
+        } finally {
+            $stream.Dispose()
+        }
+    }
     It 'collects only the captures saved during that round, not after the next round started' {
         Start-Sleep -Milliseconds 50
         Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox
@@ -343,6 +379,30 @@ Please review this.
         $r4 = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
         $r4.Exit | Should -Be 0 -Because $r4.Out
         @(Get-ChildItem (Join-Path $round2Dir 'replies')).Name | Should -BeExactly @('01-meta-inline.md')
+    }
+}
+
+Describe 'collect.ps1 unreadable capture stops the round (G3)' {
+    It 'refuses when an unreadable capture is outside the time window too (its tag cannot be read)' {
+        $p = New-Project
+        (Invoke-Relay $script:NewRound @('-Review', 'demo', '-Artifact', 'design.md', '-ProjectRoot', $p)).Exit | Should -Be 0
+        $ws = Join-Path $p '.review-relay' 'demo'
+        $round1Dir = Join-Path $ws 'round-01'
+        Start-Sleep -Milliseconds 50
+        (Invoke-Relay $script:NewRound @('-Review', 'demo', '-ProjectRoot', $p, '-Force')).Exit | Should -Be 0
+        $inbox = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $inbox | Out-Null
+        Copy-Item (Join-Path $script:Fx 'gemini-inline.md') (Join-Path $inbox 'locked.md')
+        (Get-Item (Join-Path $inbox 'locked.md')).LastWriteTimeUtc = [DateTime]::UtcNow
+        $stream = [IO.File]::Open((Join-Path $inbox 'locked.md'), 'Open', 'Read', 'None')
+        try {
+            $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-Round', 1, '-ProjectRoot', $p, '-Inbox', $inbox)
+            $r.Exit | Should -Be 1
+            $r.Out | Should -Match 'locked\.md'
+            Test-Path (Join-Path $round1Dir 'collected.md') | Should -BeFalse
+        } finally {
+            $stream.Dispose()
+        }
     }
 }
 
