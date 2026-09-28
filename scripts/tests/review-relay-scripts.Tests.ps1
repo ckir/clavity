@@ -92,6 +92,44 @@ Describe 'new-round.ps1' {
         $p = New-Project
         (Invoke-Relay $script:NewRound @('-Review', 'demo', '-Artifact', 'nope.md', '-ProjectRoot', $p)).Exit | Should -Be 1
     }
+    It 'rederives kind when a later round switches source, and -Kind still wins' {
+        $p = New-Project
+        git -C $p init -q; git -C $p -c user.email=t@t -c user.name=t add design.md; git -C $p -c user.email=t@t -c user.name=t commit -q -m one
+        Add-Content -LiteralPath (Join-Path $p 'design.md') 'added line'
+        git -C $p -c user.email=t@t -c user.name=t commit -q -am two
+        (Invoke-Relay $script:NewRound @('-Review', 'demo', '-Artifact', 'design.md', '-ProjectRoot', $p)).Exit | Should -Be 0
+        $ws = Join-Path $p '.review-relay' 'demo'
+        (Get-Content -Raw (Join-Path $ws 'review.json') | ConvertFrom-Json).kind | Should -BeExactly 'spec'
+
+        $r2 = Invoke-Relay $script:NewRound @('-Review', 'demo', '-Force', '-Diff', 'HEAD~1..HEAD', '-ProjectRoot', $p)
+        $r2.Exit | Should -Be 0 -Because $r2.Out
+        $meta2 = Get-Content -Raw (Join-Path $ws 'review.json') | ConvertFrom-Json
+        $meta2.kind | Should -BeExactly 'code'
+        $meta2.template | Should -Match 'code-review\.md$'
+
+        $r3 = Invoke-Relay $script:NewRound @('-Review', 'demo', '-Force', '-Diff', 'HEAD~1..HEAD', '-Kind', 'spec', '-ProjectRoot', $p)
+        $r3.Exit | Should -Be 0 -Because $r3.Out
+        (Get-Content -Raw (Join-Path $ws 'review.json') | ConvertFrom-Json).kind | Should -BeExactly 'spec'
+    }
+    It 'refuses a garbled review.json with a clear message' {
+        $p = New-Project
+        (Invoke-Relay $script:NewRound @('-Review', 'demo', '-Artifact', 'design.md', '-ProjectRoot', $p)).Exit | Should -Be 0
+        Set-Content -LiteralPath (Join-Path $p '.review-relay' 'demo' 'review.json') -Value '{ not json' -NoNewline
+        $r = Invoke-Relay $script:NewRound @('-Review', 'demo', '-ProjectRoot', $p)
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match 'new-round: review\.json is not valid JSON'
+    }
+    It 'writes review.json and round.json with LF line endings' {
+        $p = New-Project
+        $r = Invoke-Relay $script:NewRound @('-Review', 'demo', '-Artifact', 'design.md', '-ProjectRoot', $p)
+        $r.Exit | Should -Be 0 -Because $r.Out
+        $round = Join-Path $p '.review-relay' 'demo' 'round-01'
+        foreach ($f in @((Join-Path $round 'round.json'), (Join-Path $p '.review-relay' 'demo' 'review.json'))) {
+            $bytes = [IO.File]::ReadAllBytes($f)
+            $bytes | Should -Not -Contain 13
+            { Get-Content -Raw $f | ConvertFrom-Json } | Should -Not -Throw
+        }
+    }
 }
 
 Describe 'collect.ps1' {
@@ -138,5 +176,45 @@ Describe 'collect.ps1' {
     }
     It 'refuses an unknown review' {
         (Invoke-Relay $script:Collect @('-Review', 'nope', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)).Exit | Should -Be 1
+    }
+    It 'skips an unreadable capture and still collects the others' {
+        $reply = (Get-Content -Raw (Join-Path $script:Fx 'contract-reply.md')).Replace('@@CODE@@', $script:Meta.endMarker).Replace('@@LAST@@', 'the last line.')
+        Set-Content -LiteralPath (Join-Path $script:Inbox 'contract.md') -Value $reply -NoNewline
+        Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox
+        Get-ChildItem $script:Inbox | ForEach-Object { $_.LastWriteTimeUtc = $script:After }
+        $lockedPath = Join-Path $script:Inbox 'gemini-inline.md'
+        $stream = [IO.File]::Open($lockedPath, 'Open', 'Read', 'None')
+        try {
+            $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+            $r.Exit | Should -Be 0 -Because $r.Out
+            $collected = Get-Content -Raw (Join-Path $script:RoundDir 'collected.md')
+            @([regex]::Matches($collected, '(?m)^\|\s*\d+\s*\|')).Count | Should -Be 1
+            $r.Out | Should -Match 'gemini-inline\.md'
+        } finally {
+            $stream.Dispose()
+        }
+    }
+    It 'refuses a garbled round.json with a clear message' {
+        Set-Content -LiteralPath (Join-Path $script:RoundDir 'round.json') -Value '{ not json' -NoNewline
+        $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match 'collect: round\.json is not valid JSON'
+    }
+    It 'a re-run leaves exactly one numbered copy per capture' {
+        Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox
+        (Get-Item (Join-Path $script:Inbox 'gemini-inline.md')).LastWriteTimeUtc = $script:After
+        $r1 = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r1.Exit | Should -Be 0 -Because $r1.Out
+        @(Get-ChildItem (Join-Path $script:RoundDir 'replies')).Name | Should -BeExactly @('01-gemini-inline.md')
+
+        $reply = (Get-Content -Raw (Join-Path $script:Fx 'contract-reply.md')).Replace('@@CODE@@', $script:Meta.endMarker).Replace('@@LAST@@', 'the last line.')
+        Set-Content -LiteralPath (Join-Path $script:Inbox 'contract.md') -Value $reply -NoNewline
+        $earlier = $script:After.AddSeconds(-2)
+        (Get-Item (Join-Path $script:Inbox 'contract.md')).LastWriteTimeUtc = $earlier
+
+        $r2 = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r2.Exit | Should -Be 0 -Because $r2.Out
+        $names = @(Get-ChildItem (Join-Path $script:RoundDir 'replies') | Sort-Object Name).Name
+        $names | Should -BeExactly @('01-contract.md', '02-gemini-inline.md')
     }
 }

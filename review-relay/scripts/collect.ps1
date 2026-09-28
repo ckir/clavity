@@ -26,7 +26,7 @@ $rounds = @(Get-ChildItem -LiteralPath $ws -Directory -Filter 'round-*' | Sort-O
 if ($rounds.Count -eq 0) { Stop-Collect 'no rounds yet: run new-round.ps1 first' }
 $roundDir = if ($Round) { Join-Path $ws ('round-{0:D2}' -f $Round) } else { $rounds[-1].FullName }
 if (-not (Test-Path -LiteralPath (Join-Path $roundDir 'round.json'))) { Stop-Collect "round $Round does not exist" }
-$rm = Get-Content -LiteralPath (Join-Path $roundDir 'round.json') -Raw | ConvertFrom-Json
+$rm = try { Get-Content -LiteralPath (Join-Path $roundDir 'round.json') -Raw | ConvertFrom-Json } catch { Stop-Collect "round.json is not valid JSON: $($_.Exception.Message)" }
 $started = if ($rm.startedAt -is [datetime]) { $rm.startedAt.ToUniversalTime() } else { [DateTime]::Parse($rm.startedAt, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime() }
 
 $inboxDir = Resolve-RelayInbox $Inbox
@@ -34,7 +34,7 @@ if (-not (Test-Path -LiteralPath $inboxDir -PathType Container)) { Stop-Collect 
 
 $captures = @(
     foreach ($f in @(Get-ChildItem -LiteralPath $inboxDir -File -Filter '*.md' | Where-Object { $_.LastWriteTimeUtc -gt $started } | Sort-Object LastWriteTimeUtc)) {
-        $c = Read-AiSaveCapture $f.FullName
+        $c = try { Read-AiSaveCapture $f.FullName } catch { Write-Warning "collect: skipped $($f.Name): $($_.Exception.Message)"; $null }
         if ($c) { [pscustomobject]@{ File = $f; Capture = $c } }
     }
 )
@@ -46,6 +46,10 @@ if ($captures.Count -eq 0) {
 $rows = [System.Collections.Generic.List[string]]::new()
 $bodies = [System.Collections.Generic.List[string]]::new()
 $n = 0
+$repliesDir = Join-Path $roundDir 'replies'
+foreach ($old in @(Get-ChildItem -LiteralPath $repliesDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d{2}-' })) {
+    if ($PSCmdlet.ShouldProcess($old.FullName, 'remove previous copy')) { Remove-Item -LiteralPath $old.FullName }
+}
 foreach ($item in $captures) {
     $n++
     $c = $item.Capture

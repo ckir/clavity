@@ -28,9 +28,9 @@ $ws = Join-Path $root '.review-relay' $Review
 $reviewJson = Join-Path $ws 'review.json'
 
 if (Test-Path -LiteralPath $reviewJson) {
-    $meta = Get-Content -LiteralPath $reviewJson -Raw | ConvertFrom-Json
-    if ($Artifact) { $meta.source = $Artifact; $meta.sourceType = 'file' }
-    if ($Diff) { $meta.source = $Diff; $meta.sourceType = 'diff' }
+    $meta = try { Get-Content -LiteralPath $reviewJson -Raw | ConvertFrom-Json } catch { Stop-Round "review.json is not valid JSON: $($_.Exception.Message)" }
+    if ($Artifact) { $meta.source = $Artifact; $meta.sourceType = 'file'; $meta.kind = 'spec' }
+    if ($Diff) { $meta.source = $Diff; $meta.sourceType = 'diff'; $meta.kind = 'code' }
 } else {
     if (-not $Artifact -and -not $Diff) { Stop-Round "review '$Review' does not exist yet: give -Artifact <path> or -Diff <git range>" }
     $meta = [pscustomobject]@{
@@ -112,8 +112,8 @@ if ($PSCmdlet.ShouldProcess($roundDir, 'create review round')) {
         expectedLastLine  = $proof.LastLine
         expectedLineCount = $proof.LineCount
     }
-    [IO.File]::WriteAllText((Join-Path $roundDir 'round.json'), ($roundMeta | ConvertTo-Json), $utf8)
-    [IO.File]::WriteAllText($reviewJson, ($meta | ConvertTo-Json), $utf8)
+    [IO.File]::WriteAllText((Join-Path $roundDir 'round.json'), (($roundMeta | ConvertTo-Json) -replace "`r`n", "`n"), $utf8)
+    [IO.File]::WriteAllText($reviewJson, (($meta | ConvertTo-Json) -replace "`r`n", "`n"), $utf8)
     $clip = if ($NoClipboard) { $false } else { Set-RelayClipboard $inlinePrompt }
     Write-Host "review-relay: round $round of '$Review' is ready"
     Write-Host "  upload this file : $(Join-Path $roundDir 'upload' $uploadName)"
