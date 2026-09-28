@@ -215,6 +215,15 @@ Describe 'Get-RelayReadProof' {
     It 'reports the line count the reviewer stated, for information' {
         (Get-RelayReadProof -Reply (Get-ContractReply 'ABCD-1234' 'x') -EndMarkerCode 'ABCD-1234' -ExpectedLastLine 'x').ReportedLineCount | Should -Be 412
     }
+    It 'collapses whitespace runs on both sides when matching the expected last line (F5, chat-rendered spacing)' {
+        $expected = '+        $r.Exit | Should -Be 2'
+        $linePass = '+ $r.Exit | Should -Be 2'
+        $lineControl = '+ $r.Exit | Should -Be 3'
+        $replyPass = "$linePass`nEND OF DOCUMENT - review-relay ABCD-1234`nVERDICT: READY"
+        (Get-RelayReadProof -Reply $replyPass -EndMarkerCode 'ABCD-1234' -ExpectedLastLine $expected).Result | Should -BeExactly 'PASS'
+        $replyControl = "$lineControl`nEND OF DOCUMENT - review-relay ABCD-1234`nVERDICT: READY"
+        (Get-RelayReadProof -Reply $replyControl -EndMarkerCode 'ABCD-1234' -ExpectedLastLine $expected).Result | Should -BeExactly 'MARKER-ONLY'
+    }
 }
 
 Describe 'Get-RelayCounts' {

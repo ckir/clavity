@@ -168,8 +168,8 @@ function Get-RelayReadProof {
         $head = if ($first -le 1) { '' } else { (($text -split "`n")[0..($first - 2)]) -join "`n" }
     }
     $hasMarker = $head -match ('(?i)' + [regex]::Escape($EndMarkerCode))
-    $last = $ExpectedLastLine.Trim()
-    $hasLast = $last.Length -gt 0 -and $head.Contains($last)
+    $last = ($ExpectedLastLine -replace '\s+', ' ').Trim()
+    $hasLast = $last.Length -gt 0 -and (($head -replace '[ \t]+', ' ')).Contains($last)
     $result = if ($hasMarker -and $hasLast) { 'PASS' } elseif ($hasMarker) { 'MARKER-ONLY' } elseif ($hasLast) { 'NO-MARKER' } else { 'MISSING' }
     $reported = $null
     $m = [regex]::Match($head, '(?i)\b(\d[\d,.]*)\s+(?:rendered\s+)?lines?\b')

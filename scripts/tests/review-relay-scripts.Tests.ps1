@@ -155,6 +155,52 @@ Describe 'new-round.ps1' {
         $uploadInstruction = (Get-Content (Join-Path $round 'prompt-upload.md'))[1]
         @([regex]::Matches($uploadInstruction, [regex]::Escape('design.md'))).Count | Should -Be 1
     }
+    It 'refuses a stored diff range that starts with a dash and writes no file (F1, git option injection)' {
+        $p = New-Project
+        git -C $p init -q; git -C $p -c user.email=t@t -c user.name=t add design.md; git -C $p -c user.email=t@t -c user.name=t commit -q -m one
+        $ws = Join-Path $p '.review-relay' 'evil'
+        New-Item -ItemType Directory -Force -Path $ws | Out-Null
+        $pwned = Join-Path $TestDrive 'PWNED.txt'
+        $meta = [ordered]@{
+            name       = 'evil'
+            kind       = 'code'
+            source     = "--output=$pwned"
+            sourceType = 'diff'
+            createdAt  = [DateTime]::UtcNow.ToString('o')
+            template   = $null
+        }
+        Set-Content -LiteralPath (Join-Path $ws 'review.json') -Value ($meta | ConvertTo-Json) -NoNewline
+        $r = Invoke-Relay $script:NewRound @('-Review', 'evil', '-ProjectRoot', $p)
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match "cannot start with '-'"
+        Test-Path -LiteralPath $pwned | Should -BeFalse
+    }
+    It 'refuses to reuse an existing round folder (F2, atomic reservation)' {
+        $p = New-Project
+        (Invoke-Relay $script:NewRound @('-Review', 'demo', '-Artifact', 'design.md', '-ProjectRoot', $p)).Exit | Should -Be 0
+        $ws = Join-Path $p '.review-relay' 'demo'
+        Set-Content (Join-Path $ws 'round-01' 'collected.md') 'collected'
+        $fakeRound = Join-Path $ws 'round-02'
+        Set-Content -LiteralPath $fakeRound -Value 'not a directory' -NoNewline
+        $r = Invoke-Relay $script:NewRound @('-Review', 'demo', '-ProjectRoot', $p, '-Force')
+        $r.Exit | Should -Be 1 -Because $r.Out
+        $r.Out | Should -Match 'already exists'
+        (Get-Item -LiteralPath $fakeRound) | Should -Not -BeOfType [System.IO.DirectoryInfo]
+        Get-Content -LiteralPath $fakeRound -Raw | Should -BeExactly 'not a directory'
+    }
+    It 'removes a partial round when a write fails (F2+F4, cleanup on failure)' {
+        $p = New-Project
+        $badClip = Join-Path $TestDrive ([guid]::NewGuid().ToString('N')) 'clip.txt'
+        $env:REVIEW_RELAY_CLIPBOARD_FILE = $badClip
+        try {
+            $r = Invoke-Relay $script:NewRound @('-Review', 'demo', '-Artifact', 'design.md', '-ProjectRoot', $p)
+            $r.Exit | Should -Be 1 -Because $r.Out
+            $r.Out | Should -Match 'partial round folder was removed'
+            Test-Path -LiteralPath (Join-Path $p '.review-relay' 'demo' 'round-01') | Should -BeFalse
+        } finally {
+            $env:REVIEW_RELAY_CLIPBOARD_FILE = $script:Clip
+        }
+    }
 }
 
 Describe 'collect.ps1' {
@@ -234,6 +280,26 @@ Describe 'collect.ps1' {
         $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
         $r.Exit | Should -Be 1
         $r.Out | Should -Match 'collect: round\.json is not valid JSON'
+    }
+    It 'says plainly when a capture has no reply (F3)' {
+        $text = @"
+---
+title: "no reply yet"
+date: 2026-09-28
+url: https://example.invalid/no-reply
+platform: example
+---
+
+## Human
+
+Please review this.
+"@
+        Set-Content -LiteralPath (Join-Path $script:Inbox 'no-reply.md') -Value $text -NoNewline
+        (Get-Item (Join-Path $script:Inbox 'no-reply.md')).LastWriteTimeUtc = $script:After
+        $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r.Exit | Should -Be 0 -Because $r.Out
+        $collected = Get-Content -Raw (Join-Path $script:RoundDir 'collected.md')
+        $collected | Should -Match 'This capture has no reply'
     }
     It 'a re-run leaves exactly one numbered copy per capture' {
         Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox

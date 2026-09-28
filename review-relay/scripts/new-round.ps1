@@ -43,6 +43,7 @@ if (Test-Path -LiteralPath $reviewJson) {
     }
 }
 if ($Kind) { $meta.kind = $Kind }
+if ($meta.sourceType -eq 'diff' -and "$($meta.source)".StartsWith('-')) { Stop-Round "refusing git range '$($meta.source)': a range cannot start with '-'" }
 
 $existing = @(Get-ChildItem -LiteralPath $ws -Directory -Filter 'round-*' -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -match '^round-\d+$' } | Sort-Object { [int]($_.Name.Substring(6)) })
@@ -54,7 +55,7 @@ $round = $lastNo + 1
 $roundDir = Join-Path $ws ('round-{0:D2}' -f $round)
 
 if ($meta.sourceType -eq 'diff') {
-    $out = & git -C $root diff $meta.source 2>&1
+    $out = & git -C $root diff --end-of-options $meta.source 2>&1
     if ($LASTEXITCODE -ne 0) { Stop-Round "git diff $($meta.source) failed: $(($out | ForEach-Object { "$_" }) -join ' ')" }
     $text = (($out | ForEach-Object { "$_" }) -join "`n") + "`n"
     $ext = '.diff'
@@ -98,28 +99,31 @@ try {
 }
 
 if ($PSCmdlet.ShouldProcess($roundDir, 'create review round')) {
-    $utf8 = [Text.UTF8Encoding]::new($false)
-    New-Item -ItemType Directory -Force -Path (Join-Path $roundDir 'upload'), (Join-Path $roundDir 'replies') | Out-Null
-    $snapshot = Join-Path $ws "artifact$ext"
-    [IO.File]::WriteAllText($snapshot, (ConvertTo-LfText $text), $utf8)
-    [IO.File]::WriteAllText((Join-Path $roundDir 'upload' $uploadName), $marked, $utf8)
-    [IO.File]::WriteAllText((Join-Path $roundDir 'prompt-upload.md'), $uploadPrompt, $utf8)
-    [IO.File]::WriteAllText((Join-Path $roundDir 'prompt-inline.md'), $inlinePrompt, $utf8)
-    $roundMeta = [ordered]@{
-        round             = $round
-        startedAt         = [DateTime]::UtcNow.ToString('o')
-        artifactFile      = $uploadName
-        artifactSha256    = (Get-FileHash -LiteralPath $snapshot -Algorithm SHA256).Hash.ToLowerInvariant()
-        endMarker         = $code
-        expectedLastLine  = $proof.LastLine
-        expectedLineCount = $proof.LineCount
-    }
-    [IO.File]::WriteAllText((Join-Path $roundDir 'round.json'), (($roundMeta | ConvertTo-Json) -replace "`r`n", "`n"), $utf8)
-    [IO.File]::WriteAllText($reviewJson, (($meta | ConvertTo-Json) -replace "`r`n", "`n"), $utf8)
-    $clip = if ($NoClipboard) { $false } else { Set-RelayClipboard $inlinePrompt }
-    Write-Host "review-relay: round $round of '$Review' is ready"
-    Write-Host "  upload this file : $(Join-Path $roundDir 'upload' $uploadName)"
-    Write-Host "  short prompt     : $(Join-Path $roundDir 'prompt-upload.md')"
-    Write-Host "  all-in-one text  : $(Join-Path $roundDir 'prompt-inline.md')$(if ($clip) { ' (on the clipboard)' })"
+    try { New-Item -ItemType Directory -Path $roundDir -ErrorAction Stop | Out-Null } catch { Stop-Round "round folder $roundDir already exists (another new-round may be running); nothing was written" }
+    try {
+        $utf8 = [Text.UTF8Encoding]::new($false)
+        New-Item -ItemType Directory -Force -Path (Join-Path $roundDir 'upload'), (Join-Path $roundDir 'replies') | Out-Null
+        $snapshot = Join-Path $ws "artifact$ext"
+        [IO.File]::WriteAllText($snapshot, (ConvertTo-LfText $text), $utf8)
+        [IO.File]::WriteAllText((Join-Path $roundDir 'upload' $uploadName), $marked, $utf8)
+        [IO.File]::WriteAllText((Join-Path $roundDir 'prompt-upload.md'), $uploadPrompt, $utf8)
+        [IO.File]::WriteAllText((Join-Path $roundDir 'prompt-inline.md'), $inlinePrompt, $utf8)
+        $roundMeta = [ordered]@{
+            round             = $round
+            startedAt         = [DateTime]::UtcNow.ToString('o')
+            artifactFile      = $uploadName
+            artifactSha256    = (Get-FileHash -LiteralPath $snapshot -Algorithm SHA256).Hash.ToLowerInvariant()
+            endMarker         = $code
+            expectedLastLine  = $proof.LastLine
+            expectedLineCount = $proof.LineCount
+        }
+        [IO.File]::WriteAllText((Join-Path $roundDir 'round.json'), (($roundMeta | ConvertTo-Json) -replace "`r`n", "`n"), $utf8)
+        [IO.File]::WriteAllText($reviewJson, (($meta | ConvertTo-Json) -replace "`r`n", "`n"), $utf8)
+        $clip = if ($NoClipboard) { $false } else { Set-RelayClipboard $inlinePrompt }
+        Write-Host "review-relay: round $round of '$Review' is ready"
+        Write-Host "  upload this file : $(Join-Path $roundDir 'upload' $uploadName)"
+        Write-Host "  short prompt     : $(Join-Path $roundDir 'prompt-upload.md')"
+        Write-Host "  all-in-one text  : $(Join-Path $roundDir 'prompt-inline.md')$(if ($clip) { ' (on the clipboard)' })"
+    } catch { Remove-Item -LiteralPath $roundDir -Recurse -Force -ErrorAction SilentlyContinue; Stop-Round "could not create round $round ($($_.Exception.Message)); the partial round folder was removed" }
 }
 exit 0

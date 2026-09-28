@@ -30,7 +30,7 @@ $rounds = @(Get-ChildItem -LiteralPath $ws -Directory -Filter 'round-*' |
     Where-Object { $_.Name -match '^round-\d+$' } | Sort-Object { [int]($_.Name.Substring(6)) })
 if ($rounds.Count -eq 0) { Stop-Collect 'no rounds yet: run new-round.ps1 first' }
 $roundDir = if ($Round) { Join-Path $ws ('round-{0:D2}' -f $Round) } else { $rounds[-1].FullName }
-if (-not (Test-Path -LiteralPath (Join-Path $roundDir 'round.json'))) { Stop-Collect "round $Round does not exist" }
+if (-not (Test-Path -LiteralPath (Join-Path $roundDir 'round.json'))) { Stop-Collect "round $(Split-Path -Leaf $roundDir) has no round.json (was new-round interrupted?)" }
 $rm = try { Get-Content -LiteralPath (Join-Path $roundDir 'round.json') -Raw | ConvertFrom-Json } catch { Stop-Collect "round.json is not valid JSON: $($_.Exception.Message)" }
 $started = ConvertTo-RoundStartedAtUtc $rm.startedAt
 $thisNo = [int]((Split-Path -Leaf $roundDir).Substring(6))
@@ -109,7 +109,12 @@ foreach ($item in $captures) {
     $counts = Get-RelayCounts -Findings @(Get-RelayFindings $c.Reply) -Verdict $verdict
     $reported = if ($null -ne $proof.ReportedLineCount) { $proof.ReportedLineCount } else { '-' }
     $rows.Add("| $n | $($c.Platform) | $($proof.Result) | $reported | $verdict | $($counts.BLOCKING) | $($counts.MATERIAL) | $($counts.MINOR) | $($counts.UNKNOWN) |")
-    $bodies.Add("## $n. $($c.Platform) - $($c.Title)`n`nSource: ``replies/$copyName`` ($($c.Url))`n`n$($c.Reply)`n")
+    $replyBody = $c.Reply
+    if ([string]::IsNullOrWhiteSpace($replyBody)) {
+        $replyBody = '(This capture has no reply - it has no "## Assistant" section. It was probably saved before the model finished answering. Save it again once the answer is complete.)'
+        Write-Warning "collect: $($item.File.Name) has no reply (saved before the model finished?)"
+    }
+    $bodies.Add("## $n. $($c.Platform) - $($c.Title)`n`nSource: ``replies/$copyName`` ($($c.Url))`n`n$replyBody`n")
     if ($PSCmdlet.ShouldProcess((Join-Path $roundDir 'replies' $copyName), 'copy capture')) {
         Copy-Item -LiteralPath $item.File.FullName -Destination (Join-Path $roundDir 'replies' $copyName)
     }
