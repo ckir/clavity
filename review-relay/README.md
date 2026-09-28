@@ -1,0 +1,50 @@
+# review-relay
+
+Review a spec, plan, document or code change with web AI models (ChatGPT, Meta AI, Gemini, or any other)
+in copy-paste rounds. Claude plays the main role: it prepares each round's prompt, checks every finding
+against the real text, and folds the true ones. You carry the text to the sites and save the replies with
+the AiSave browser extension. Part of the clavity umbrella.
+
+## How it works
+
+1. `new-round.ps1` snapshots the artifact, appends a random end-of-document marker, and writes two ways to
+   hand it over: a file to upload with a short prompt, and one all-in-one text (also put on the clipboard).
+2. You paste or upload into the sites you choose and save each reply with AiSave.
+3. `collect.ps1` finds the new AiSave captures, checks that each reviewer quoted the end marker (proof it
+   read the whole artifact), and lays out each verdict and its findings side by side.
+4. Claude verifies and folds, records a ledger, and starts the next round.
+
+## What's in here
+
+- `skills/review-relay/SKILL.md` - how Claude runs the rounds.
+- `scripts/new-round.ps1`, `scripts/collect.ps1`, `scripts/lib/relay-lib.ps1` - the deterministic parts.
+- `templates/spec-review.md`, `templates/code-review.md` - the round prompts.
+
+## Install
+
+    claude plugin marketplace add ckir/clavity
+    claude plugin install review-relay@clavity
+
+Install at user scope to use it in every project. Each review keeps its files in the reviewed project,
+under `.review-relay/<review-name>/`.
+
+## Configuration
+
+- `REVIEW_RELAY_INBOX` - where `collect.ps1` looks for AiSave captures (default: your Downloads folder).
+- `.review-relay/templates/spec-review.md` or `code-review.md` in a project overrides the bundled template.
+
+## Troubleshooting
+
+- **`collect.ps1` exits 2**: no AiSave capture was saved after the round started. Check where AiSave saves
+  (`-Inbox <folder>`), and that you saved after running `new-round.ps1`.
+- **A reviewer shows `NO-MARKER`**: its copy was probably cut off, or it skipped Step 0. Re-send the upload
+  variant, or treat its findings with caution.
+- **Counts show `unknown`**: the reply did not use a recognised finding format; read it in `collected.md`.
+
+## Docs
+
+- `ROADMAP.md` - open decisions and the paused automated design.
+
+## License
+
+PolyForm Noncommercial 1.0.0 - see [LICENSE](LICENSE).
