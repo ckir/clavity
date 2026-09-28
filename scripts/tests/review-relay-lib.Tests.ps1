@@ -90,6 +90,9 @@ Describe 'Get-RelayFindings' {
     It 'marks a Finding heading with no severity line UNKNOWN' {
         @(Get-RelayFindings "### Finding 1: x`n`nbody`n`n### Finding 2: y`n- **Severity:** MINOR" | ForEach-Object Severity) | Should -Be @('UNKNOWN', 'MINOR')
     }
+    It 'keeps a Finding open across a deeper sub-heading until its severity line' {
+        @(Get-RelayFindings "### Finding 1: Something bad`n`n###### Note`nSome nested detail.`n`n- **Severity:** MINOR`n`nVERDICT: NOT READY" | ForEach-Object Severity) | Should -Be @('MINOR')
+    }
 }
 
 Describe 'Get-RelayVerdict' {
@@ -103,6 +106,15 @@ Describe 'Get-RelayVerdict' {
     }
     It 'reports NO-VERDICT for a cut-off reply' {
         Get-RelayVerdict "1. [BLOCKING] something and then the reply stops" | Should -BeExactly 'NO-VERDICT'
+    }
+    It 'ignores a VERDICT line that is not the last non-empty line' {
+        Get-RelayVerdict "The instructions ask me to end with a line like`nVERDICT: READY`nif all is fine. Thats it, thanks!" | Should -BeExactly 'NO-VERDICT'
+    }
+    It 'rejects a VERDICT line with extra text after the shape' {
+        Get-RelayVerdict "Findings above.`n  VERDICT: READY      - no BLOCKING findings remain." | Should -BeExactly 'NO-VERDICT'
+    }
+    It 'accepts trailing blank lines and reports the shape in upper case' {
+        Get-RelayVerdict "Done.`n# Verdict: not ready`n`n`n" | Should -BeExactly 'NOT READY'
     }
 }
 
@@ -141,5 +153,8 @@ Describe 'Get-RelayCounts' {
     }
     It 'reports zero when nothing parsed and the verdict is exactly READY' {
         (Get-RelayCounts -Findings @() -Verdict 'READY').BLOCKING | Should -Be 0
+    }
+    It 'treats an explicit $null as no findings (unknown, never zero)' {
+        (Get-RelayCounts -Findings $null -Verdict 'NOT READY').BLOCKING | Should -BeExactly 'unknown'
     }
 }

@@ -99,6 +99,7 @@ function Get-RelayFindings {
     if ([string]::IsNullOrEmpty($Reply)) { return }
     $lines = (ConvertTo-LfText $Reply) -split "`n"
     $pending = $null
+    $pendingDepth = 0
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $l = $lines[$i]
         if ($l -match '^\s*(?:#{1,6}\s*)?\**\d+\.\**\s*\**\[(?i:(BLOCKING|MATERIAL|MINOR))\]') {
@@ -107,13 +108,14 @@ function Get-RelayFindings {
             $found.Add([pscustomobject]@{ Line = $i + 1; Severity = $Matches[1].ToUpperInvariant() })
         } elseif ($l -match '^#{1,6}\s*\d+\.\s+\**(?i:(BLOCKING|MATERIAL|MINOR))\b') {
             $found.Add([pscustomobject]@{ Line = $i + 1; Severity = $Matches[1].ToUpperInvariant() })
-        } elseif ($l -match '^#{1,6}\s*Finding\s+\d+\b') {
+        } elseif ($l -match '^(#{1,6})\s*Finding\s+\d+\b') {
             if ($pending) { $found.Add([pscustomobject]@{ Line = $pending; Severity = 'UNKNOWN' }) }
             $pending = $i + 1
+            $pendingDepth = $Matches[1].Length
         } elseif ($pending -and $l -match '^\s*[-*]\s*\**Severity:?\**:?\s*\**(?i:(BLOCKING|MATERIAL|MINOR))') {
             $found.Add([pscustomobject]@{ Line = $pending; Severity = $Matches[1].ToUpperInvariant() })
             $pending = $null
-        } elseif ($pending -and $l -match '^#{1,6}\s') {
+        } elseif ($pending -and $l -match '^(#{1,6})\s' -and $Matches[1].Length -le $pendingDepth) {
             $found.Add([pscustomobject]@{ Line = $pending; Severity = 'UNKNOWN' })
             $pending = $null
         }
@@ -123,12 +125,14 @@ function Get-RelayFindings {
 }
 
 function Get-RelayVerdict {
-    # Spec 6.2: the last line carrying VERDICT:, optionally wrapped in ** or behind # / >.
+    # Spec 6.2: only the last non-empty line, and only a known verdict shape.
     param([AllowEmptyString()][AllowNull()][string]$Reply)
     if ([string]::IsNullOrEmpty($Reply)) { return 'NO-VERDICT' }
-    $ms = [regex]::Matches((ConvertTo-LfText $Reply), '(?im)^[ \t>#*]*VERDICT:\s*(.+?)[ \t*]*$')
-    if ($ms.Count -eq 0) { return 'NO-VERDICT' }
-    $ms[$ms.Count - 1].Groups[1].Value.Trim().Trim('*').Trim()
+    $lines = @((ConvertTo-LfText $Reply) -split "`n" | Where-Object { $_.Trim() -ne '' })
+    if ($lines.Count -eq 0) { return 'NO-VERDICT' }
+    $m = [regex]::Match($lines[-1], '(?i)^[ \t>#*]*VERDICT:[ \t]*(READY|NOT READY|\d+\s+BLOCKING,\s*\d+\s+MATERIAL,\s*\d+\s+MINOR)[ \t*]*$')
+    if (-not $m.Success) { return 'NO-VERDICT' }
+    $m.Groups[1].Value.ToUpperInvariant()
 }
 
 function Get-RelayReadProof {
@@ -158,7 +162,7 @@ function Get-RelayReadProof {
 function Get-RelayCounts {
     # Spec 6.3: counts per severity; unknown (never zero) when nothing parsed, unless the verdict is exactly READY.
     param([object[]]$Findings = @(), [string]$Verdict)
-    $f = @($Findings)
+    $f = @(if ($null -eq $Findings) { @() } else { $Findings | Where-Object { $null -ne $_ } })
     if ($f.Count -eq 0) {
         $v = if ($Verdict -eq 'READY') { 0 } else { 'unknown' }
         return [pscustomobject]@{ BLOCKING = $v; MATERIAL = $v; MINOR = $v; UNKNOWN = $v }
