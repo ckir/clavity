@@ -611,3 +611,26 @@ backstop cannot provide that; it only acts after a mutation has been attempted.
 on cascade `8f845d3a-f5df-43f8-8233-acfec15d74f0`, the same conversation that produced the original
 `-Resume` design consult. The peer therefore reviewed a design it had itself endorsed. Recorded, not
 gated (owner ruling 2026-09-04), and surfaced to the owner at the GREEN adjudication.
+
+## review-relay (branch `feat/review-relay`, 2026-09-28)
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-28 | `1e01f4f..2e6947bb` (re-extended after every fold; round 6 reviewed `1e01f4f..2aa450eb`) | 6 | **CAPPED, NOT GREEN - owner-ruled "fix, then ship" at round 6.** Round 6 raised 1 BLOCKING (a plain-AiSave reply cut at its own `---` + `## Assistant`), folded in `2e6947bb` with a red-then-green test but NOT independently re-reviewed. `WAIVED reason=round-cap` in `skipped.log` at `2e6947bb`; marker written, as a round-cap waiver does. Every BLOCKING raised in rounds 1-5 was confirmed resolved, with quotes, by the next round. No review-only breach: round 1 (agy) left tree, HEAD and reflog unmoved; rounds 2-6 ran on a web model with no repository access. | folds `a4866f26` `f5dcdd08` `048c9519` `64475e75` `5ec33b91` `b9089a13` `2aa450eb` `2e6947bb`; round 1 brief `.clavity/seams/capstone-review-relay.md`, report `.clavity/scratch/capstone-review-relay/round1-report.md`; rounds 2-6 `.review-relay/capstone-r2/round-0{1..6}/collected.md` + `ledger.md` (local, gitignored) |
+
+**Reviewer substitution (owner ruling 2026-09-28).** Round 1 ran on agy. Its round-2 ask returned a
+`[13b] TRUNCATED` reply because agy's 5-hour quota was exhausted (console: "Quota exhausted"). The owner
+chose to substitute an independent reader rather than wait or waive: rounds 2-6 ran on ChatGPT through
+review-relay itself, each in a fresh chat, with the owner carrying the text and saving replies with
+AiSave, and from round 5 with AiSaveDev. That also served as the plan's manual smoke test and surfaced
+six defects in the tool itself (S1-S6), all folded.
+
+**Isolation: FRESH-CONTEXT per round** (a new web chat each round), so no round reviewed a design it had
+endorsed. The `check-capstone-new-code` design consult fired on `f5dcdd08`, `048c9519` and `b9089a13`.
+agy was unreachable, so each was covered by the NEXT substitute round reviewing that code before
+anything shipped. The AGY-FIRST forks in this run (round tags; AiSaveDev) were waived by the owner and
+logged in `skipped.log`.
+
+**Round-1 lesson.** agy returned `[VERDICT: ALIGNED]` with an empty findings array, while its prose
+named two real defects: collect had no end to its capture window, and new-round numbered rounds by
+count. Both were measured and folded. A clean structured verdict is not a clean round; read the prose.
