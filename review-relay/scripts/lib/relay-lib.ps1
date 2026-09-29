@@ -165,13 +165,12 @@ function Read-AiSaveCapture {
             $humanPart = $text.Substring(0, $assistantHead.Index)
             $tagSearchStart = $searchFrom
             $restStart = $assistantHead.Index + $assistantHead.Length
-            # R6-1: only a later HUMAN turn heading ends the reply. A real new exchange always starts
-            # with the human's turn; a separator-preceded "## Assistant" after the chosen one is the
-            # reply's own <hr> + <h2>, and cutting there hid a later BLOCKING finding.
-            $nextHead = $heads | Where-Object { $_.Index -gt $assistantHead.Index -and $_.Groups[1].Value -eq 'Human' } | Select-Object -First 1
-            $rawReply = if ($nextHead) { $text.Substring($restStart, $nextHead.Index - $restStart) } else { $text.Substring($restStart) }
-            if ($nextHead) { $rawReply = $rawReply -replace '\n---\s*$', '' }
-            $reply = Remove-SitePreamble $rawReply
+            # R6-1 / R7-1: the reply runs to the END OF THE FILE. The chosen Assistant turn follows the
+            # LAST Human turn heading, so no later Human heading exists to end it; a separator-preceded
+            # "## Assistant" after it is the reply's own <hr> + <h2>, and cutting there hid a later
+            # BLOCKING finding. (A quoted "---" + "## Human" inside the reply becomes the last Human
+            # heading instead, so the reply is lost loudly - the G2 limit, see collect.ps1.)
+            $reply = Remove-SitePreamble $text.Substring($restStart)
         }
     }
 

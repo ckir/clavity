@@ -166,7 +166,7 @@ VERDICT: NOT READY
         $c.Reply | Should -Match '1\. \[BLOCKING\] x'
         @(Get-RelayFindings $c.Reply | ForEach-Object Severity) | Should -Contain 'BLOCKING'
     }
-    It 'does not cut the reply at a separator-preceded "## Assistant" inside it; only a later Human turn ends it (R6-1)' {
+    It 'does not cut the reply at a separator-preceded "## Assistant" inside it; the reply runs to the end of the file (R6-1, R7-1)' {
         # Capstone round 6: an early "VERDICT: READY", then an <hr> and an <h2>Assistant</h2> inside the
         # SAME reply, then a blocking finding. Cutting at the fake heading would hide the finding.
         $text = @"
