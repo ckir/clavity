@@ -1085,7 +1085,7 @@ Like §13a and §14d this lands on `feature/injected-context-governance`, so it 
 remaining work rather than as a drive-by.
 
 **§14f — two shipped artifacts disagree about who owns `driver-cheatsheet.core.md`, and the gate that
-would catch it never runs on the flow that edits it.** · ✅ **RULED 2026-08-19**
+would catch it never runs on the flow that edits it.** · ✅ **RULED 2026-08-19** · ✅ **CLOSED 2026-09-29 — answered by §18, which SHIPPED (see the ruling below and §18's header).**
 
 > **OWNER RULING (2026-08-19).** Neither stated disposition is chosen. **§14f is ANSWERED BY §18 and is
 > sequenced behind it**, not adjudicated on its own terms.
@@ -1292,7 +1292,7 @@ dependency on that skill.
 **This remains the same "one shared review-core" question already open as the AGY-* family-coherence
 fork**, so the two should be decided together, not separately.
 
-### §15 — Workflow-position resilience → shipped as **consult-recovery** — ✅ **IMPLEMENTED 2026-09-13** (pending post-implementation AGY-CAPSTONE)
+### §15 — Workflow-position resilience → shipped as **consult-recovery** — ✅ **SHIPPED — AGY-CAPSTONE GREEN 2026-09-14 over `356760b..669547c` (`docs/agy-capstone-ledger.md` row 45) + AGY-TEST-AUDIT over `356760b..ad00fa4` (`docs/agy-test-audit-ledger.md` row 44). Header closed 2026-09-29 (it read "pending" for 15 days after both ran).**
 
 **Spec:** `docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md` (committed `4adab8b`).
 **Plan:** `docs/superpowers/plans/2026-09-13-consult-recovery.md` (AGY-FIRST-consulted, AGY-AFTER round-1 folded).
@@ -3354,6 +3354,13 @@ the value it guards certifies a string.
 
 **Blast radius:** `plugin/hooks/agy-mark.sh` in BOTH driver plugins (mirror to classic), plus a failing
 control and a guard mutation per the guard law.
+
+**Earlier record, merged 2026-09-29:** the same defect was first raised 2026-08-31 during an AGY-TEST-AUDIT
+and kept as `docs/backlog/agy-mark-accepts-a-nonexistent-sha.md` (measured then: `head` wrote
+`deadbeef...deadbeef` and exited 0). That stub also carries the design answer this section needs: ROADMAP §27
+keeps `agy-mark.sh` git-optional - outside a repository the ledger gate answers `NO-LEDGER` - so the sha
+check should follow the same shape, **no repository means no check**, not a refusal. And §27's ledger gate
+does not close this: it proves the ledger records the sha, not that the sha names a commit.
 
 ---
 

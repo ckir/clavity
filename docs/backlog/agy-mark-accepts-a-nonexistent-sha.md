@@ -1,6 +1,6 @@
 # Backlog stub - `agy-mark.sh head` writes any 40-character string as a discipline marker
 
-**Status:** OPEN. Promoted 2026-08-31 from `.clavity/local-anomalies.md`.
+**Status:** ✅ **MERGED 2026-09-29 into `clavity-dotnet/ROADMAP.md` §51**, which now tracks the defect (ROADMAP sweep Branch 2). Kept, not deleted: dated plans and specs cite this path. Originally promoted 2026-08-31 from `.clavity/local-anomalies.md`.
 **Raised:** 2026-08-31, during AGY-TEST-AUDIT, while writing the audit's own marker.
 
 ## The fact
