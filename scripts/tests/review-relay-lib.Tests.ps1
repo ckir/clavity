@@ -206,6 +206,45 @@ VERDICT: NOT READY
         Get-RelayVerdict $c.Reply | Should -BeExactly 'NOT READY'
         @(Get-RelayFindings $c.Reply | ForEach-Object Severity) | Should -Contain 'BLOCKING'
     }
+    It 'reports NO reply, as format aisave, when a plain AiSave reply quotes "---" + "## Human" (G2 accepted limit)' {
+        # Owner ruling 2026-09-29: the heading path is NOT made fence-aware (an inline diff's " ```"
+        # context lines would unbalance the fences and hide the real "## Assistant"). The failure stays
+        # LOUD - no reply - and collect's hint for format 'aisave' sends the owner to AiSaveDev.
+        $f = '```'
+        $text = @"
+---
+title: "quoted transcript"
+date: 2026-09-29
+url: https://example.invalid/quoted-transcript
+platform: example
+---
+
+## Human
+
+Please review this.
+
+---
+
+## Assistant
+
+1. [MINOR] a finding
+
+$f
+---
+
+## Human
+
+a quoted turn
+$f
+
+VERDICT: NOT READY
+"@
+        $path = Join-Path $TestDrive 'quoted-transcript.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Reply | Should -BeNullOrEmpty
+        $c.Format | Should -BeExactly 'aisave'
+    }
     It 'takes the reply from the NEW exchange in a two-exchange capture, not the old one (H2)' {
         $text = @"
 ---
@@ -526,6 +565,20 @@ Describe 'Get-RelayFindings' {
     }
     It 'does not count a bracketed severity word inside prose that is not a numbered finding (S6 control)' {
         @(Get-RelayFindings "the [**BLOCKING**] tag is not itself a finding.`nVERDICT: READY").Count | Should -Be 0
+    }
+    It 'skips a finding shape inside a closed code fence and keeps the real ones around it (G1)' {
+        $f = '```'
+        $found = @(Get-RelayFindings "1. [MINOR] real`n$f`n2. [BLOCKING] quoted example`n$f`n3. [MATERIAL] real after`n`nVERDICT: NOT READY")
+        @($found | ForEach-Object Severity) | Should -Be @('MINOR', 'MATERIAL')
+        @($found | ForEach-Object Line) | Should -Be @(1, 5)
+    }
+    It 'closes a fence only with the same character, at least as long (G1)' {
+        $inner = "~~~`n1. [BLOCKING] still inside`n" + '```' + "`n1. [BLOCKING] still inside too"
+        @(Get-RelayFindings "~~~~`n1. [BLOCKING] example`n$inner`n~~~~`n2. [MINOR] real" | ForEach-Object Severity) | Should -Be @('MINOR')
+    }
+    It 'lets an unclosed fence mask nothing, so a later real finding still counts (G1 fail-safe)' {
+        $f = '```'
+        @(Get-RelayFindings "$f`n1. [BLOCKING] real`n`nVERDICT: NOT READY" | ForEach-Object Severity) | Should -Be @('BLOCKING')
     }
 }
 

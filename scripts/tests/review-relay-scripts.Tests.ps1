@@ -118,6 +118,7 @@ Describe 'new-round.ps1' {
         $r = Invoke-Relay $script:NewRound @('-Review', 'demo', '-ProjectRoot', $p)
         $r.Exit | Should -Be 1
         $r.Out | Should -Match 'new-round: review\.json is not valid JSON'
+        Test-Path (Join-Path $p '.review-relay' 'demo' 'round-02') | Should -BeFalse
     }
     It 'writes review.json and round.json with LF line endings' {
         $p = New-Project
@@ -327,6 +328,8 @@ Please review this.
         $r.Exit | Should -Be 0 -Because $r.Out
         $collected = Get-Content -Raw (Join-Path $script:RoundDir 'collected.md')
         $collected | Should -Match 'This capture has no reply'
+        $collected | Should -Match 'save it again with AiSaveDev instead'
+        $r.Out | Should -Match 'save it again with AiSaveDev instead'
     }
     It 'a re-run leaves exactly one numbered copy per capture' {
         Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox

@@ -119,7 +119,15 @@ foreach ($item in $captures) {
     $replyBody = $c.Reply
     if ([string]::IsNullOrWhiteSpace($replyBody)) {
         $replyBody = '(This capture has no reply - it has no "## Assistant" section. It was probably saved before the model finished answering. Save it again once the answer is complete.)'
-        Write-Warning "collect: $($item.File.Name) has no reply (saved before the model finished?)"
+        $hint = ''
+        if ($c.Format -eq 'aisave') {
+            # G2 (owner ruling 2026-09-29): a plain AiSave capture has no unambiguous turn delimiter,
+            # so a reply that quotes its own "---" + "## Human" (a transcript in a code block, say) hides
+            # the reply. The parser is left alone; the failure stays loud and names the fix.
+            $hint = ' If the answer WAS complete, it probably quotes a "## Human" heading, which a plain AiSave capture cannot tell apart from a new turn: save it again with AiSaveDev instead.'
+            $replyBody = $replyBody.TrimEnd(')') + $hint + ')'
+        }
+        Write-Warning "collect: $($item.File.Name) has no reply (saved before the model finished?)$hint"
     }
     $bodies.Add("## $n. $($c.Platform) - $($c.Title)`n`nSource: ``replies/$copyName`` ($($c.Url))`n`n$replyBody`n")
     if ($PSCmdlet.ShouldProcess((Join-Path $roundDir 'replies' $copyName), 'copy capture')) {

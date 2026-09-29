@@ -185,16 +185,45 @@ function Read-AiSaveCapture {
     [pscustomobject]@{ Path = $Path; Platform = $meta['platform']; Url = $meta['url']; Title = $meta['title']; Date = $meta['date']; Reply = $reply; Tag = $tag; Format = $format }
 }
 
+function Get-ClosedFenceMask {
+    # G1: marks every line of each CLOSED fenced code block, the fence lines included. An opener is
+    # 0-3 spaces then 3+ backticks or 3+ tildes; its closer is the same character, at least as long,
+    # with nothing after it but spaces or tabs. An opener with no closer masks nothing, so an
+    # unbalanced fence can only over-count a finding (fail safe), never hide one.
+    param([AllowEmptyCollection()][string[]]$Lines)
+    $mask = [bool[]]::new($Lines.Count)
+    $i = 0
+    while ($i -lt $Lines.Count) {
+        if ($Lines[$i] -match '^ {0,3}(`{3,}|~{3,})') {
+            $closer = '^ {{0,3}}{0}{{{1},}}[ \t]*$' -f [regex]::Escape([string]$Matches[1][0]), $Matches[1].Length
+            $close = -1
+            for ($j = $i + 1; $j -lt $Lines.Count; $j++) {
+                if ($Lines[$j] -match $closer) { $close = $j; break }
+            }
+            if ($close -ge 0) {
+                for ($k = $i; $k -le $close; $k++) { $mask[$k] = $true }
+                $i = $close + 1
+                continue
+            }
+        }
+        $i++
+    }
+    , $mask
+}
+
 function Get-RelayFindings {
     # Spec 6.3: the four observed finding shapes. Line is the 1-based line in the LF-normalised reply.
     # Emits the findings one by one (callers wrap the call in @()); emits nothing when there are none.
+    # G1: a finding shape inside a closed code fence is an example or a quote, not a finding.
     param([AllowEmptyString()][AllowNull()][string]$Reply)
     $found = [System.Collections.Generic.List[object]]::new()
     if ([string]::IsNullOrEmpty($Reply)) { return }
     $lines = (ConvertTo-LfText $Reply) -split "`n"
+    $fenced = Get-ClosedFenceMask -Lines $lines
     $pending = $null
     $pendingDepth = 0
     for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($fenced[$i]) { continue }
         $l = $lines[$i]
         if ($l -match '^\s*(?:#{1,6}\s*)?\**\d+\.\**\s*\**\[\**(?i:(BLOCKING|MATERIAL|MINOR))\**\]') {
             $found.Add([pscustomobject]@{ Line = $i + 1; Severity = $Matches[1].ToUpperInvariant() })

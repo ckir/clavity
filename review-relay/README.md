@@ -45,6 +45,12 @@ under `.review-relay/<review-name>/`.
   prompt carried the `review-relay tag:` line (run `collect.ps1 -Round <n>`). An untagged capture goes by
   file time instead.
 - **Counts show `unknown`**: the reply did not use a recognised finding format; read it in `collected.md`.
+- **A finished reply shows "This capture has no reply"**: the reply probably quotes a `## Human` heading
+  (a transcript in a code block, say). A plain AiSave capture has no unambiguous turn delimiter, so that
+  heading looks like a new turn. Save it again with AiSaveDev, an AiSave variant that writes per-turn
+  markers (`format: aisave-dev/1`). `collect.ps1` reads those markers in place of the headings.
+- **A count includes an example**: a finding written inside a closed code fence is not counted, but one in
+  plain text or a quote is. Check it against `collected.md`.
 
 ## Docs
 
