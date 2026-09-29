@@ -77,3 +77,21 @@ the same session. The loss is silent and it recreated the exact defect the scrip
 was caught only by inspecting the written bytes. The workaround now in force: scripts are written with the
 Write tool, never a shell heredoc, and a byte-repair script refuses to run if a replacement string holds a
 control byte (that guard was proven with a deliberately mangled copy).
+
+## The layer, isolated 2026-09-30 - it is the Claude Code Bash tool, NOT rtk
+
+Every candidate was measured with the same two-backslash string (`x\\y`), each with a control:
+
+| layer | result |
+|---|---|
+| Bash tool: quoted heredoc, `printf '%s'` of a single-quoted arg, `echo '...'` | ONE backslash reaches bash, in all three - even inside single quotes, which bash never interprets |
+| PowerShell tool: `'x\\y'` | length 4, TWO backslashes - intact |
+| Write tool | intact (`od -c`) |
+| `rtk hook claude` (rtk 0.50.0) fed a hook payload | a command it does not rewrite: no `updatedInput`, the original runs; one it rewrites (`git log --grep 'x\\y'`): returned with BOTH backslashes |
+| the rtk-mcp-cc plugin's registered hook `bin/rtk-cc-hook.exe` (0.6.4) | identical to the row above |
+| `rtk proxy` (argv, no shell) | intact |
+
+The two other PreToolUse hooks on Bash (`remote-iteration-breaker.sh`, `power-failure-index-reminder.sh`) also
+run on PowerShell, where nothing is lost, and neither emits `updatedInput`. So the backslash is dropped after
+the hooks, where Claude Code on Windows hands the command string to Git Bash. **Owner action:** reported to
+Claude Code (2026-09-30); rtk is cleared and gets no report.
