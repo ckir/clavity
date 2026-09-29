@@ -67,3 +67,8 @@ agy-autotrain/docs/fix-the-tool-backlog/.ruff_cache/**
 # The gate's own corpus never included these (it walks domain roots, and this is not under one), so this
 # changes no violation. It is the coverage QUERY, which walks the whole repository, that needed telling.
 .worktrees/**
+# The review-relay capture extension (AiSaveDev) and its node tests. This is a BROWSER extension: Chrome
+# loads it from a folder the user picks with "Load unpacked", and Claude Code never reads it (it loads
+# only the plugin's skills and hooks). So none of it is injected context. MEASURED 2026-09-29: without
+# this line the gate fails on content.js, popup.* and the PNG icons (encoding invariant).
+review-relay/extension/**

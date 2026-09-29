@@ -33,3 +33,6 @@ clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs text eol=lf
 # clone IS the CI checkout - the gate would have failed on its very first run.
 # Same mechanism, same reason, as the cheatsheet trio above.
 agy-autotrain/knowledge/rules/*.md text eol=lf
+# The bundled AiSaveDev extension ships to a browser byte for byte (install-extension.ps1 copies it):
+# no line-ending conversion, so every checkout carries exactly the committed bytes.
+review-relay/extension/aisavedev/** -text

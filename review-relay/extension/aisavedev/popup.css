@@ -1,0 +1,96 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  width: 280px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  background: #f9fafb;
+  color: #111827;
+}
+
+.container {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logo {
+  font-size: 16px;
+  font-weight: 700;
+  color: #4f46e5;
+  letter-spacing: -0.3px;
+}
+
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  background: #e5e7eb;
+  color: #6b7280;
+}
+
+.badge.chatgpt        { background: #d1fae5; color: #065f46; }
+.badge.claude         { background: #ede9fe; color: #5b21b6; }
+.badge.gemini         { background: #dbeafe; color: #1d4ed8; }
+.badge.perplexity     { background: #ccfbf1; color: #0f766e; }
+.badge.copilot        { background: #e0f2fe; color: #0369a1; }
+.badge.characterai    { background: #ffedd5; color: #c2410c; }
+.badge.oai-playground { background: #d1fae5; color: #065f46; }
+.badge.hf-chat        { background: #fef9c3; color: #854d0e; }
+.badge.meta-ai        { background: #eff6ff; color: #1e40af; }
+.badge.grok           { background: #f1f5f9; color: #1e293b; }
+.badge.generic        { background: #e5e7eb; color: #374151; }
+.badge.error          { background: #fee2e2; color: #991b1b; }
+.badge.qwen           { background: #f3e8ff; color: #7c3aed; }
+
+.save-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 16px;
+  background: #4f46e5;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.save-btn:hover:not(:disabled) { background: #4338ca; }
+.save-btn:active:not(:disabled) { background: #3730a3; }
+
+.save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.save-btn .icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.status {
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.status.hidden { display: none; }
+.status.info    { background: #eff6ff; color: #1d4ed8; }
+.status.success { background: #f0fdf4; color: #166534; }
+.status.error   { background: #fef2f2; color: #991b1b; }
