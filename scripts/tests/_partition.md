@@ -855,7 +855,10 @@ check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 check-growth-budget.Tests.ps1                    15,3s   15 tests   <- FAST, re-measured 2026-08-05
-check-injected-context.Tests.ps1                 91,5s  155 tests   <- SLOW as of 2026-08-24; was FAST -
+check-injected-context.Tests.ps1                 91,5s  157 tests   <- SLOW as of 2026-08-24; was FAST -
+  155 -> 157 on 2026-09-29 (AiSaveDev shipping): the review-relay/extension/** exclusion - a subtracts row for
+  review-relay/extension/aisavedev/content.js plus a control that review-relay's own SKILL.md is still audited.
+  Runtime NOT re-measured.
   154 -> 155 on 2026-09-12 (anomaly triage): one row pinning that build output GIT ignores is not reported,
   with the not-ignored control in the same row. It stages a real `git init` fixture and runs the gate twice.
   Runtime NOT re-measured. (the original note follows)
