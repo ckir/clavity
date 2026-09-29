@@ -3278,6 +3278,101 @@ The first mutation attempt SKIPPED with `ANCHOR COUNT=0` because the harness ass
 is LF. It reported the skip rather than passing silently, which is the only reason the gap was noticed - a
 mutation harness that cannot fail loudly proves nothing.
 
+---
+
+### §47 — The docs-audit findings view keeps sections for docs that left the roster — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned**
+
+`scripts/docs-audit.ps1` rebuilds `docs/docs-audit-findings.md` per doc but never drops a section whose doc
+is no longer in `docs/user-facing-docs.txt`. MEASURED 2026-09-23 and re-measured at triage 2026-09-29: the
+view still carries CLEAN sections for `ghidrust/README.md`, `ghidrust/CONTRIBUTING.md` and
+`ghidrust/plugin/README.md` (`docs/docs-audit-findings.md:130-140`), while `git ls-files ghidrust` returns 0
+files - ghidrust was retired 2026-09-14.
+
+Why track it: a reader who trusts a CLEAN row without diffing it against the roster is reading a verdict
+about a deleted file. The view reports more than it checked.
+
+**Blast radius:** one maintainer script and its generated view. No plugin pair, no installer payload.
+
+---
+
+### §48 — The suite-registration test blames a missing file for an untracked one — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned**
+
+`scripts/tests/test-suite-registration.Tests.ps1`'s row `names no suite that is missing from disk` (`:131`)
+builds its on-disk set from `git ls-files`, i.e. TRACKED files only. A suite that is registered in the
+justfile and present on disk but not yet committed is reported as a file that does not exist.
+
+MEASURED 2026-09-29 (AiSaveDev shipping, Task 5): a subagent ran the fast gate before committing its new
+suite and got "missing from disk" for a file that was there. The gate's verdict (red) was right - an
+untracked suite does not ship - but the row's name and `-Because` text send the reader to the wrong cause.
+
+**Blast radius:** one test row's wording or its file-set source. Fast half only.
+
+---
+
+### §49 — No gate catches control characters in a member doc, or git reclassifying it as binary — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned**
+
+MEASURED 2026-09-29 (AiSaveDev shipping, Task 7): an edit wrote `%LOCALAPPDATA%\review-relay\aisavedev`
+into `review-relay/README.md` with `\r` and `\a` escape-interpreted into a CR and a BEL mid-line. git then
+classified the README as BINARY (`git ls-files --eol`: `i/-text`), and the whole pre-push set passed it
+12/12, including `member-docs` and `user-facing-docs`. Re-measured at triage: neither
+`scripts/check-member-docs.ps1` nor `scripts/check-user-facing-docs.ps1` mentions control characters or a
+binary classification.
+
+The driver caught it by eye (fixed in `ec6ab25d`). The failure mode is general: any tool that interprets
+backslash escapes can corrupt a Windows path inside inserted text, and a binary README renders as nothing
+on GitHub.
+
+**Blast radius:** a new check in a docs gate plus its test rows (positive AND a distractor: a doc that
+legitimately contains a tab must pass). Shared, not a plugin pair.
+
+---
+
+### §50 — A fast-suite test rewrites a tracked fixture in place — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned**
+
+`scripts/tests/generate-scoped-manifest.Tests.ps1` writes to the tracked
+`scripts/tests/fixtures/members-pluginName.json` instead of a `$TestDrive` copy. Re-measured at triage
+2026-09-29: one run of that suite (2/2 passed) moved the fixture's mtime and left its working copy
+`w/mixed` line endings, while `git status` stays clean because the normalised content is unchanged.
+
+Why track it: a test that mutates its own oracle can drift the fixture silently, and the mixed endings
+surface later as a spurious diff or a CRLF warning on an unrelated commit.
+
+**Blast radius:** one suite; copy the fixture into `$TestDrive` first.
+
+---
+
+### §51 — `agy-mark.sh head` writes a marker for a sha that does not exist — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned**
+
+MEASURED 2026-09-29: while writing the AiSaveDev capstone marker the driver passed a mistyped full sha,
+`c0c17cb0b1a4d0da0000000000000000`. `agy-mark.sh head` accepted and wrote it: the ledger precondition
+matched the ledger's short `c0c17cb0`, and nothing checked that the value resolves to a commit
+(`git cat-file -e <sha>^{commit}`). Corrected by re-running with the real sha.
+
+Why track it: the marker is what the auto-fire hooks compare with HEAD, so a nonexistent sha silently
+re-arms the gate. A guard that validates the ledger but not
+the value it guards certifies a string.
+
+**Blast radius:** `plugin/hooks/agy-mark.sh` in BOTH driver plugins (mirror to classic), plus a failing
+control and a guard mutation per the guard law.
+
+---
+
+### §52 — The agy-test-audit skill says write ambient HEAD; the marker gate refuses it — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned**
+
+`agy-test-audit/SKILL.md`, section `## Debounce marker`, says the marker content is ambient `HEAD`. But the
+same skill requires the ledger row to be committed BEFORE the marker, and `agy-mark.sh head` records a sha
+only when it is the RIGHT-hand endpoint of a ledger row's range. The ledger commit cannot name itself.
+
+MEASURED 2026-09-29: the marker for HEAD `e1ee49ec` (the ledger commit) was REFUSED `ABSENT`; the fold sha
+`7400a279` was refused while it appeared only in the evidence prose, and accepted once it ended the row's
+range. Earlier audits (e.g. the review-relay row ending at `25ffd467`) followed the same range-endpoint
+convention, so the practice works and the SKILL text is what is wrong.
+
+**Blast radius:** the SKILL.md text in BOTH driver plugins (load `writing-skills` first), and
+`check-agy-discipline-skills.ps1` if it pins that wording.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the

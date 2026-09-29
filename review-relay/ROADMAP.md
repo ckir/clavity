@@ -23,3 +23,23 @@ The fully automated design is archived, not abandoned:
 - the clavity client on top of it: `docs/superpowers/specs/2026-09-28-web-seats-design.md`.
 
 Resume when the manual paste is the bottleneck. review-relay's templates, read proof and ledger carry over.
+
+## Tracked defects
+
+### R1 - collect gives the wrong advice for an AiSaveDev capture whose scraper fell back
+
+**Status:** promoted from the anomalies conveyor 2026-09-29, not yet planned.
+
+When a site's layout drifts, AiSaveDev's scrapers fall back: `scrapeGeneric` saves the whole page as one
+turn labelled "Conversation", and the OpenAI Playground scraper labels every turn "message". The file still
+says `format: aisave-dev/1`, but it has no `role=human` / `role=assistant` marker, so `Read-AiSaveCapture`
+drops to the H2 path (`Format=aisave`, empty reply). `collect` then warns, correctly, that the capture has
+no reply - but for `Format=aisave` it adds "save it again with AiSaveDev instead"
+(`scripts/collect.ps1:121`), which is wrong for a file AiSaveDev already saved.
+
+MEASURED 2026-09-29 (AGY-CAPSTONE round 4 on the AiSaveDev shipping branch) with a jsdom-emitted
+drifted-ChatGPT capture: parsed as `Format=aisave`, empty reply, `NO-VERDICT`. The failure is loud (a
+warning plus a NO-VERDICT row) and no wrong reply is produced; only the diagnosis misleads.
+
+A fix needs `Read-AiSaveCapture` to expose the DECLARED format as well as the path it used, so collect can
+say "AiSaveDev could not find the turns on this page - the site may have changed".
