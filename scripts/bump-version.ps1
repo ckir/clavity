@@ -117,6 +117,7 @@ switch ($Member) {
     'review-relay' {
         Set-JsonVersion 'review-relay/plugin.json'
         Set-JsonVersion 'review-relay/.claude-plugin/plugin.json'
+        Set-JsonVersion 'review-relay/extension/aisavedev/manifest.json'
     }
     # ghidrust fully retired 2026-09-14 (superseded by re-ghidra-mcp-cc in ckir/aiplugins) — case removed.
 }
