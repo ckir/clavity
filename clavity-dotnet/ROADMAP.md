@@ -3373,6 +3373,33 @@ convention, so the practice works and the SKILL text is what is wrong.
 
 ---
 
+### §53 — `clavity start` has no test: the pairing-doc wiring and the refusal are unguarded — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor (AGY-TEST-AUDIT G1+G2, owner-deferred), not yet planned**
+
+The `start` branch of `clavity-dotnet/src/Clavity.Cli/Program.cs` is top-level statements, and no test in
+the repository invokes it (grep, 2026-09-29). Two behaviours from the pairing-doc fix (`3f686749`) are
+therefore unguarded:
+
+- **Wiring:** start must pass `PairingDoc.Materialize`'s return value as `AgyInstallDocPath`. A regression
+  that passes `null` makes the Launcher omit the `-i` prompt - the SILENT unpaired launch the fix removed -
+  and every test stays green.
+- **Refusal:** when `Materialize` throws an IOException / UnauthorizedAccessException /
+  InvalidOperationException, start must print the message and `return 1` BEFORE any `Spawn`. Dropping the
+  `return 1` launches a dead pairing, and every test stays green.
+
+Why it was not closed at audit: it cannot be tested as written. `Environment.GetFolderPath(UserProfile)`
+on Windows comes from the shell's known-folder API, not `USERPROFILE`, so a test cannot redirect it, and
+start creates `~/.gemini/antigravity-cli/logs` before the refusal point. Closing it means extracting the
+branch into a unit that returns the `LaunchPlan` (or the refusal) with injected paths - a source change,
+so it needs an AGY-FIRST design consult (section 24) and then its own capstone and audit.
+
+The rest of the change IS guarded: `PairingDocTests` (7 facts, each proven red under a logic mutant) and
+the `-i` assertion in `LauncherTests`.
+
+**Blast radius:** `Program.cs` start branch + a new test class. clavity-dotnet only; classic has no
+pairing launcher.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
