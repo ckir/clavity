@@ -74,3 +74,25 @@ test('a reply whose own text contains "\\n\\n---\\n\\n## Assistant\\n\\n" still 
     'fake heading must appear before the end marker'
   );
 });
+
+// The OpenAI Playground scraper takes each turn's label from page text, so a label can carry a
+// space ("Tool call"). review-relay's Read-AiSaveCapture only recognises `role=[a-z]+`; a marker it
+// cannot read is not a turn boundary, and that turn's text is appended to the reply before it.
+test('every turn marker matches the role=[a-z]+ shape review-relay reads, even for a label with a space', () => {
+  const html = `<!doctype html><html><head><title>Playground</title></head><body>
+<div data-testid="playground-message"><span class="role">User</span><p>What is two plus two?</p></div>
+<div data-testid="playground-message"><span class="role">Assistant</span><p>It is four, as computed.</p></div>
+<div data-testid="playground-message"><span class="role">Tool call</span><p>calculator returned four</p></div>
+</body></html>`;
+  const dom = new JSDOM(html, { url: 'https://platform.openai.com/playground/chat', runScripts: 'outside-only' });
+  const { error, markdown } = installAiSaveDev(dom.window).scrape();
+  dom.window.close();
+  assert.equal(error, undefined);
+  assert.ok(markdown.includes('## Tool call'), 'fixture setup assumption failed: expected the "Tool call" turn heading');
+
+  const markerLines = markdown.split('\n').filter(l => l.startsWith('<!-- aisave:') && !l.endsWith(' end -->'));
+  assert.equal(markerLines.length, 3, `expected 3 turn markers, found ${markerLines.length}`);
+  for (const line of markerLines) {
+    assert.match(line, /^<!-- aisave:[0-9a-f]{12} turn=\d+ role=[a-z]+ -->$/);
+  }
+});

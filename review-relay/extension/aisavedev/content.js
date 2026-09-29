@@ -706,6 +706,12 @@ if (!window.__aiSaveDev) {
       return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
     }
 
+    // A marker's role must be [a-z]+ (review-relay reads no other shape), but some scrapers take the
+    // label from page text ("Tool call"). Keep only the letters; the heading keeps the label as shown.
+    function markerRole(label) {
+      return String(label).toLowerCase().replace(/[^a-z]/g, '') || 'message';
+    }
+
     function buildMarkdown(title, messages, platform) {
       const date      = new Date().toISOString().split('T')[0];
       const safeTitle = title.replace(/"/g, '\\"');
@@ -725,7 +731,7 @@ if (!window.__aiSaveDev) {
       const body = `# ${title}\n\n` +
         messages
           .map(({ label, content }, i) =>
-            `<!-- aisave:${nonce} turn=${i + 1} role=${String(label).toLowerCase()} -->\n## ${label}\n\n${content}`)
+            `<!-- aisave:${nonce} turn=${i + 1} role=${markerRole(label)} -->\n## ${label}\n\n${content}`)
           .join('\n\n---\n\n') +
         `\n\n<!-- aisave:${nonce} end -->\n`;
 
