@@ -360,9 +360,10 @@ jobs:
         shell: pwsh
         # `node --test` exits 0 when it finds no test files, and silently skips a named file that does
         # not exist, so a renamed test file would leave this step green. Floor the count, as above.
+        # The floor reads `# pass`, not `# tests`: TAP's `# tests` also counts skipped and todo tests.
         run: |
           $out = npm test -- --test-reporter=tap
           $out
           if ($LASTEXITCODE -ne 0) { throw "npm test failed (exit $LASTEXITCODE)" }
-          $m = $out | Select-String -Pattern '^# tests (\d+)$' | Select-Object -Last 1
-          if (-not $m -or [int]$m.Matches[0].Groups[1].Value -lt 3) { throw "only $(if ($m) { $m.Matches[0].Groups[1].Value } else { 0 }) node tests ran - expected format + golden (>=3)" }
+          $m = $out | Select-String -Pattern '^# pass (\d+)$' | Select-Object -Last 1
+          if (-not $m -or [int]$m.Matches[0].Groups[1].Value -lt 3) { throw "only $(if ($m) { $m.Matches[0].Groups[1].Value } else { 0 }) node tests passed - expected format + golden (>=3)" }
