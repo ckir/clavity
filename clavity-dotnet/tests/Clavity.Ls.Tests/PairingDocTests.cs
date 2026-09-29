@@ -57,4 +57,20 @@ public sealed class PairingDocTests : IDisposable
         Assert.Equal(SourceDoc(), File.ReadAllBytes(second));
         Assert.Equal(new[] { PairingDoc.FileName }, Directory.GetFiles(_dir).Select(Path.GetFileName));
     }
+
+    // Replacing a file that another process has open fails on Windows (measured: File.Move onto an open file is
+    // "Access to the path is denied" under every share mode), and start then refuses to launch. Skipping the
+    // write when the bytes already match keeps that risk to the one start after an upgrade, so pin the skip by
+    // its effect: an unchanged doc is not rewritten.
+    [Fact]
+    public void Materialize_does_not_rewrite_a_doc_that_already_matches()
+    {
+        var path = PairingDoc.Materialize(_dir);
+        var marker = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(path, marker);
+
+        PairingDoc.Materialize(_dir);
+
+        Assert.Equal(marker, File.GetLastWriteTimeUtc(path));
+    }
 }
