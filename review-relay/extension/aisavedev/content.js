@@ -707,9 +707,12 @@ if (!window.__aiSaveDev) {
     }
 
     // A marker's role must be [a-z]+ (review-relay reads no other shape), but some scrapers take the
-    // label from page text ("Tool call"). Keep only the letters; the heading keeps the label as shown.
+    // label from page text ("Tool call", "User 1"). Keep only the letters, and name the user `human`,
+    // which is what review-relay looks for; the match is exact, so a tool named "user_info" stays
+    // `userinfo`. The heading keeps the label as shown.
     function markerRole(label) {
-      return String(label).toLowerCase().replace(/[^a-z]/g, '') || 'message';
+      const role = String(label).toLowerCase().replace(/[^a-z]/g, '');
+      return role === 'user' ? 'human' : role || 'message';
     }
 
     function buildMarkdown(title, messages, platform) {

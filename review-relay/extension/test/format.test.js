@@ -96,3 +96,22 @@ test('every turn marker matches the role=[a-z]+ shape review-relay reads, even f
     assert.match(line, /^<!-- aisave:[0-9a-f]{12} turn=\d+ role=[a-z]+ -->$/);
   }
 });
+
+// The legacy Playground branch passes the page's raw <label> text. review-relay finds the last exchange
+// by its `role=human` marker, so "User" must be emitted as `human`; with no human marker it returns the
+// FIRST assistant reply. The match is exact, so a tool labelled "user_info" is not taken for the user.
+test('Playground labels User / Assistant become role=human / role=assistant, and only exactly', () => {
+  const html = `<!doctype html><html><head><title>Playground</title></head><body>
+<div class="playground-section"><label>User</label><textarea>first question</textarea></div>
+<div class="playground-section"><label>Assistant</label><textarea>first reply text</textarea></div>
+<div class="playground-section"><label>User 1</label><textarea>second question</textarea></div>
+<div class="playground-section"><label>user_info</label><textarea>tool payload text</textarea></div>
+<div class="playground-section"><label>Assistant</label><textarea>last reply text</textarea></div>
+</body></html>`;
+  const dom = new JSDOM(html, { url: 'https://platform.openai.com/playground', runScripts: 'outside-only' });
+  const { error, markdown } = installAiSaveDev(dom.window).scrape();
+  dom.window.close();
+  assert.equal(error, undefined);
+  assert.deepEqual(extractTurnMarkers(markdown).map(m => m.role), ['human', 'assistant', 'human', 'userinfo', 'assistant']);
+  assert.ok(markdown.includes('## User 1'), 'the heading keeps the label as shown');
+});
