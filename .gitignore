@@ -34,6 +34,7 @@ docs/superpowers/specs/*
 !docs/superpowers/specs/2026-07-21-golden-header-epic-sequencing-design.md
 !docs/superpowers/specs/2026-07-22-ship-agy-disciplines-design.md
 !docs/superpowers/specs/2026-07-22-docs-rationalize-tool-design.md
+!docs/superpowers/specs/2026-09-29-roadmap-sweep-sequence-design.md
 # Implementation plans — same layout and the same publishing practice as specs above: re-admit the
 # plans/ directory, exclude its contents, and publish a plan deliberately (force-add or a negation below).
 !docs/superpowers/plans/
@@ -41,6 +42,7 @@ docs/superpowers/plans/*
 !docs/superpowers/plans/2026-07-22-docs-rationalize-sp1-user-facing-list.md
 !docs/superpowers/plans/2026-07-22-docs-rationalize-sp2-audit-script.md
 !docs/superpowers/plans/2026-09-06-s27-marker-write-gate.md
+!docs/superpowers/plans/2026-09-29-roadmap-sweep-step-0.md
 docs/session-notes/
 .clavity/
 # review-relay round workspaces (snapshots, prompts, captured web-model replies). Owner ruling 2026-09-28,
