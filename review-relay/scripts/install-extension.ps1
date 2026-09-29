@@ -72,7 +72,7 @@ if (-not (Test-Path -LiteralPath $Destination) -and (Test-Path -LiteralPath (Joi
 
 $previous = Get-InstalledVersion $Destination
 
-if (-not $PSCmdlet.ShouldProcess($Destination, "install AiSaveDev $expected (staged in $newDir, then swapped in)")) { exit 0 }
+if (-not $PSCmdlet.ShouldProcess($Destination, "install AiSaveDev $expected (stage it in $newDir with its marker file, then swap it in)")) { exit 0 }
 
 if (Test-Path -LiteralPath $newDir) { Remove-Item -LiteralPath $newDir -Recurse -Force }
 New-Item -ItemType Directory -Path $newDir | Out-Null

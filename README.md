@@ -57,7 +57,7 @@ These two tools are **mutually exclusive** — pick exactly one. They let Claude
 #### I want my agents to learn and share knowledge (Opt-in Add-ons)
 *   **[agy-autotrain](agy-autotrain/README.md):** Auto-trains clavity's `agy` knowledge from everyday usage. It captures insights, verifies them, and compiles them into a project-agnostic manual.
 *   **[commonmemory](commonmemory/README.md):** A shared cross-agent memory convention. Teaches Claude and `agy` to tag notes (decisions, gotchas, bug fixes) and proactively share context via the agent memory signal bus.
-*   **[review-relay](review-relay/README.md):** Assisted copy-paste review rounds with web AI models (ChatGPT, Meta AI, Gemini, or any other). Claude prepares each round and verifies the findings against the real text; you carry the text to the sites and save replies with AiSave.
+*   **[review-relay](review-relay/README.md):** Assisted copy-paste review rounds with web AI models (ChatGPT, Meta AI, Gemini, or any other). Claude prepares each round and verifies the findings against the real text; you carry the text to the sites and save replies with the bundled AiSaveDev extension (or AiSave).
 
 ### How to get started
 

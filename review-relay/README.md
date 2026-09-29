@@ -43,7 +43,7 @@ Chrome installs an extension from outside the store.
 3. After a review-relay update: repeat step 1, then click **Reload** on AiSaveDev.
 
 `-Destination <folder>` installs somewhere else, and `-WhatIf` shows what it would do. It refuses to write
-into any folder it did not create.
+into any folder that holds anything but its own files.
 
 ## Configuration
 
