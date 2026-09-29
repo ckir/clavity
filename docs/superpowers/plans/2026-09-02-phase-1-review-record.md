@@ -43,7 +43,7 @@ Solo floor (10 seats) + agy escalation (`code-reviewer` subagent, 10 seats). **1
 ⚠ **A defect this round found in the REVIEW, not the artifact.** The first fold pass reported success on
 a replacement that silently did not apply, because the script asserted nothing - so a commit message
 claimed a fix that was not in the tree. Root cause, measured: backslash escapes were mangled in transit
-(`` arrived as a backspace byte), so the anchor could never match. **Every fold in this plan is now
+(`\b` arrived as a backspace byte), so the anchor could never match. **Every fold in this plan is now
 applied under a hard assertion, and one by line surgery rather than string replace.** The lesson is the
 one the repository already knows and it was violated while folding a finding about exactly it: a mutation
 that is not asserted did not happen.

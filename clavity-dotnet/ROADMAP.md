@@ -3322,6 +3322,13 @@ The driver caught it by eye (fixed in `ec6ab25d`). The failure mode is general: 
 backslash escapes can corrupt a Windows path inside inserted text, and a binary README renders as nothing
 on GitHub.
 
+**Two more live instances, found and repaired 2026-09-29 (ROADMAP sweep step 0),** by a byte scan of every
+tracked `*.md`: `docs/agy-test-audit-ledger.md:43` held a NUL where `\u0000` was written (committed
+`c22698cb`; git classified the ledger BINARY), and `docs/superpowers/plans/2026-09-02-phase-1-review-record.md:46`
+held a backspace where `\b` was written (committed `a8ec0281`; git still said text, so only a byte scan sees
+it). The gate must therefore scan BYTES, not rely on git's text/binary classification, and must fail on both
+pre-repair blobs: `git show b0e03801:<path>`.
+
 **Blast radius:** a new check in a docs gate plus its test rows (positive AND a distractor: a doc that
 legitimately contains a tab must pass). Shared, not a plugin pair.
 
