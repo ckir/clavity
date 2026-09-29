@@ -89,9 +89,7 @@ saveBtn.addEventListener('click', async () => {
     const url      = URL.createObjectURL(blob);
 
     await chrome.downloads.download({ url, filename, saveAs: false });
-    // download() resolves once the download STARTS; revoking at once could cut off a large capture.
-    // Closing the popup frees the blob anyway.
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    URL.revokeObjectURL(url);
 
     showStatus(`Saved: ${filename}`, 'success');
   } catch (err) {
