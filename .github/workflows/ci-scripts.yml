@@ -338,3 +338,23 @@ jobs:
           $bad = @($r.Containers | Where-Object { $_.Result -ne 'Passed' })
           if ($bad.Count -gt 0) { throw "$($bad.Count) container(s) failed to run or discover" }
           if ($r.TotalCount -lt 12) { throw "only $($r.TotalCount) tests discovered - expected the clavity-install suite (>=12)" }
+
+  review-relay-extension:
+    name: review-relay capture extension (node)
+    # windows-latest on purpose: its checkout uses core.autocrlf, so this job also proves the
+    # .gitattributes eol=lf rule keeps the golden capture byte-identical (golden.test.js).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Install test dependencies
+        working-directory: review-relay/extension/test
+        run: npm ci
+
+      - name: Node tests (format + golden contract)
+        working-directory: review-relay/extension/test
+        run: npm test
