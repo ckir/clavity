@@ -241,6 +241,56 @@ public class LsDiscoveryTests
     }
 
     [Fact]
+    public void ParseLatest_fallback_takes_the_FIRST_following_http_line_not_a_later_one()
+    {
+        // With no same-id line, the fallback candidate is the FIRST following HTTP line - the one bound right after
+        // the gRPC port. A later HTTP line in the same log belongs to some other session, so remembering the last
+        // candidate instead of the first would pair with it and then fail the adjacency guard on a healthy session.
+        var log =
+            "100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
+            "101 server.go:525] Language server listening on random port at 1001 for HTTP\n" +
+            "102 server.go:525] Language server listening on random port at 2000 for HTTP\n";
+
+        var ep = LsDiscovery.ParseLatest(log);
+
+        Assert.Equal(1000, ep.GrpcPort);
+        Assert.Equal(1001, ep.HttpPort);
+    }
+
+    [Fact]
+    public void ParseLatest_never_pairs_with_an_http_line_that_PRECEDES_the_chosen_grpc_line()
+    {
+        // The HTTP partner is searched only AFTER the newest gRPC line. glog's id field is a thread id and can repeat
+        // across a restart, so an older session's same-id HTTP line above the newest gRPC line must not be taken:
+        // it names the dead session's port, not this one's.
+        var log =
+            "100 server.go:525] Language server listening on random port at 900 for HTTP\n" +
+            "100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
+            "100 server.go:525] Language server listening on random port at 1001 for HTTP\n";
+
+        var ep = LsDiscovery.ParseLatest(log);
+
+        Assert.Equal(1000, ep.GrpcPort);
+        Assert.Equal(1001, ep.HttpPort);
+    }
+
+    [Fact]
+    public void ParseLatest_does_not_fall_back_to_an_older_complete_session_when_the_newest_is_incomplete()
+    {
+        // The boot race: the just-launched session has logged its gRPC line but not yet its HTTP line. Discovery must
+        // report that as truncated and let the caller wait - resolving to the OLDER complete pair above it would
+        // silently hand back a different workspace's Language Server (see the remarks on DiscoverActive).
+        var log =
+            "I0627 05:00:00.000000 111 server.go:517] Language server listening on random port at 50000 for HTTPS (gRPC)\n" +
+            "I0627 05:00:00.000001 111 server.go:525] Language server listening on random port at 50001 for HTTP\n" +
+            "I0627 06:00:00.000000 222 server.go:517] Language server listening on random port at 60000 for HTTPS (gRPC)\n";
+
+        var ex = Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(log));
+        Assert.Contains("gRPC port 60000", ex.Message);
+        Assert.Contains("looks truncated", ex.Message);
+    }
+
+    [Fact]
     public void ParseLatest_throws_on_empty_input()
     {
         Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(""));
