@@ -81,3 +81,5 @@ testResults.xml
 # template says these belong here; each carries LOCAL MACHINE PATHS, which this PUBLIC repo excludes
 # by policy (see the provenance note at the top of this file).
 .claude/*.local.md
+# review-relay capture-extension test dependencies (`npm ci` in review-relay/extension/test).
+review-relay/extension/test/node_modules/

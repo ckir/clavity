@@ -36,3 +36,8 @@ agy-autotrain/knowledge/rules/*.md text eol=lf
 # The bundled AiSaveDev extension ships to a browser byte for byte (install-extension.ps1 copies it):
 # no line-ending conversion, so every checkout carries exactly the committed bytes.
 review-relay/extension/aisavedev/** -text
+# review-relay extension fixtures: the golden capture is compared BYTE FOR BYTE with what content.js
+# emits (LF only). Under core.autocrlf a Windows checkout would turn it CRLF and the test would fail on
+# every Windows box while passing on Linux. MEASURED 2026-09-29: an existing review-relay fixture
+# checks out i/lf w/crlf without a rule like this one.
+review-relay/extension/test/fixtures/** text eol=lf
