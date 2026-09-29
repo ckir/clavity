@@ -47,6 +47,36 @@ public sealed class PairingDocTests : IDisposable
         Assert.Equal(SourceDoc(), File.ReadAllBytes(path));
     }
 
+    // Two releases' docs can have the same length, so the skip must compare BYTES: a stale doc of exactly the
+    // current length must still be replaced.
+    [Fact]
+    public void Materialize_replaces_a_stale_doc_of_the_same_length()
+    {
+        Directory.CreateDirectory(_dir);
+        var path = Path.Combine(_dir, PairingDoc.FileName);
+        var stale = new byte[SourceDoc().Length];
+        Array.Fill(stale, (byte)'x');
+        File.WriteAllBytes(path, stale);
+
+        PairingDoc.Materialize(_dir);
+
+        Assert.Equal(SourceDoc(), File.ReadAllBytes(path));
+    }
+
+    // When the final move fails, the temp file must not be left behind in ~/.clavity, and the failure must reach
+    // the caller as one of the exceptions `start` turns into a refusal. A directory squatting on the doc's name
+    // makes the move fail deterministically on every platform.
+    [Fact]
+    public void Materialize_leaves_no_temp_file_when_the_move_fails()
+    {
+        Directory.CreateDirectory(Path.Combine(_dir, PairingDoc.FileName));
+
+        var ex = Record.Exception(() => PairingDoc.Materialize(_dir));
+
+        Assert.True(ex is IOException or UnauthorizedAccessException, $"unexpected {ex?.GetType().Name ?? "no exception"}");
+        Assert.Empty(Directory.GetFiles(_dir));
+    }
+
     [Fact]
     public void Materialize_is_idempotent_and_leaves_no_temp_files()
     {
