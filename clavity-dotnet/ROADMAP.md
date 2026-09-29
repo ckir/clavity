@@ -3400,6 +3400,28 @@ pairing launcher.
 
 ---
 
+### §54 — The injected-context gate resolves references against the working tree, so it passes locally on files CI cannot see — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned**
+
+`scripts/check-injected-context.ps1:562` accepts a backticked, repo-prefixed reference when
+`Test-Path (Join-Path $RepoRoot $Token)` finds it ON DISK. An untracked or gitignored file therefore
+satisfies the `reference` invariant locally, while CI's clean checkout reports it `unclassified`.
+
+MEASURED 2026-09-29: `review-relay/ROADMAP.md` (D2) backticked `AIBridgeWeb/...v0.13.md` (untracked) and a
+spec under the gitignored `docs/superpowers/specs/`. The local gate said `OK`; a clean `git worktree` at
+the same HEAD reported 2 violations and exit 1, exactly as CI did. `ci-injected-context` stayed RED on main
+from `b841bf2b` to `47695160` without any local signal, because the gate is also not in `lefthook.yml`'s
+pre-push set. Fixed for that file in `59a1468d`; the gate itself is unchanged.
+
+**Fix outline:** resolve repo-prefixed tokens against git's view (tracked files, e.g. the index the
+suffix matcher already builds, or `git cat-file -e HEAD:<path>`) instead of the filesystem. It is a guard
+change, so it needs a failing control (an untracked file referenced from shipped text must now FAIL
+locally) and a guard mutation, plus a decision on whether the gate joins pre-push (it runs in seconds).
+
+**Blast radius:** one gate script and `scripts/tests/check-injected-context.Tests.ps1` (157 rows). Shared,
+not a plugin pair.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
