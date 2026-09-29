@@ -665,3 +665,21 @@ unpinned (parser requires the keys; golden is byte-equal); icons missing (tracke
 reply that collect warns about). Below the floor: a test that prints a fake `# pass 3` then exits; a
 digits-only label. Deferred: collect's "save it again with AiSaveDev" hint is wrong for a drifted
 AiSaveDev capture -> `DEFERRED-TO-ANOMALIES: review-relay/scripts/collect.ps1:121 * 2026-09-29`.
+
+## The embedded agy pairing doc (clavity-dotnet `start`, capstoned 2026-09-29)
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-29 | `679d612b..e4c5754f` (`3f686749` - the same patch as the pre-rebase `3e6d8a2` - plus `ac8efc16` and this run's fold `e4c5754f`; review range for round 1 was `679d612b..ac8efc16`) | 2 | **GREEN - owner-adjudicated 2026-09-29.** Fold: `e4c5754f` (new test pins that `PairingDoc.Materialize` skips an unchanged doc; with the skip disabled the four existing tests stayed green and the new one alone went red). Round-start gates: `dotnet build` 0 warnings, `Clavity.Ls.Tests` 232/232, then 233/233 after the fold. | fold commit above; briefs `.clavity/seams/capstone-pairing-doc*.md` (local) |
+
+**Reviewer: agy, the same cascade (`17695832`) that reviewed the AiSaveDev work earlier the same day.**
+Measured dispositions: a process holding the doc open DOES make `File.Move(overwrite)` fail ("Access to the
+path is denied" under Read, Read+Delete and None sharing), but two live `agy.exe` processes held no handle
+on `~/.clavity/agy-pairing-INSTALL.md` (an exclusive open succeeded), and the write happens only when the
+bytes change - DISCARDED-BELOW-FLOOR. Consecutive spaces and an apostrophe in the `-i` path survive
+(`-EncodedCommand` plus `PwshSingleQuote`; measured with node as the receiver) - REJECTED. A pairing
+failure is NOT silent: with no endpoint file the LS falls back to cli.log discovery, agy refuses the
+token, and `ChannelDown`'s AuthFailed hint names the missing file and says to relaunch - REJECTED; it
+surfaces at the first `agy_*` call rather than at start. Below the floor: SecurityException /
+NotSupportedException from a profile-derived path; two different clavity versions starting in the same
+instant. agy stated in round 2 that all its round-1 claims were reasoned, not measured.
