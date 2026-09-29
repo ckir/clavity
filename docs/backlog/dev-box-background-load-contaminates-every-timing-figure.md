@@ -1,6 +1,6 @@
 # Backlog stub — an unidentifiable process holds a full core, contaminating every timing figure
 
-**Status:** 🔴 **OPEN — needs an OWNER action, not a code change.** Verified by measurement 2026-08-25. · ▶ **OWNER ACTION [sweep-step0 2026-09-29]: identify and remove or disable UninstallMonitor.exe (still running 2026-09-29)**
+**Status:** 🔴 **OPEN — needs an OWNER action, not a code change.** Verified by measurement 2026-08-25. · ▶ **OWNER ACTION [sweep-step0 2026-09-29]: identify and remove or disable UninstallMonitor.exe (still running 2026-09-29)** · ✅ **RESOLVED 2026-09-30: the owner killed UninstallMonitor.exe; `tasklist` no longer lists it. Timing figures taken from here on no longer carry this load (other background load stays uncontrolled).**
 **Raised:** during the subagent-timing probe. Promoted from `.clavity/local-anomalies.md`.
 
 ## The fact
