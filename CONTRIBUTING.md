@@ -3,8 +3,8 @@
 Thanks for helping out. Contributions are very welcome — **especially Linux/macOS support**, since
 the project is Windows-verified today.
 
-> **Monorepo note:** this repo hosts four products (clavity-dotnet, clavity-classic,
-> agy-autotrain, commonmemory). The dev setup below is for **clavity-classic** (Rust); the other
+> **Monorepo note:** this repo hosts five products (clavity-dotnet, clavity-classic,
+> agy-autotrain, commonmemory, review-relay). The dev setup below is for **clavity-classic** (Rust); the other
 > members build per their own `CLAUDE.md` — e.g. `dotnet build && dotnet test tests/Clavity.Ls.Tests`
 > for clavity-dotnet. See the root [README](README.md) dev-workflow
 > section, and run `lefthook install` once so the pre-commit / pre-push gates (via `just`) run
@@ -114,7 +114,7 @@ the exact check used to verify Windows; reproduce it (adapt the shell to your OS
 ### Installer refuse-guard canary (real Claude Code)
 
 Applies to the one member that still ships a standalone Inno installer — `clavity-classic`; the
-other three install via the `claude plugin` marketplace and have no installer to canary.
+other four install via the `claude plugin` marketplace and have no installer to canary.
 
 The install/uninstall **refuse guard** (Bug 2) detects a running Claude Code by the process name
 `claude.exe` (see [`docs/installer-assumptions.md`](docs/installer-assumptions.md)). CI can only prove
@@ -176,12 +176,12 @@ sole writer and `just release` drives it for you.
 
 That one release, named `clavity`, is the **canonical catalog page** for the umbrella. One member
 (`clavity-classic`) still ships its own standalone INDEPENDENT installer
-(`clavity-classic-setup` — with its own `.sha256`); it bundles or downloads nothing else. The other three
-(`clavity-dotnet`, `agy-autotrain`, `commonmemory`) install instead via
+(`clavity-classic-setup` — with its own `.sha256`); it bundles or downloads nothing else. The other four
+(`clavity-dotnet`, `agy-autotrain`, `commonmemory`, `review-relay`) install instead via
 the root `claude plugin` marketplace — `claude plugin marketplace add ckir/clavity`, then
 `claude plugin install <name>@clavity` — rather than a release-asset installer.
 
-**Repo topology:** all four members live on `main` in this monorepo (one top-level folder each) — there
+**Repo topology:** all five members live on `main` in this monorepo (one top-level folder each) — there
 is no branch-per-tool split. `main` also houses the orchestration (`umbrella-release.yml` +
 `build-<member>.yml` per member). A `clavity-v<N>` tag on `main` deterministically pins every member.
 
@@ -190,7 +190,7 @@ decoupled hotfix path — rebuild ONE member and republish its 2 assets onto an 
 release:
 - `tag` — an existing `clavity-v<N>` release tag to republish onto.
 - `member` — a fixed choice of one: `dotnet`, `classic` (the only members that ship a release asset;
-  `agy-autotrain` and `commonmemory` install via `claude plugin`, with no asset to republish).
+  `agy-autotrain`, `commonmemory` and `review-relay` install via `claude plugin`, with no asset to republish).
 
 It runs without any sibling's build or gate running at all.
 

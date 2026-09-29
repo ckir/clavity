@@ -1421,7 +1421,7 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
         # PRECONDITION 2 below reddens this row. Do not replace that precondition with a softer check.
         $domainRoots = @(
             'clavity-dotnet/plugin', 'clavity-classic/plugin', 'clavity-classic/agy_skills',
-            'clavity-classic/agy-mcp-bridge', 'seed', 'agy-autotrain', 'commonmemory'
+            'clavity-classic/agy-mcp-bridge', 'seed', 'agy-autotrain', 'commonmemory', 'review-relay'
         )   # ghidrust/plugin + ghidrust/skill removed 2026-09-14 (ghidrust full retirement).
         $parent = Join-Path ([IO.Path]::GetTempPath()) ("s28ic-" + [guid]::NewGuid().ToString('N'))
         $root   = Join-Path $parent 'a-very-long-directory-name-that-gets-shortened'

@@ -124,9 +124,13 @@ jobs:
     needs: [guard]
     uses: ./.github/workflows/build-commonmemory.yml
 
+  review-relay:
+    needs: [guard]
+    uses: ./.github/workflows/build-review-relay.yml
+
   publish:
     # Atomic all-or-nothing: any failed member build blocks the whole clavity release (no continue-on-error).
-    needs: [dotnet, classic, agy-autotrain, commonmemory]
+    needs: [dotnet, classic, agy-autotrain, commonmemory, review-relay]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -169,8 +173,8 @@ jobs:
           cat > body.md <<EOF
           # clavity $TAG
 
-          A standalone Windows installer for **clavity-classic**, plus three \`claude plugin\` installs —
-          **clavity-dotnet**, **agy-autotrain** and **commonmemory** — served from this repo's root
+          A standalone Windows installer for **clavity-classic**, plus four \`claude plugin\` installs —
+          **clavity-dotnet**, **agy-autotrain**, **commonmemory** and **review-relay** — served from this repo's root
           marketplace (clavity-dotnet's \`clavity-ls\` binary is fetched on first run from the assets below).
 
           | member | version | how to install | what it gives you |
@@ -179,6 +183,7 @@ jobs:
           | clavity-classic-setup | ${{ needs.classic.outputs.version }}   | Windows installer (.exe) | Claude Code <-> agy pairing (Failover, Rust host) |
           | agy-autotrain    | ${{ needs.agy-autotrain.outputs.version }}  | \`claude plugin\` (see below) | agy auto-training loop (capture -> curate -> golden-header) |
           | commonmemory     | ${{ needs.commonmemory.outputs.version }}   | \`claude plugin\` (see below) | Shared Claude<->agy notebook over agentmemory |
+          | review-relay     | ${{ needs.review-relay.outputs.version }}   | \`claude plugin\` (see below) | Copy-paste review rounds with web AI models |
 
           > **Headless Ghidra reverse-engineering (formerly ghidrust)** moved to a standalone plugin:
           > **re-ghidra-mcp-cc** in [ckir/aiplugins](https://github.com/ckir/aiplugins). It is no longer part
@@ -188,13 +193,14 @@ jobs:
           The clavity-classic installer is **unsigned** (SmartScreen may warn on first run: *More info -> Run anyway*);
           verify its \`.sha256\` against its \`.exe\`.
 
-          **Install the \`claude plugin\` members** (clavity-dotnet, agy-autotrain, commonmemory):
+          **Install the \`claude plugin\` members** (clavity-dotnet, agy-autotrain, commonmemory, review-relay):
 
           \`\`\`
           claude plugin marketplace add ckir/clavity
           claude plugin install clavity@clavity          # clavity-dotnet
           claude plugin install agy-autotrain@clavity
           claude plugin install commonmemory@clavity
+          claude plugin install review-relay@clavity
           \`\`\`
 
           **clavity-dotnet's \`clavity-ls\` binary** ships here as

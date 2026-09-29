@@ -42,7 +42,7 @@ function Write-C([string]$Text = '', [string]$Color = 'Gray') {
 # Buildable = have a member justfile, so build/test/lint/fmt aggregate over them via root `just`.
 $script:Buildable = @('dotnet', 'classic')
 # Versioned = every member; `just bump <member> <version>` (ghidrust, fully retired 2026-09-14, is gone).
-$script:Versioned = @('dotnet', 'classic', 'agy-autotrain', 'commonmemory')
+$script:Versioned = @('dotnet', 'classic', 'agy-autotrain', 'commonmemory', 'review-relay')
 
 # Banner version sources — display-only reads (spec §Banner). check-versions.ps1 remains the sole gate.
 # The same files scripts/lib/release-lib.ps1 reads: only clavity-classic still has an Inno .iss; the
@@ -52,6 +52,7 @@ $script:BannerMembers = @(
     [pscustomobject]@{ Name = 'classic';       File = 'clavity-classic/installer/clavity-classic.iss' }
     [pscustomobject]@{ Name = 'agy-autotrain'; File = 'agy-autotrain/plugin.json' }
     [pscustomobject]@{ Name = 'commonmemory';  File = 'commonmemory/plugin.json' }
+    [pscustomobject]@{ Name = 'review-relay';  File = 'review-relay/plugin.json' }
 )
 
 function Get-MemberVersion([string]$Path) {

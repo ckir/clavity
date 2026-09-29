@@ -11,7 +11,7 @@
   Fail-closed: any unreadable source or missing required tool exits non-zero.
 
 .PARAMETER Member
-  One of: dotnet, classic, agy-autotrain, commonmemory.
+  One of: dotnet, classic, agy-autotrain, commonmemory, review-relay.
 
 .PARAMETER Coverage
   Enumerate git-tracked version-bearing files by known TYPE under the member's tree and fail if any
@@ -25,7 +25,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory, Position = 0)]
-    [ValidateSet('dotnet', 'classic', 'agy-autotrain', 'commonmemory')]
+    [ValidateSet('dotnet', 'classic', 'agy-autotrain', 'commonmemory', 'review-relay')]
     [string]$Member,
 
     [switch]$Coverage
@@ -244,6 +244,20 @@ $Registry = @{
         CoverageFiles = @(
             'commonmemory/plugin.json'
             'commonmemory/.claude-plugin/plugin.json'
+        )
+    }
+    'review-relay' = @{
+        # Plugin-only member (2026-09-28): installs via `claude plugin`; version truth is plugin.json.
+        Folder = 'review-relay'
+        Classes = @(
+            @{ Name = 'all'; Eq = @(
+                @{ Type = 'json'; Path = 'review-relay/plugin.json' }
+                @{ Type = 'json'; Path = 'review-relay/.claude-plugin/plugin.json' }
+            ) }
+        )
+        CoverageFiles = @(
+            'review-relay/plugin.json'
+            'review-relay/.claude-plugin/plugin.json'
         )
     }
 }

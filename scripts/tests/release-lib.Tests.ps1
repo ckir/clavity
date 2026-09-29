@@ -152,7 +152,7 @@ Describe 'Update-Changelog' {
         Remove-Item -Recurse -Force $root
     }
 
-    # THE SEPARATOR IS ASCII BY CONTRACT, not by taste. Two members (agy-autotrain, commonmemory) ship
+    # THE SEPARATOR IS ASCII BY CONTRACT, not by taste. Three members (agy-autotrain, commonmemory, review-relay) ship
     # their CHANGELOG.md inside the injected-context domain, which check-injected-context.ps1 gates to
     # pure ASCII. This writer emitted an em dash (U+2014), so EVERY release re-broke that gate: commit
     # b2a6cc0 sanitised the files by hand and the very next release (clavity-v18, 7ec45fd) put the em

@@ -15,12 +15,12 @@ the checklist to graft a new one in.
 ## The current model
 
 - **One tree, no branches.** Every member is a **top-level folder on `main`** — `clavity-dotnet/`,
-  `clavity-classic/`, `agy-autotrain/`, `commonmemory/`. There is no `plugins/` directory
+  `clavity-classic/`, `agy-autotrain/`, `commonmemory/`, `review-relay/`. There is no `plugins/` directory
   and no per-tool branch. A `clavity-v<N>` tag on `main` deterministically pins all members at once.
 - **One release, two install models.** The umbrella release is the catalog page. `clavity-classic`
   ships its **own standalone Inno installer**, registering only itself into its
   own scoped marketplace; no installer bundles or downloads a sibling. `clavity-dotnet`, `agy-autotrain`,
-  and `commonmemory` install instead via the root `claude plugin` marketplace — `claude plugin
+  `commonmemory` and `review-relay` install instead via the root `claude plugin` marketplace — `claude plugin
   marketplace add ckir/clavity`, then `claude plugin install <name>@clavity` — with no installer asset
   of their own.
 - **One tag lineage.** Only `clavity-v<N>` triggers a release (`umbrella-release.yml`). The legacy
@@ -39,7 +39,7 @@ that matches what you are adding:
 | Shape | `source` | Examples |
 |---|---|---|
 | **Code + plugin** — a binary plus a plugin that drives it | `./<member>/plugin` | `clavity-dotnet`, `clavity-classic` |
-| **Plugin-only** — no binary; the member root *is* the plugin | `./<member>` | `agy-autotrain`, `commonmemory` |
+| **Plugin-only** — no binary; the member root *is* the plugin | `./<member>` | `agy-autotrain`, `commonmemory`, `review-relay` |
 
 A plugin-only member has `plugin.json` at its root and no `plugin/` subdirectory. It also has no
 `justfile` and is skipped by the build/lint/test aggregates.

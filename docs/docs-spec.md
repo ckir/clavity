@@ -14,7 +14,7 @@ This file is also the authority over the **user-facing subset** that the `docs-r
 | Doc | Audience | Voice |
 |---|---|---|
 | `README.md` | Orient, choose a product, get running — then route out (≤ ~90 lines) | terse-technical |
-| `<member>/README.md` | A repo reader evaluating or building that member. What ships is decided by the member's plugin `source` in `build/members.json`. For the **code+plugin** members (dotnet, classic) that source is `<member>/plugin`, so this file sits outside it and does **not** ship. For the **plugin-only** members (agy-autotrain, commonmemory) the source is the member root, so it **does** — write those two for an installed operator too | terse-technical |
+| `<member>/README.md` | A repo reader evaluating or building that member. What ships is decided by the member's plugin `source` in `build/members.json`. For the **code+plugin** members (dotnet, classic) that source is `<member>/plugin`, so this file sits outside it and does **not** ship. For the **plugin-only** members (agy-autotrain, commonmemory, review-relay) the source is the member root, so it **does** — write those three for an installed operator too | terse-technical |
 | `<member>/plugin/README.md` | The integrator wiring the plugin — **and the installed operator, because this file ships** | terse-technical |
 | `<member>/CONTRIBUTING.md` | A contributor to that member — its toolchain, test tiers, failure modes. Defers to umbrella `CONTRIBUTING.md` for licence/DCO/release | terse-technical |
 | `<member>/CLAUDE.md` | The agent working in that folder — load-bearing facts and traps only | terse, dense |

@@ -5,7 +5,7 @@
   check-versions.ps1. Idempotent: re-running with the same version is a no-op.
 
 .PARAMETER Member
-  dotnet | classic | agy-autotrain | commonmemory
+  dotnet | classic | agy-autotrain | commonmemory | review-relay
 
 .PARAMETER Version
   Target semver, e.g. 0.1.3
@@ -17,7 +17,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory, Position = 0)]
-    [ValidateSet('dotnet', 'classic', 'agy-autotrain', 'commonmemory')]
+    [ValidateSet('dotnet', 'classic', 'agy-autotrain', 'commonmemory', 'review-relay')]
     [string]$Member,
 
     [Parameter(Mandatory, Position = 1)]
@@ -113,6 +113,10 @@ switch ($Member) {
         # Inno-retired (2026-09-14): version truth is plugin.json only (no .iss).
         Set-JsonVersion 'commonmemory/plugin.json'
         Set-JsonVersion 'commonmemory/.claude-plugin/plugin.json'
+    }
+    'review-relay' {
+        Set-JsonVersion 'review-relay/plugin.json'
+        Set-JsonVersion 'review-relay/.claude-plugin/plugin.json'
     }
     # ghidrust fully retired 2026-09-14 (superseded by re-ghidra-mcp-cc in ckir/aiplugins) — case removed.
 }

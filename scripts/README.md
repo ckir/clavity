@@ -13,10 +13,10 @@ directly.
 | `compute-release.ps1` | Compute the next release: baseline SHA, next serial, per-member/shared version bumps from conventional commits | invoked by `release.ps1` |
 | `bump-version.ps1` | Write every version source for one member to `<Version>`, then self-verify via `check-versions.ps1` | `just bump <member> <version>` |
 | `check-versions.ps1` | Assert every version source for one member agrees (or, with `-Coverage`, that no tracked version-bearing file is unregistered) | `just check-versions <member>` |
-| `check-versions-all.ps1` | Run `check-versions.ps1` for every member in one pwsh process (avoids 4 cold starts) | lefthook pre-push (`check-versions`); run directly, no `just` recipe |
+| `check-versions-all.ps1` | Run `check-versions.ps1` for every member in one pwsh process (avoids 5 cold starts) | lefthook pre-push (`check-versions`); run directly, no `just` recipe |
 | `check-roster.ps1` | Assert the release-tooling roster (`lib/release-lib.ps1`) matches `build/members.json`'s member set, and the shared-path map matches the installers | CI (`umbrella-release.yml`); run directly, no `just` recipe |
 | `generate-scoped-manifest.ps1` | Generate one member's single-plugin scoped `marketplace.json` from `build/members.json` | CI (`build-<member>.yml`); run directly, no `just` recipe |
-| `validate-members-manifest.ps1` | CI guard: `build/members.json` has exactly 4 members, each with `name`/`source`/`marketplaceName`, all `marketplaceName` values distinct | CI (`validate-members.yml`); run directly, no `just` recipe |
+| `validate-members-manifest.ps1` | CI guard: `build/members.json` has exactly 5 members, each with `name`/`source`/`marketplaceName`, all `marketplaceName` values distinct | CI (`validate-members.yml`); run directly, no `just` recipe |
 
 ## Pre-push / CI gates
 

@@ -31,6 +31,7 @@ SEED, see [`docs/drain-knowledge-runbook.md`](docs/drain-knowledge-runbook.md).
 | clavity-classic | `clavity-classic/` | `cd clavity-classic && just test` | [clavity-classic/CLAUDE.md](clavity-classic/CLAUDE.md) |
 | agy-autotrain | `agy-autotrain/` | (plugin only) | — |
 | commonmemory | `commonmemory/` | (plugin only) | — |
+| review-relay | `review-relay/` | (plugin only) | — |
 
 See [README.md](README.md) for the product palette and [docs/hosting-a-tool.md](docs/hosting-a-tool.md)
 for the playbook to add a new one.

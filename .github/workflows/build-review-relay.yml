@@ -1,0 +1,44 @@
+name: build-review-relay
+
+# Validate-only (Inno retired 2026-09-14). review-relay installs via `claude plugin` from the repo-root
+# .claude-plugin/marketplace.json — there is NO installer to build or ship. This reusable workflow now only
+# PROVES the member's version sources agree (plugin.json) and that every version-bearing file is
+# registered; the umbrella release `needs:` it, so a version-inconsistent member still fails the release.
+on:
+  workflow_call:
+    outputs:
+      version:
+        value: ${{ jobs.validate.outputs.version }}
+      sha:
+        value: ${{ jobs.validate.outputs.sha }}
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Record the built commit
+        id: sha
+        shell: bash
+        # Assign first, then echo: the `echo "sha=$(...)"` form discards git's exit code and can publish a
+        # non-sha while the step stays green. Measured; full note in git history of this file.
+        run: |
+          sha=$(git rev-parse HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Extract version from plugin.json
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Get-Content -Raw review-relay/plugin.json | ConvertFrom-Json).version
+          if (-not $v) { throw "no version in review-relay/plugin.json" }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Version consistency
+        shell: pwsh
+        run: pwsh -File scripts/check-versions.ps1 review-relay && pwsh -File scripts/check-versions.ps1 review-relay -Coverage
