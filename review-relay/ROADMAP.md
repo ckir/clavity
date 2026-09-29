@@ -17,10 +17,11 @@ alternative on record so it is weighed with real usage numbers once review-relay
 
 **Status:** paused (owner, 2026-09-28).
 
-The fully automated design is archived, not abandoned:
-- the bridge: `AIBridgeWeb/AIBridgeWeb_MVP_Specification_v0.13.md` (owner's working folder; seven review
-  rounds recorded in its revision delta);
-- the clavity client on top of it: `docs/superpowers/specs/2026-09-28-web-seats-design.md`.
+The fully automated design is archived, not abandoned. Neither document is in this repository; both
+live in the owner's local working copy:
+- the bridge: the AIBridgeWeb MVP specification, v0.13 (seven review rounds recorded in its revision
+  delta);
+- the clavity client on top of it: the web-seats design spec of 2026-09-28 (a local, uncommitted spec).
 
 Resume when the manual paste is the bottleneck. review-relay's templates, read proof and ledger carry over.
 
