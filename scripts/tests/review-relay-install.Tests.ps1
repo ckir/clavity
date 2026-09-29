@@ -133,4 +133,26 @@ Describe 'install-extension.ps1' {
         $r.Out | Should -Match 'unchanged|restored'
         (Get-FileHash (Join-Path $f.Dest 'content.js')).Hash | Should -Be $before
     }
+    It 'refuses to swap, and keeps the live install, when a leftover dest.old beside it cannot be cleared' -Skip:(-not $IsWindows) {
+        # A leftover .old must go BEFORE the swap: Move-Item onto an existing folder nests the live install
+        # INSIDE it. On the happy path the final cleanup hides that, so the guard is visible only here.
+        $f = New-FakePlugin 'leftoverold'
+        (Invoke-Install $f.Script @('-Destination', $f.Dest)).Exit | Should -Be 0
+        $before = (Get-FileHash (Join-Path $f.Dest 'content.js')).Hash
+        $old = "$($f.Dest).old"
+        New-Item -ItemType Directory -Path $old | Out-Null
+        Set-Content -LiteralPath (Join-Path $old '.review-relay-extension') -Value 'marker'
+        Set-Content -LiteralPath (Join-Path $old 'held.txt') -Value 'held open'
+        Add-Content -LiteralPath (Join-Path $f.Ext 'content.js') -Value '// changed source'
+        $stream = [IO.File]::Open((Join-Path $old 'held.txt'), 'Open', 'Read', 'None')
+        try {
+            $r = Invoke-Install $f.Script @('-Destination', $f.Dest)
+        } finally {
+            $stream.Dispose()
+        }
+        $r.Exit | Should -Be 1 -Because $r.Out
+        $r.Out | Should -Match 'could not clear the leftover'
+        (Get-FileHash (Join-Path $f.Dest 'content.js')).Hash | Should -Be $before
+        Test-Path (Join-Path $old (Split-Path $f.Dest -Leaf)) | Should -BeFalse
+    }
 }

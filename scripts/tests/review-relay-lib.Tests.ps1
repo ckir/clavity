@@ -536,6 +536,55 @@ VERDICT: READY
         $c.Reply | Should -Match 'NEW-REPLY-TEXT'
         $c.Reply | Should -Not -Match 'OLD-REPLY-TEXT'
     }
+
+    It 'ends the reply at a turn marker of ANY role, not only human/assistant (a Playground tool turn)' {
+        # AiSaveDev emits role=[a-z]+ for any page label, so a tool turn can follow the reply. If only
+        # human/assistant markers ended it, the tool turn - and its own VERDICT line - would be read as
+        # the reviewer's.
+        $nonce = 'abcdef123456'
+        $text = @"
+---
+title: "tool turn"
+date: 2026-09-29
+url: https://platform.openai.com/playground/chat
+platform: oai-playground
+format: aisave-dev/1
+nonce: $nonce
+---
+
+<!-- aisave:$nonce turn=1 role=human -->
+## User
+
+Please review this.
+
+---
+
+<!-- aisave:$nonce turn=2 role=assistant -->
+## Assistant
+
+REVIEWER-REPLY-TEXT.
+
+VERDICT: NOT READY
+
+---
+
+<!-- aisave:$nonce turn=3 role=toolcall -->
+## Tool call
+
+TOOL-PAYLOAD-TEXT
+
+VERDICT: READY
+
+<!-- aisave:$nonce end -->
+"@
+        $path = Join-Path $TestDrive 'tool-turn-marker.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Format | Should -BeExactly 'aisave-dev/1'
+        $c.Reply | Should -Match 'REVIEWER-REPLY-TEXT'
+        $c.Reply | Should -Not -Match 'TOOL-PAYLOAD-TEXT'
+        Get-RelayVerdict $c.Reply | Should -BeExactly 'NOT READY'
+    }
 }
 
 Describe 'Get-RelayFindings' {
