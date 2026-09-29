@@ -37,7 +37,7 @@ Chrome installs an extension from outside the store.
 
 1. Ask Claude to "install the review-relay capture extension", or run
    `pwsh -File <plugin folder>/scripts/install-extension.ps1` yourself. It copies the extension to
-   `%LOCALAPPDATA%eview-relayisavedev`, a folder that never moves, and prints the next step.
+   `%LOCALAPPDATA%\review-relay\aisavedev`, a folder that never moves, and prints the next step.
 2. Once: open `chrome://extensions` (or `edge://extensions`), turn on Developer mode, click
    **Load unpacked**, and pick that folder.
 3. After a review-relay update: repeat step 1, then click **Reload** on AiSaveDev.
