@@ -1,6 +1,6 @@
 # Backlog stub — the driver cheatsheet reaches a live path outside the human review gate's scope
 
-**Status:** 🔴 **OPEN.** Pre-existing SCOPE defect. A doc note in `agy-curate/SKILL.md` now describes it
+**Status:** 🔴 **OPEN.** Pre-existing SCOPE defect. A doc note in `agy-curate/SKILL.md` now describes it · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 11 - make the human gate cover the cheatsheet path (runs before Branch 8)**
 accurately; nothing yet changes what the gate covers.
 **Raised:** 2026-08-12, AGY-CAPSTONE round 4. The peer challenged a safety claim the driver had written
 into the skill; verifying the claim showed the claim was false and the underlying gap real.

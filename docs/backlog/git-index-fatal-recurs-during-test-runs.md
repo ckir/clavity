@@ -1,6 +1,6 @@
 # Backlog stub - `fatal: .git/index: index file smaller than expected` during test runs
 
-**Status:** OPEN, cause UNPROVEN. Promoted 2026-08-27 from `.clavity/local-anomalies.md`.
+**Status:** OPEN, cause UNPROVEN. Promoted 2026-08-27 from `.clavity/local-anomalies.md`. · 🚫 **KILLED by the owner [sweep-step0 2026-09-29]: cause unproven, results unaffected, not seen since 2026-08-27 - re-capture from a real reproduction if it recurs**
 **Raised:** observed FOUR times across capstone rounds.
 
 ## The observation

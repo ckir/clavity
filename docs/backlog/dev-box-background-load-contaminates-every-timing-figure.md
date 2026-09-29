@@ -1,6 +1,6 @@
 # Backlog stub — an unidentifiable process holds a full core, contaminating every timing figure
 
-**Status:** 🔴 **OPEN — needs an OWNER action, not a code change.** Verified by measurement 2026-08-25.
+**Status:** 🔴 **OPEN — needs an OWNER action, not a code change.** Verified by measurement 2026-08-25. · ▶ **OWNER ACTION [sweep-step0 2026-09-29]: identify and remove or disable UninstallMonitor.exe (still running 2026-09-29)**
 **Raised:** during the subagent-timing probe. Promoted from `.clavity/local-anomalies.md`.
 
 ## The fact

@@ -1,6 +1,6 @@
 # Backlog stub — the installed plugin silently drifts from source under an UNCHANGED version
 
-**Status:** 🔴 **OPEN.** Verified by measurement, re-confirmed 2026-08-24.
+**Status:** 🔴 **OPEN.** Verified by measurement, re-confirmed 2026-08-24. · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 13 - a check that compares the installed plugin cache with the tree at equal versions (the recorded instance measured IDENTICAL on 2026-09-29; runs before Branch 8)**
 **Raised:** 2026-08-19. Promoted from `.clavity/local-anomalies.md` at the 2026-08-25 triage.
 
 ## The defect

@@ -1,6 +1,6 @@
 # Backlog stub — the anomaly channel is repo-local, so a CROSS-PROJECT finding is invisible everywhere else
 
-**Status:** 🔴 **OPEN.** Promoted from `.clavity/local-anomalies.md` at the 2026-08-25 triage.
+**Status:** 🔴 **OPEN.** Promoted from `.clavity/local-anomalies.md` at the 2026-08-25 triage. · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 12 - a user-level capture file the SessionStart hook also counts (runs before Branch 8)**
 **Raised:** 2026-08-19, alongside the dependency-pin captures that demonstrate it.
 
 ## The defect

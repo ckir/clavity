@@ -1,6 +1,6 @@
 # Backlog stub — dependency pins are never re-resolved, and nothing schedules a check
 
-**Status:** 🔴 **OPEN.** Verified by measurement. **CROSS-PROJECT** — the owner has confirmed this is not
+**Status:** 🔴 **OPEN.** Verified by measurement. **CROSS-PROJECT** — the owner has confirmed this is not · 🚫 **KILLED by the owner [sweep-step0 2026-09-29]: part 1 is covered by Dependabot (added 2026-09-14, auto-merges every update type); parts 2-3 are cross-project process, not this repo's backlog**
 clavity-specific ("it happens to other projects as well").
 **Raised:** 2026-08-19, during the actions dependency sweep. Promoted from `.clavity/local-anomalies.md`
 at the 2026-08-25 triage, which merged five separate captures into this one item.

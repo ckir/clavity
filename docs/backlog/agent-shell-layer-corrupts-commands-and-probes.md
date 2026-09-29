@@ -1,6 +1,6 @@
 # Backlog stub - the agent shell layer corrupts commands, and the corruption is silent
 
-**Status:** OPEN. Promoted 2026-08-27 from `.clavity/local-anomalies.md` (8 entries consolidated).
+**Status:** OPEN. Promoted 2026-08-27 from `.clavity/local-anomalies.md` (8 entries consolidated). · ▶ **OWNER ACTION [sweep-step0 2026-09-29]: report upstream (rtk / Claude Code); workaround in force - write scripts with the Write tool, never a shell heredoc (new measurement at the foot of this file)**
 **Raised:** capstone rounds 18-27, 2026-08-26/27.
 **Scope:** every shell call this repository's agents make. Not a repo defect - a HARNESS defect that
 corrupts the evidence every other gate depends on.
@@ -66,3 +66,14 @@ already-present dependency rather than a binary to build, version, install and t
 Owner-sequenced 2026-08-27: triage promotes, it does not fix. Stopping to fix a cross-platform shell
 escaping layer is a rabbit hole with no relation to this project's deliverables - the peer named it "the
 ultimate sharpen-the-saw distraction" and it hit a blind spot the driver had already admitted to.
+
+## New measurement, 2026-09-29 (ROADMAP sweep step 0)
+
+A Bash-tool heredoc with a QUOTED delimiter (`<<'EOF'`), which by POSIX passes its body through untouched,
+wrote the JavaScript source `'\\u0000'` to disk as `'\u0000'` - one backslash lost - so the script wrote a
+NUL where it was meant to write the six characters `\u0000`. The same text written with the Write tool kept
+both backslashes (checked with `od -c`). A `node -e "..."` one-liner lost backslashes the same way twice in
+the same session. The loss is silent and it recreated the exact defect the script existed to repair; it
+was caught only by inspecting the written bytes. The workaround now in force: scripts are written with the
+Write tool, never a shell heredoc, and a byte-repair script refuses to run if a replacement string holds a
+control byte (that guard was proven with a deliberately mangled copy).

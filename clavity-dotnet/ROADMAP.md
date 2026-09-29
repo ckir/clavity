@@ -1134,7 +1134,7 @@ batch, not here:** once the literals are generated, `SKILL.md:122-124`'s instruc
 becomes wrong, so the batch must update it. That is tracked in the spec, not in this item.
 
 **§14g — the agy-observations inbox lives INSIDE the plugin tree, so it exists in N copies and both
-skills must be INSTRUCTED which one is live.** · ✅ **RULED 2026-08-19** · ✅ **DONE 2026-08-24** (`8127373`; AGY-CAPSTONE **GREEN** over `bd3aa94..f29cd42`, owner-confirmed 2026-08-24). ⚠ **AGY-TEST-AUDIT is still owed on that range and has never run.**
+skills must be INSTRUCTED which one is live.** · ✅ **RULED 2026-08-19** · ✅ **DONE 2026-08-24** (`8127373`; AGY-CAPSTONE **GREEN** over `bd3aa94..f29cd42`, owner-confirmed 2026-08-24). ⚠ **AGY-TEST-AUDIT is still owed on that range and has never run.** · **AGY-TEST-AUDIT WAIVED by the owner [sweep-step0 2026-09-29]: 12 of the range's 15 code files changed later and 1 was deleted, so an audit would test a tree that no longer exists; recorded in `docs/agy-test-audit-ledger.md`**
 
 > **SHIPPED.** The canonical inbox is now `<USERPROFILE or HOME>/.clavity/agy-observations.md`.
 > Both skills collapsed to that one path (`agy-learn` 183 — 130 lines, reversing the +138% growth this
@@ -2833,7 +2833,7 @@ repo-wide in one pass so no file is left inconsistent with its siblings.
 
 ---
 
-### §35 — Persist every peer reply to disk; the practice existed, was never mechanised, and died silently — ▶ **PROMOTED 2026-09-05, owner-raised, tracked debt**
+### §35 — Persist every peer reply to disk; the practice existed, was never mechanised, and died silently — ▶ **PROMOTED 2026-09-05, owner-raised, tracked debt** · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 9 - the consult transport persists every peer reply (runs before Branch 8)**
 
 **The owner proposed this to earlier sessions and those agents agreed; it was never written down anywhere
 executable, so it survived only in agent memory and was lost across several memory compactions.** The
@@ -2888,7 +2888,7 @@ recovery possible — it does not force the reading. Any scoping that claims oth
 
 ---
 
-### §36 — Orphaned tests: three runners keep three disagreeing ledgers, and two of them assert coverage they do not provide — ▶ **PROMOTED 2026-09-05, owner-raised, tracked debt**
+### §36 — Orphaned tests: three runners keep three disagreeing ledgers, and two of them assert coverage they do not provide — ▶ **PROMOTED 2026-09-05, owner-raised, tracked debt** · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 10 - the full redesign, one of the two recorded proposals, including the three `test-scripts*` recipes decision (runs before Branch 8)**
 
 **Owner's statement of the problem:** *"The repo has a task runner and CI. The agent implements tests.
 Then the agent forgets to add them to the runner."* Recorded with BOTH proposals below; the owner chose
@@ -3060,7 +3060,7 @@ sentence in a user's document. Subject lengths, last 30 commits: **min 56, media
 **Switching generators would render the same subjects.** Recorded as an open question about the WRITING
 convention, deliberately NOT actioned here.
 
-### §38 — The `.gitignore` prose describes a per-file read-before-publish control for plans that does not run — ▶ **PROMOTED 2026-09-05 from the anomalies conveyor, not yet planned**
+### §38 — The `.gitignore` prose describes a per-file read-before-publish control for plans that does not run — ▶ **PROMOTED 2026-09-05 from the anomalies conveyor, not yet planned** · ✅ **RULED by the owner [sweep-step0 2026-09-29]: keep publishing specs and plans; the `.gitignore` prose is reworded to describe that practice (ROADMAP sweep step 0)**
 
 **The False Safety Promise shape:** prose asserting a review control that is not the control in operation.
 `.gitignore:38-39` reads *"same DEFAULT-DENY opt-IN discipline as specs above: re-admit the plans/
@@ -3150,7 +3150,7 @@ rewrite. Recorded here rather than silently dropped, because the rewrite is exac
 
 ---
 
-### §41 — The shield's PREPEND fallback is a non-atomic read-modify-write — ▶ **PROMOTED 2026-09-12, OWNER-RULED 2026-09-08 to defer the fix**
+### §41 — The shield's PREPEND fallback is a non-atomic read-modify-write — ▶ **PROMOTED 2026-09-12, OWNER-RULED 2026-09-08 to defer the fix** · ▶ **OWNER ACTION [sweep-step0 2026-09-29]: deferral re-confirmed - no portable lock; a fix must arrive with a failing control**
 
 `clavity-dotnet/plugin/hooks/agy-shield-lib.sh:221-222` writes `*` to a temp file, `cat`s the existing shield
 in after it, then `mv`s the temp over the original. A human edit landing between the read and the rename is
