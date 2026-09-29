@@ -18,6 +18,10 @@ root of the project being reviewed (or pass `-ProjectRoot <path>`).
    code), and whether it is a `spec` review (documents, plans) or a `code` review (diffs).
 2. The first time a project uses review-relay, ask the owner whether to add `.review-relay/` to that
    project's `.gitignore`. Never edit it without a yes.
+3. Ask the owner whether the AiSaveDev extension is loaded in their browser. If not, offer to install it:
+   run `pwsh -NoProfile -File "<BASE>/../../scripts/install-extension.ps1"` and pass on the next step it
+   prints (the owner does the one-time Load unpacked). Plain AiSave also works, but a reply that quotes a
+   `## Human` heading is then lost, and collect says so.
 
 ## 2. Hand over a round
 
@@ -30,7 +34,7 @@ Tell the owner, using the paths it prints:
 - which file to **upload** together with the short prompt (`.review-relay/<name>/prompt-upload.md`), for sites that accept files;
 - that the **all-in-one** text is already on the clipboard (`.review-relay/<name>/prompt-inline.md`), for sites where pasting
   is easier;
-- to save every reply with AiSave, and to tell you when they are done.
+- to save every reply with AiSaveDev (or AiSave), and to tell you when they are done.
 
 Then wait.
 

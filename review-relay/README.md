@@ -3,7 +3,7 @@
 Review a spec, plan, document or code change with web AI models (ChatGPT, Meta AI, Gemini, or any other)
 in copy-paste rounds. Claude plays the main role: it prepares each round's prompt, checks every finding
 against the real text, and folds the true ones. You carry the text to the sites and save the replies with
-the AiSave browser extension. Part of the clavity umbrella.
+the bundled AiSaveDev browser extension (plain AiSave also works). Part of the clavity umbrella.
 
 ## How it works
 
@@ -19,6 +19,7 @@ the AiSave browser extension. Part of the clavity umbrella.
 - `skills/review-relay/SKILL.md` - how Claude runs the rounds.
 - `scripts/new-round.ps1`, `scripts/collect.ps1`, `scripts/lib/relay-lib.ps1` - the deterministic parts.
 - `templates/spec-review.md`, `templates/code-review.md` - the round prompts.
+- `extension/aisavedev/` - the AiSaveDev capture extension; `scripts/install-extension.ps1` installs it.
 
 ## Install
 
@@ -27,6 +28,22 @@ the AiSave browser extension. Part of the clavity umbrella.
 
 Install at user scope to use it in every project. Each review keeps its files in the reviewed project,
 under `.review-relay/<review-name>/`.
+
+## Install the capture extension (AiSaveDev)
+
+AiSaveDev saves each reply with per-turn markers that a reply's own text cannot fake, so `collect.ps1`
+always finds the real reply. It is not in the Chrome Web Store; on Windows, "Load unpacked" is the only way
+Chrome installs an extension from outside the store.
+
+1. Ask Claude to "install the review-relay capture extension", or run
+   `pwsh -File <plugin folder>/scripts/install-extension.ps1` yourself. It copies the extension to
+   `%LOCALAPPDATA%eview-relayisavedev`, a folder that never moves, and prints the next step.
+2. Once: open `chrome://extensions` (or `edge://extensions`), turn on Developer mode, click
+   **Load unpacked**, and pick that folder.
+3. After a review-relay update: repeat step 1, then click **Reload** on AiSaveDev.
+
+`-Destination <folder>` installs somewhere else, and `-WhatIf` shows what it would do. It refuses to write
+into any folder it did not create.
 
 ## Configuration
 
@@ -48,7 +65,7 @@ under `.review-relay/<review-name>/`.
 - **A finished reply shows "This capture has no reply"**: the reply probably quotes a `## Human` heading
   (a transcript in a code block, say). A plain AiSave capture has no unambiguous turn delimiter, so that
   heading looks like a new turn. Save it again with AiSaveDev, an AiSave variant that writes per-turn
-  markers (`format: aisave-dev/1`). `collect.ps1` reads those markers in place of the headings.
+  markers (`format: aisave-dev/1`). `collect.ps1` reads those markers in place of the headings. See "Install the capture extension" above.
 - **A count includes an example**: a finding written inside a closed code fence is not counted, but one in
   plain text or a quote is. Check it against `collected.md`.
 
