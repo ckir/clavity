@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "name": "review-relay-extension-tests",
+  "version": "0.0.0",
+  "type": "commonjs",
+  "description": "Offline tests for the bundled AiSaveDev content script (review-relay/extension/aisavedev).",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}

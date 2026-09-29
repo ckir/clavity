@@ -248,16 +248,20 @@ $Registry = @{
     }
     'review-relay' = @{
         # Plugin-only member (2026-09-28): installs via `claude plugin`; version truth is plugin.json.
+        # The bundled AiSaveDev extension's manifest carries the SAME version (2026-09-29), so a plugin
+        # release always names the extension build it ships.
         Folder = 'review-relay'
         Classes = @(
             @{ Name = 'all'; Eq = @(
                 @{ Type = 'json'; Path = 'review-relay/plugin.json' }
                 @{ Type = 'json'; Path = 'review-relay/.claude-plugin/plugin.json' }
+                @{ Type = 'json'; Path = 'review-relay/extension/aisavedev/manifest.json' }
             ) }
         )
         CoverageFiles = @(
             'review-relay/plugin.json'
             'review-relay/.claude-plugin/plugin.json'
+            'review-relay/extension/aisavedev/manifest.json'
         )
     }
 }

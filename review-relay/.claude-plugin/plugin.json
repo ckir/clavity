@@ -1,5 +1,5 @@
 {
   "name": "review-relay",
   "version": "0.1.0",
-  "description": "Assisted copy-paste review rounds with web AI models: Claude prepares each round and verifies the findings; you carry the text and save replies with AiSave."
+  "description": "Assisted copy-paste review rounds with web AI models: Claude prepares each round and verifies the findings; you carry the text and save replies with the bundled AiSaveDev extension (or AiSave)."
 }

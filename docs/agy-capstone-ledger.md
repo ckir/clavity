@@ -635,3 +635,33 @@ logged in `skipped.log`.
 **Round-1 lesson.** agy returned `[VERDICT: ALIGNED]` with an empty findings array, while its prose
 named two real defects: collect had no end to its capture window, and new-round numbered rounds by
 count. Both were measured and folded. A clean structured verdict is not a clean round; read the prose.
+
+## AiSaveDev shipped inside review-relay (branch `feat/aisavedev-ship`, 2026-09-29)
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-29 | `b841bf2b..c0c17cb0` (re-extended after every fold; round 4 reviewed the net fold diff `da218b2a..c0c17cb0`) | 4 | **GREEN - owner-adjudicated 2026-09-29.** Folds: `ce9c211d` + `d86e4ef0` (node CI job floors on TAP `# pass` >= 3: `node --test` exits 0 with no files, silently skips a missing named file, and `# tests` counts skip/todo - all measured), `844a8520` (content.js `markerRole`: a Playground label with a space emitted `role=tool call`, which Read-AiSaveCapture cannot read, so that turn was appended to the reply), `057f78a1` (legacy Playground "User" emitted as `role=human`; without it the parser returned the FIRST assistant reply). `d9937e8a` (delayed blob revoke, folded unverified at the owner's direction) REVERTED in `c0c17cb0` after measurement. Pre-push 12/12 at `c0c17cb0`. | fold commits above; briefs `.clavity/seams/capstone-aisavedev*.md` (local) |
+
+**Reviewer: agy, one cascade (`17695832`) for all four rounds AND the section-24 design consult on
+`markerRole` - isolation stamp SHARED-CONTEXT.** The consult returned NEGOTIATE (use a parser-side fix);
+the driver measured that the defect it found predated the fold and that the parser-side fix would not
+have fixed it, and one negotiation round converged (ALIGNED) on emitter-side canonicalisation with an
+EXACT `user` match.
+
+**Round 3 was INCOMPLETE** (`[13b] ECHO MISSING`; its VERIFIED list omitted popup.js and content.js).
+It was not counted as a clean round; the driver measured its three findings independently.
+
+**The popup-lifetime claim was settled by measurement, not by the peer.** agy stated it "actually knew"
+that revoking a blob URL or closing the popup truncates an in-flight download. A throwaway headless
+Chrome 154 (puppeteer-core, separate profile) showed the opposite for the shipped path:
+`chrome.downloads.download` + immediate revoke + page closed with nothing yet on disk saved 64 MB and
+192 MB files COMPLETE, while the `<a download>` redesign agy recommended lost the file. Controls saved
+complete; the first two probe runs had FAILING controls (CDP needs `eventsEnabled`) and were not trusted.
+
+Rejected by measurement (top items): empty `.new`/`.old` deletable (contract, `-Force`); no 5.1 run of
+the install suite (plugin is pwsh 7; the 5.1 CI step runs a different installer's suite); frontmatter
+unpinned (parser requires the keys; golden is byte-equal); icons missing (tracked); npm `--` forwarding
+(npm 10 and 11 both forward correctly); generic-fallback capture "silently null" (it parses to an empty
+reply that collect warns about). Below the floor: a test that prints a fake `# pass 3` then exits; a
+digits-only label. Deferred: collect's "save it again with AiSaveDev" hint is wrong for a drifted
+AiSaveDev capture -> `DEFERRED-TO-ANOMALIES: review-relay/scripts/collect.ps1:121 * 2026-09-29`.

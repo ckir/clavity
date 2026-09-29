@@ -46,3 +46,16 @@ updates:
       actions-minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+
+  # ---- npm: review-relay capture-extension TESTS only (jsdom). Nothing here ships to a browser. ----
+  - package-ecosystem: npm
+    directory: /review-relay/extension/test
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

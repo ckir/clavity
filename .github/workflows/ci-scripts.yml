@@ -338,3 +338,32 @@ jobs:
           $bad = @($r.Containers | Where-Object { $_.Result -ne 'Passed' })
           if ($bad.Count -gt 0) { throw "$($bad.Count) container(s) failed to run or discover" }
           if ($r.TotalCount -lt 12) { throw "only $($r.TotalCount) tests discovered - expected the clavity-install suite (>=12)" }
+
+  review-relay-extension:
+    name: review-relay capture extension (node)
+    # windows-latest on purpose: its checkout uses core.autocrlf, so this job also proves the
+    # .gitattributes eol=lf rule keeps the golden capture byte-identical (golden.test.js).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Install test dependencies
+        working-directory: review-relay/extension/test
+        run: npm ci
+
+      - name: Node tests (format + golden contract)
+        working-directory: review-relay/extension/test
+        shell: pwsh
+        # `node --test` exits 0 when it finds no test files, and silently skips a named file that does
+        # not exist, so a renamed test file would leave this step green. Floor the count, as above.
+        # The floor reads `# pass`, not `# tests`: TAP's `# tests` also counts skipped and todo tests.
+        run: |
+          $out = npm test -- --test-reporter=tap
+          $out
+          if ($LASTEXITCODE -ne 0) { throw "npm test failed (exit $LASTEXITCODE)" }
+          $m = $out | Select-String -Pattern '^# pass (\d+)$' | Select-Object -Last 1
+          if (-not $m -or [int]$m.Matches[0].Groups[1].Value -lt 3) { throw "only $(if ($m) { $m.Matches[0].Groups[1].Value } else { 0 }) node tests passed - expected format + golden (>=3)" }

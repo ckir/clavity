@@ -30,8 +30,15 @@ Describe 'check-injected-context.ps1' {
             @{ path = 'clavity-dotnet/plugin/README.md' }
             @{ path = 'clavity-dotnet/plugin/plugin.json' }
             @{ path = 'clavity-dotnet/plugin/NOTICE' }
+            @{ path = 'review-relay/extension/aisavedev/content.js' }
         ) {
             $script:Files | Should -Not -Contain $path
+        }
+        It 'still audits review-relay''s own skill while its extension folder is excluded' {
+            # Control for the row above: the exclusion must stop at review-relay/extension/, not swallow
+            # the whole review-relay domain root. And the excluded file must EXIST, or the row above is vacuous.
+            Test-Path -LiteralPath (Join-Path $script:RepoRoot 'review-relay/extension/aisavedev/content.js') | Should -BeTrue
+            $script:Files | Should -Contain 'review-relay/skills/review-relay/SKILL.md'
         }
         It 'FAILS if a product ships skills that no domain root covers' {
             # $script:DomainRoots is a hardcoded array, so a SEVENTH product added a year from now would

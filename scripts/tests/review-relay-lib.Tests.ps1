@@ -536,6 +536,55 @@ VERDICT: READY
         $c.Reply | Should -Match 'NEW-REPLY-TEXT'
         $c.Reply | Should -Not -Match 'OLD-REPLY-TEXT'
     }
+
+    It 'ends the reply at a turn marker of ANY role, not only human/assistant (a Playground tool turn)' {
+        # AiSaveDev emits role=[a-z]+ for any page label, so a tool turn can follow the reply. If only
+        # human/assistant markers ended it, the tool turn - and its own VERDICT line - would be read as
+        # the reviewer's.
+        $nonce = 'abcdef123456'
+        $text = @"
+---
+title: "tool turn"
+date: 2026-09-29
+url: https://platform.openai.com/playground/chat
+platform: oai-playground
+format: aisave-dev/1
+nonce: $nonce
+---
+
+<!-- aisave:$nonce turn=1 role=human -->
+## User
+
+Please review this.
+
+---
+
+<!-- aisave:$nonce turn=2 role=assistant -->
+## Assistant
+
+REVIEWER-REPLY-TEXT.
+
+VERDICT: NOT READY
+
+---
+
+<!-- aisave:$nonce turn=3 role=toolcall -->
+## Tool call
+
+TOOL-PAYLOAD-TEXT
+
+VERDICT: READY
+
+<!-- aisave:$nonce end -->
+"@
+        $path = Join-Path $TestDrive 'tool-turn-marker.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Format | Should -BeExactly 'aisave-dev/1'
+        $c.Reply | Should -Match 'REVIEWER-REPLY-TEXT'
+        $c.Reply | Should -Not -Match 'TOOL-PAYLOAD-TEXT'
+        Get-RelayVerdict $c.Reply | Should -BeExactly 'NOT READY'
+    }
 }
 
 Describe 'Get-RelayFindings' {
@@ -663,5 +712,35 @@ Describe 'Get-RelayCounts' {
     }
     It 'treats an explicit $null as no findings (unknown, never zero)' {
         (Get-RelayCounts -Findings $null -Verdict 'NOT READY').BLOCKING | Should -BeExactly 'unknown'
+    }
+}
+
+Describe 'aisave-dev/1 golden capture (the extension contract)' {
+    # The SAME file review-relay/extension/test/golden.test.js pins byte for byte from the real content.js.
+    # If the extension's output changes, that test goes red; if this parser's reading of it changes, these do.
+    BeforeAll {
+        $script:GoldenPath = Join-Path $PSScriptRoot '..' '..' 'review-relay' 'extension' 'test' 'fixtures' 'expected-aisave-dev.md'
+        $script:Golden = Read-AiSaveCapture $script:GoldenPath
+    }
+    It 'reads the golden through the MARKER path, as a chatgpt capture' {
+        $script:Golden.Format | Should -BeExactly 'aisave-dev/1'
+        $script:Golden.Platform | Should -BeExactly 'chatgpt'
+        # Format alone proves nothing: relay-lib.ps1 sets it inside the marker branch whether or not the
+        # marker path is then used (plan review, 2026-09-29). With the marker path off, the fenced "## Human"
+        # swallows the reply, so a non-empty reply without marker text is what pins the path. NotNullOrEmpty
+        # comes FIRST because `$null | Should -Not -Match` PASSES (measured).
+        $script:Golden.Reply | Should -Not -BeNullOrEmpty
+        $script:Golden.Reply | Should -Not -Match '<!-- aisave:'
+    }
+    It 'takes the reply from the LAST exchange, whole, keeping its own quoted "## Human" inside it' {
+        ($script:Golden.Reply -split "`n")[0] | Should -BeExactly 'I read it to the end.'
+        $script:Golden.Reply | Should -Match '(?m)^## Human$'
+        $script:Golden.Reply | Should -Match '(?m)^VERDICT: NOT READY$'
+    }
+    It 'reads the round tag, the verdict and the findings by identity' {
+        $script:Golden.Tag.Review | Should -BeExactly 'demo'
+        $script:Golden.Tag.Round | Should -Be 1
+        Get-RelayVerdict $script:Golden.Reply | Should -BeExactly 'NOT READY'
+        @(Get-RelayFindings $script:Golden.Reply | ForEach-Object { "$($_.Severity)@$($_.Line)" }) | Should -Be @('BLOCKING@15', 'MINOR@16')
     }
 }
