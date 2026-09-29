@@ -665,3 +665,33 @@ Describe 'Get-RelayCounts' {
         (Get-RelayCounts -Findings $null -Verdict 'NOT READY').BLOCKING | Should -BeExactly 'unknown'
     }
 }
+
+Describe 'aisave-dev/1 golden capture (the extension contract)' {
+    # The SAME file review-relay/extension/test/golden.test.js pins byte for byte from the real content.js.
+    # If the extension's output changes, that test goes red; if this parser's reading of it changes, these do.
+    BeforeAll {
+        $script:GoldenPath = Join-Path $PSScriptRoot '..' '..' 'review-relay' 'extension' 'test' 'fixtures' 'expected-aisave-dev.md'
+        $script:Golden = Read-AiSaveCapture $script:GoldenPath
+    }
+    It 'reads the golden through the MARKER path, as a chatgpt capture' {
+        $script:Golden.Format | Should -BeExactly 'aisave-dev/1'
+        $script:Golden.Platform | Should -BeExactly 'chatgpt'
+        # Format alone proves nothing: relay-lib.ps1 sets it inside the marker branch whether or not the
+        # marker path is then used (plan review, 2026-09-29). With the marker path off, the fenced "## Human"
+        # swallows the reply, so a non-empty reply without marker text is what pins the path. NotNullOrEmpty
+        # comes FIRST because `$null | Should -Not -Match` PASSES (measured).
+        $script:Golden.Reply | Should -Not -BeNullOrEmpty
+        $script:Golden.Reply | Should -Not -Match '<!-- aisave:'
+    }
+    It 'takes the reply from the LAST exchange, whole, keeping its own quoted "## Human" inside it' {
+        ($script:Golden.Reply -split "`n")[0] | Should -BeExactly 'I read it to the end.'
+        $script:Golden.Reply | Should -Match '(?m)^## Human$'
+        $script:Golden.Reply | Should -Match '(?m)^VERDICT: NOT READY$'
+    }
+    It 'reads the round tag, the verdict and the findings by identity' {
+        $script:Golden.Tag.Review | Should -BeExactly 'demo'
+        $script:Golden.Tag.Round | Should -Be 1
+        Get-RelayVerdict $script:Golden.Reply | Should -BeExactly 'NOT READY'
+        @(Get-RelayFindings $script:Golden.Reply | ForEach-Object { "$($_.Severity)@$($_.Line)" }) | Should -Be @('BLOCKING@15', 'MINOR@16')
+    }
+}
