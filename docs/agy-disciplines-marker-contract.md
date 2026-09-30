@@ -66,7 +66,9 @@ duplicate paid consult). SP-C's reader consumes this same constant.
     smuggling unreviewed code past the gate by forcing a trivial breach and getting it waived.
   In every case the content stays a bare commit sha, so the SP-C hook's
   `content == HEAD` read is uniform across disciplines; capstone's WAIVED / UNVERIFIED-ACCEPTED
-  distinctions live in the log above, never in the marker.
+  distinctions live in the log above, never in the marker. That read also forgives the ledger-row case:
+  it stays silent when HEAD descends from the marker and differs from it only in `docs/agy-*-ledger.md`
+  files - never on any other change, since a skill or settings file is exactly what a capstone reviews.
 - `agy-test-audit` writes `agy-test-audit.head` only on a **completed audit**: an `[VERDICT: EXHAUSTIVE]`,
   or a `[VERDICT: GAPS FOUND]` whose every gap carries one of the five AGY-SCOPE disposition tokens
   (`FOLDED`, `REJECTED`, `DISCARDED-BELOW-FLOOR`, `DEFERRED-TO-ANOMALIES`, `UNVERIFIED-ACCEPTED`); a

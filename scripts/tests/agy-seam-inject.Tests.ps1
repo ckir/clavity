@@ -249,6 +249,60 @@ Describe 'agy-seam-inject.sh' {
         } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # --- THE LEDGER-ROW CASE (capstone Branch 2 round 1). The capstone writes the REVIEWED sha and commits
+    # its ledger row first, so HEAD is past the marker. Silent only when every change since the marker is a
+    # docs/agy-*-ledger.md file; each silence row is paired with an injecting near-miss.
+    Context 'the ledger-row case' {
+        BeforeEach {
+            $script:LRepo = New-TempRepo
+            $script:LCwd = ($script:LRepo -replace '\\','/')
+            function script:Invoke-Git { & git -C $script:LRepo -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= @args }
+            function script:Add-Commit { param([string[]]$Paths)
+                foreach ($p in $Paths) {
+                    $f = Join-Path $script:LRepo $p
+                    New-Item -ItemType Directory -Path (Split-Path -Parent $f) -Force | Out-Null
+                    Set-Content -LiteralPath $f -Value ('x ' + [Guid]::NewGuid()) -NoNewline
+                }
+                Invoke-Git add -- @Paths
+                Invoke-Git commit -qm 'c'
+            }
+            function script:Set-Marker { param([string]$Sha)
+                $mdir = Join-Path $script:LRepo '.clavity/agy-marks'
+                New-Item -ItemType Directory -Path $mdir -Force | Out-Null
+                Set-Content -Path (Join-Path $mdir 'agy-capstone.head') -Value $Sha -NoNewline
+            }
+            Add-Commit @('src/a.sh')
+            $script:Reviewed = (Invoke-Git rev-parse HEAD).Trim()
+            Set-Marker $script:Reviewed
+        }
+        AfterEach { Remove-Item $script:LRepo -Recurse -Force -ErrorAction SilentlyContinue }
+
+        It 'is SILENT after the capstone and test-audit ledger-row commits' {
+            Add-Commit @('docs/agy-capstone-ledger.md')
+            Add-Commit @('docs/agy-test-audit-ledger.md')
+            (Invoke-Hook -Skill 'superpowers:finishing-a-development-branch' -Cwd $script:LCwd) | Should -BeNullOrEmpty
+        }
+
+        It 'INJECTS when a commit after the marker also changes a SKILL.md' {
+            Add-Commit @('docs/agy-capstone-ledger.md', 'skills/x/SKILL.md')
+            (Invoke-Hook -Skill 'superpowers:finishing-a-development-branch' -Cwd $script:LCwd) | Should -Match 'AGY-CAPSTONE auto-fire'
+        }
+
+        It 'INJECTS on a near-miss ledger path (docs/agy-capstone-ledger.md.orig)' {
+            Add-Commit @('docs/agy-capstone-ledger.md.orig')
+            (Invoke-Hook -Skill 'superpowers:finishing-a-development-branch' -Cwd $script:LCwd) | Should -Match 'AGY-CAPSTONE auto-fire'
+        }
+
+        It 'INJECTS when the marker is NOT an ancestor of HEAD, even if only a ledger separates them' {
+            # The marker names a ledger-only commit that HEAD no longer contains: `diff` alone would see
+            # only the ledger file and forgive; the ancestry check is what refuses it.
+            Add-Commit @('docs/agy-capstone-ledger.md')
+            Set-Marker (Invoke-Git rev-parse HEAD).Trim()
+            Invoke-Git reset -q --hard $script:Reviewed
+            (Invoke-Hook -Skill 'superpowers:finishing-a-development-branch' -Cwd $script:LCwd) | Should -Match 'AGY-CAPSTONE auto-fire'
+        }
+    }
+
     It 'emits the LOUD jq-missing line on a seam match when jq is absent' {
         $repo = New-TempRepo
         try {
