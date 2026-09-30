@@ -715,7 +715,7 @@ agy-mark-stamp.Tests.ps1                         24,4s  11 tests    <- SLOW, NEW
                                                                       Two runs at the top level: 27,4s cold / 24,4s warm. Background
                                                                       load uncontrolled - four long-lived pwsh processes were present
                                                                       and are not this session's to stop.
-agy-seam-inject.Tests.ps1                        39,4s   32 tests   <- SLOW, re-measured 2026-08-06 (+5:
+agy-seam-inject.Tests.ps1                        39,4s   34 tests   <- SLOW, re-measured 2026-08-06 (+5:
   24 -> 28 on 2026-09-12 (anomaly triage): a cwd that is a FILE defeated the .no-agy kill-switch on BOTH
   transports, so each path gets a silence row and its own positive control - four rows, each one hook run.
   Runtime NOT re-measured. (the original note follows)
@@ -750,7 +750,7 @@ agy-ledger-lib.Tests.ps1                        105,0s   34 tests   <- SLOW. RUN
                                                                       agy-shield-lib sibling - every row builds a
                                                                       throwaway git repo with TWO commits and
                                                                       spawns bash, so ~7-20s per row.
-agy-test-audit-reminder.Tests.ps1                50,8s   24 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-test-audit-reminder.Tests.ps1                50,8s   26 tests   <- SLOW, re-measured 2026-08-06 (+4)
 assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as of 2026-08-25; was FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file

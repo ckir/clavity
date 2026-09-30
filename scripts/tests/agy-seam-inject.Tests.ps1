@@ -293,6 +293,26 @@ Describe 'agy-seam-inject.sh' {
             (Invoke-Hook -Skill 'superpowers:finishing-a-development-branch' -Cwd $script:LCwd) | Should -Match 'AGY-CAPSTONE auto-fire'
         }
 
+        It 'INJECTS when a code file is RENAMED onto a ledger path (round 2: a rename lists only its new path)' {
+            New-Item -ItemType Directory -Path (Join-Path $script:LRepo 'docs') -Force | Out-Null
+            Invoke-Git mv src/a.sh docs/agy-capstone-ledger.md
+            Invoke-Git commit -qm 'rename code onto the ledger path'
+            (Invoke-Hook -Skill 'superpowers:finishing-a-development-branch' -Cwd $script:LCwd) | Should -Match 'AGY-CAPSTONE auto-fire'
+        }
+
+        It 'is SILENT from a subdirectory cwd after a ledger-row commit even under diff.relative=true' {
+            # The marker is cwd-relative by contract, so a session in sub/ has its own. diff.relative would
+            # drop docs/ from a diff run in sub/ and make a ledger-only change look like "nothing changed".
+            Add-Commit @('sub/n.txt')
+            $reviewed = (Invoke-Git rev-parse HEAD).Trim()
+            $mdir = Join-Path $script:LRepo 'sub/.clavity/agy-marks'
+            New-Item -ItemType Directory -Path $mdir -Force | Out-Null
+            Set-Content -Path (Join-Path $mdir 'agy-capstone.head') -Value $reviewed -NoNewline
+            Add-Commit @('docs/agy-capstone-ledger.md')
+            Invoke-Git config diff.relative true
+            (Invoke-Hook -Skill 'superpowers:finishing-a-development-branch' -Cwd ($script:LCwd + '/sub')) | Should -BeNullOrEmpty
+        }
+
         It 'INJECTS when the marker is NOT an ancestor of HEAD, even if only a ledger separates them' {
             # The marker names a ledger-only commit that HEAD no longer contains: `diff` alone would see
             # only the ledger file and forgive; the ancestry check is what refuses it.

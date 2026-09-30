@@ -153,7 +153,10 @@ if [ -n "$head" ] && [ -n "$marker" ] && [ -f "$marker" ]; then
     ''|*[!0-9a-f]*) ;;
     *)
       if git -C "$cwd_path" merge-base --is-ancestor "$_m" "$head" 2>/dev/null; then
-        _post=$(git -C "$cwd_path" -c core.quotePath=false diff --name-only "$_m" "$head" 2>/dev/null) &&
+        # --no-renames: a rename lists only its NEW path, so moving src/x.sh onto a ledger path would read
+        # as a ledger-only change. diff.relative=false: that user setting, from a subdirectory cwd, drops
+        # every path outside the cwd, docs/ included. Both measured in capstone Branch 2 round 2.
+        _post=$(git -C "$cwd_path" -c core.quotePath=false -c diff.relative=false diff --no-renames --name-only "$_m" "$head" 2>/dev/null) &&
           [ -n "$_post" ] &&
           ! printf '%s\n' "$_post" | grep -Evq '^docs/agy-[a-z0-9-]+-ledger\.md$' &&
           exit 0

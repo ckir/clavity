@@ -423,6 +423,49 @@ Describe 'agy-test-audit-reminder.sh' {
     It 'ships as pure ASCII' {
         ($([IO.File]::ReadAllBytes($script:Hook)) | Where-Object { $_ -gt 127 }).Count | Should -Be 0
     }
+    # --- capstone Branch 2 round 2: a name-only diff must list BOTH sides of a rename and ignore the user's
+    # diff.relative. Each row first proves the fixture FIRES at the reviewed tip, so its silence afterwards
+    # is the gate's answer and not a fixture that could never fire.
+    Context 'name-only diffs are rename-proof and cwd-proof' {
+        BeforeEach {
+            $script:NDir = New-TempRepo
+            function script:NGit { & git -C $script:NDir -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= @args }
+            NGit branch -f main HEAD
+            NGit checkout -qb feature
+            foreach ($p in 'src/keep.sh', 'src/auth.sh', 'sub/tool.sh') {
+                $f = Join-Path $script:NDir $p
+                New-Item -ItemType Directory -Path (Split-Path -Parent $f) -Force | Out-Null
+                Set-Content -LiteralPath $f -Value ('echo ' + $p) -Encoding ascii
+            }
+            NGit add -A
+            NGit commit -qm reviewed
+            $script:NReviewed = (NGit rev-parse HEAD).Trim()
+            foreach ($d in $script:NDir, (Join-Path $script:NDir 'sub')) {
+                New-Item -ItemType Directory -Path (Join-Path $d '.clavity/agy-marks') -Force | Out-Null
+            }
+        }
+        AfterEach { Remove-Item $script:NDir -Recurse -Force -ErrorAction SilentlyContinue }
+
+        It 'is SILENT after a rename moves code out from under the capstone (src/auth.sh -> docs/old.md)' {
+            Set-Marker $script:NDir 'agy-capstone' $script:NReviewed
+            (Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $script:NDir))).StdOut | Should -Match 'AGY-TEST-AUDIT'
+            New-Item -ItemType Directory -Path (Join-Path $script:NDir 'docs') -Force | Out-Null
+            NGit mv src/auth.sh docs/old.md
+            NGit commit -qm rename
+            (Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $script:NDir))).StdOut | Should -BeNullOrEmpty
+        }
+
+        It 'is SILENT after a code change outside a subdirectory cwd, even under diff.relative=true' {
+            $sub = Join-Path $script:NDir 'sub'
+            Set-Marker $sub 'agy-capstone' $script:NReviewed
+            (Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $sub))).StdOut | Should -Match 'AGY-TEST-AUDIT'
+            Add-Content -LiteralPath (Join-Path $script:NDir 'src/keep.sh') -Value 'echo changed' -Encoding ascii
+            NGit commit -qam 'code change outside sub/'
+            NGit config diff.relative true
+            (Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $sub))).StdOut | Should -BeNullOrEmpty
+        }
+    }
+
     It 'is byte-identical to the clavity-classic mirror' {
         $classic = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'clavity-classic/plugin/hooks/agy-test-audit-reminder.sh'
         (Get-FileHash $script:Hook).Hash | Should -Be (Get-FileHash $classic).Hash

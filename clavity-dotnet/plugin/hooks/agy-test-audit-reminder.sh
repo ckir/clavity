@@ -48,7 +48,10 @@ still_describes_head() {
   [ -n "$sha" ] || return 1
   [ "$sha" = "$head" ] && return 0
   git -C "$cwd" merge-base --is-ancestor "$sha" "$head" 2>/dev/null || return 1
-  post=$(git -C "$cwd" -c core.quotePath=false diff --name-only "$sha".."$head" 2>/dev/null) || return 1
+  # --no-renames and diff.relative=false on EVERY name-only list in this file (capstone Branch 2 round 2,
+  # measured): a rename lists only its new path, so src/x.sh -> docs/x.md hid a code change here and the
+  # stale capstone still "covered" HEAD; diff.relative, from a subdirectory cwd, drops out-of-cwd paths.
+  post=$(git -C "$cwd" -c core.quotePath=false -c diff.relative=false diff --no-renames --name-only "$sha".."$head" 2>/dev/null) || return 1
   printf '%s\n' "$post" | grep -Eqi "$re" && return 1
   return 0
 }
@@ -87,9 +90,9 @@ gate() {
   base=$(git -C "$cwd" merge-base HEAD "${CLAVITY_AUDIT_BASE_REF:-origin/main}" 2>/dev/null)
   [ -z "$base" ] && base=$(git -C "$cwd" merge-base HEAD main 2>/dev/null)
   if [ -n "$base" ] && [ "$base" != "$head" ]; then
-    changed=$(git -C "$cwd" -c core.quotePath=false diff --name-only "$base"..HEAD 2>/dev/null)
+    changed=$(git -C "$cwd" -c core.quotePath=false -c diff.relative=false diff --no-renames --name-only "$base"..HEAD 2>/dev/null)
   else
-    changed=$(git -C "$cwd" -c core.quotePath=false show --name-only --format= HEAD 2>/dev/null)
+    changed=$(git -C "$cwd" -c core.quotePath=false -c diff.relative=false show --no-renames --name-only --format= HEAD 2>/dev/null)
   fi
   # Executable-code / test path heuristic. Empty match -> silent (docs/config/spec-only range, spec 4).
   printf '%s\n' "$changed" | grep -Eqi "$CODE_RE" || return 1
