@@ -3477,7 +3477,7 @@ plugin pair.
 
 ---
 
-### §57 — The test-audit reminder never runs on a PowerShell tool call, and its matcher is unpinned — ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (sweep Branch 2 capstone round 4, Activation Auditor; owner-ruled DEFERRED at GREEN), not yet planned**
+### §57 — The test-audit reminder never runs on a PowerShell tool call, and its matcher is unpinned — ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (sweep Branch 2 capstone round 4, Activation Auditor; owner-ruled DEFERRED at GREEN), not yet planned** · ▶ **SCHEDULED 2026-09-30: new sweep Branch 14, before Branch 8 (owner-approved after AGY-FIRST `.clavity/seams/branch3-forks-negotiate.md`)**
 
 `agy-test-audit-reminder.sh` is registered PostToolUse under `"matcher": "Bash|Write|Edit"`
 (`plugin/hooks/hooks.json:32`, both plugins), while the consult guards use `Bash|PowerShell|mcp__.*agy_ask`.
@@ -3492,7 +3492,7 @@ contains `PowerShell`, killed by a mutant that drops it. The hook itself reads n
 change is expected - verify that before planning.
 
 **Blast radius:** both `hooks.json` files and the registration suite; a plugin pair, so a version bump,
-capstone, test audit and reinstall. Ride along with a later sweep branch that already bumps.
+capstone, test audit and reinstall. Its own branch, NOT folded into Branch 3: the sweep spec groups branches by the code they touch, "never to save capstones or reinstalls" (spec line 19), and no scheduled branch touches `hooks.json` or the registration suite.
 
 ---
 
