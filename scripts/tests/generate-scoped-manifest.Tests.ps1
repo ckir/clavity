@@ -1,8 +1,7 @@
 Describe 'generate-scoped-manifest pluginName' {
     BeforeAll {
         $script:gen  = Join-Path $PSScriptRoot '..' 'generate-scoped-manifest.ps1'
-        $script:mem  = Join-Path $PSScriptRoot 'fixtures' 'members-pluginName.json'
-        New-Item -ItemType Directory -Force -Path (Split-Path $script:mem) | Out-Null
+        $script:mem  = Join-Path $TestDrive 'members-pluginName.json'   # never the tracked tree (ROADMAP §50)
         @'
 { "owner": { "name": "ckir", "url": "https://x" }, "members": [
   { "name": "clavity-dotnet", "pluginName": "clavity", "source": "./clavity-dotnet/plugin", "description": "d", "marketplaceName": "clavity-dotnet" },

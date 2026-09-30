@@ -1,4 +1,0 @@
-{ "owner": { "name": "ckir", "url": "https://x" }, "members": [
-  { "name": "clavity-dotnet", "pluginName": "clavity", "source": "./clavity-dotnet/plugin", "description": "d", "marketplaceName": "clavity-dotnet" },
-  { "name": "ghidrust", "source": "./ghidrust/plugin", "description": "g", "marketplaceName": "clavity-ghidrust" }
-] }
