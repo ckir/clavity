@@ -47,6 +47,13 @@ pre-push:
         - "scripts/check-injected-context.ps1"
         - "scripts/injected-context-*"
       run: just check-injected-context
+    control-bytes:
+      # Only when a push touches Markdown or the gate itself - same seconds-range rule as injected-context.
+      glob:
+        - "**/*.md"
+        - "*.md"
+        - "scripts/check-control-bytes.ps1"
+      run: just check-control-bytes
     register-hash:
       run: just check-register-hash
     knowledge-store:
