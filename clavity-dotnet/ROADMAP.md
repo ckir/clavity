@@ -3109,7 +3109,7 @@ alleged here; the finding is that nothing *looked*.
 
 ---
 
-### §39 — The marker path is built from `$discipline` on both sides, and nothing pins that they agree — ▶ **PROMOTED 2026-09-12 from the anomalies conveyor, not yet planned**
+### §39 — The marker path is built from `$discipline` on both sides, and nothing pins that they agree — ▶ **PROMOTED 2026-09-12 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 2 (`cda6a6f4`) - one shared builder, agy-marker-lib.sh, used by the writer and all three readers; no test, by owner ruling**
 
 The writer builds `rel=".clavity/agy-marks/$discipline.head"` (`clavity-dotnet/plugin/hooks/agy-mark.sh:337`)
 and the reader builds `marker="$cwd_path/.clavity/agy-marks/$discipline.head"`
@@ -3131,7 +3131,7 @@ writing any test here**, or the row passes on the dev box for a reason unrelated
 
 ---
 
-### §40 — The ledger endpoint's 7-character lower bound has no boundary row on either side — ▶ **PROMOTED 2026-09-12 from the anomalies conveyor, not yet planned**
+### §40 — The ledger endpoint's 7-character lower bound has no boundary row on either side — ▶ **PROMOTED 2026-09-12 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 2 (`e23d81ee`) - rows on both sides of the 7-character edge, each killed by its mutant**
 
 `clavity-dotnet/plugin/hooks/agy-ledger-lib.sh:106-111` builds the match alternation from **every prefix of
 the query from 7 characters to its full length**, and `:126` requires the row's token to be one of them. Seven
@@ -3348,7 +3348,7 @@ surface later as a spurious diff or a CRLF warning on an unrelated commit.
 
 ---
 
-### §51 — `agy-mark.sh head` writes a marker for a sha that does not exist — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned**
+### §51 — `agy-mark.sh head` writes a marker for a sha that does not exist — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 2 (`bf7f8970`) - refuses where git can answer; no repository or no git means no check**
 
 MEASURED 2026-09-29: while writing the AiSaveDev capstone marker the driver passed a mistyped full sha,
 `c0c17cb0b1a4d0da0000000000000000`. `agy-mark.sh head` accepted and wrote it: the ledger precondition
@@ -3371,7 +3371,7 @@ does not close this: it proves the ledger records the sha, not that the sha name
 
 ---
 
-### §52 — The agy-test-audit skill says write ambient HEAD; the marker gate refuses it — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned**
+### §52 — The agy-test-audit skill says write ambient HEAD; the marker gate refuses it — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 2 (`2ddcd50e`) - the skill writes the ledger row's range end; the capstone skill's command had the same defect and is fixed with it**
 
 `agy-test-audit/SKILL.md`, section `## Debounce marker`, says the marker content is ambient `HEAD`. But the
 same skill requires the ledger row to be committed BEFORE the marker, and `agy-mark.sh head` records a sha
