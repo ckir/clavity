@@ -72,6 +72,11 @@ shopt -u nocaseglob 2>/dev/null
 
 # The token list is the LITERAL closed table (spec section 3a) - never derived from agy-marks/.
 _tokens='agy-capstone|agy-panel|agy-test-audit|agy-first'
+# ROADMAP section 39: the marker path comes from the SAME builder agy-mark.sh writes with. If it cannot be
+# loaded no seam can be shown concluded, so every candidate is surfaced - the loud direction for a reader
+# whose job is recovery.
+_marker_lib_ok=0
+. "$(dirname "$0" 2>/dev/null)/agy-marker-lib.sh" 2>/dev/null && _marker_lib_ok=1
 
 # rank1[] = on-convention unconcluded "path|token|round"; rank2[] = off-convention paths;
 # bad[]   = basenames failing the allowlist (reported as a bare count only).
@@ -89,9 +94,10 @@ for _s in "${_seams[@]}"; do
   # Anchored FULL match against the lowercased basename; token from the literal alternation.
   if [[ $_lc =~ ^(${_tokens})-r([0-9]+)(-.+)?\.md$ ]]; then
     _tok=${BASH_REMATCH[1]}; _rnd=${BASH_REMATCH[2]}
-    _marker="$root/.clavity/agy-marks/$_tok.head"
+    _marker=''
+    if [ "$_marker_lib_ok" = 1 ]; then agy_marker_rel _mrel "$_tok"; _marker="$root/$_mrel"; fi
     # Concluded iff the seam's OWN marker is newer than it.
-    if [ -e "$_marker" ] && [ "$_marker" -nt "$_s" ]; then
+    if [ -n "$_marker" ] && [ -e "$_marker" ] && [ "$_marker" -nt "$_s" ]; then
       continue
     fi
     rank1+=( "$_s|$_tok|$_rnd" )

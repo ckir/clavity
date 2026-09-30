@@ -238,6 +238,13 @@ _ledger_lib="$_self_dir/agy-ledger-lib.sh"
 . "$_ledger_lib" 2>/dev/null || _die_refuse "ledger helper could not be sourced: [$_ledger_lib]"
 command -v agy_ledger_lookup >/dev/null 2>&1 || _die_refuse "ledger helper loaded but agy_ledger_lookup is not defined: [$_ledger_lib]"
 
+# Load the marker-path builder (ROADMAP section 39): the writer and every reader build the path with it.
+_marker_lib="$_self_dir/agy-marker-lib.sh"
+[ -f "$_marker_lib" ] || _die_refuse "marker-path helper not found beside this script: [$_marker_lib]"
+# shellcheck source=agy-marker-lib.sh
+. "$_marker_lib" 2>/dev/null || _die_refuse "marker-path helper could not be sourced: [$_marker_lib]"
+command -v agy_marker_rel >/dev/null 2>&1 || _die_refuse "marker-path helper loaded but agy_marker_rel is not defined: [$_marker_lib]"
+
 _key=${AGY_SESSION_ID:-}
 
 case "$mode" in
@@ -346,7 +353,7 @@ case "$mode" in
                 fi
                 ;;
         esac
-        rel=".clavity/agy-marks/$discipline.head"
+        agy_marker_rel rel "$discipline"
         agy_shield "$root" "$rel" "$_key"
         # EVERY mode creates the directory it writes into. The helper's Stage A1 creates .clavity/ and
         # NOTHING BELOW IT, and this batch removes the skills' own mkdir instructions, so without this

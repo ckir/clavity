@@ -130,8 +130,14 @@ esac
 # $cwd_path, NOT $root - the walked root exists above but using it HERE is the exact divergence this
 # paragraph forbids. Normalized only, same directory. ---
 head=$(git -C "$cwd_path" rev-parse HEAD 2>/dev/null)
-marker="$cwd_path/.clavity/agy-marks/$discipline.head"
-if [ -n "$head" ] && [ -f "$marker" ] && [ "$(cat "$marker" 2>/dev/null)" = "$head" ]; then
+# ROADMAP section 39: the relative path comes from the SAME builder the writer uses. If the builder cannot
+# be loaded the debounce cannot run, so fall through and inject - the safe direction, as for an
+# unresolvable HEAD below.
+_rel=''
+. "$(dirname "$0" 2>/dev/null)/agy-marker-lib.sh" 2>/dev/null && agy_marker_rel _rel "$discipline"
+marker=''
+[ -n "$_rel" ] && marker="$cwd_path/$_rel"
+if [ -n "$head" ] && [ -n "$marker" ] && [ -f "$marker" ] && [ "$(cat "$marker" 2>/dev/null)" = "$head" ]; then
   exit 0
 fi
 # If HEAD cannot resolve (no repo / no commits), fall through and inject (safe: re-fires;
