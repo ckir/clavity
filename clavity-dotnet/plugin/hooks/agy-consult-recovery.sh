@@ -74,9 +74,10 @@ shopt -u nocaseglob 2>/dev/null
 _tokens='agy-capstone|agy-panel|agy-test-audit|agy-first'
 # ROADMAP section 39: the marker path comes from the SAME builder agy-mark.sh writes with. If it cannot be
 # loaded no seam can be shown concluded, so every candidate is surfaced - the loud direction for a reader
-# whose job is recovery.
+# whose job is recovery. A lib that loads but does not define the builder counts as missing, otherwise the
+# marker path collapses to $root/ and hides every seam (capstone Branch 2 round 1).
 _marker_lib_ok=0
-. "$(dirname "$0" 2>/dev/null)/agy-marker-lib.sh" 2>/dev/null && _marker_lib_ok=1
+. "$(dirname "$0" 2>/dev/null)/agy-marker-lib.sh" 2>/dev/null && command -v agy_marker_rel >/dev/null 2>&1 && _marker_lib_ok=1
 
 # rank1[] = on-convention unconcluded "path|token|round"; rank2[] = off-convention paths;
 # bad[]   = basenames failing the allowlist (reported as a bare count only).

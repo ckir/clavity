@@ -342,4 +342,19 @@ Describe 'agy-consult-recovery test-audit coverage (verified gaps 2026-09-14)' {
     (Run $t) | Should -BeNullOrEmpty
     Remove-Item -Recurse -Force $t
   }
+  It 'a marker lib that loads but defines NO agy_marker_rel counts as MISSING - the seam is SURFACED, not hidden (capstone Branch 2 R1)' {
+    # MEASURED before the fix: the lib sourced fine, _mrel stayed empty, _marker became "$root/" - a directory
+    # that exists and is usually NEWER than the seam - so every seam read as concluded and the hook went silent.
+    # The repo root is made newer than the seam below because the failure mode relies on exactly that.
+    $hd = Join-Path ([IO.Path]::GetTempPath()) ("cr-hooks-" + [guid]::NewGuid())
+    Copy-Item -Recurse (Split-Path -Parent $script:hook) $hd
+    Set-Content (Join-Path $hd 'agy-marker-lib.sh') '# defines nothing'
+    $r = New-Repo; Seam $r 'agy-capstone-r1-x.md'
+    Start-Sleep -Milliseconds 1100
+    Set-Content (Join-Path $r 'newer.txt') 'x'   # bumps the root directory mtime past the seam's
+    (Get-Item $r).LastWriteTimeUtc | Should -BeGreaterThan (Get-Item (Join-Path $r '.clavity\seams\agy-capstone-r1-x.md')).LastWriteTimeUtc -Because 'the failure mode needs the root newer than the seam, or this row proves nothing'
+    $out = (@{cwd=$r;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & $script:bash (Join-Path $hd 'agy-consult-recovery.sh') 2>$null
+    Remove-Item -Recurse -Force $r, $hd
+    $out | Should -Match 'agy-capstone-r1-x'
+  }
 }
