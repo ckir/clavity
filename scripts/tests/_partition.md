@@ -693,12 +693,16 @@ agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new
                                                                       idle CPU; 11,1s cold. It will not be the
                                                                       cold-start absorber in this half
 agy-consult-recovery.Tests.ps1                  280,0s   37 tests   <- SLOW, ADDED 2026-09-13 (section 15 consult-recovery). Time is spawn-latency-dominated (~6s/hook: this box AV-scans each bash/git/date) and MEASURED ONLY UNDER CONTENTION - NOT a clean idle figure; re-measure idle before trusting it. Count 30->37 by the section-15 AGY-TEST-AUDIT (this row lagged at 29 from the suite's initial state; corrected 2026-09-14). Slow-half by design: cannot fit the fast cap at this per-call cost.
-agy-liveness-check.Tests.ps1                     56,4s   33 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-liveness-check.Tests.ps1                     56,4s   38 tests   <- SLOW, re-measured 2026-08-06 (+4)
+  33 -> 38 on 2026-09-30 (sweep Branch 2): the .clavity/ wiring check - two REPORTS rows and three near-miss
+  rows. Runtime NOT re-measured.
   32 -> 33 on 2026-09-12 (anomaly triage): one row proving the hook stays SILENT on stderr when PATH holds
   no external tools. It drives the RAW msys shell through a generated .sh - Git\bin\bash.exe restores its
   own /usr/bin, so a row driven through the usual wrapper cannot see the defect. SKIPS where that shell is
   absent. Runtime NOT re-measured; one more child process on an already-SLOW suite.
-agy-mark.Tests.ps1                               93,0s   47 tests   <- SLOW, NEW 2026-08-16. Task 6 (14c):
+agy-mark.Tests.ps1                               93,0s   49 tests   <- SLOW, NEW 2026-08-16. Task 6 (14c):
+  47 -> 49 on 2026-09-30 (sweep Branch 2, ROADMAP section 51): a nonexistent sha is refused inside a repository,
+  written unchecked outside one. Runtime NOT re-measured.
                                                                       agy-mark.sh, the sanctioned .clavity writer for the
                                                                       skills. Bash + git subprocess spawns across 26 Its; the
                                                                       FORWARDS $AGY_SESSION_ID row alone costs ~33,5s (three
@@ -740,7 +744,7 @@ agy-shield-lib.Tests.ps1                        409,1s   45 tests   <- SLOW, NEW
                                                                       machine the agent is working on. The 409,1s
                                                                       is the last figure measured under the stated
                                                                       conditions and is now one row short.
-agy-ledger-lib.Tests.ps1                        105,0s   32 tests   <- SLOW. RUNTIME NOT RE-MEASURED since the awk parser was replaced by a regex 2026-09-07; the count is current (32 after capstone round 2a added 7 range-modifier rows), the seconds are not. ROADMAP
+agy-ledger-lib.Tests.ps1                        105,0s   34 tests   <- SLOW. RUNTIME NOT RE-MEASURED since the awk parser was replaced by a regex 2026-09-07; the count is current (32 after capstone round 2a added 7 range-modifier rows; 34 after sweep Branch 2 pinned the 7-character row-token edge, ROADMAP section 40), the seconds are not. ROADMAP
                                                                       section 27: the ledger reader behind the
                                                                       marker-write gate. Fixture-heavy like its
                                                                       agy-shield-lib sibling - every row builds a
