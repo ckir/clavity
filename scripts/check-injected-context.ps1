@@ -154,13 +154,24 @@ function Get-WalkIdentity {
     $p.TrimEnd('\', '/')
 }
 
+# NORMALISE A REPO ROOT ONCE, THE SAME WAY AT EVERY ENTRY POINT. Trailing separators are trimmed because a
+# tab-completed 'C:/repo/' must key the reference cache the same as 'C:/repo'. But a DRIVE ROOT keeps its
+# separator: bare 'C:' is not the root of C: - PowerShell resolves it to that drive's CURRENT directory, so the
+# gate would walk, and resolve references in, whatever directory the caller happened to be in (ROADMAP §42,
+# measured with a subst drive: the resolver's root became the cwd and the walk threw 'path escaped root').
+function ConvertTo-GateRepoRoot([string]$Root) {
+    $t = $Root -replace '[\\/]+$', ''
+    if ($t -match '^[A-Za-z]:$') { return "$t\" }
+    return $t
+}
+
 function Get-UnexpectedBuildDirs {
     param([string]$RepoRoot)
     # Build output sitting INSIDE shipped plugin content is itself the defect worth reporting. It is not
     # audited (binaries would drown the encoding invariant in noise) and not silently skipped (that was
     # the round-9/10 bypass) - it is named. An intentional one is subtracted by an anchored glob, which is
     # visible in the ignorelist with a reason, exactly like every other subtraction here.
-    $RepoRoot = $RepoRoot -replace '[\\/]+$', ''
+    $RepoRoot = ConvertTo-GateRepoRoot $RepoRoot
     # ONE resolver per root, built BEFORE the loop - ROADMAP section 28 capstone. Resolving inside the loop re-ran
     # Get-Item on the same root once per FILE (~64s a run). Guarded so a missing root keeps its own error.
     $pathResolver = if (Test-Path -LiteralPath $RepoRoot) { New-RootRelativePathResolver -Root $RepoRoot } else { $null }
@@ -270,12 +281,8 @@ function Test-IsIgnored {
 
 function Get-InjectedContextFiles {
     param([string]$RepoRoot)
-    # TRIM ANY TRAILING SEPARATOR. $rel is cut with Substring($RepoRoot.Length + 1), so a root passed as
-    # 'C:/repo/' - exactly what shell tab-completion produces - is one character too long and swallows the
-    # first letter of EVERY relative path. Measured: 'clavity-dotnet/...' came back as 'lavity-dotnet/...',
-    # which breaks every ignore glob and every reference resolution at once, turning a tab-completed
-    # invocation into a flood of false violations.
-    $RepoRoot = $RepoRoot -replace '[\\/]+$', ''
+    # Normalised by ConvertTo-GateRepoRoot, so every entry point keys the reference cache the same way and a drive root keeps its separator.
+    $RepoRoot = ConvertTo-GateRepoRoot $RepoRoot
     # ONE resolver per root, built BEFORE the loop - ROADMAP section 28 capstone. Resolving inside the loop re-ran
     # Get-Item on the same root once per FILE (~64s a run). Guarded so a missing root keeps its own error.
     $pathResolver = if (Test-Path -LiteralPath $RepoRoot) { New-RootRelativePathResolver -Root $RepoRoot } else { $null }
@@ -501,9 +508,8 @@ $script:RefIndexRoot = $null
 
 function Get-ReferenceIndex {
     param([string]$RepoRoot)
-    # Same trailing-separator normalisation as the corpus walk, and for the same Substring reason. It also
-    # keeps the cache key below canonical, so 'C:/repo' and 'C:/repo/' cannot build two different indexes.
-    $RepoRoot = $RepoRoot -replace '[\\/]+$', ''
+    # Normalised by ConvertTo-GateRepoRoot, so every entry point keys the reference cache the same way and a drive root keeps its separator.
+    $RepoRoot = ConvertTo-GateRepoRoot $RepoRoot
     if ($null -ne $script:RefIndex -and $script:RefIndexRoot -eq $RepoRoot) { return $script:RefIndex }
     # ONE resolver per root, built BEFORE the loop - ROADMAP section 28 capstone. Resolving inside the loop re-ran
     # Get-Item on the same root once per FILE (~64s a run). Guarded so a missing root keeps its own error.

@@ -1458,3 +1458,63 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
         finally { Remove-Item -LiteralPath $parent -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
+
+Describe 'ConvertTo-GateRepoRoot (ROADMAP §42)' {
+    BeforeAll {
+        . $script:Script -RepoRoot $script:RepoRoot
+    }
+
+    It 'keeps the separator on a drive root' {
+        ConvertTo-GateRepoRoot 'C:\'   | Should -BeExactly 'C:\'
+        ConvertTo-GateRepoRoot 'C:/'   | Should -BeExactly 'C:\'
+        ConvertTo-GateRepoRoot 'C:'    | Should -BeExactly 'C:\'
+        ConvertTo-GateRepoRoot 'C:\\'  | Should -BeExactly 'C:\'
+    }
+
+    It 'trims every trailing separator from an ordinary root' {
+        ConvertTo-GateRepoRoot 'C:\repo\'   | Should -BeExactly 'C:\repo'
+        ConvertTo-GateRepoRoot 'C:/repo//'  | Should -BeExactly 'C:/repo'
+        # Distractor: nothing to trim, must come back unchanged.
+        ConvertTo-GateRepoRoot 'C:\repo'    | Should -BeExactly 'C:\repo'
+    }
+
+    It 'walks the drive root, not the cwd, when the root IS a drive root' -Skip:(-not $IsWindows) {
+        $letter = $null
+        foreach ($l in 'Q'..'Z') {
+            if (-not (Test-Path "${l}:\")) { $letter = $l; break }
+        }
+        if (-not $letter) {
+            Set-ItResult -Skipped -Because 'no free drive letter'
+            return
+        }
+        $tree = Join-Path ([System.IO.Path]::GetTempPath()) ("gate-driveroot-" + [guid]::NewGuid().ToString('N'))
+        $first = $script:DomainRoots[0]
+        $mapped = $false
+        $pushed = $false
+        try {
+            New-Item -ItemType Directory -Force -Path (Join-Path $tree 'scripts') | Out-Null
+            Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') -Destination (Join-Path $tree 'scripts')
+            foreach ($dr in $script:DomainRoots) {
+                New-Item -ItemType Directory -Force -Path (Join-Path $tree $dr) | Out-Null
+                New-Item -ItemType Directory -Force -Path (Join-Path $tree (Join-Path 'sub' $dr)) | Out-Null
+            }
+            Set-Content -LiteralPath (Join-Path $tree "$first/root.md") -Value 'root'
+            Set-Content -LiteralPath (Join-Path $tree "sub/$first/sub.md") -Value 'root'
+
+            & subst.exe "${letter}:" $tree
+            if ($LASTEXITCODE -ne 0) { throw "subst ${letter}: failed" }
+            $mapped = $true
+
+            Push-Location "${letter}:\sub"
+            $pushed = $true
+            $files = @(Get-InjectedContextFiles -RepoRoot "${letter}:\")
+            @($files | Where-Object { $_ -like '*root.md' }).Count | Should -BeGreaterThan 0 -Because 'the walk must start at the drive root'
+            @($files | Where-Object { $_ -like '*sub.md' }).Count | Should -Be 0 -Because 'the cwd (a subdirectory of the drive) must not become the root'
+        }
+        finally {
+            if ($pushed) { Pop-Location }
+            if ($mapped) { & subst.exe "${letter}:" /D | Out-Null }
+            Remove-Item -LiteralPath $tree -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
