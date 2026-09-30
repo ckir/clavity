@@ -79,7 +79,7 @@ Describe 'agy-mark.sh' {
             # own directory, a Windows path must work. `dirname` satisfies it today; the parameter
             # expansion that briefly replaced `dirname` did not.
             $d = New-MarkFixture
-            $sha = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+            $sha = (& git -C $d rev-parse HEAD).Trim()
             $backslashMark = $script:Mark -replace '/', '\'
             $backslashMark | Should -Not -Match '/' -Because 'the fixture must really be backslash-only, or this row proves nothing'
 
@@ -134,6 +134,37 @@ Describe 'agy-mark.sh' {
                 Should -BeTrue -Because 'agy-seam-inject.sh:124 reads $cwd_path/.clavity/agy-marks/<d>.head'
             (Test-Path -LiteralPath (Join-Path $d '.clavity/agy-marks/agy-first.head')) |
                 Should -BeFalse -Because 'a toplevel anchor would put it here and defeat the debounce'
+        }
+
+        It 'REFUSES a sha that names no commit in this repository, and writes no marker (ROADMAP section 51)' {
+            # MEASURED 2026-09-30 before the fix: `head agy-capstone <first 8 of HEAD + 32 zeros>` wrote that
+            # sha and exited 0, while `git cat-file -e <it>^{commit}` answered 128. The marker is what the
+            # auto-fire hooks compare with HEAD, so a sha that names nothing silently re-arms the gate.
+            $d = New-MarkFixture
+            $real = (& git -C $d rev-parse HEAD).Trim()
+            $fake = $real.Substring(0, 8) + ('0' * 32)
+            & git -C $d cat-file -e "$fake^{commit}" 2>$null
+            $LASTEXITCODE | Should -Not -Be 0 -Because 'the fixture sha must really name no commit, or this row proves nothing'
+            $r = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first',$fake)
+            $r.ExitCode | Should -Be 1
+            $r.Err | Should -Match 'does not name a commit'
+            (Test-Path -LiteralPath (Join-Path $d '.clavity/agy-marks/agy-first.head')) | Should -BeFalse -Because 'a refused write must leave no marker'
+        }
+
+        It 'WRITES without the commit check outside a git repository - the writer stays git-optional' {
+            # ROADMAP section 27 keeps agy-mark.sh git-optional, and the section 51 owner ruling keeps it so:
+            # no repository, or no git on PATH, means no check - not a refusal. Both make the same rev-parse
+            # probe fail, so this one row pins both.
+            $d = Join-Path ([IO.Path]::GetTempPath()) ("marknogit-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path (Join-Path $d '.clavity') | Out-Null
+            [void]$script:Fixtures.Add($d)   # FIXTURE HYGIENE
+            [IO.File]::WriteAllText((Join-Path $d '.clavity/.gitignore'), "*`n")
+            & git -C $d rev-parse --is-inside-work-tree 2>$null | Out-Null
+            $LASTEXITCODE | Should -Not -Be 0 -Because 'the fixture must really be outside any git work tree, or this row proves nothing'
+            $sha = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+            $r = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first',$sha)
+            $r.ExitCode | Should -Be 0 -Because "outside a repository there is nothing to check against; stderr was: $($r.Err)"
+            (Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/agy-marks/agy-first.head')) | Should -BeExactly $sha
         }
     }
 
@@ -513,7 +544,8 @@ Describe 'agy-mark.sh' {
             $d = New-MarkFixture
             $target = Join-Path $d '.clavity/agy-marks/agy-first.head'
             New-Item -ItemType Directory -Force -Path $target | Out-Null
-            $r = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first','0123456789abcdef0123456789abcdef01234567')
+            $sha = (& git -C $d rev-parse HEAD).Trim()
+            $r = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first',$sha)
             # ROADMAP 19 collapsed the tri-state, so the code says only that it failed. The discrimination
             # lives in the message below - 'write FAILED' is emitted by this branch alone, and no
             # _die_refuse path produces it, so this row still tells a rejected write from a refusal.
@@ -576,17 +608,19 @@ Describe 'agy-mark.sh' {
 
     Context 'the shield is called on EVERY mode' {
         It 'restores a broken shield before writing' -ForEach @(
-            @{ Mode = @('head','agy-first','deadbeefdeadbeefdeadbeefdeadbeefdeadbeef') },
+            @{ Mode = @('head','agy-first','<HEAD>') },
             @{ Mode = @('log','agy-first','SKIPPED-UNREACHABLE','deadbeefdeadbeefdeadbeefdeadbeefdeadbeef') },
             @{ Mode = @('prepare','seams/topic.md') }
         ) {
             $d = New-MarkFixture -Shield ''
-            Invoke-Mark -Cwd $d -MarkArgs $Mode | Out-Null
+            $head = (& git -C $d rev-parse HEAD).Trim()
+            $markArgs = @($Mode | ForEach-Object { if ($_ -eq '<HEAD>') { $head } else { $_ } })
+            Invoke-Mark -Cwd $d -MarkArgs $markArgs | Out-Null
             (Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/.gitignore')) | Should -Match '(?m)^\*$'
         }
 
         It 'PRESERVES a human negation - <Mode> must PREPEND, never append' -ForEach @(
-            @{ Mode = @('head','agy-first','deadbeefdeadbeefdeadbeefdeadbeefdeadbeef') },
+            @{ Mode = @('head','agy-first','<HEAD>') },
             @{ Mode = @('log','agy-first','SKIPPED-UNREACHABLE','deadbeefdeadbeefdeadbeefdeadbeefdeadbeef') },
             @{ Mode = @('prepare','seams/topic.md') },
             @{ Mode = @('stamp','agy-capstone','cascade-aaa','cascade-bbb') }
@@ -614,7 +648,9 @@ Describe 'agy-mark.sh' {
             # The assertion is on GIT'S BEHAVIOUR, because that is the whole point of a negation.
             $d = New-MarkFixture -Shield "!keep.md`n"
             [IO.File]::WriteAllText((Join-Path $d '.clavity/keep.md'), "x`n")
-            Invoke-Mark -Cwd $d -MarkArgs $Mode | Out-Null
+            $head = (& git -C $d rev-parse HEAD).Trim()
+            $markArgs = @($Mode | ForEach-Object { if ($_ -eq '<HEAD>') { $head } else { $_ } })
+            Invoke-Mark -Cwd $d -MarkArgs $markArgs | Out-Null
 
             $shield = Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/.gitignore')
             $shield | Should -Match '(?m)^\*$' -Because "the ignore-all pattern must still be present, got: [$shield]"
@@ -630,16 +666,17 @@ Describe 'agy-mark.sh' {
             [IO.File]::WriteAllText((Join-Path $d '.clavity/agy-marks/agy-first.head'), '')
             & git -C $d add -f '.clavity/agy-marks/agy-first.head'
             & git -C $d commit -q -m 'track to create a PERSISTENT fault'
+            $sha = (& git -C $d rev-parse HEAD).Trim()
             $sid = 'ws-' + [guid]::NewGuid().ToString('N')
-            $a = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first','deadbeef') -SessionId $sid
-            $b = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first','deadbeef') -SessionId $sid
+            $a = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first',$sha) -SessionId $sid
+            $b = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first',$sha) -SessionId $sid
             ([regex]::Matches("$($a.Err)$($b.Err)", 'git rm --cached')).Count | Should -Be 1
             # THE ROW ABOVE PROVES TWO CALLS SHARE A KEY - NOT THAT THE KEY IS THE FORWARDED ONE.
             # Deleting the forwarding entirely and passing a hardcoded constant satisfies it perfectly,
             # because a constant is also "the same key twice". The debounce must therefore be shown to
             # BREAK when the session id changes: a DIFFERENT id has to emit the fault again. Without
             # this line the row certifies the mechanism while proving nothing about its data flow.
-            $c = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first','deadbeef') `
+            $c = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first',$sha) `
                     -SessionId ('ws-' + [guid]::NewGuid().ToString('N'))
             ([regex]::Matches("$($c.Err)", 'git rm --cached')).Count |
                 Should -Be 1 -Because 'a DIFFERENT session id must not be debounced - that is what proves the key is the forwarded value and not a constant'

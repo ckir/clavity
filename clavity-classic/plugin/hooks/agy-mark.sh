@@ -246,6 +246,18 @@ case "$mode" in
         _check_discipline "$discipline"
         [ -n "$sha" ] || _die_refuse 'head requires a sha argument'
         _check_sha "$sha"
+        # ROADMAP section 51: the sha must NAME A COMMIT. MEASURED 2026-09-30: a mistyped full sha (the
+        # real first 8 characters plus 32 zeros) was written and exited 0 - the ledger gate below matched
+        # its 7-character prefix, and nothing asked git whether it resolves. A nonexistent sha silently
+        # re-arms every auto-fire hook that compares the marker with HEAD.
+        # Checked only where git can answer: no repository, or no git on PATH, means no check, so the
+        # writer stays git-optional (ROADMAP section 27) - both make the rev-parse probe fail. It sits
+        # BEFORE the ledger gate on purpose: it applies to every discipline, including the NO-LEDGER
+        # majority, and --gate-override does not bypass it - no ruling makes a nonexistent commit valid.
+        if git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            git -C "$root" cat-file -e "$sha^{commit}" >/dev/null 2>&1 ||
+                _die_refuse "sha does not name a commit in this repository: [$sha] - pass the full sha of the commit the discipline covered, e.g. \$(git rev-parse <sha>)"
+        fi
         # ROADMAP section 27: a completion marker may not advance past a ledger that does not record it.
         # THE GATE IS INERT WHERE NO SUCH LEDGER EXISTS - which is every repository but clavity's own,
         # since this file ships in a plugin. NO-LEDGER is the overwhelmingly common answer in the wild,
