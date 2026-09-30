@@ -522,9 +522,17 @@ function Get-ReferenceIndex {
     $pathResolver = if (Test-Path -LiteralPath $RepoRoot) { New-RootRelativePathResolver -Root $RepoRoot } else { $null }
     $byName = @{}
     $all    = [System.Collections.Generic.List[string]]::new()
-    Get-ChildItem -LiteralPath $RepoRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
-        ForEach-Object {
-            $rel = $pathResolver.Resolve($_.FullName).Replace('\', '/')
+    # Index only what CI will have (ROADMAP §54): a suffix match to an untracked file is as false as a direct
+    # reference to one. The tracked list also spares the recursive disk walk; the walk is the no-git fallback.
+    $null = Get-TrackedPathSet -RepoRoot $RepoRoot
+    $items = if ($null -ne $script:TrackedFiles) {
+        $script:TrackedFiles | ForEach-Object { [pscustomobject]@{ Rel = $_; Name = ($_ -split '/')[-1] } }
+    } else {
+        Get-ChildItem -LiteralPath $RepoRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
+            ForEach-Object { [pscustomobject]@{ Rel = $pathResolver.Resolve($_.FullName).Replace('\', '/'); Name = $_.Name } }
+    }
+    $items | ForEach-Object {
+            $rel = $_.Rel
             # THE INDEX STILL PRUNES BY NAME, and the corpus walk above no longer does - that asymmetry is
             # deliberate, not drift. This walk covers the WHOLE repository for reference resolution and its
             # results are never audited, only matched against; name-based pruning is what keeps it cheap.
@@ -547,6 +555,56 @@ function Get-ReferenceIndex {
     $script:RefIndex
 }
 
+# WHAT EXISTS, AS CI WILL SEE IT (ROADMAP §54). Every reference used to be checked with Test-Path, i.e. against
+# the WORKING TREE, so a reference to an untracked or gitignored file passed locally and failed in CI, which
+# checks out only committed files. The answer now comes from the git INDEX: every tracked file, plus every
+# directory that holds one (Test-Path accepted directories, and references to them are legitimate).
+# Returns $null when $RepoRoot is not inside a git work tree - callers then fall back to Test-Path, and the
+# gate SAYS so (see $script:TrackedFallbackRoots) rather than silently checking the weaker thing.
+$script:TrackedSet     = $null
+$script:TrackedFiles   = $null   # the tracked FILES alone (the set above also holds their directories)
+$script:TrackedSetRoot = $null
+$script:TrackedFallbackRoots = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+function Get-TrackedPathSet {
+    param([string]$RepoRoot)
+    $RepoRoot = ConvertTo-GateRepoRoot $RepoRoot
+    if ($script:TrackedSetRoot -eq $RepoRoot) { return ,$script:TrackedSet }
+    $set = $null
+    $filesList = $null
+    try {
+        $inside = (& git -C $RepoRoot rev-parse --is-inside-work-tree 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $inside -eq 'true') {
+            $raw = (& git -C $RepoRoot ls-files -z 2>$null) -join ''
+            if ($LASTEXITCODE -eq 0) {
+                $set = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+                $filesList = [System.Collections.Generic.List[string]]::new()
+                foreach ($f in ($raw -split "`0")) {
+                    if (-not $f) { continue }
+                    $p = $f.Replace('\', '/')
+                    [void]$set.Add($p)
+                    $filesList.Add($p)
+                    $i = $p.LastIndexOf('/')
+                    while ($i -gt 0) { $p = $p.Substring(0, $i); [void]$set.Add($p); $i = $p.LastIndexOf('/') }
+                }
+            }
+        }
+    } catch { $set = $null; $filesList = $null }
+    if ($null -eq $set) { [void]$script:TrackedFallbackRoots.Add($RepoRoot) }
+    $script:TrackedSet = $set
+    $script:TrackedFiles = $filesList
+    $script:TrackedSetRoot = $RepoRoot
+    return ,$set
+}
+
+# One existence test for every reference site: the index when there is one, the working tree otherwise.
+function Test-RepoPathExists {
+    param([string]$RepoRoot, [string]$RelPath)
+    $tracked = Get-TrackedPathSet -RepoRoot $RepoRoot
+    if ($null -eq $tracked) { return (Test-Path -LiteralPath (Join-Path $RepoRoot $RelPath)) }
+    return $tracked.Contains($RelPath.Replace('\', '/').TrimEnd('/'))
+}
+
 function Resolve-Reference {
     param([string]$Token, [string]$RepoRoot, [string]$FromFile)
     if ($Token -in $script:RuntimeArtifacts) { return [pscustomobject]@{ Outcome = 'skip'; Matches = @() } }
@@ -557,12 +615,19 @@ function Resolve-Reference {
     # Dot-prefixed paths are runtime or tooling state, not shipped content: `.clavity/` is gitignored by
     # design (.gitignore:45), `.claude/` lives on the user's machine. Measured: treating them as
     # resolvable produced 11 of the 23 false positives in the first whole-domain probe.
-    if ($Token.StartsWith('.') -and $Token -match '/') { return [pscustomobject]@{ Outcome = 'skip'; Matches = @() } }
+    # `./` and `../` are relative references, not runtime state, and used to be swallowed here, which left the
+    # relative-reference branch below dead (ROADMAP §54 execution, 2026-09-30).
+    if ($Token.StartsWith('.') -and -not $Token.StartsWith('./') -and -not $Token.StartsWith('../') -and $Token -match '/') { return [pscustomobject]@{ Outcome = 'skip'; Matches = @() } }
 
     if ($Token.StartsWith('./') -or $Token.StartsWith('../')) {
         $base = if ($FromFile) { Split-Path -Parent (Join-Path $RepoRoot $FromFile) } else { $RepoRoot }
         $target = Join-Path $base $Token
-        $o = if (Test-Path -LiteralPath $target) { 'ok' } else { 'broken' }
+        $full = [System.IO.Path]::GetFullPath($target).TrimEnd('\', '/')
+        $root = [System.IO.Path]::GetFullPath((ConvertTo-GateRepoRoot $RepoRoot)).TrimEnd('\', '/')
+        $o = if ($full.Equals($root, [System.StringComparison]::OrdinalIgnoreCase)) { 'ok' }   # the repo root itself
+             elseif ($full.StartsWith($root + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase) -and
+                     (Test-RepoPathExists -RepoRoot $RepoRoot -RelPath $full.Substring($root.Length + 1))) { 'ok' }
+             else { 'broken' }
         return [pscustomobject]@{ Outcome = $o; Matches = @($target) }
     }
 
@@ -571,7 +636,7 @@ function Resolve-Reference {
     # prefix name. MEASURED: `docs/fix-the-tool-backlog/_template.md`, cited from inside agy-autotrain,
     # exists at agy-autotrain/docs/... but was reported broken because `docs/` short-circuited here.
     foreach ($p in $script:AssertPrefixes) {
-        if ($Token.StartsWith($p) -and (Test-Path -LiteralPath (Join-Path $RepoRoot $Token))) {
+        if ($Token.StartsWith($p) -and (Test-RepoPathExists -RepoRoot $RepoRoot -RelPath $Token)) {
             return [pscustomobject]@{ Outcome = 'ok'; Matches = @($Token) }
         }
     }
@@ -861,7 +926,7 @@ function Get-InjectedContextViolations {
             # under scope 'twin-plugin' and REPO-relative without it, which is easy to get backwards: a
             # repo-relative path with twin scope expands to clavity-dotnet/plugin/clavity-classic/plugin/...
             # and would otherwise waive nothing, silently, leaving the author to wonder why.
-            if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot $p))) {
+            if (-not (Test-RepoPathExists -RepoRoot $RepoRoot -RelPath $p)) {
                 # NAME BOTH CAUSES, most likely first, the way the domain-root throw above does. The first
                 # version led with the anchoring lecture, which is the RARER cause: someone who simply
                 # deleted a file and left its exemption behind got a paragraph about plugin-relative
@@ -984,6 +1049,9 @@ function Get-InjectedContextViolations {
 function Invoke-InjectedContextCheck {
     param([string]$RepoRoot)
     $v = @(Get-InjectedContextViolations -RepoRoot $RepoRoot)
+    foreach ($r in $script:TrackedFallbackRoots) {
+        Write-Host "check-injected-context: NOTE - no git index for '$r' (not a git work tree, or git is not on PATH); references were checked against the working tree, which can pass files CI will not have." -ForegroundColor Yellow
+    }
     if (-not $v.Count) { Write-Host 'check-injected-context: OK' -ForegroundColor Green; exit 0 }
     foreach ($x in $v) {
         Write-Host ("{0}`n  invariant : {1}`n  found     : {2}`n  waive with: {3}" -f $x.File, $x.Invariant, $x.Finding, $x.WaiverLine)

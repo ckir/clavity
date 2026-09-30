@@ -1518,3 +1518,73 @@ Describe 'ConvertTo-GateRepoRoot (ROADMAP §42)' {
         }
     }
 }
+
+Describe 'reference resolution follows the git index (ROADMAP §54)' {
+    BeforeAll {
+        . $script:Script -RepoRoot $script:RepoRoot
+    }
+    BeforeEach {
+        $script:TrackedSetRoot = $null; $script:TrackedFiles = $null; $script:RefIndexRoot = $null
+        $script:TrackedFallbackRoots.Clear()
+        $d = Join-Path ([System.IO.Path]::GetTempPath()) ("gate-index-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force -Path (Join-Path $d 'tracked'), (Join-Path $d 'untracked'), (Join-Path $d 'ignored') | Out-Null
+        Set-Content -LiteralPath (Join-Path $d 'tracked/a.md') -Value 'a'
+        Set-Content -LiteralPath (Join-Path $d 'untracked/b.md') -Value 'b'
+        Set-Content -LiteralPath (Join-Path $d 'ignored/c.md') -Value 'c'
+        Set-Content -LiteralPath (Join-Path $d '.gitignore') -Value 'ignored/'
+        & git -C $d init -q
+        & git -C $d add -- tracked/a.md .gitignore
+        $script:D = $d
+    }
+    AfterEach {
+        Remove-Item -LiteralPath $script:D -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    AfterAll {
+        $script:TrackedSet = $null; $script:TrackedFiles = $null; $script:TrackedSetRoot = $null
+        $script:RefIndex = $null; $script:RefIndexRoot = $null
+        $script:TrackedFallbackRoots.Clear()
+    }
+
+    It 'a tracked file resolves' {
+        Test-RepoPathExists -RepoRoot $script:D -RelPath 'tracked/a.md' | Should -BeTrue
+    }
+    It 'an untracked file on disk does NOT resolve' {
+        Test-Path -LiteralPath (Join-Path $script:D 'untracked/b.md') | Should -BeTrue -Because 'the file must exist on disk or the row is vacuous'
+        Test-RepoPathExists -RepoRoot $script:D -RelPath 'untracked/b.md' | Should -BeFalse
+    }
+    It 'a gitignored file on disk does NOT resolve' {
+        Test-Path -LiteralPath (Join-Path $script:D 'ignored/c.md') | Should -BeTrue -Because 'the file must exist on disk or the row is vacuous'
+        Test-RepoPathExists -RepoRoot $script:D -RelPath 'ignored/c.md' | Should -BeFalse
+    }
+    It 'a directory holding a tracked file resolves' {
+        Test-RepoPathExists -RepoRoot $script:D -RelPath 'tracked' | Should -BeTrue
+        Test-RepoPathExists -RepoRoot $script:D -RelPath 'tracked/' | Should -BeTrue
+    }
+    It 'a ./ reference to an untracked sibling is broken' {
+        (Resolve-Reference -Token './b.md' -RepoRoot $script:D -FromFile 'untracked/x.md').Outcome | Should -Be 'broken'
+        (Resolve-Reference -Token './a.md' -RepoRoot $script:D -FromFile 'tracked/x.md').Outcome | Should -Be 'ok'
+    }
+    It 'a suffix reference to an untracked file does not resolve' {
+        (Resolve-Reference -Token 'untracked/b.md' -RepoRoot $script:D -FromFile 'a.md').Outcome | Should -Be 'unclassified'
+        (Resolve-Reference -Token 'tracked/a.md' -RepoRoot $script:D -FromFile 'a.md').Outcome | Should -Be 'ok'
+    }
+    It 'outside a git work tree it falls back to the working tree, and says so' {
+        $d2 = Join-Path ([System.IO.Path]::GetTempPath()) ("gate-nogit-" + [guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Force -Path (Join-Path $d2 'x') | Out-Null
+            Set-Content -LiteralPath (Join-Path $d2 'x/y.md') -Value 'y'
+            Test-RepoPathExists -RepoRoot $d2 -RelPath 'x/y.md' | Should -BeTrue
+            $script:TrackedFallbackRoots.Contains($d2) | Should -BeTrue
+        }
+        finally { Remove-Item -LiteralPath $d2 -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'a ./ reference that lands on the repository root is ok' {
+        (Resolve-Reference -Token './' -RepoRoot $script:D -FromFile 'a.md').Outcome | Should -Be 'ok'
+        (Resolve-Reference -Token '../../..' -RepoRoot $script:D -FromFile 'tracked/x.md').Outcome | Should -Be 'broken'
+    }
+    It 'the index holds no untracked file' {
+        $null = Get-ReferenceIndex -RepoRoot $script:D
+        $script:RefIndex.All | Should -Contain 'tracked/a.md'
+        $script:RefIndex.All | Should -Not -Contain 'untracked/b.md'
+    }
+}

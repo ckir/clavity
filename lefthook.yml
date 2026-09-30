@@ -27,6 +27,23 @@ pre-push:
       run: just check-member-docs
     user-facing-docs:
       run: just check-user-facing-docs
+    injected-context:
+      # Only when a push touches what this gate reads. `lefthook.yml`'s header requires every pre-push job to
+      # stay in the SECONDS range (git holds the SSH connection idle while the hook runs); a pwsh cold start alone
+      # costs ~6s (the installer-ascii note), so an unconditional entry would tax every push.
+      # YAML ARRAY form - the repo's shipped convention for multi-pattern globs (lefthook.yml:98-102).
+      glob:
+        - "clavity-dotnet/plugin/**"
+        - "clavity-classic/plugin/**"
+        - "clavity-classic/agy_skills/**"
+        - "clavity-classic/agy-mcp-bridge/**"
+        - "seed/**"
+        - "agy-autotrain/**"
+        - "commonmemory/**"
+        - "review-relay/**"
+        - "scripts/check-injected-context.ps1"
+        - "scripts/injected-context-*"
+      run: just check-injected-context
     register-hash:
       run: just check-register-hash
     knowledge-store:
