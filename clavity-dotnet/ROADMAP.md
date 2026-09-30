@@ -3496,7 +3496,7 @@ capstone, test audit and reinstall. Its own branch, NOT folded into Branch 3: th
 
 ---
 
-### §58 — The working tree's line endings diverge from the all-LF index, and every tool pays for it — ▶ **RAISED 2026-09-30 by the owner, SCHEDULED: new sweep Branch 15, before Branch 8; AGY-FIRST WAIVED by the owner (work solo), `skipped.log` 2026-09-30**
+### §58 — The working tree's line endings diverge from the all-LF index, and every tool pays for it — ▶ **RAISED 2026-09-30 by the owner, SCHEDULED: new sweep Branch 15, before Branch 8; AGY-FIRST WAIVED by the owner (work solo), `skipped.log` 2026-09-30** · ✅ **FIXED 2026-09-30 on sweep Branch 15 (`5f266eb2`) - `* text=auto eol=lf` leads `.gitattributes` with three explicit exceptions (register-plugin.ps1 and *.cmd/*.bat CRLF, *.bin binary, aisavedev -text), five redundant pins and one dead rule dropped, `.editorconfig` added; the working tree now matches the index (683 LF, 2 intended CRLF); agy WAIVED by the owner for the whole branch**
 
 **MEASURED 2026-09-30:** every text blob in the index is LF (`git ls-files --eol`: 421 `i/lf w/crlf`, 260
 `i/lf w/lf`, 4 `i/lf w/mixed` - the four `CHANGELOG.md` files - and 8 `-text`; no `i/crlf` at all). The CRLF
