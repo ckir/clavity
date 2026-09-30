@@ -1,6 +1,7 @@
 # Backlog stub - the scratch directory handed to the peer contains code this machine executes
 
-**Status:** PARTIALLY CLOSED 2026-08-31 - the three hooks are un-wired (owner instruction). The · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep Branch 2 - Option 3, census the executable bit in the scratch zone**
+**Status:** CLOSED 2026-09-30 on sweep Branch 2 - Option 3 was REPLACED by an owner ruling after AGY-FIRST: agy-liveness-check.sh now reports any hook command in the three settings files that runs from .clavity/ (`741e5c04`). See `## Closure 2026-09-30` at the foot.
+Earlier status: PARTIALLY CLOSED 2026-08-31 - the three hooks are un-wired (owner instruction). The · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep Branch 2 - Option 3, census the executable bit in the scratch zone**
 remaining scope is the durable question in `## What is still open`, not the original exposure.
 Promoted 2026-08-31 from `.clavity/local-anomalies.md`.
 **Raised:** 2026-08-30, during agy-capstone round 3 on the review-only envelope.
@@ -83,3 +84,12 @@ wiring something from there again.
 Option 3 above - censusing the **executable bit** rather than content - remains the only proposal that
 keeps this correct without reintroducing false alarms on sanctioned peer writes. Worth scheduling on its
 own merits.
+
+## Closure 2026-09-30 - why Option 3 was replaced
+
+Under Git Bash on Windows the executable bit is not stored; it is inferred (for example from a `#!` first
+line), so censusing it under `scratch/` would flag every script the peer legitimately writes there - and a
+bit-only record misses an already-executable file whose content changes. The live risk this item named is
+a hook being WIRED to run from the peer's write area, so that is what is now checked, at every startup and
+for a human's wiring as well as the peer's. The consult guard still records `scratch/` by name only; that is
+unchanged and deliberate.

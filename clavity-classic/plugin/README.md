@@ -230,3 +230,9 @@ used to hide an override.
 
 Iterating on a hook locally is done by running the script directly against a synthetic payload —
 `echo '{"cwd":"."}' | bash <hook>` — never by shadowing the shipped copy.
+
+**A hook must not run from `.clavity/`.** That directory is the agy peer's sanctioned write area: every
+review-only brief hands it `.clavity/scratch/` to write in. A hook registered from there executes whatever
+the peer may have written, so the startup check reports any hook command in your user, project or
+project-local `settings.json` that runs from `.clavity/`, even under `.no-agy`. Move such a script out of
+`.clavity/` or remove its registration.

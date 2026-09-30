@@ -19,7 +19,7 @@
 #
 # WHICH SURFACE EACH NOTICE EARNS, settled by AGY-NEGOTIATE 2026-09-08. The criterion is not "is this
 # true" but "does it demand an immediate corrective action from the OWNER":
-#   an ACTIONABLE FAULT  - superpowers not live, jq missing, a personal hook overriding a shipped one -
+#   an ACTIONABLE FAULT  - superpowers not live, jq missing, a personal hook overriding a shipped one, a hook wired from .clavity/ -
 #                          earns the owner's screen: `systemMessage` AND `additionalContext`.
 #   a CHOSEN STATE       - `.no-agy` is present - earns `additionalContext` ONLY. It reports something
 #                          the owner decided and cannot "fix" except by undoing their own decision, so
@@ -211,14 +211,20 @@ else
     # and "${var#*$'\n'}" then finds no newline and returns the WHOLE string -- silently assigning the
     # counters to the names variable. It happened to stay harmless only because a shipped name can never
     # be a bare integer. One line plus `read -r a b rest` has no such edge.
+    # The THIRD field counts commands that run from .clavity/ (peer-scratch backlog item, replacing its
+    # "Option 3"): that directory is the agy peer's sanctioned write area, so a hook wired from it executes
+    # whatever the peer may have written. Backslashes are folded to `/` first so a Windows path matches, and
+    # the character before `.clavity` must not continue a name, and neither may the character after it, so
+    # `my.clavity/`, `.clavity-old/` and `.clavity.bak/` do not count while a bare `cd .clavity` does.
     if ! personal_raw=$(jq -r '(.hooks // {}) as $h
                                | [$h[][].hooks[]]              as $entries
                                | [$entries[].command // empty] as $cmds
-                               | "\($entries | length) \($cmds | length) \([$cmds[] | ascii_downcase | scan("[a-z0-9._-]+\\.sh")] | unique | join(" "))"' "$f" 2>/dev/null); then
+                               | [$cmds[] | gsub("\\\\"; "/") | ascii_downcase | select(test("(^|[^a-z0-9._-])\\.clavity([^a-z0-9._-]|$)"))] as $wired
+                               | "\($entries | length) \($cmds | length) \($wired | length) \([$cmds[] | ascii_downcase | scan("[a-z0-9._-]+\\.sh")] | unique | join(" "))"' "$f" 2>/dev/null); then
       ownership_note="${ownership_note}[AGY-DISCIPLINES] schema unrecognised ($f) - .hooks is present but not the shape this check reads; ownership NOT verified for it"$'\n'
       continue
     fi
-    read -r entry_count cmd_count personal <<<"$personal_raw"
+    read -r entry_count cmd_count wired_count personal <<<"$personal_raw"
     # Hook entries EXIST but not one carries a 'command' field -> the host renamed the key under us.
     # Staying silent here would be indistinguishable from "no collisions found", which is precisely the
     # fail-open the hooks.json guard above exists to prevent. A shape we no longer read is reported, not
@@ -227,6 +233,9 @@ else
     if [ "${entry_count:-0}" -gt 0 ] && [ "${cmd_count:-0}" -eq 0 ]; then
       ownership_note="${ownership_note}[AGY-DISCIPLINES] schema unrecognised ($f) - hook entries are present but none carries a 'command' field; ownership NOT verified for it"$'\n'
       continue
+    fi
+    if [ "${wired_count:-0}" -gt 0 ]; then
+      ownership_note="${ownership_note}[AGY-DISCIPLINES] $wired_count hook command(s) in $f run from .clavity/ - that directory is the agy peer's sanctioned write area, so a hook wired from it runs whatever the peer may have written; move the script out of .clavity/ or remove the registration, then restart or /clear this session"$'\n'
     fi
     # Compare script-name TOKENS, not substrings of the joined command blob. Substring matching both
     # OVER-fires (a longer name that merely CONTAINS a shipped name -- which is exactly the rename-and-trim

@@ -163,6 +163,15 @@ Describe 'agy-ledger-lib.sh' {
 | date | range | rounds | verdict | evidence |
 |------|-------|--------|---------|----------|
 '@
+        # ROADMAP section 40. The row token is SIX characters: one short of the shortest abbreviation the
+        # reader accepts (agy-ledger-lib.sh builds its alternation from prefixes of length 7 and up).
+        $script:SixCharLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | `<<SHORT6>>` | 1 | GREEN | fold `deadbee` |
+'@
 
         function New-LedgerRepo {
             param([string]$LedgerBody, [string]$Discipline = 'agy-capstone', [string]$RawBody, [switch]$Crlf)
@@ -187,7 +196,7 @@ Describe 'agy-ledger-lib.sh' {
             if ($RawBody) {
                 $text = $RawBody
             } else {
-                $text = $LedgerBody.Replace('<<SHORT>>', $sha.Substring(0, 7)).Replace('<<FULL>>', $sha)
+                $text = $LedgerBody.Replace('<<SHORT6>>', $sha.Substring(0, 6)).Replace('<<SHORT>>', $sha.Substring(0, 7)).Replace('<<FULL>>', $sha)
             }
             $text = $text -replace "`r`n", "`n"
             # -Crlf writes REAL CR bytes. RESTORED after the capstone caught that the rewrite of this
@@ -468,6 +477,23 @@ Describe 'agy-ledger-lib.sh' {
             $short = $r.Sha.Substring(0, 6)
             $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $short).Out
             $out | Should -Not -Match 'FOUND' -Because 'six hex characters is not a sha; ordinary words like facade and decade are valid hex'
+        }
+    }
+
+    Context 'the seven-character ROW-token boundary (ROADMAP section 40)' {
+        # The QUERY bound has a row (above). The ROW-token bound had none on either side: MEASURED
+        # 2026-09-30, changing `_agl_i=7` to `_agl_i=6` left all 32 rows green. These two pin both edges.
+        It 'REFUSES a ledger token of SIX characters - one short of the shortest accepted abbreviation' {
+            $r = New-LedgerRepo -LedgerBody $script:SixCharLedger
+            $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+            $out | Should -Not -Match 'FOUND' -Because 'six characters must not authenticate a sha; the alternation starts at seven'
+            $out | Should -Match 'ABSENT' -Because 'a refusal must still say what it found'
+        }
+
+        It 'ACCEPTS a ledger token of EXACTLY seven characters - the boundary itself' {
+            $r = New-LedgerRepo -LedgerBody $script:BareLedger
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out |
+                Should -Match 'FOUND' -Because 'seven characters is the shortest abbreviation the ledger writes, and it must authenticate'
         }
     }
 

@@ -502,7 +502,7 @@ the same `HEAD`. Write the marker through the shipped writer, never by hand: it 
 shield BEFORE the write and creates the directory it writes into.
 
 ```bash
-bash "<BASE>/../../hooks/agy-mark.sh" head "agy-capstone" "$(git rev-parse HEAD)"
+bash "<BASE>/../../hooks/agy-mark.sh" head "agy-capstone" "$(git rev-parse <REVIEWED-SHA>)"
 ```
 
 - **Path:** `.clavity/agy-marks/agy-capstone.head` - a single discipline-keyed marker, no `<plugin-id>`
@@ -512,6 +512,9 @@ bash "<BASE>/../../hooks/agy-mark.sh" head "agy-capstone" "$(git rev-parse HEAD)
   round-cap waiver) for the range that was ACTUALLY reviewed, nothing else - NOT an ambient HEAD
   re-sampled at write time if code was committed during the adjudication pause (see the mid-adjudication
   rule above). If HEAD cannot resolve, skip writing the marker (the discipline re-fires next trigger - safe).
+  Put it in place of `<REVIEWED-SHA>` above. Do NOT substitute `$(git rev-parse HEAD)` at write time: the
+  ledger row is committed first, so HEAD is then the ledger commit, which no row records and the writer
+  refuses (ROADMAP section 52).
 - **Written ONLY on a GATE-SATISFIED terminal state** - human-confirmed GREEN, or an explicit human
   **completion-gate waiver** (`round-cap`: the human accepts "done" despite still-live findings). A
   self-declared round-ALIGNED not yet confirmed, an override re-entry still in progress, a

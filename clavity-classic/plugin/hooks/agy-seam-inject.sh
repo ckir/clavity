@@ -126,13 +126,43 @@ esac
 # to the payload's session cwd EXACTLY as the discipline skills write it (a bare
 # .clavity/agy-marks/<discipline>.head relative to the agent's cwd). Do NOT anchor to
 # git-toplevel: that would diverge from the cwd-relative writer in a launched-from-subdir
-# session and defeat the debounce. Inject UNLESS the marker exists AND its content == HEAD.
+# session and defeat the debounce. Inject UNLESS the marker exists AND its content == HEAD, or HEAD is
+# the marker plus ledger-row commits only (see THE LEDGER-ROW CASE below).
 # $cwd_path, NOT $root - the walked root exists above but using it HERE is the exact divergence this
 # paragraph forbids. Normalized only, same directory. ---
 head=$(git -C "$cwd_path" rev-parse HEAD 2>/dev/null)
-marker="$cwd_path/.clavity/agy-marks/$discipline.head"
-if [ -n "$head" ] && [ -f "$marker" ] && [ "$(cat "$marker" 2>/dev/null)" = "$head" ]; then
-  exit 0
+# ROADMAP section 39: the relative path comes from the SAME builder the writer uses. If the builder cannot
+# be loaded the debounce cannot run, so fall through and inject - the safe direction, as for an
+# unresolvable HEAD below.
+_rel=''
+. "$(dirname "$0" 2>/dev/null)/agy-marker-lib.sh" 2>/dev/null && agy_marker_rel _rel "$discipline"
+marker=''
+[ -n "$_rel" ] && marker="$cwd_path/$_rel"
+if [ -n "$head" ] && [ -n "$marker" ] && [ -f "$marker" ]; then
+  _m=$(cat "$marker" 2>/dev/null)
+  [ "$_m" = "$head" ] && exit 0
+  # THE LEDGER-ROW CASE (capstone Branch 2 round 1, owner ruling 2026-09-30). The capstone and test-audit
+  # skills write the REVIEWED sha and must commit their ledger row first, so HEAD is past the marker by
+  # the time anyone finishes the branch, and strict equality re-injected a capstone that was already GREEN.
+  # Forgive ONLY when HEAD descends from the marker and its tree differs from the marker's in nothing but
+  # docs/agy-*-ledger.md files. Deliberately NOT agy-test-audit-reminder.sh's CODE_RE: that list has no .md
+  # or .json, so it would forgive a SKILL.md or settings.json change - the files a capstone exists to
+  # review. The hex check keeps a hand-edited marker from reaching git as an option (`--output=...`).
+  # Every failure below (missing object, shallow clone, no git) leaves the seam injected.
+  case "$_m" in
+    ''|*[!0-9a-f]*) ;;
+    *)
+      if git -C "$cwd_path" merge-base --is-ancestor "$_m" "$head" 2>/dev/null; then
+        # --no-renames: a rename lists only its NEW path, so moving src/x.sh onto a ledger path would read
+        # as a ledger-only change. diff.relative=false: that user setting, from a subdirectory cwd, drops
+        # every path outside the cwd, docs/ included. Both measured in capstone Branch 2 round 2.
+        _post=$(git -C "$cwd_path" -c core.quotePath=false -c diff.relative=false diff --no-renames --name-only "$_m" "$head" 2>/dev/null) &&
+          [ -n "$_post" ] &&
+          ! printf '%s\n' "$_post" | grep -Evq '^docs/agy-[a-z0-9-]+-ledger\.md$' &&
+          exit 0
+      fi
+      ;;
+  esac
 fi
 # If HEAD cannot resolve (no repo / no commits), fall through and inject (safe: re-fires;
 # the skill cannot write a HEAD-keyed marker in that context either).

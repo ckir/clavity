@@ -423,6 +423,108 @@ Describe 'agy-test-audit-reminder.sh' {
     It 'ships as pure ASCII' {
         ($([IO.File]::ReadAllBytes($script:Hook)) | Where-Object { $_ -gt 127 }).Count | Should -Be 0
     }
+    # --- capstone Branch 2 round 2: a name-only diff must list BOTH sides of a rename and ignore the user's
+    # diff.relative. Each row first proves the fixture FIRES at the reviewed tip, so its silence afterwards
+    # is the gate's answer and not a fixture that could never fire.
+    Context 'name-only diffs are rename-proof and cwd-proof' {
+        BeforeEach {
+            $script:NDir = New-TempRepo
+            function script:NGit { & git -C $script:NDir -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= @args }
+            NGit branch -f main HEAD
+            NGit checkout -qb feature
+            foreach ($p in 'src/keep.sh', 'src/auth.sh', 'sub/tool.sh') {
+                $f = Join-Path $script:NDir $p
+                New-Item -ItemType Directory -Path (Split-Path -Parent $f) -Force | Out-Null
+                Set-Content -LiteralPath $f -Value ('echo ' + $p) -Encoding ascii
+            }
+            NGit add -A
+            NGit commit -qm reviewed
+            $script:NReviewed = (NGit rev-parse HEAD).Trim()
+            foreach ($d in $script:NDir, (Join-Path $script:NDir 'sub')) {
+                New-Item -ItemType Directory -Path (Join-Path $d '.clavity/agy-marks') -Force | Out-Null
+            }
+        }
+        AfterEach { Remove-Item $script:NDir -Recurse -Force -ErrorAction SilentlyContinue }
+
+        It 'is SILENT after a rename moves code out from under the capstone (src/auth.sh -> docs/old.md)' {
+            Set-Marker $script:NDir 'agy-capstone' $script:NReviewed
+            (Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $script:NDir))).StdOut | Should -Match 'AGY-TEST-AUDIT'
+            New-Item -ItemType Directory -Path (Join-Path $script:NDir 'docs') -Force | Out-Null
+            NGit mv src/auth.sh docs/old.md
+            NGit commit -qm rename
+            (Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $script:NDir))).StdOut | Should -BeNullOrEmpty
+        }
+
+        It 'is SILENT after a code change outside a subdirectory cwd, even under diff.relative=true' {
+            $sub = Join-Path $script:NDir 'sub'
+            Set-Marker $sub 'agy-capstone' $script:NReviewed
+            (Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $sub))).StdOut | Should -Match 'AGY-TEST-AUDIT'
+            Add-Content -LiteralPath (Join-Path $script:NDir 'src/keep.sh') -Value 'echo changed' -Encoding ascii
+            NGit commit -qam 'code change outside sub/'
+            NGit config diff.relative true
+            (Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $sub))).StdOut | Should -BeNullOrEmpty
+        }
+    }
+
+    # --- capstone Branch 2 round 3: the reviewed range must be found whatever the integration branch is called.
+    # The shape is the one the capstone skill REQUIRES: code on a feature branch, capstone marker at that tip,
+    # then the docs-only ledger-row commit. Falling back to HEAD's own commit sees only the ledger and goes
+    # silent, so each row FIRES only if the base was found through the ref it names.
+    Context 'the integration branch is not called main' {
+        BeforeAll {
+            function script:BGit { param($Dir) & git -C $Dir -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= @args }
+            # Feature branch off the current branch: code commit, capstone marker there, then the ledger row.
+            function script:New-LedgerFlow { param($Dir)
+                BGit $Dir checkout -qb feature
+                New-Item -ItemType Directory -Path (Join-Path $Dir 'src') -Force | Out-Null
+                Set-Content -LiteralPath (Join-Path $Dir 'src/a.sh') -Value 'echo a' -Encoding ascii
+                BGit $Dir add -A; BGit $Dir commit -qm code
+                New-Item -ItemType Directory -Path (Join-Path $Dir '.clavity/agy-marks') -Force | Out-Null
+                Set-Marker $Dir 'agy-capstone' (BGit $Dir rev-parse HEAD).Trim()
+                New-Item -ItemType Directory -Path (Join-Path $Dir 'docs') -Force | Out-Null
+                Set-Content -LiteralPath (Join-Path $Dir 'docs/agy-capstone-ledger.md') -Value 'row' -Encoding ascii
+                BGit $Dir add docs; BGit $Dir commit -qm 'ledger row'
+            }
+        }
+
+        It 'FIRES after the ledger-row commit in a repository whose integration branch is master' {
+            $d = New-TempRepo
+            try {
+                BGit $d branch -M master
+                (BGit $d branch --list main) | Should -BeNullOrEmpty
+                New-LedgerFlow $d
+                (Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $d))).StdOut | Should -Match 'AGY-TEST-AUDIT'
+            } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'FIRES after the ledger-row commit in a clone whose default branch is trunk (found via origin/HEAD)' {
+            $src = New-TempRepo
+            $dst = $src + '-clone'
+            try {
+                BGit $src branch -M trunk
+                & git clone -q $src $dst
+                (BGit $dst rev-parse --abbrev-ref origin/HEAD).Trim() | Should -Be 'origin/trunk'
+                New-LedgerFlow $dst
+                (Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $dst))).StdOut | Should -Match 'AGY-TEST-AUDIT'
+            } finally {
+                Remove-Item $src -Recurse -Force -ErrorAction SilentlyContinue
+                Remove-Item $dst -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'FIRES through CLAVITY_AUDIT_BASE_REF for a branch name no fallback knows (SILENT without it)' {
+            # Test audit Branch 2 G3: no remote, no main, no master - only the override can find the base.
+            $d = New-TempRepo
+            try {
+                BGit $d branch -M develop
+                New-LedgerFlow $d
+                $p = New-AuditPayload (& $script:Cwd $d)
+                (Invoke-BashHook -HookPath $script:Hook -Payload $p).StdOut | Should -BeNullOrEmpty
+                (Invoke-BashHook -HookPath $script:Hook -Payload $p -Env @{ CLAVITY_AUDIT_BASE_REF = 'develop' }).StdOut | Should -Match 'AGY-TEST-AUDIT'
+            } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+    }
+
     It 'is byte-identical to the clavity-classic mirror' {
         $classic = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'clavity-classic/plugin/hooks/agy-test-audit-reminder.sh'
         (Get-FileHash $script:Hook).Hash | Should -Be (Get-FileHash $classic).Hash

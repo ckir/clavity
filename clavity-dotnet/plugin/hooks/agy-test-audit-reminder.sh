@@ -15,7 +15,14 @@
 set +e
 input=$(cat)
 
-DIR_CONST=".clavity/agy-marks"
+# ROADMAP section 39: both marker paths come from the SAME builder agy-mark.sh writes with. If it cannot be
+# loaded both stay empty, both reads come back empty, and the gate stays SILENT - it can then see no GREEN,
+# which is the safe answer at this hook's capstone call site.
+_cap_rel=''; _aud_rel=''
+if . "$(dirname "$0" 2>/dev/null)/agy-marker-lib.sh" 2>/dev/null; then
+  agy_marker_rel _cap_rel agy-capstone
+  agy_marker_rel _aud_rel agy-test-audit
+fi
 
 # Does a marker sha still describe HEAD? True when it IS HEAD, or is an ANCESTOR of HEAD with nothing
 # executable landed since. BOTH markers age for the same reason and are forgiven by the same rule - which
@@ -41,7 +48,10 @@ still_describes_head() {
   [ -n "$sha" ] || return 1
   [ "$sha" = "$head" ] && return 0
   git -C "$cwd" merge-base --is-ancestor "$sha" "$head" 2>/dev/null || return 1
-  post=$(git -C "$cwd" -c core.quotePath=false diff --name-only "$sha".."$head" 2>/dev/null) || return 1
+  # --no-renames and diff.relative=false on EVERY name-only list in this file (capstone Branch 2 round 2,
+  # measured): a rename lists only its new path, so src/x.sh -> docs/x.md hid a code change here and the
+  # stale capstone still "covered" HEAD; diff.relative, from a subdirectory cwd, drops out-of-cwd paths.
+  post=$(git -C "$cwd" -c core.quotePath=false -c diff.relative=false diff --no-renames --name-only "$sha".."$head" 2>/dev/null) || return 1
   printf '%s\n' "$post" | grep -Eqi "$re" && return 1
   return 0
 }
@@ -72,17 +82,25 @@ gate() {
   # row advances HEAD. MEASURED 2026-08-26 in this repository: marker f29cd42, next commit f209632
   # "docs(ledger): record ... GREEN", silent for EVERY commit that followed - which is why two
   # test-audits were owed with nothing nudging for either.
-  cap=$(cat "$cwd/$DIR_CONST/agy-capstone.head" 2>/dev/null)
+  cap=''; [ -n "$_cap_rel" ] && cap=$(cat "$cwd/$_cap_rel" 2>/dev/null)
   still_describes_head "$cwd" "$cap" "$head" "$CODE_RE" || return 1   # no GREEN that covers HEAD
-  aud=$(cat "$cwd/$DIR_CONST/agy-test-audit.head" 2>/dev/null)
+  aud=''; [ -n "$_aud_rel" ] && aud=$(cat "$cwd/$_aud_rel" 2>/dev/null)
   still_describes_head "$cwd" "$aud" "$head" "$CODE_RE" && return 1   # an audit already covers HEAD
   # Reviewed range: merge-base with an integration ref, else this commit's own files (on-branch / no ref).
+  # The chain after the first ref (capstone Branch 2 round 3, owner ruling 2026-09-30 after AGY-FIRST): a
+  # repository whose integration branch is NOT main fell straight to HEAD's own commit, and after the
+  # capstone's mandatory docs-only ledger commit that silenced an owed audit - measured in a `master` repo.
+  # origin/HEAD is the remote's default branch, whatever it is called (set by `git clone`). A shallow clone
+  # whose fork point is outside the fetched depth still reaches the HEAD-only fallback.
   base=$(git -C "$cwd" merge-base HEAD "${CLAVITY_AUDIT_BASE_REF:-origin/main}" 2>/dev/null)
-  [ -z "$base" ] && base=$(git -C "$cwd" merge-base HEAD main 2>/dev/null)
+  for _ref in origin/HEAD main master; do
+    [ -n "$base" ] && break
+    base=$(git -C "$cwd" merge-base HEAD "$_ref" 2>/dev/null)
+  done
   if [ -n "$base" ] && [ "$base" != "$head" ]; then
-    changed=$(git -C "$cwd" -c core.quotePath=false diff --name-only "$base"..HEAD 2>/dev/null)
+    changed=$(git -C "$cwd" -c core.quotePath=false -c diff.relative=false diff --no-renames --name-only "$base"..HEAD 2>/dev/null)
   else
-    changed=$(git -C "$cwd" -c core.quotePath=false show --name-only --format= HEAD 2>/dev/null)
+    changed=$(git -C "$cwd" -c core.quotePath=false -c diff.relative=false show --no-renames --name-only --format= HEAD 2>/dev/null)
   fi
   # Executable-code / test path heuristic. Empty match -> silent (docs/config/spec-only range, spec 4).
   printf '%s\n' "$changed" | grep -Eqi "$CODE_RE" || return 1

@@ -15,8 +15,12 @@ Decision 1 (debounce) + Decision 4 (per-plugin state).
     exclusive (both-installed is a transient migration state), so a single discipline-keyed marker is
     safe — at worst one duplicate consult during migration. See "Resolved: marker namespacing" below: this
     drops Decision 4's per-plugin-state clause *for the marker specifically*.
-- **Content:** the commit sha from `git rev-parse HEAD` at consult time, and nothing else. If HEAD cannot
-  resolve (no repo / no commits), no marker is written (the discipline re-fires — safe).
+- **Content:** a bare commit sha, and nothing else. `agy-first`: HEAD at consult time. `agy-capstone`: the
+  REVIEWED sha captured at the confirmed GREEN. `agy-test-audit`: the sha its ledger row's range ends on.
+  For the two disciplines that own a ledger the sha is the row's range end, never ambient HEAD at write
+  time - that is the ledger commit itself, which no row can record (ROADMAP §52). If the sha cannot
+  resolve, no marker is written (the discipline re-fires — safe). Where git can answer, `agy-mark.sh`
+  refuses a sha that names no commit (ROADMAP §51).
 - **Skip / audit log:** `.clavity/agy-marks/skipped.log`, append-only, one line per event:
   - `<iso-8601>  <discipline>  SKIPPED-UNREACHABLE  HEAD=<sha>` - peer unreachable (any discipline).
   - `<iso-8601>  agy-capstone  WAIVED  HEAD=<sha>  <reason>` - human waived (SP-B; `<reason>` is `breach`
@@ -60,15 +64,17 @@ duplicate paid consult). SP-C's reader consumes this same constant.
     it: a `breach` waiver is a skip-equivalent (proceed without a clean review; gate not satisfied), so it
     writes ONLY the `WAIVED ... breach` audit line and re-arms next trigger. This prevents a peer from
     smuggling unreviewed code past the gate by forcing a trivial breach and getting it waived.
-  In every case the content stays the bare `git rev-parse HEAD` sha, so the SP-C hook's
+  In every case the content stays a bare commit sha, so the SP-C hook's
   `content == HEAD` read is uniform across disciplines; capstone's WAIVED / UNVERIFIED-ACCEPTED
-  distinctions live in the log above, never in the marker.
+  distinctions live in the log above, never in the marker. That read also forgives the ledger-row case:
+  it stays silent when HEAD descends from the marker and differs from it only in `docs/agy-*-ledger.md`
+  files - never on any other change, since a skill or settings file is exactly what a capstone reviews.
 - `agy-test-audit` writes `agy-test-audit.head` only on a **completed audit**: an `[VERDICT: EXHAUSTIVE]`,
   or a `[VERDICT: GAPS FOUND]` whose every gap carries one of the five AGY-SCOPE disposition tokens
   (`FOLDED`, `REJECTED`, `DISCARDED-BELOW-FLOOR`, `DEFERRED-TO-ANOMALIES`, `UNVERIFIED-ACCEPTED`); a
   material `DEFERRED-TO-ANOMALIES` needs the owner's ruling first. An
   `[VERDICT: agy-required-but-unreachable]` abort writes NO marker (re-fires
-  next trigger). Content is the audited `git rev-parse HEAD`.
+  next trigger). Content is the sha its ledger row's range ends on.
 - A `SKIPPED-UNREACHABLE` or a review-only breach writes NO `.head` marker (the discipline re-fires next
   trigger); the skip appends to `skipped.log` as above.
 - 🔴 **A TERMINAL STATE IS NECESSARY AND, SINCE ROADMAP §27, NO LONGER SUFFICIENT.** For a discipline
