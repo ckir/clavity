@@ -261,9 +261,13 @@ case "$mode" in
         # writer stays git-optional (ROADMAP section 27) - both make the rev-parse probe fail. It sits
         # BEFORE the ledger gate on purpose: it applies to every discipline, including the NO-LEDGER
         # majority, and --gate-override does not bypass it - no ruling makes a nonexistent commit valid.
+        # It also NORMALISES: a unique short sha is written as the full sha, because every reader compares the
+        # marker with the 40-character `git rev-parse HEAD` and a short marker would never match (capstone
+        # Branch 2 round 1). Everything downstream (the ledger gate, the write) then uses the full sha.
         if git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-            git -C "$root" cat-file -e "$sha^{commit}" >/dev/null 2>&1 ||
+            _full=$(git -C "$root" rev-parse --verify --quiet "$sha^{commit}" 2>/dev/null) ||
                 _die_refuse "sha does not name a commit in this repository: [$sha] - pass the full sha of the commit the discipline covered, e.g. \$(git rev-parse <sha>)"
+            sha=$_full
         fi
         # ROADMAP section 27: a completion marker may not advance past a ledger that does not record it.
         # THE GATE IS INERT WHERE NO SUCH LEDGER EXISTS - which is every repository but clavity's own,

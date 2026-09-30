@@ -151,6 +151,17 @@ Describe 'agy-mark.sh' {
             (Test-Path -LiteralPath (Join-Path $d '.clavity/agy-marks/agy-first.head')) | Should -BeFalse -Because 'a refused write must leave no marker'
         }
 
+        It 'NORMALISES a unique short sha to the full 40-char sha before writing (capstone Branch 2 R1)' {
+            # MEASURED before the fix: `head agy-first <7 chars>` wrote those 7 characters verbatim, but every
+            # reader compares the marker with the 40-character `git rev-parse HEAD`, so it never matched.
+            $d = New-MarkFixture
+            $full = (& git -C $d rev-parse HEAD).Trim()
+            $full.Length | Should -Be 40 -Because 'the fixture must yield a 40-char HEAD, or this row proves nothing'
+            $r = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first',$full.Substring(0, 7))
+            $r.ExitCode | Should -Be 0 -Because "a unique short sha names a commit; stderr was: $($r.Err)"
+            (Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/agy-marks/agy-first.head')).Trim() | Should -BeExactly $full
+        }
+
         It 'WRITES without the commit check outside a git repository - the writer stays git-optional' {
             # ROADMAP section 27 keeps agy-mark.sh git-optional, and the section 51 owner ruling keeps it so:
             # no repository, or no git on PATH, means no check - not a refusal. Both make the same rev-parse
