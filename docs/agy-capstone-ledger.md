@@ -703,3 +703,32 @@ guard compares like with like; the shallow-clone skip of the pre-repair-blob row
 1-2 carry the same shapes synthetically. Also REJECTED by measurement in the discarded attempt: the hook's em-dash
 match fails on a non-UTF-8 console (it counts under `LC_ALL=C.UTF-8`, `C` and `POSIX`). Below the floor: zero
 tracked `*.md` making `check-control-bytes` report ok (every member must ship a README).
+
+| 2026-09-30 | `b29c4df2..f902206f` (branch `sweep/branch-2-markers`; the reviewed diff excluded version bumps and lockfiles, the plan document, ROADMAP/backlog prose and `scripts/tests/_partition.md`; only the `clavity-dotnet/plugin/` copies, the classic mirrors being byte-identical and test-pinned) | 4 (R1-R3 folded, R4 clean of BLOCKING) | **GREEN - owner-confirmed 2026-09-30** at the reviewed tip `f902206f` | Folds `f345a55c` `6f0af209` `1276d359` `e393b22b` (R1), `158186fe` (R2), `f902206f` (R3), each proven by a logic mutant that reddened its own test by name; briefs `.clavity/seams/capstone-branch2.md`, `capstone-branch2-r2.md`, `capstone-branch2-r3.md`, `capstone-branch2-r4.md`; AGY-FIRST consults `agy-first-r1-seam-debounce.md`, `agy-first-r3-reminder-base.md`; probes `.clavity/scratch/capstone-branch2/` |
+
+**Reviewer: agy, cascade `17695832`.** R1 (Boundary Smuggler, Cascade Analyst, Mechanism Gamer, Protocol Pedant;
+the echo showed it stopped at diff line 802 of 1095, so R2 re-reviewed the whole range): a short sha written
+verbatim to a marker no reader could match - FOLDED (normalised to the full sha); `cd .clavity` with no slash
+escaping the liveness regex - FOLDED; consult-recovery hiding every seam when the marker lib loads without
+`agy_marker_rel` - FOLDED; seam-inject re-injecting a GREEN capstone after the mandatory ledger-row commit
+(pre-existing) - FOLDED after AGY-FIRST (forgive ledger-only commits; the reminder's CODE_RE was rejected because it
+would also forgive SKILL.md and settings.json). R2 (State Corruptor, Axiom Breaker, Boundary Smuggler, Mechanism
+Gamer) BREACHED review-only: it created an untracked nested git repository `diff-test/` in the repository root;
+the driver deleted it (HEAD, reflog and tracked files unchanged) and the owner WAIVED the breach (`skipped.log`
+2026-09-30T15:28:08Z). Its findings were each re-measured by the driver: a rename onto a ledger path forgiven by
+`--name-only`, the same rename blindness in the reminder's `still_describes_head` (pre-existing), and
+`diff.relative=true` from a subdirectory - FOLDED (`--no-renames`, `-c diff.relative=false` on every name-only
+list). R3 (Resource Vampire, Literal Implementer, Cascade Analyst, Mechanism Gamer; file-viewer only): the
+reminder falling back to HEAD's own commit in a repository without `main`, silencing an owed audit after the
+docs-only ledger commit (pre-existing, measured in a `master` repository) - FOLDED after AGY-FIRST (origin/HEAD,
+main, master). REJECTED: an older git failing on `-c diff.relative` (git accepts `-c` with any key, measured exit
+0); the test-audit SKILL's range-end wording (it defines the range end as the covered commit); the liveness
+`gsub` now redundant (no behavioural consequence). R4 (Activation Auditor new; Mechanism Gamer, Cascade Analyst):
+the reminder's PostToolUse matcher `Bash|Write|Edit` omits PowerShell, delaying (not losing) the marker-gated
+nudge - DEFERRED-TO-ANOMALIES `clavity-dotnet/plugin/hooks/hooks.json:32` * 2026-09-30 (pre-existing; owner
+ruled at GREEN). REJECTED: a camelCase `toolInput` payload (Claude Code hooks receive `tool_input`); the seam
+hex guard being redundant behind `merge-base --is-ancestor` (defence in depth, no behavioural consequence).
+Below the floor: a CRLF-terminated marker file (it fails the hex check and re-arms, the safe direction); a shallow
+clone whose fork point is outside the fetched depth still reaching the HEAD-only fallback (stated in the code).
+Isolation note: the two AGY-FIRST consults ran in the same cascade as the review, so R2 and R4 reviewed designs
+the peer had recommended; the owner was told at GREEN.
