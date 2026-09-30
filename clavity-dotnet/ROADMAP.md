@@ -3477,6 +3477,25 @@ plugin pair.
 
 ---
 
+### §57 — The test-audit reminder never runs on a PowerShell tool call, and its matcher is unpinned — ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (sweep Branch 2 capstone round 4, Activation Auditor; owner-ruled DEFERRED at GREEN), not yet planned**
+
+`agy-test-audit-reminder.sh` is registered PostToolUse under `"matcher": "Bash|Write|Edit"`
+(`plugin/hooks/hooks.json:32`, both plugins), while the consult guards use `Bash|PowerShell|mcp__.*agy_ask`.
+A PowerShell-tool call therefore never runs it: the marker-gated AGY-TEST-AUDIT nudge is DELAYED to the next
+Bash/Write/Edit call, not lost. `scripts/tests/plugin-hooks-registration.Tests.ps1` pins the matcher of nine
+hooks but not this one, so a further narrowing would also pass green. (The captured entry said no test pins
+ANY matcher; measured at triage, that half was wrong.)
+
+**Fix outline:** add `PowerShell` to that matcher in both plugins' `hooks.json`; add a registration row
+asserting `Get-OwningMatchers ... -Script 'agy-test-audit-reminder.sh'` returns exactly one matcher that
+contains `PowerShell`, killed by a mutant that drops it. The hook itself reads no `tool_name`, so no hook
+change is expected - verify that before planning.
+
+**Blast radius:** both `hooks.json` files and the registration suite; a plugin pair, so a version bump,
+capstone, test audit and reinstall. Ride along with a later sweep branch that already bumps.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
