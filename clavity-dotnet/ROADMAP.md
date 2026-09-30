@@ -3414,7 +3414,7 @@ pairing launcher.
 
 ---
 
-### §54 — The injected-context gate resolves references against the working tree, so it passes locally on files CI cannot see — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`a996a1dd`, timing `1b9f819d`) - references resolve against the git INDEX at all four sites (`:562`, `:553`, `:852`, the index walk); `:553` was DEAD until a dot-prefix skip stopped swallowing `./`/`../`; the gate joined pre-push, glob-filtered, ~54s**
+### §54 — The injected-context gate resolves references against the working tree, so it passes locally on files CI cannot see — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`a996a1dd`, timing `1b9f819d`) - references resolve against the git INDEX at all four sites (`:562`, `:553`, `:852`, the index walk); `:553` was DEAD until a dot-prefix skip stopped swallowing `./`/`../`; the gate joined pre-push, glob-filtered, ~54s - and LEFT it the same day at the owner's anomaly triage (53,9-64,2s breaks `lefthook.yml`'s pre-push SECONDS-range rule; CI still runs it on every push)**
 
 `scripts/check-injected-context.ps1:562` accepts a backticked, repo-prefixed reference when
 `Test-Path (Join-Path $RepoRoot $Token)` finds it ON DISK. An untracked or gitignored file therefore
@@ -3433,6 +3433,47 @@ locally) and a guard mutation, plus a decision on whether the gate joins pre-pus
 
 **Blast radius:** one gate script and `scripts/tests/check-injected-context.Tests.ps1` (157 rows). Shared,
 not a plugin pair.
+
+---
+
+### §55 — LsDiscovery's un-anchored log patterns read a timestamp fraction as the pid when the glog thread field is missing — ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (capstone F1 at `8d00a56`, left open for an owner decision; AGY-TEST-AUDIT gap PP-1), owner-ruled low priority, not yet planned**
+
+`clavity-dotnet/src/Clavity.Ls/LsDiscovery.cs:63-69` (`GrpcLine`, `HttpLine`) are deliberately NOT anchored
+at `^`: agy 1.1.9 began prefixing these lines with pre-init logger noise, and an anchored pattern took the
+channel down while agy was healthy. The comment at `:61-62` then promises that `\S+\]` "cannot span
+whitespace, so a timestamp fragment can never satisfy it". That promise is FALSE for a line whose glog
+thread-id field is absent: `I0731 11:43:49.288076 server.go:560] Language server listening ...` matches with
+`pid=288076`, the timestamp's fractional seconds (MEASURED 2026-09-30; the control line with the field gave
+`pid=30728`). A crafted line anywhere in the log can likewise supply any pid/port pair.
+
+**Reachability:** real glog output always carries the thread id, so a live agy does not produce the bad
+shape today; the exposure is a malformed or crafted log line, and a log-format change in a future agy.
+
+**Fix outline:** require the glog header shape `[IWEF]\d{4} \d\d:\d\d:\d\d\.\d+\s+` IMMEDIATELY before the
+pid while keeping the prefix tolerance (no `^`), and correct the comment. It is a guard change: a failing
+control first (the missing-field line must NOT match), the existing prefixed-noise rows must stay green,
+and a logic mutant must redden the new row by name.
+
+**Blast radius:** `LsDiscovery.cs` + `tests/Clavity.Ls.Tests/LsDiscoveryTests.cs`. clavity-dotnet only;
+classic has no log-scraping discovery (grep for the listening message, 2026-09-30: no match).
+
+---
+
+### §56 — A roster doc that has never been audited is invisible to the docs-audit view, summary and SessionStart nudge — ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (sweep Branch 1 capstone round 1, deferred there), not yet planned**
+
+`scripts/docs-audit-lib.ps1` renders the view (`Render-FindingsView`, `:152`) and counts the summary
+(`Get-FindingsSummary`, `:180`) from the findings STORE, filtered to the roster. A doc ADDED to
+`docs/user-facing-docs.txt` but never audited has no store entry, so it appears in neither - and
+`.claude/hooks/docs-audit-reminder.sh`, which reads the rendered view, never mentions it either. Nothing
+surfaces "N roster docs have never been audited"; the new doc reads as if it had no findings.
+
+**Fix outline:** `Get-FindingsSummary` gains a `NeverAudited` count (roster members with no store entry);
+the end-of-run line and the rendered view name them (e.g. a `## <doc> — NEVER AUDITED` section, which the
+nudge would then count with its existing `AUDIT-`-style header match, or a dedicated count). Tests: a
+roster doc absent from the store is counted and rendered; a retired doc still is not (the §47 row).
+
+**Blast radius:** `docs-audit-lib.ps1`, `docs-audit.ps1`, the nudge hook and their suites. Shared, not a
+plugin pair.
 
 ---
 
