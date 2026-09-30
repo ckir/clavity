@@ -362,6 +362,57 @@ Describe 'agy-liveness-check.sh' {
         } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'REPORTS a hook wired from .clavity/ (settings.local.json, a Windows backslash path)' {
+        # The 2026-08-30 shape (docs/backlog/peer-scratch-dir-contains-executable-session-hooks.md): three
+        # probes under .clavity/scratch/ were live SessionStart hooks in settings.local.json. .clavity/scratch/
+        # is the directory every review-only brief hands the agy peer as its write area, so a hook wired from
+        # there executes whatever the peer may have written.
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
+            @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "C:\repo\.clavity\scratch\probe\abs-probe.sh"' } ) } ) } } |
+                ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.local.json') -Encoding ascii
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
+            $r.ExitCode | Should -Be 0
+            $j = $r.StdOut | ConvertFrom-Json
+            $j.systemMessage | Should -Match 'run from \.clavity/' -Because 'a hook wired into the peer write area is an ACTIONABLE FAULT, so it earns the owner''s screen'
+            $j.systemMessage | Should -Match 'settings\.local\.json' -Because 'the note must name the file to fix'
+        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'REPORTS a .clavity/ wiring at USER scope even under .no-agy (constraint 5)' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        try {
+            @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true }
+               hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "$CLAUDE_PROJECT_DIR/.clavity/scratch/x/probe.sh"' } ) } ) }
+            } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $cfg 'settings.json') -Encoding ascii
+            New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
+            $r.ExitCode | Should -Be 0
+            $j = $r.StdOut | ConvertFrom-Json
+            $j.systemMessage | Should -Match 'run from \.clavity/' -Because 'the kill-switch must not hide a wiring into the peer write area'
+        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'is SILENT for a command that only LOOKS like .clavity/: <Cmd>' -ForEach @(
+        @{ Cmd = 'bash "$CLAUDE_PROJECT_DIR/clavity/hooks/probe.sh"' }
+        @{ Cmd = 'bash "/x/.clavity-old/probe.sh"' }
+        @{ Cmd = 'bash "/x/my.clavity/probe.sh"' }
+    ) {
+        # Near-misses: no leading dot; a sibling directory name; `.clavity` inside a longer segment. A check
+        # that fires on these cries wolf on every start, which trains the owner to stop reading the notice.
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        try {
+            @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true }
+               hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command=$Cmd } ) } ) }
+            } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $cfg 'settings.json') -Encoding ascii
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -BeNullOrEmpty -Because "a near-miss must not be reported: [$Cmd]"
+        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'finds a PROJECT-scope duplicate when cwd is a SUBDIRECTORY' {
         $cfg = New-ConfigFixture $true; $h = New-CleanHome
         $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
