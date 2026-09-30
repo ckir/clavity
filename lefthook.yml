@@ -31,6 +31,9 @@ pre-push:
       # Only when a push touches what this gate reads. `lefthook.yml`'s header requires every pre-push job to
       # stay in the SECONDS range (git holds the SSH connection idle while the hook runs); a pwsh cold start alone
       # costs ~6s (the installer-ascii note), so an unconditional entry would tax every push.
+      # MEASURED 2026-09-30 at top level, two sequential runs: 64,2s and 53,9s (warm ~54s; background load not
+      # controlled). So a push that touches plugin/seed content pays ~1 minute here - the price of catching, before
+      # the push, a reference CI cannot resolve (ROADMAP §54). Pushes touching none of the globs pay nothing.
       # YAML ARRAY form - the repo's shipped convention for multi-pattern globs (lefthook.yml:98-102).
       glob:
         - "clavity-dotnet/plugin/**"
