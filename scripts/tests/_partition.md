@@ -750,7 +750,7 @@ agy-ledger-lib.Tests.ps1                        105,0s   34 tests   <- SLOW. RUN
                                                                       agy-shield-lib sibling - every row builds a
                                                                       throwaway git repo with TWO commits and
                                                                       spawns bash, so ~7-20s per row.
-agy-test-audit-reminder.Tests.ps1                50,8s   26 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-test-audit-reminder.Tests.ps1                50,8s   28 tests   <- SLOW, re-measured 2026-08-06 (+4)
 assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as of 2026-08-25; was FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file

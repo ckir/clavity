@@ -87,8 +87,16 @@ gate() {
   aud=''; [ -n "$_aud_rel" ] && aud=$(cat "$cwd/$_aud_rel" 2>/dev/null)
   still_describes_head "$cwd" "$aud" "$head" "$CODE_RE" && return 1   # an audit already covers HEAD
   # Reviewed range: merge-base with an integration ref, else this commit's own files (on-branch / no ref).
+  # The chain after the first ref (capstone Branch 2 round 3, owner ruling 2026-09-30 after AGY-FIRST): a
+  # repository whose integration branch is NOT main fell straight to HEAD's own commit, and after the
+  # capstone's mandatory docs-only ledger commit that silenced an owed audit - measured in a `master` repo.
+  # origin/HEAD is the remote's default branch, whatever it is called (set by `git clone`). A shallow clone
+  # whose fork point is outside the fetched depth still reaches the HEAD-only fallback.
   base=$(git -C "$cwd" merge-base HEAD "${CLAVITY_AUDIT_BASE_REF:-origin/main}" 2>/dev/null)
-  [ -z "$base" ] && base=$(git -C "$cwd" merge-base HEAD main 2>/dev/null)
+  for _ref in origin/HEAD main master; do
+    [ -n "$base" ] && break
+    base=$(git -C "$cwd" merge-base HEAD "$_ref" 2>/dev/null)
+  done
   if [ -n "$base" ] && [ "$base" != "$head" ]; then
     changed=$(git -C "$cwd" -c core.quotePath=false -c diff.relative=false diff --no-renames --name-only "$base"..HEAD 2>/dev/null)
   else

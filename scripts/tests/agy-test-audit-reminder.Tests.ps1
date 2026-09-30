@@ -466,6 +466,53 @@ Describe 'agy-test-audit-reminder.sh' {
         }
     }
 
+    # --- capstone Branch 2 round 3: the reviewed range must be found whatever the integration branch is called.
+    # The shape is the one the capstone skill REQUIRES: code on a feature branch, capstone marker at that tip,
+    # then the docs-only ledger-row commit. Falling back to HEAD's own commit sees only the ledger and goes
+    # silent, so each row FIRES only if the base was found through the ref it names.
+    Context 'the integration branch is not called main' {
+        BeforeAll {
+            function script:BGit { param($Dir) & git -C $Dir -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= @args }
+            # Feature branch off the current branch: code commit, capstone marker there, then the ledger row.
+            function script:New-LedgerFlow { param($Dir)
+                BGit $Dir checkout -qb feature
+                New-Item -ItemType Directory -Path (Join-Path $Dir 'src') -Force | Out-Null
+                Set-Content -LiteralPath (Join-Path $Dir 'src/a.sh') -Value 'echo a' -Encoding ascii
+                BGit $Dir add -A; BGit $Dir commit -qm code
+                New-Item -ItemType Directory -Path (Join-Path $Dir '.clavity/agy-marks') -Force | Out-Null
+                Set-Marker $Dir 'agy-capstone' (BGit $Dir rev-parse HEAD).Trim()
+                New-Item -ItemType Directory -Path (Join-Path $Dir 'docs') -Force | Out-Null
+                Set-Content -LiteralPath (Join-Path $Dir 'docs/agy-capstone-ledger.md') -Value 'row' -Encoding ascii
+                BGit $Dir add docs; BGit $Dir commit -qm 'ledger row'
+            }
+        }
+
+        It 'FIRES after the ledger-row commit in a repository whose integration branch is master' {
+            $d = New-TempRepo
+            try {
+                BGit $d branch -M master
+                (BGit $d branch --list main) | Should -BeNullOrEmpty
+                New-LedgerFlow $d
+                (Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $d))).StdOut | Should -Match 'AGY-TEST-AUDIT'
+            } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'FIRES after the ledger-row commit in a clone whose default branch is trunk (found via origin/HEAD)' {
+            $src = New-TempRepo
+            $dst = $src + '-clone'
+            try {
+                BGit $src branch -M trunk
+                & git clone -q $src $dst
+                (BGit $dst rev-parse --abbrev-ref origin/HEAD).Trim() | Should -Be 'origin/trunk'
+                New-LedgerFlow $dst
+                (Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $dst))).StdOut | Should -Match 'AGY-TEST-AUDIT'
+            } finally {
+                Remove-Item $src -Recurse -Force -ErrorAction SilentlyContinue
+                Remove-Item $dst -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
     It 'is byte-identical to the clavity-classic mirror' {
         $classic = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'clavity-classic/plugin/hooks/agy-test-audit-reminder.sh'
         (Get-FileHash $script:Hook).Hash | Should -Be (Get-FileHash $classic).Hash
