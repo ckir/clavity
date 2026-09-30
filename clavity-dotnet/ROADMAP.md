@@ -3170,7 +3170,7 @@ failing control that demonstrates the loss**, or it is unfalsifiable by construc
 
 ---
 
-### §42 — A repository root that IS a drive root trims to a bare `C:`, which resolves to that drive's CURRENT directory — ▶ **PROMOTED 2026-09-12 from the anomalies conveyor, not yet planned**
+### §42 — A repository root that IS a drive root trims to a bare `C:`, which resolves to that drive's CURRENT directory — ▶ **PROMOTED 2026-09-12 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`3d568033`, comment `d8e5ffdd`) - ConvertTo-GateRepoRoot keeps a drive root's separator; the trims sat at `:163`/`:278`/`:506` at `e22c7f66`, not the `:164`/`:229`/`:457` cited below**
 
 `scripts/check-injected-context.ps1` strips a trailing separator with `-replace '[\\/]+$', ''` at **three**
 sites (`:164`, `:229`, `:457`, re-measured 2026-09-12). Given `-RepoRoot C:\` that yields the bare `C:`, and
@@ -3280,7 +3280,7 @@ mutation harness that cannot fail loudly proves nothing.
 
 ---
 
-### §47 — The docs-audit findings view keeps sections for docs that left the roster — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned**
+### §47 — The docs-audit findings view keeps sections for docs that left the roster — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`c368d703`) - the view filters to the FULL roster at render time; the store is not pruned (`-Only` runs)**
 
 `scripts/docs-audit.ps1` rebuilds `docs/docs-audit-findings.md` per doc but never drops a section whose doc
 is no longer in `docs/user-facing-docs.txt`. MEASURED 2026-09-23 and re-measured at triage 2026-09-29: the
@@ -3295,7 +3295,7 @@ about a deleted file. The view reports more than it checked.
 
 ---
 
-### §48 — The suite-registration test blames a missing file for an untracked one — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned**
+### §48 — The suite-registration test blames a missing file for an untracked one — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`c3199214`) - untracked-on-disk and missing are two named causes**
 
 `scripts/tests/test-suite-registration.Tests.ps1`'s row `names no suite that is missing from disk` (`:131`)
 builds its on-disk set from `git ls-files`, i.e. TRACKED files only. A suite that is registered in the
@@ -3309,7 +3309,7 @@ untracked suite does not ship - but the row's name and `-Because` text send the 
 
 ---
 
-### §49 — No gate catches control characters in a member doc, or git reclassifying it as binary — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned**
+### §49 — No gate catches control characters in a member doc, or git reclassifying it as binary — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`cfae70f9`, inventory `be08601c`) - new gate `scripts/check-control-bytes.ps1` over tracked *.md, in pre-push and CI**
 
 MEASURED 2026-09-29 (AiSaveDev shipping, Task 7): an edit wrote `%LOCALAPPDATA%\review-relay\aisavedev`
 into `review-relay/README.md` with `\r` and `\a` escape-interpreted into a CR and a BEL mid-line. git then
@@ -3334,7 +3334,7 @@ legitimately contains a tab must pass). Shared, not a plugin pair.
 
 ---
 
-### §50 — A fast-suite test rewrites a tracked fixture in place — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned**
+### §50 — A fast-suite test rewrites a tracked fixture in place — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`83ad29b7`) - the fixture now lives in `$TestDrive`; the tracked copy is deleted**
 
 `scripts/tests/generate-scoped-manifest.Tests.ps1` writes to the tracked
 `scripts/tests/fixtures/members-pluginName.json` instead of a `$TestDrive` copy. Re-measured at triage
@@ -3414,7 +3414,7 @@ pairing launcher.
 
 ---
 
-### §54 — The injected-context gate resolves references against the working tree, so it passes locally on files CI cannot see — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned**
+### §54 — The injected-context gate resolves references against the working tree, so it passes locally on files CI cannot see — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`a996a1dd`, timing `1b9f819d`) - references resolve against the git INDEX at all four sites (`:562`, `:553`, `:852`, the index walk); `:553` was DEAD until a dot-prefix skip stopped swallowing `./`/`../`; the gate joined pre-push, glob-filtered, ~54s**
 
 `scripts/check-injected-context.ps1:562` accepts a backticked, repo-prefixed reference when
 `Test-Path (Join-Path $RepoRoot $Token)` finds it ON DISK. An untracked or gitignored file therefore
