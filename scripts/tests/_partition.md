@@ -856,7 +856,9 @@ check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 check-growth-budget.Tests.ps1                    15,3s   15 tests   <- FAST, re-measured 2026-08-05
-check-injected-context.Tests.ps1                 91,5s  157 tests   <- SLOW as of 2026-08-24; was FAST -
+check-injected-context.Tests.ps1                 91,5s  169 tests   <- SLOW as of 2026-08-24; was FAST -
+  157 -> 169 on 2026-09-30 (ROADMAP sweep Branch 1): 3 rows for §42 (drive-root repo root) and 9 for §54
+  (resolution against the git index); the 91,5s runtime was NOT re-measured with them.
   155 -> 157 on 2026-09-29 (AiSaveDev shipping): the review-relay/extension/** exclusion - a subtracts row for
   review-relay/extension/aisavedev/content.js plus a control that review-relay's own SKILL.md is still audited.
   Runtime NOT re-measured.
@@ -1065,7 +1067,15 @@ check-seed-artifacts-synced.Tests.ps1            74,0s   12 tests   <- re-measur
 check-seed-budget.Tests.ps1                       8,4s    4 tests   <- FAST, re-measured 2026-08-05
 check-user-facing-docs.Tests.ps1                 10,4s   15 tests   <- FAST, re-measured 2026-08-05
 compute-release.Tests.ps1                        25,0s    8 tests   <- SLOW, re-measured 2026-08-06
-docs-audit.Tests.ps1                            130,0s   85 tests   <- SLOW, re-measured 2026-08-06
+check-control-bytes.Tests.ps1                    42,7s    8 tests   <- SLOW, NEW 2026-09-30 (ROADMAP §49, sweep Branch 1).
+  MEASURED at top level, two sequential runs, each its own pwsh + Pester cold start: 42,7s and 50,6s; background
+  load not controlled. SLOW because the fast recipe was last measured at 480,5s against the 600s cap, so ~45s
+  more would crowd it; rows 6-7 start child pwsh processes and row 8 scans every tracked *.md.
+docs-audit-reminder.Tests.ps1                    28,3s    5 tests   <- SLOW, NEW 2026-09-30 (docs-audit nudge, sweep
+  Branch 1). MEASURED at top level, two sequential runs: 28,3s and 29,4s (each a cold start; background load not
+  controlled). SLOW for the same fast-recipe headroom reason; every row drives Git Bash.
+docs-audit.Tests.ps1                            130,0s   88 tests   <- SLOW, re-measured 2026-08-06; 85 -> 88 on
+  2026-09-30 (ROADMAP §47: the roster filter and Get-FindingsSummary), runtime NOT re-measured.
 drain-knowledge.Tests.ps1                        40,5s    8 tests   <- SLOW, re-measured 2026-08-06
 drain-lib.Tests.ps1                               4,2s   36 tests   <- FAST, re-measured 2026-08-24 WARM.
                                                                       COUNT 29 -> 36 on 2026-08-28 (AGY-TEST-AUDIT
