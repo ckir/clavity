@@ -3496,7 +3496,7 @@ capstone, test audit and reinstall. Its own branch, NOT folded into Branch 3: th
 
 ---
 
-### §58 — The working tree's line endings diverge from the all-LF index, and every tool pays for it — ▶ **RAISED 2026-09-30 by the owner, SCHEDULED: new sweep Branch 15, before Branch 8; AGY-FIRST on the approach first**
+### §58 — The working tree's line endings diverge from the all-LF index, and every tool pays for it — ▶ **RAISED 2026-09-30 by the owner, SCHEDULED: new sweep Branch 15, before Branch 8; AGY-FIRST WAIVED by the owner (work solo), `skipped.log` 2026-09-30**
 
 **MEASURED 2026-09-30:** every text blob in the index is LF (`git ls-files --eol`: 421 `i/lf w/crlf`, 260
 `i/lf w/lf`, 4 `i/lf w/mixed` - the four `CHANGELOG.md` files - and 8 `-text`; no `i/crlf` at all). The CRLF
@@ -3508,7 +3508,7 @@ LF twice, the cheatsheet trio, the knowledge-store rules, review-relay files), e
 breakage; there is no repository-wide default and no `.editorconfig`. A driver CRLF probe
 (`git show X | grep -c $'\r$'`) was also measured to be no oracle: 3572 on an LF blob, 0 on a CRLF control.
 
-**Proposed shape (for the AGY-FIRST consult, not decided):** `* text=auto eol=lf` as the default; keep only
+**Proposed shape (decided solo at its plan; not yet planned):** `* text=auto eol=lf` as the default; keep only
 the real exceptions (`installer/_shared/register-plugin.ps1 eol=crlf` for its hash pin, the `binary` /
 `-text` entries); collapse the redundant LF pins; add `.editorconfig` (`end_of_line = lf`); refresh the
 working tree once on a clean tree. The index is already LF, so no blob content changes.
