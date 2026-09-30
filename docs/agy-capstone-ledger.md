@@ -683,3 +683,23 @@ token, and `ChannelDown`'s AuthFailed hint names the missing file and says to re
 surfaces at the first `agy_*` call rather than at start. Below the floor: SecurityException /
 NotSupportedException from a profile-derived path; two different clavity versions starting in the same
 instant. agy stated in round 2 that all its round-1 claims were reasoned, not measured.
+
+## ROADMAP-sweep Branch 1 - the repo gates (§42, §54, §49, §47, §48, §50 + the docs-audit nudge; capstoned 2026-09-30)
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-30 | `e22c7f66..0f5f7752` (branch `sweep/branch-1-gates`; the reviewed diff excluded the plan document, ROADMAP/backlog prose and `scripts/tests/_partition.md`) | 2 clean + 1 discarded | **GREEN - owner-confirmed 2026-09-30** at the reviewed tip `0f5f7752`; no fold was needed | Briefs `.clavity/seams/capstone-branch1.md`, `capstone-branch1-r1b.md`, `capstone-branch1-r2.md`, `capstone-branch1-r2-negotiate.md`; the first round-1 attempt BREACHED review-only (logged in `.clavity/agy-marks/skipped.log` as BREACH at `0f5f7752`) and was discarded and re-run clean |
+
+**Reviewer: agy, cascade `17695832`.** The first round-1 attempt ran terminal probes that created `repo/` (a
+nested `git init`) and `test.ps1` in the repository root and left a hung `cat` pipeline; the driver removed both
+paths (the tree matched the before-snapshot), the owner chose a clean re-run, and the re-run was restricted to the
+file-viewing tool. Measured dispositions: "unaudited roster docs are invisible to the view, summary and nudge" -
+DEFERRED-TO-ANOMALIES `scripts/docs-audit-lib.ps1:179` * 2026-09-30 (pre-existing; outside the summary contract,
+which counts findings and failed audits). Round 2 (Protocol Pedant, Axiom Breaker, a bespoke Test-Oracle
+Auditor; all 15 changed files opened at HEAD) raised three BLOCKING claims, each REJECTED on file and line and
+then conceded by the peer in one negotiation turn: SessionStart supports `matcher` (the owner's user settings
+use it and that hook fired this session); `Get-WalkIdentity` returns native-separator paths (`:155`), so the cycle
+guard compares like with like; the shallow-clone skip of the pre-repair-blob row is reported as Skipped and rows
+1-2 carry the same shapes synthetically. Also REJECTED by measurement in the discarded attempt: the hook's em-dash
+match fails on a non-UTF-8 console (it counts under `LC_ALL=C.UTF-8`, `C` and `POSIX`). Below the floor: zero
+tracked `*.md` making `check-control-bytes` report ok (every member must ship a README).
