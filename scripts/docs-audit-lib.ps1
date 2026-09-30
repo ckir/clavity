@@ -149,13 +149,18 @@ function Write-FindingsStore([hashtable]$Store, [string]$Path) {
     Move-Item -LiteralPath $tmp -Destination $Path -Force    # near-atomic rename
 }
 
-function Render-FindingsView([hashtable]$Store, [string]$Path) {
+function Render-FindingsView([hashtable]$Store, [string]$Path, [string[]]$Roster = $null) {
     # A GENERATED human/Stage-2 view — the JSON is the source of truth. Each doc's section is bracketed by
     # machine-parseable delimiters (belt-and-suspenders; the merge itself operates on the JSON, never this text).
     $lines = [System.Collections.Generic.List[string]]::new()
     $lines.Add('# docs audit findings (GENERATED view of docs-audit-findings.json; gitignored working artifact)')
     $lines.Add('')
-    foreach ($doc in ($Store.docs.Keys | Sort-Object)) {
+    # ROSTER FILTER AT RENDER TIME, NEVER A STORE PRUNE (ROADMAP §47). A doc that left docs/user-facing-docs.txt
+    # kept rendering forever. The store is not pruned because `-Only` runs merge ONE doc into it - pruning to the
+    # run's roster would delete every other doc's findings. $null = no filter (every stored doc), as before.
+    $keys = @($Store.docs.Keys | Sort-Object)
+    if ($null -ne $Roster) { $keys = @($keys | Where-Object { $Roster -contains $_ }) }
+    foreach ($doc in $keys) {
         $e = $Store.docs[$doc]
         $lines.Add("<!-- doc:$doc start -->")
         $lines.Add("## $doc — $($e['outcome']) (claims inspected: $($e['claimsInspected']))")
@@ -168,6 +173,19 @@ function Render-FindingsView([hashtable]$Store, [string]$Path) {
     $tmp = $Path + ".$PID.tmp"   # PID-unique: a stale-reclaimed zombie run must not share this temp path (agy R2-F2)
     [System.IO.File]::WriteAllText($tmp, (($lines -join "`n") + "`n"))
     Move-Item -LiteralPath $tmp -Destination $Path -Force
+}
+
+# The open-finding count the end-of-run line and the SessionStart nudge both report: findings on roster docs,
+# plus roster docs whose last audit did not confirm (AUDIT-INCONCLUSIVE / -TIMEOUT / -SUSPECT).
+function Get-FindingsSummary([hashtable]$Store, [string[]]$Roster) {
+    $findings = 0; $withFindings = 0; $unconfirmed = 0
+    foreach ($doc in @($Store.docs.Keys | Where-Object { $Roster -contains $_ })) {
+        $e = $Store.docs[$doc]
+        $n = @($e['findings']).Count
+        if ($n -gt 0) { $findings += $n; $withFindings++ }
+        if (@('CLEAN','FINDINGS') -notcontains $e['outcome']) { $unconfirmed++ }
+    }
+    [pscustomobject]@{ Findings = $findings; DocsWithFindings = $withFindings; Unconfirmed = $unconfirmed }
 }
 
 function Initialize-AuditLog {

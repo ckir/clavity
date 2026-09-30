@@ -192,6 +192,7 @@ function Invoke-Main {
     # (measured, agy R6-F3). Normalize by splitting on commas so the documented recipe form works.
     $onlyNorm = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $docs = Get-InScopeDocs -RepoRoot $repo -Only $onlyNorm
+    $roster = @(Get-InScopeDocs -RepoRoot $repo)   # FULL roster, not the run's -Only subset (ROADMAP §47)
     $isSubset = ($onlyNorm.Count -gt 0)
 
     # -Continue: resume a partial run by skipping docs a previous run already CONFIRMED.
@@ -270,10 +271,12 @@ function Invoke-Main {
             $store = Read-FindingsStore $findingsJson
             Merge-DocResult -Store $store -DocPath $doc -Result $result -RunId $runId | Out-Null
             Write-FindingsStore -Store $store -Path $findingsJson
-            Render-FindingsView -Store $store -Path $findingsMd
+            Render-FindingsView -Store $store -Path $findingsMd -Roster $roster
             Add-AuditLogDoc -Path $logPath -DocPath $doc -Result $result -Model $model -PromptFile 'docs-audit-prompt.md'
         }
         $skipNote = if ($Continue) { " ($resumeSkipped already-confirmed doc(s) skipped by -Continue)" } else { '' }
+        $sum = Get-FindingsSummary -Store (Read-FindingsStore $findingsJson) -Roster $roster
+        Write-Host "docs-audit: $($sum.Findings) open finding(s) in $($sum.DocsWithFindings) doc(s); $($sum.Unconfirmed) doc(s) not confirmed by their last audit."
         Write-Host "docs-audit: done (run $runId). $(@($docs).Count) docs audited$skipNote. See docs/docs-audit-findings.md + docs/docs-audit-log.md." -ForegroundColor Green
         exit 0
     } finally {

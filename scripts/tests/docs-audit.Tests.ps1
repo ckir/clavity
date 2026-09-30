@@ -215,6 +215,35 @@ Describe 'FindingsStore merge/write/render' {
         (Get-Content $md -Raw) | Should -Match '<!-- doc:A.md start -->'
         (Get-Content $md -Raw) | Should -Match '<!-- doc:A.md end -->'
     }
+    It 'Render-FindingsView omits a stored doc that is not on the roster' {
+        $s = Read-FindingsStore $script:Json
+        Merge-DocResult -Store $s -DocPath 'A.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@(@{kind='ACCURACY';docPath='A.md';docLine=1;codeRef='x.rs:2';text='t'}) } | Out-Null
+        Merge-DocResult -Store $s -DocPath 'Gone.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@(@{kind='ACCURACY';docPath='Gone.md';docLine=1;codeRef='x.rs:2';text='t'}) } | Out-Null
+        $md = Join-Path $TestDrive 'view-roster.md'
+        Render-FindingsView -Store $s -Path $md -Roster @('A.md')
+        (Get-Content $md -Raw) | Should -Match '<!-- doc:A.md start -->'
+        (Get-Content $md -Raw) | Should -Not -Match 'Gone.md'
+    }
+    It 'Render-FindingsView with no roster renders every stored doc' {
+        $s = Read-FindingsStore $script:Json
+        Merge-DocResult -Store $s -DocPath 'A.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@(@{kind='ACCURACY';docPath='A.md';docLine=1;codeRef='x.rs:2';text='t'}) } | Out-Null
+        Merge-DocResult -Store $s -DocPath 'Gone.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@(@{kind='ACCURACY';docPath='Gone.md';docLine=1;codeRef='x.rs:2';text='t'}) } | Out-Null
+        $md = Join-Path $TestDrive 'view-noroster.md'
+        Render-FindingsView -Store $s -Path $md
+        (Get-Content $md -Raw) | Should -Match '<!-- doc:A.md start -->'
+        (Get-Content $md -Raw) | Should -Match '<!-- doc:Gone.md start -->'
+    }
+    It 'Get-FindingsSummary counts findings and unconfirmed docs on the roster only' {
+        $s = Read-FindingsStore $script:Json
+        $f = { param($d) @{kind='ACCURACY';docPath=$d;docLine=1;codeRef='x.rs:2';text='t'} }
+        Merge-DocResult -Store $s -DocPath 'A.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@((& $f 'A.md'), (& $f 'A.md')) } | Out-Null
+        Merge-DocResult -Store $s -DocPath 'B.md' -RunId 'R1' -Result @{ Outcome='AUDIT-TIMEOUT'; ClaimsInspected=0; Findings=@() } | Out-Null
+        Merge-DocResult -Store $s -DocPath 'Gone.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@(1..5 | ForEach-Object { & $f 'Gone.md' }) } | Out-Null
+        $sum = Get-FindingsSummary -Store $s -Roster @('A.md','B.md')
+        $sum.Findings | Should -Be 2
+        $sum.DocsWithFindings | Should -Be 1
+        $sum.Unconfirmed | Should -Be 1
+    }
 }
 
 Describe 'Append-only incremental log' {
