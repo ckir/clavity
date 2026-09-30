@@ -39,6 +39,16 @@ Describe 'check-control-bytes.ps1' {
         $hits.Count | Should -Be 1
     }
 
+    It 'flags every C0 byte from 10 to 31 and not a space, at both edges of a file with no final newline' {
+        # ESC at offset 0, then VT, FF, and US (31, the top of the C0 range) as the very last byte; the space (32)
+        # is the near-miss that must NOT be flagged. The rows above use only 0, 7, 8 and 127, so a bound of 9 in
+        # place of 32 would have passed them all.
+        $bytes = [byte[]](@(27) + @(Get-Ascii 'a') + @(32) + @(Get-Ascii 'b') + @(11) + @(Get-Ascii 'c') + @(12) + @(Get-Ascii 'd') + @(31))
+        $rel = New-Fixture -Dir $TestDrive -Bytes $bytes
+        $hits = @(Get-ControlByteHits -RepoRoot $TestDrive -RelPaths @($rel))
+        (@($hits | ForEach-Object { "$($_.Byte)@$($_.Column)" }) -join ',') | Should -BeExactly '27@1,11@5,12@7,31@9'
+    }
+
     It 'passes TAB, CR and LF - the legitimate whitespace' {
         $bytes = [byte[]](@(Get-Ascii "a") + @(9, 13, 10) + @(Get-Ascii "b") + @(13, 10))
         $rel = New-Fixture -Dir $TestDrive -Bytes $bytes

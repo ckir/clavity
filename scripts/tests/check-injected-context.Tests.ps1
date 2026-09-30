@@ -1578,6 +1578,16 @@ Describe 'reference resolution follows the git index (ROADMAP §54)' {
         }
         finally { Remove-Item -LiteralPath $d2 -Recurse -Force -ErrorAction SilentlyContinue }
     }
+    It 'a work tree whose index cannot be read falls back to the working tree, and says so' {
+        # MEASURED: with a corrupt index, rev-parse --is-inside-work-tree still answers 'true' (exit 0) while
+        # ls-files fails (exit 128). Treating that failure as an EMPTY index would call every reference broken.
+        & git -C $script:D rev-parse --is-inside-work-tree | Should -Be 'true'
+        [System.IO.File]::WriteAllBytes((Join-Path $script:D '.git/index'), [byte[]](1..40))
+        & git -C $script:D ls-files 2>$null | Out-Null
+        $LASTEXITCODE | Should -Not -Be 0 -Because 'the fixture must make ls-files fail or the row is vacuous'
+        Test-RepoPathExists -RepoRoot $script:D -RelPath 'tracked/a.md' | Should -BeTrue
+        $script:TrackedFallbackRoots.Contains($script:D) | Should -BeTrue
+    }
     It 'a ./ reference that lands on the repository root is ok' {
         (Resolve-Reference -Token './' -RepoRoot $script:D -FromFile 'a.md').Outcome | Should -Be 'ok'
         (Resolve-Reference -Token '../../..' -RepoRoot $script:D -FromFile 'tracked/x.md').Outcome | Should -Be 'broken'

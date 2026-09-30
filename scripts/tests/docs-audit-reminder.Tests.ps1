@@ -58,6 +58,30 @@ Describe 'docs-audit-reminder.sh' {
         $j.systemMessage | Should -Match ([regex]::Escape('1 unconfirmed doc(s)'))
     }
 
+    It 'counts every AUDIT-* outcome, and only in a section header' {
+        # Three non-confirming outcomes, plus a finding whose TEXT mentions AUDIT-SUSPECT: the header anchor must
+        # keep that bullet out of the unconfirmed count (it is one open finding, not a fourth unconfirmed doc).
+        $d = New-Workspace -Lines @(
+            $script:Header, '',
+            "## X.md $($script:Dash) AUDIT-TIMEOUT (claims inspected: 0)", '', '- (no findings)', '',
+            "## Y.md $($script:Dash) AUDIT-INCONCLUSIVE (claims inspected: 0)", '', '- (no findings)', '',
+            "## Z.md $($script:Dash) AUDIT-SUSPECT (claims inspected: 1)", '', '- (no findings)', '',
+            "## W.md $($script:Dash) FINDINGS", '', '- the doc says AUDIT-SUSPECT is terminal; it is not')
+        $r = Invoke-Hook $d
+        $r.ExitCode | Should -Be 0
+        $j = $r.StdOut | ConvertFrom-Json
+        $j.systemMessage | Should -Match ([regex]::Escape('1 open finding(s) and 3 unconfirmed doc(s)'))
+    }
+
+    It 'emits the SessionStart envelope, with the nudge in additionalContext for the model' {
+        $d = New-Workspace -Lines @($script:Header, '', "## A.md $($script:Dash) FINDINGS", '', '- one')
+        $r = Invoke-Hook $d
+        $j = $r.StdOut | ConvertFrom-Json
+        $j.hookSpecificOutput.hookEventName | Should -BeExactly 'SessionStart'
+        $j.hookSpecificOutput.additionalContext | Should -BeExactly $j.systemMessage
+        $j.systemMessage | Should -Match ([regex]::Escape('1 open finding(s)'))
+    }
+
     It 'warns on a view it does not recognise' {
         $d = New-Workspace -Lines @('hello', '', "## A.md $($script:Dash) FINDINGS", '', '- one')
         $r = Invoke-Hook $d
