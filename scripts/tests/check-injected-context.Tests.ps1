@@ -373,7 +373,9 @@ Describe 'check-injected-context.ps1' {
             # REGRESSION GUARD for the two rows above - and it reads THEIR regex, not a copy. In .NET,
             # `$` under (?m) matches before \n and NEVER before \r, so a key regex ending `[ \t]*$`
             # silently fails on any CRLF working tree. A fresh clone of this repository produces exactly
-            # that - core.autocrlf is true and .gitattributes pins no rule for .yml - while the tree
+            # that until ROADMAP section 58 - core.autocrlf was true and .gitattributes pinned no rule for
+            # .yml, where every text file now checks out LF; the guard stays, a CRLF file still arrives by
+            # editor or copy - while the tree
             # these tests were authored in happens to hold LF. MEASURED: both path-filter rows passed in
             # the authoring tree and went RED in a clean worktree, and ci-scripts.yml runs this whole
             # directory on windows-latest, so the first push would have been the first anyone noticed.

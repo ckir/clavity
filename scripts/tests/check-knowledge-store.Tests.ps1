@@ -190,7 +190,10 @@ Describe 'check-knowledge-store' {
         foreach ($p in @('agy-autotrain/knowledge/rules/INDEX.md',
                          'agy-autotrain/knowledge/rules/a-rule-nobody-has-written-yet.md')) {
             $out = (& git -C $script:RepoRoot check-attr text eol -- $p) -join ' '
-            $out | Should -Match 'text: set'
+            # `auto` since ROADMAP section 58 replaced the store's own pin with the repository-wide
+            # `* text=auto eol=lf`: for a text file that checks out LF exactly as `set` did. What must never
+            # appear is `unspecified` (no rule, so core.autocrlf decides) or `unset` (never converted).
+            $out | Should -Match 'text: (set|auto)'
             $out | Should -Match 'eol: lf'
         }
     }

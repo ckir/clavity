@@ -21,5 +21,5 @@ test('the synthetic ChatGPT page produces the golden aisave-dev/1 capture byte f
 
 test('the golden file on disk is LF-only (the .gitattributes eol=lf rule held on checkout)', () => {
   assert.equal(fs.readFileSync(GOLDEN_PATH).includes(0x0d), false,
-    'expected-aisave-dev.md contains a CR byte - check .gitattributes for review-relay/extension/test/fixtures/**');
+    'expected-aisave-dev.md contains a CR byte - check that .gitattributes still opens with `* text=auto eol=lf`');
 });

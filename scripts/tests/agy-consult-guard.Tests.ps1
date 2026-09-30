@@ -461,7 +461,8 @@ Describe 'agy-consult-guard' {
             # Neuter the BATCH hasher only, forcing the mismatch path on every call.
             $txt = [IO.File]::ReadAllText($libCopy)
             # LINE-ENDING AGNOSTIC PATTERN. This regex used to embed LITERAL newlines taken from THIS
-            # FILE's own source. `*.sh` is pinned `text eol=lf` by .gitattributes, but a `.ps1` is not,
+            # FILE's own source. `*.sh` was pinned `text eol=lf` by .gitattributes, but a `.ps1` was not
+            # until ROADMAP section 58 made every text file LF (the agnostic pattern stays regardless),
             # so under core.autocrlf the pattern's newlines become CRLF while the shell library it
             # matches stays LF - and the mutation silently fails to apply. MEASURED: this row is green
             # locally (both files LF here) and RED on GitHub's windows-latest runner, which checks the
