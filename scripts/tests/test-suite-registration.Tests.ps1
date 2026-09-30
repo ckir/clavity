@@ -131,9 +131,19 @@ Describe 'test suite registration' {
     It 'names no suite that is missing from disk' {
         $registered = @($script:Fast + $script:Slow | Sort-Object -Unique)
         $phantom = @($registered | Where-Object { $_ -notin $script:OnDisk })
+        # TWO CAUSES, NAMED APART (ROADMAP §48). The population is `git ls-files`, so a suite that exists but was
+        # never `git add`-ed lands here too - and was told it "does not exist", sending its author to look for a
+        # file that is sitting right there. Split on the filesystem, and give each cause its own fix.
+        # Untracked suites ANYWHERE in the repository, as leaf names like $phantom's - not only scripts/tests,
+        # because the registered population spans the repo (clavity-install.Tests.ps1 lives outside it).
+        $untrackedOnDisk = @(& git -C $script:RepoRoot ls-files --others --exclude-standard -- '*.Tests.ps1' |
+            Where-Object { $_ } | ForEach-Object { Split-Path $_ -Leaf })
+        $untracked = @($phantom | Where-Object { $_ -in $untrackedOnDisk })
+        $missing   = @($phantom | Where-Object { $_ -notin $untracked })
+        $untracked -join ', ' | Should -BeExactly '' -Because 'these suites are registered and ON DISK but NOT TRACKED by git - `git add` them (CI and the census only see tracked files)'
         # Invoke-Pester is not an error on a path that does not exist, so a renamed-but-not-updated entry
         # silently drops that suite from the gate rather than failing it.
-        $phantom -join ', ' | Should -BeExactly '' -Because 'a recipe naming a file that does not exist silently shrinks the gate - fix or remove the entry in the repo-root justfile'
+        $missing -join ', ' | Should -BeExactly '' -Because 'a recipe naming a file that does not exist silently shrinks the gate - fix or remove the entry in the repo-root justfile'
     }
 
     It 'puts each suite in exactly ONE half of the partition' {

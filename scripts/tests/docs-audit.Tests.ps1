@@ -215,6 +215,42 @@ Describe 'FindingsStore merge/write/render' {
         (Get-Content $md -Raw) | Should -Match '<!-- doc:A.md start -->'
         (Get-Content $md -Raw) | Should -Match '<!-- doc:A.md end -->'
     }
+    It 'Render-FindingsView omits a stored doc that is not on the roster' {
+        $s = Read-FindingsStore $script:Json
+        Merge-DocResult -Store $s -DocPath 'A.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@(@{kind='ACCURACY';docPath='A.md';docLine=1;codeRef='x.rs:2';text='t'}) } | Out-Null
+        Merge-DocResult -Store $s -DocPath 'Gone.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@(@{kind='ACCURACY';docPath='Gone.md';docLine=1;codeRef='x.rs:2';text='t'}) } | Out-Null
+        $md = Join-Path $TestDrive 'view-roster.md'
+        Render-FindingsView -Store $s -Path $md -Roster @('A.md')
+        (Get-Content $md -Raw) | Should -Match '<!-- doc:A.md start -->'
+        (Get-Content $md -Raw) | Should -Not -Match 'Gone.md'
+    }
+    It 'Render-FindingsView with no roster renders every stored doc' {
+        $s = Read-FindingsStore $script:Json
+        Merge-DocResult -Store $s -DocPath 'A.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@(@{kind='ACCURACY';docPath='A.md';docLine=1;codeRef='x.rs:2';text='t'}) } | Out-Null
+        Merge-DocResult -Store $s -DocPath 'Gone.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@(@{kind='ACCURACY';docPath='Gone.md';docLine=1;codeRef='x.rs:2';text='t'}) } | Out-Null
+        $md = Join-Path $TestDrive 'view-noroster.md'
+        Render-FindingsView -Store $s -Path $md
+        (Get-Content $md -Raw) | Should -Match '<!-- doc:A.md start -->'
+        (Get-Content $md -Raw) | Should -Match '<!-- doc:Gone.md start -->'
+    }
+    It 'Get-FindingsSummary counts findings and unconfirmed docs on the roster only' {
+        $s = Read-FindingsStore $script:Json
+        $f = { param($d) @{kind='ACCURACY';docPath=$d;docLine=1;codeRef='x.rs:2';text='t'} }
+        Merge-DocResult -Store $s -DocPath 'A.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@((& $f 'A.md'), (& $f 'A.md')) } | Out-Null
+        Merge-DocResult -Store $s -DocPath 'B.md' -RunId 'R1' -Result @{ Outcome='AUDIT-TIMEOUT'; ClaimsInspected=0; Findings=@() } | Out-Null
+        Merge-DocResult -Store $s -DocPath 'Gone.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@(1..5 | ForEach-Object { & $f 'Gone.md' }) } | Out-Null
+        $sum = Get-FindingsSummary -Store $s -Roster @('A.md','B.md')
+        $sum.Findings | Should -Be 2
+        $sum.DocsWithFindings | Should -Be 1
+        $sum.Unconfirmed | Should -Be 1
+    }
+    It 'Get-FindingsSummary counts every outcome other than CLEAN and FINDINGS as unconfirmed' {
+        $s = Read-FindingsStore $script:Json
+        foreach ($p in @(@('A.md','CLEAN'), @('B.md','FINDINGS'), @('C.md','AUDIT-TIMEOUT'), @('D.md','AUDIT-INCONCLUSIVE'), @('E.md','AUDIT-SUSPECT'))) {
+            Merge-DocResult -Store $s -DocPath $p[0] -RunId 'R1' -Result @{ Outcome=$p[1]; ClaimsInspected=1; Findings=@() } | Out-Null
+        }
+        (Get-FindingsSummary -Store $s -Roster @('A.md','B.md','C.md','D.md','E.md')).Unconfirmed | Should -Be 3
+    }
 }
 
 Describe 'Append-only incremental log' {
@@ -547,6 +583,20 @@ Describe 'docs-audit orchestrator (via pwsh -File, -AuditStub seam)' {
         $LASTEXITCODE | Should -Be 0
         $raw = Get-Content (Join-Path $script:Root 'docs/docs-audit-findings.json') -Raw
         $raw | Should -Match "em`u{2014}dash"   # the em-dash round-tripped; a mojibaked capture fails this
+    }
+    It 'an -Only run renders the FULL roster, drops a retired doc, and prints the roster summary (ROADMAP §47)' {
+        # R1 audits A, B and C (one finding each). C then leaves the roster. R2 re-audits A alone: the view must
+        # still carry B (the roster is the whole list, not the -Only subset) and must no longer carry C.
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $script:StubFindings -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck
+        $LASTEXITCODE | Should -Be 0
+        Set-Content (Join-Path $script:Root 'docs/user-facing-docs.txt') @('A.md','B.md')
+        $out = & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $script:StubFindings -RunId 'R2' -Timestamp '2026-07-22 01:00:00Z' -SkipLinkCheck -Only 'A.md' 2>&1 | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $view = Get-Content (Join-Path $script:Root 'docs/docs-audit-findings.md') -Raw
+        $view | Should -Match '<!-- doc:A\.md start -->'
+        $view | Should -Match '<!-- doc:B\.md start -->'
+        $view | Should -Not -Match 'C\.md'
+        $out | Should -Match ([regex]::Escape('docs-audit: 2 open finding(s) in 2 doc(s); 0 doc(s) not confirmed by their last audit.'))
     }
 }
 

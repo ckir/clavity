@@ -1458,3 +1458,143 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
         finally { Remove-Item -LiteralPath $parent -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
+
+Describe 'ConvertTo-GateRepoRoot (ROADMAP §42)' {
+    BeforeAll {
+        . $script:Script -RepoRoot $script:RepoRoot
+    }
+
+    It 'keeps the separator on a drive root' {
+        ConvertTo-GateRepoRoot 'C:\'   | Should -BeExactly 'C:\'
+        ConvertTo-GateRepoRoot 'C:/'   | Should -BeExactly 'C:\'
+        ConvertTo-GateRepoRoot 'C:'    | Should -BeExactly 'C:\'
+        ConvertTo-GateRepoRoot 'C:\\'  | Should -BeExactly 'C:\'
+    }
+
+    It 'trims every trailing separator from an ordinary root' {
+        ConvertTo-GateRepoRoot 'C:\repo\'   | Should -BeExactly 'C:\repo'
+        ConvertTo-GateRepoRoot 'C:/repo//'  | Should -BeExactly 'C:/repo'
+        # Distractor: nothing to trim, must come back unchanged.
+        ConvertTo-GateRepoRoot 'C:\repo'    | Should -BeExactly 'C:\repo'
+    }
+
+    It 'walks the drive root, not the cwd, when the root IS a drive root' -Skip:(-not $IsWindows) {
+        $letter = $null
+        foreach ($l in 'Q'..'Z') {
+            if (-not (Test-Path "${l}:\")) { $letter = $l; break }
+        }
+        if (-not $letter) {
+            Set-ItResult -Skipped -Because 'no free drive letter'
+            return
+        }
+        $tree = Join-Path ([System.IO.Path]::GetTempPath()) ("gate-driveroot-" + [guid]::NewGuid().ToString('N'))
+        $first = $script:DomainRoots[0]
+        $mapped = $false
+        $pushed = $false
+        try {
+            New-Item -ItemType Directory -Force -Path (Join-Path $tree 'scripts') | Out-Null
+            Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') -Destination (Join-Path $tree 'scripts')
+            foreach ($dr in $script:DomainRoots) {
+                New-Item -ItemType Directory -Force -Path (Join-Path $tree $dr) | Out-Null
+                New-Item -ItemType Directory -Force -Path (Join-Path $tree (Join-Path 'sub' $dr)) | Out-Null
+            }
+            Set-Content -LiteralPath (Join-Path $tree "$first/root.md") -Value 'root'
+            Set-Content -LiteralPath (Join-Path $tree "sub/$first/sub.md") -Value 'root'
+
+            & subst.exe "${letter}:" $tree
+            if ($LASTEXITCODE -ne 0) { throw "subst ${letter}: failed" }
+            $mapped = $true
+
+            Push-Location "${letter}:\sub"
+            $pushed = $true
+            $files = @(Get-InjectedContextFiles -RepoRoot "${letter}:\")
+            @($files | Where-Object { $_ -like '*root.md' }).Count | Should -BeGreaterThan 0 -Because 'the walk must start at the drive root'
+            @($files | Where-Object { $_ -like '*sub.md' }).Count | Should -Be 0 -Because 'the cwd (a subdirectory of the drive) must not become the root'
+        }
+        finally {
+            if ($pushed) { Pop-Location }
+            if ($mapped) { & subst.exe "${letter}:" /D | Out-Null }
+            Remove-Item -LiteralPath $tree -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Describe 'reference resolution follows the git index (ROADMAP §54)' {
+    BeforeAll {
+        . $script:Script -RepoRoot $script:RepoRoot
+    }
+    BeforeEach {
+        $script:TrackedSetRoot = $null; $script:TrackedFiles = $null; $script:RefIndexRoot = $null
+        $script:TrackedFallbackRoots.Clear()
+        $d = Join-Path ([System.IO.Path]::GetTempPath()) ("gate-index-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force -Path (Join-Path $d 'tracked'), (Join-Path $d 'untracked'), (Join-Path $d 'ignored') | Out-Null
+        Set-Content -LiteralPath (Join-Path $d 'tracked/a.md') -Value 'a'
+        Set-Content -LiteralPath (Join-Path $d 'untracked/b.md') -Value 'b'
+        Set-Content -LiteralPath (Join-Path $d 'ignored/c.md') -Value 'c'
+        Set-Content -LiteralPath (Join-Path $d '.gitignore') -Value 'ignored/'
+        & git -C $d init -q
+        & git -C $d add -- tracked/a.md .gitignore
+        $script:D = $d
+    }
+    AfterEach {
+        Remove-Item -LiteralPath $script:D -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    AfterAll {
+        $script:TrackedSet = $null; $script:TrackedFiles = $null; $script:TrackedSetRoot = $null
+        $script:RefIndex = $null; $script:RefIndexRoot = $null
+        $script:TrackedFallbackRoots.Clear()
+    }
+
+    It 'a tracked file resolves' {
+        Test-RepoPathExists -RepoRoot $script:D -RelPath 'tracked/a.md' | Should -BeTrue
+    }
+    It 'an untracked file on disk does NOT resolve' {
+        Test-Path -LiteralPath (Join-Path $script:D 'untracked/b.md') | Should -BeTrue -Because 'the file must exist on disk or the row is vacuous'
+        Test-RepoPathExists -RepoRoot $script:D -RelPath 'untracked/b.md' | Should -BeFalse
+    }
+    It 'a gitignored file on disk does NOT resolve' {
+        Test-Path -LiteralPath (Join-Path $script:D 'ignored/c.md') | Should -BeTrue -Because 'the file must exist on disk or the row is vacuous'
+        Test-RepoPathExists -RepoRoot $script:D -RelPath 'ignored/c.md' | Should -BeFalse
+    }
+    It 'a directory holding a tracked file resolves' {
+        Test-RepoPathExists -RepoRoot $script:D -RelPath 'tracked' | Should -BeTrue
+        Test-RepoPathExists -RepoRoot $script:D -RelPath 'tracked/' | Should -BeTrue
+    }
+    It 'a ./ reference to an untracked sibling is broken' {
+        (Resolve-Reference -Token './b.md' -RepoRoot $script:D -FromFile 'untracked/x.md').Outcome | Should -Be 'broken'
+        (Resolve-Reference -Token './a.md' -RepoRoot $script:D -FromFile 'tracked/x.md').Outcome | Should -Be 'ok'
+    }
+    It 'a suffix reference to an untracked file does not resolve' {
+        (Resolve-Reference -Token 'untracked/b.md' -RepoRoot $script:D -FromFile 'a.md').Outcome | Should -Be 'unclassified'
+        (Resolve-Reference -Token 'tracked/a.md' -RepoRoot $script:D -FromFile 'a.md').Outcome | Should -Be 'ok'
+    }
+    It 'outside a git work tree it falls back to the working tree, and says so' {
+        $d2 = Join-Path ([System.IO.Path]::GetTempPath()) ("gate-nogit-" + [guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Force -Path (Join-Path $d2 'x') | Out-Null
+            Set-Content -LiteralPath (Join-Path $d2 'x/y.md') -Value 'y'
+            Test-RepoPathExists -RepoRoot $d2 -RelPath 'x/y.md' | Should -BeTrue
+            $script:TrackedFallbackRoots.Contains($d2) | Should -BeTrue
+        }
+        finally { Remove-Item -LiteralPath $d2 -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'a work tree whose index cannot be read falls back to the working tree, and says so' {
+        # MEASURED: with a corrupt index, rev-parse --is-inside-work-tree still answers 'true' (exit 0) while
+        # ls-files fails (exit 128). Treating that failure as an EMPTY index would call every reference broken.
+        & git -C $script:D rev-parse --is-inside-work-tree | Should -Be 'true'
+        [System.IO.File]::WriteAllBytes((Join-Path $script:D '.git/index'), [byte[]](1..40))
+        & git -C $script:D ls-files 2>$null | Out-Null
+        $LASTEXITCODE | Should -Not -Be 0 -Because 'the fixture must make ls-files fail or the row is vacuous'
+        Test-RepoPathExists -RepoRoot $script:D -RelPath 'tracked/a.md' | Should -BeTrue
+        $script:TrackedFallbackRoots.Contains($script:D) | Should -BeTrue
+    }
+    It 'a ./ reference that lands on the repository root is ok' {
+        (Resolve-Reference -Token './' -RepoRoot $script:D -FromFile 'a.md').Outcome | Should -Be 'ok'
+        (Resolve-Reference -Token '../../..' -RepoRoot $script:D -FromFile 'tracked/x.md').Outcome | Should -Be 'broken'
+    }
+    It 'the index holds no untracked file' {
+        $null = Get-ReferenceIndex -RepoRoot $script:D
+        $script:RefIndex.All | Should -Contain 'tracked/a.md'
+        $script:RefIndex.All | Should -Not -Contain 'untracked/b.md'
+    }
+}

@@ -1,0 +1,32 @@
+name: ci-control-bytes
+
+# The control-byte gate (ROADMAP §49). Separate from ci-scripts.yml on purpose: a control byte lands in a
+# Markdown file anywhere in the tree, and ci-scripts only fires on scripts/**. This job runs one script and
+# takes seconds. The gate script and this workflow are in the path filter deliberately - without them,
+# breaking the gate itself is a change no CI run exercises.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.md'
+      - 'scripts/check-control-bytes.ps1'
+      - '.github/workflows/ci-control-bytes.yml'
+  pull_request:
+    paths:
+      - '**/*.md'
+      - 'scripts/check-control-bytes.ps1'
+      - '.github/workflows/ci-control-bytes.yml'
+
+concurrency:
+  group: ci-control-bytes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  control-bytes:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Control bytes in tracked Markdown
+        # pwsh 7: a maintainer-only dev script, like check-member-docs.ps1 (see ci-member-docs.yml).
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/check-control-bytes.ps1
