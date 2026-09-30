@@ -395,10 +395,26 @@ Describe 'agy-liveness-check.sh' {
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'REPORTS a hook that cds into .clavity with NO trailing slash (capstone Branch 2 R1)' {
+        # `cd .clavity && bash hook.sh` runs hook.sh from the peer write area; a regex that demanded a slash
+        # after `.clavity` let it through (measured).
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        try {
+            @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true }
+               hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='cd .clavity && bash hook.sh' } ) } ) }
+            } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $cfg 'settings.json') -Encoding ascii
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
+            $r.ExitCode | Should -Be 0
+            $j = $r.StdOut | ConvertFrom-Json
+            $j.systemMessage | Should -Match 'run from \.clavity/' -Because 'a bare cd into the peer write area is the same fault'
+        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'is SILENT for a command that only LOOKS like .clavity/: <Cmd>' -ForEach @(
         @{ Cmd = 'bash "$CLAUDE_PROJECT_DIR/clavity/hooks/probe.sh"' }
         @{ Cmd = 'bash "/x/.clavity-old/probe.sh"' }
         @{ Cmd = 'bash "/x/my.clavity/probe.sh"' }
+        @{ Cmd = 'bash hooks/x.sh .clavity.bak/y' }
     ) {
         # Near-misses: no leading dot; a sibling directory name; `.clavity` inside a longer segment. A check
         # that fires on these cries wolf on every start, which trains the owner to stop reading the notice.

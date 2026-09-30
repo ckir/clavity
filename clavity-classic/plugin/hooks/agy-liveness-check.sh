@@ -214,11 +214,12 @@ else
     # The THIRD field counts commands that run from .clavity/ (peer-scratch backlog item, replacing its
     # "Option 3"): that directory is the agy peer's sanctioned write area, so a hook wired from it executes
     # whatever the peer may have written. Backslashes are folded to `/` first so a Windows path matches, and
-    # the character before `.clavity/` must not continue a name, so `my.clavity/` and `.clavity-old/` do not.
+    # the character before `.clavity` must not continue a name, and neither may the character after it, so
+    # `my.clavity/`, `.clavity-old/` and `.clavity.bak/` do not count while a bare `cd .clavity` does.
     if ! personal_raw=$(jq -r '(.hooks // {}) as $h
                                | [$h[][].hooks[]]              as $entries
                                | [$entries[].command // empty] as $cmds
-                               | [$cmds[] | gsub("\\\\"; "/") | ascii_downcase | select(test("(^|[^a-z0-9._-])\\.clavity/"))] as $wired
+                               | [$cmds[] | gsub("\\\\"; "/") | ascii_downcase | select(test("(^|[^a-z0-9._-])\\.clavity([^a-z0-9._-]|$)"))] as $wired
                                | "\($entries | length) \($cmds | length) \($wired | length) \([$cmds[] | ascii_downcase | scan("[a-z0-9._-]+\\.sh")] | unique | join(" "))"' "$f" 2>/dev/null); then
       ownership_note="${ownership_note}[AGY-DISCIPLINES] schema unrecognised ($f) - .hooks is present but not the shape this check reads; ownership NOT verified for it"$'\n'
       continue
