@@ -155,7 +155,11 @@ function Get-WalkIdentity {
 }
 
 # NORMALISE A REPO ROOT ONCE, THE SAME WAY AT EVERY ENTRY POINT. Trailing separators are trimmed because a
-# tab-completed 'C:/repo/' must key the reference cache the same as 'C:/repo'. But a DRIVE ROOT keeps its
+# tab-completed 'C:/repo/' must key the reference cache the same as 'C:/repo' - and, historically, because
+# relative paths were once cut with Substring($RepoRoot.Length + 1): MEASURED then, a trailing separator
+# swallowed the first letter of every relative path ('clavity-dotnet/...' became 'lavity-dotnet/...') and
+# flooded the report with false violations. Relative paths now come from the shared resolver (path-lib.ps1),
+# which normalises its own root, but the trim stays for the cache key. A DRIVE ROOT keeps its
 # separator: bare 'C:' is not the root of C: - PowerShell resolves it to that drive's CURRENT directory, so the
 # gate would walk, and resolve references in, whatever directory the caller happened to be in (ROADMAP §42,
 # measured with a subst drive: the resolver's root became the cwd and the walk threw 'path escaped root').
@@ -281,7 +285,8 @@ function Test-IsIgnored {
 
 function Get-InjectedContextFiles {
     param([string]$RepoRoot)
-    # Normalised by ConvertTo-GateRepoRoot, so every entry point keys the reference cache the same way and a drive root keeps its separator.
+    # Normalised by ConvertTo-GateRepoRoot, so every entry point keys the reference cache the same way and a
+    # drive root keeps its separator (see the helper for why both matter).
     $RepoRoot = ConvertTo-GateRepoRoot $RepoRoot
     # ONE resolver per root, built BEFORE the loop - ROADMAP section 28 capstone. Resolving inside the loop re-ran
     # Get-Item on the same root once per FILE (~64s a run). Guarded so a missing root keeps its own error.
@@ -508,7 +513,8 @@ $script:RefIndexRoot = $null
 
 function Get-ReferenceIndex {
     param([string]$RepoRoot)
-    # Normalised by ConvertTo-GateRepoRoot, so every entry point keys the reference cache the same way and a drive root keeps its separator.
+    # Normalised by ConvertTo-GateRepoRoot, so 'C:/repo' and 'C:/repo/' key ONE cached index below, and a drive
+    # root keeps its separator.
     $RepoRoot = ConvertTo-GateRepoRoot $RepoRoot
     if ($null -ne $script:RefIndex -and $script:RefIndexRoot -eq $RepoRoot) { return $script:RefIndex }
     # ONE resolver per root, built BEFORE the loop - ROADMAP section 28 capstone. Resolving inside the loop re-ran
