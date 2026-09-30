@@ -511,6 +511,18 @@ Describe 'agy-test-audit-reminder.sh' {
                 Remove-Item $dst -Recurse -Force -ErrorAction SilentlyContinue
             }
         }
+
+        It 'FIRES through CLAVITY_AUDIT_BASE_REF for a branch name no fallback knows (SILENT without it)' {
+            # Test audit Branch 2 G3: no remote, no main, no master - only the override can find the base.
+            $d = New-TempRepo
+            try {
+                BGit $d branch -M develop
+                New-LedgerFlow $d
+                $p = New-AuditPayload (& $script:Cwd $d)
+                (Invoke-BashHook -HookPath $script:Hook -Payload $p).StdOut | Should -BeNullOrEmpty
+                (Invoke-BashHook -HookPath $script:Hook -Payload $p -Env @{ CLAVITY_AUDIT_BASE_REF = 'develop' }).StdOut | Should -Match 'AGY-TEST-AUDIT'
+            } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+        }
     }
 
     It 'is byte-identical to the clavity-classic mirror' {

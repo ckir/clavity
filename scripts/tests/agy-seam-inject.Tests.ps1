@@ -283,6 +283,22 @@ Describe 'agy-seam-inject.sh' {
             (Invoke-Hook -Skill 'superpowers:finishing-a-development-branch' -Cwd $script:LCwd) | Should -BeNullOrEmpty
         }
 
+        It 'INJECTS when a code commit sits BETWEEN two ledger-row commits (the whole marker..HEAD range is judged, not HEAD alone)' {
+            # Test audit Branch 2 G1: judging only HEAD's own commit would see the last ledger row and forgive.
+            Add-Commit @('docs/agy-capstone-ledger.md')
+            Add-Commit @('src/b.sh')
+            Add-Commit @('docs/agy-test-audit-ledger.md')
+            (Invoke-Hook -Skill 'superpowers:finishing-a-development-branch' -Cwd $script:LCwd) | Should -Match 'AGY-CAPSTONE auto-fire'
+        }
+
+        It 'INJECTS when the only commit after the marker is EMPTY (no change is not a ledger-only change)' {
+            # Test audit Branch 2 G2: an empty name-only list would pass the "every path is a ledger" test vacuously.
+            # TWO guards refuse it - `[ -n "$_post" ]`, and `printf '%s\n'` feeding grep one empty line it rejects -
+            # so this row goes red only when both are gone (measured); either alone keeps it green.
+            Invoke-Git commit -q --allow-empty -m 'empty'
+            (Invoke-Hook -Skill 'superpowers:finishing-a-development-branch' -Cwd $script:LCwd) | Should -Match 'AGY-CAPSTONE auto-fire'
+        }
+
         It 'INJECTS when a commit after the marker also changes a SKILL.md' {
             Add-Commit @('docs/agy-capstone-ledger.md', 'skills/x/SKILL.md')
             (Invoke-Hook -Skill 'superpowers:finishing-a-development-branch' -Cwd $script:LCwd) | Should -Match 'AGY-CAPSTONE auto-fire'
