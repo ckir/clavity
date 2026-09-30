@@ -3496,6 +3496,32 @@ capstone, test audit and reinstall. Its own branch, NOT folded into Branch 3: th
 
 ---
 
+### §58 — The working tree's line endings diverge from the all-LF index, and every tool pays for it — ▶ **RAISED 2026-09-30 by the owner, SCHEDULED: new sweep Branch 15, before Branch 8; AGY-FIRST on the approach first**
+
+**MEASURED 2026-09-30:** every text blob in the index is LF (`git ls-files --eol`: 421 `i/lf w/crlf`, 260
+`i/lf w/lf`, 4 `i/lf w/mixed` - the four `CHANGELOG.md` files - and 8 `-text`; no `i/crlf` at all). The CRLF
+is manufactured at checkout by `core.autocrlf=true`, set system-wide by Git for Windows (`C:/Program
+Files/Git/etc/gitconfig`), not by this repository. Tools then write whichever ending they prefer, so an edit
+by a script or an agent produces "LF will be replaced by CRLF" warnings, mixed files, and scripts that must
+sniff the ending before appending. `.gitattributes` has grown 43 incident-by-incident rules (`*.sh` pinned
+LF twice, the cheatsheet trio, the knowledge-store rules, review-relay files), each citing a fresh-clone
+breakage; there is no repository-wide default and no `.editorconfig`. A driver CRLF probe
+(`git show X | grep -c $'\r$'`) was also measured to be no oracle: 3572 on an LF blob, 0 on a CRLF control.
+
+**Proposed shape (for the AGY-FIRST consult, not decided):** `* text=auto eol=lf` as the default; keep only
+the real exceptions (`installer/_shared/register-plugin.ps1 eol=crlf` for its hash pin, the `binary` /
+`-text` entries); collapse the redundant LF pins; add `.editorconfig` (`end_of_line = lf`); refresh the
+working tree once on a clean tree. The index is already LF, so no blob content changes.
+
+**Measure before deciding:** Windows PowerShell 5.1 and the installer-contract gates on LF `.ps1`; every
+consumer that hashes working-tree bytes (the register-hash pin, the plugin drift check against the installed
+cache); any Pester row expecting CRLF on disk; `.iss` files if anything still reads them.
+
+**Blast radius:** `.gitattributes`, a new `.editorconfig`, and every working-tree file's bytes (not its
+blob). Its own branch: it touches the whole tree, so it rides no other.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
