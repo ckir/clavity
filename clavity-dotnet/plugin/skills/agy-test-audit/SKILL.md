@@ -378,7 +378,7 @@ one - and it silently invents a column boundary, mangling the very record you ar
 executor is never shown is not a rule.
 
 Without this row the marker is the only trace an audit ever ran, and the marker is a debounce holding
-ambient `HEAD`, not a record of what was audited. The question the loop above depends on - is a re-audit
+one sha for the reminder hook to compare - not a record of the audited range, its rounds or its verdict. The question the loop above depends on - is a re-audit
 owed? - then has no answer in the tree.
 
 **Anti-sweep.** Each run lists the top 1-2 findings it discarded below the floor, so a real defect cannot
@@ -450,29 +450,27 @@ same `HEAD`. Write the marker through the shipped writer, never by hand: it asse
 shield BEFORE the write and creates the directory it writes into.
 
 ```bash
-bash "<BASE>/../../hooks/agy-mark.sh" head "agy-test-audit" "$(git rev-parse HEAD)"
+bash "<BASE>/../../hooks/agy-mark.sh" head "agy-test-audit" "$(git rev-parse <RANGE-END>)"
 ```
 
 - **Path:** `.clavity/agy-marks/agy-test-audit.head` - a single discipline-keyed marker, no `<plugin-id>`
   prefix (Option S, as for agy-first/agy-capstone). See `docs/agy-disciplines-marker-contract.md`.
-- **Content:** ambient `HEAD`, exactly as the command above writes it. If HEAD cannot resolve, skip
-  writing (the discipline re-fires next trigger - safe).
+- **Content:** the sha the ledger row's range ENDS on - the last commit this audit covered: the last
+  gap-fold commit if the run folded any, otherwise the audited tip. Put it in place of `<RANGE-END>`
+  above; `git rev-parse` expands a short sha into the full one the writer expects. If it cannot resolve,
+  skip writing (the discipline re-fires next trigger - safe).
 
-  > This line said "the audited sha ... not ambient HEAD" until 2026-08-26, which CONTRADICTED the command
-  > four lines above it - and the command is the half an agent actually runs. Each half read as correct on
-  > its own, which is how it survived nineteen review rounds. Ambient `HEAD` is the right content: the
-  > reminder hook goes quiet when the audit marker STILL DESCRIBES HEAD - it either equals HEAD, or is an
-  > ancestor of it with nothing executable landed since - so writing anything else leaves it nudging
-  > forever after a completed audit. (This paragraph said `audit-marker == HEAD` until 2026-08-26. That
-  > was the rule when it was written and was relaxed one round later, by a fold that changed no
-  > `SKILL.md` - the same fact, one artifact further on.) The case the old wording worried about - closing gaps advanced HEAD - is
-  > already handled elsewhere and more strictly: executable changes after the capstone's reviewed tip make
-  > the capstone GREEN stale, the hook falls silent on its own, and this skill's own capstone-invalidation
-  > rule requires a re-capstone before the branch is done.
+  > NOT ambient `HEAD`, which is what this line said until 2026-09-30 (ROADMAP section 52). The row above
+  > must be committed BEFORE the marker, so at write time HEAD is the ledger commit - and a commit cannot
+  > name itself, so no row records it and the writer's ledger gate REFUSES it. MEASURED twice: the ledger
+  > commits `e1ee49ec` and `8829274c` were each refused `ABSENT`, and each row's range end was accepted. The
+  > range end still silences the reminder hook: it goes quiet when the audit marker STILL DESCRIBES HEAD -
+  > equals it, or is an ancestor of it with nothing executable landed since - and the only commit after
+  > it is the docs-only ledger row.
 - **Written ONLY on a completed audit** - an `[VERDICT: EXHAUSTIVE]`, or a `[VERDICT: GAPS FOUND]` whose
   gaps ALL carry an AGY-SCOPE disposition token. An `agy-required-but-unreachable`
-  abort writes NO marker (the discipline re-fires next trigger). If closing gaps advanced HEAD by touching
-  executable code, the capstone GREEN no longer describes HEAD - do not paper over that by choosing a
-  different sha to record; re-run AGY-CAPSTONE, per the capstone-invalidation rule above.
+  abort writes NO marker (the discipline re-fires next trigger). If closing gaps changed implementation
+  SOURCE (not only tests), the capstone GREEN no longer covers it - re-run AGY-CAPSTONE, per the
+  capstone-invalidation rule above, before writing this marker.
 
 `.clavity/` is runtime state and is gitignored - never commit a marker.
