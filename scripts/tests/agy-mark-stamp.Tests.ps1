@@ -1,5 +1,10 @@
 BeforeAll {
     $script:Mark = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'clavity-dotnet/plugin/hooks/agy-mark.sh'
+    # PIN GIT BASH (ROADMAP section 57b). A bare `bash` is a PATH lookup, and from a plain pwsh on a machine
+    # with WSL it resolves to C:\WINDOWS\system32\bash.exe first: MEASURED 2026-10-01, 8 of 11 rows then fail
+    # with exit 127 and say nothing about agy-mark.sh. CI is green only because its runner has no WSL.
+    . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
+    $script:Bash = Get-GitBashOrThrow
 
     function New-Repo {
         $d = Join-Path ([System.IO.Path]::GetTempPath()) ("mstamp-" + [guid]::NewGuid().ToString('N'))
@@ -16,7 +21,7 @@ BeforeAll {
     function Invoke-Stamp($Repo, [string[]]$MarkArgs) {
         Push-Location $Repo
         try {
-            $out = & bash $script:Mark @MarkArgs 2>&1 | Out-String
+            $out = & $script:Bash $script:Mark @MarkArgs 2>&1 | Out-String
             return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Out = $out }
         } finally { Pop-Location }
     }
@@ -81,7 +86,8 @@ Describe 'agy-mark.sh stamp' {
         $r = New-Repo
         try {
             $res = Invoke-Stamp $r @('stamp','agy-capstone','only-one-id')
-            $res.ExitCode | Should -Not -Be 0
+            $res.ExitCode | Should -Be 64 -Because 'the usage error, not merely any failure: exit 127 from a bash that cannot run the script also fails'
+            $res.Out      | Should -Match 'need <discipline> <consult-cascade-id> <review-cascade-id>'
             Test-Path (Join-Path $r '.clavity/agy-marks/consults.log') | Should -BeFalse
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -99,7 +105,8 @@ Describe 'agy-mark.sh stamp' {
         $r = New-Repo
         try {
             $res = Invoke-Stamp $r @('stamp','agy-capstone','id with spaces','good-review-id')
-            $res.ExitCode | Should -Not -Be 0
+            $res.ExitCode | Should -Be 64 -Because 'the whitespace check, not merely any failure'
+            $res.Out      | Should -Match 'consult-cascade-id must not contain whitespace'
             Test-Path (Join-Path $r '.clavity/agy-marks/consults.log') | Should -BeFalse
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -111,7 +118,8 @@ Describe 'agy-mark.sh stamp' {
         $r = New-Repo
         try {
             $res = Invoke-Stamp $r @('stamp','agy-capstone','good-consult-id','id with spaces')
-            $res.ExitCode | Should -Not -Be 0
+            $res.ExitCode | Should -Be 64 -Because 'the whitespace check, not merely any failure'
+            $res.Out      | Should -Match 'review-cascade-id must not contain whitespace'
             Test-Path (Join-Path $r '.clavity/agy-marks/consults.log') | Should -BeFalse
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -164,7 +172,7 @@ Describe 'agy-mark.sh stamp' {
 
             Push-Location $r
             try {
-                & bash -c 'PATH="./shim:$PATH" bash "$1" stamp agy-capstone cascade-aaa cascade-bbb' _ $script:Mark 2>&1 | Out-Null
+                & $script:Bash -c 'PATH="./shim:$PATH" bash "$1" stamp agy-capstone cascade-aaa cascade-bbb' _ $script:Mark 2>&1 | Out-Null
                 $code = $LASTEXITCODE
             } finally { Pop-Location }
 
