@@ -1,4 +1,23 @@
 # dotnet changelog
+## 0.10.0 - 2026-10-01
+
+### Features
+- feat(liveness): report a hook wired from .clavity/, the peer's write area (peer-scratch item)
+
+### Fixes
+- fix(anomaly-reminder): a file cwd and an empty PATH (section 32)
+- fix(editorconfig): leave the owner's untracked files alone; note the clone refresh
+- fix(roadmap): re-measure two SKILL.md line counts that 2ddcd50e moved
+- fix(reminder): find the branch base when the integration branch is not main (capstone Branch 2 R3)
+- fix(hooks): name-only diffs ignore renames and diff.relative (capstone Branch 2 R2)
+- fix(seam-inject): forgive ledger-row-only commits after a capstone marker (capstone Branch 2 R1)
+- fix(recovery): treat a marker lib without its builder as missing (capstone Branch 2 R1)
+- fix(liveness): report a hook that cds into .clavity without a trailing slash (capstone Branch 2 R1)
+- fix(hooks): normalise a short sha to the full sha before writing a marker (capstone Branch 2 R1)
+- fix(skills): write the marker at the ledger row's range end, not ambient HEAD (section 52)
+- fix(agy-mark): head refuses a sha that names no commit, where git can answer (section 51)
+- fix(docs): restore two backslash escapes a tool had turned into control bytes
+
 ## 0.9.2 - 2026-09-28
 
 ### Fixes
