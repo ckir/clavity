@@ -124,6 +124,20 @@ Describe 'agy-mark.sh stamp' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'rejects a discipline containing whitespace, and writes NO row' {
+        # Test audit 2026-10-02. The stamp arm checks $discipline itself, because it never routes it through
+        # _check_discipline - and no row fed it: deleting that check left the suite 11/11 - MEASURED. Both
+        # cascade ids are GOOD, so only the discipline check can be what fires.
+        $r = New-Repo
+        try {
+            $res = Invoke-Stamp $r @('stamp','agy capstone','good-consult-id','good-review-id')
+            $res.ExitCode | Should -Be 64 -Because 'the whitespace check, not merely any failure'
+            $res.Out      | Should -Match 'discipline must not contain whitespace'
+            $res.Out      | Should -Not -Match 'cascade-id must not' -Because 'a GOOD id must not be what was rejected'
+            Test-Path (Join-Path $r '.clavity/agy-marks/consults.log') | Should -BeFalse
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'ASSERTS THE .clavity SHIELD when it is the FIRST agy-mark call in a fresh repo' {
         # Capstone R7 put this below its reachability floor, reasoning that stamp writes only a
         # "non-load-bearing audit file" and so cannot mutate protected configuration. That answers a

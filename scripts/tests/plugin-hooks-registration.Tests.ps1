@@ -135,6 +135,11 @@ Describe 'shipped plugin hook registration' {
         $matchers = @(Get-OwningMatchers -Manifest $script:Manifests[$Driver] -Event 'PostToolUse' -Script 'agy-test-audit-reminder.sh')
         $matchers.Count | Should -Be 1
         $matchers[0]    | Should -BeExactly 'Bash|PowerShell|Write|Edit'
+        # EXACTLY ONE ENTRY IN THE WHOLE MANIFEST (test audit 2026-10-02). The query above returns one matcher
+        # per OWNING GROUP of ONE event, so a second copy of the entry inside the same group, or a copy under
+        # another event, left this row green - MEASURED: both mutants 37/37. Either copy fires the reminder twice.
+        $entries = @(Get-AllCommands $script:Manifests[$Driver] | Where-Object { $_ -like '*agy-test-audit-reminder.sh*' })
+        $entries.Count | Should -Be 1 -Because "one registration across every event and group, got: [$($entries -join '; ')]"
     }
 
     It 'names only hook files that EXIST in that plugin - <Driver>' -ForEach @(
