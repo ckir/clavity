@@ -561,7 +561,7 @@ accept-drain.Tests.ps1                           42,4s   10 tests   <- SLOW, re-
 agy-after-reminder.Tests.ps1                      9,7s   14 tests   <- COUNT 2026-08-06 (+4: root-walk
                                                                       silence + control, jq and no-jq).
                                                                       TIME is the 2026-08-05 solo figure.
-agy-anomaly-reminder.Tests.ps1                   26,8s   33 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-anomaly-reminder.Tests.ps1                   26,8s   37 tests   <- SLOW, re-measured 2026-08-06 (+4)
 agy-anomaly-capture-reminder.Tests.ps1            8,4s   26 tests   <- COUNT 2026-08-06 (+4)
 agy-anomaly-dispatch-reminder.Tests.ps1          12,7s   22 tests   <- COUNT 2026-08-06 (+4)
 agy-anomaly-model-notice.Tests.ps1               16,7s   11 tests   <- COUNT 2026-08-06 (+2)
