@@ -29,7 +29,7 @@
         ]
       },
       {
-        "matcher": "Bash|Write|Edit",
+        "matcher": "Bash|PowerShell|Write|Edit",
         "hooks": [
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-test-audit-reminder.sh\"" }
         ]

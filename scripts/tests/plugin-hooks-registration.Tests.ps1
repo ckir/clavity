@@ -125,6 +125,18 @@ Describe 'shipped plugin hook registration' {
         $matchers[0]    | Should -BeExactly 'Skill'
     }
 
+    It 'registers agy-test-audit-reminder.sh on PostToolUse Bash|PowerShell|Write|Edit - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        # ROADMAP section 57. The hook reads no tool_name, so the matcher decides only WHEN it gets a chance
+        # to run: without PowerShell a GREEN capstone's audit nudge waits for the next Bash/Write/Edit call.
+        # EXACT, like the siblings: a 'contains PowerShell' pin would pass a matcher narrowed to PowerShell
+        # alone. Not mcp__.*agy_ask - a consult is not a code change (AGY-FIRST, 2026-10-01).
+        $matchers = @(Get-OwningMatchers -Manifest $script:Manifests[$Driver] -Event 'PostToolUse' -Script 'agy-test-audit-reminder.sh')
+        $matchers.Count | Should -Be 1
+        $matchers[0]    | Should -BeExactly 'Bash|PowerShell|Write|Edit'
+    }
+
     It 'names only hook files that EXIST in that plugin - <Driver>' -ForEach @(
         @{ Driver = 'dotnet' }, @{ Driver = 'classic' }, @{ Driver = 'autotrain' }
     ) {
