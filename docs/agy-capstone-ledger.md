@@ -742,3 +742,11 @@ EditorConfig core, near-miss `AIBridgeWebX/` and `docs/TODO.md` still `lf`). F2 
 refreshed - DEBT, recorded in ROADMAP section 58 with the refresh recipe. Below the floor: `text=auto` skips a file
 git detects as binary, where the dropped pins forced `text` (measured: the only `-text` files are the 4 `.bin`,
 3 `.png` and `check-peer-reply-citations.Tests.ps1`, none formerly pinned).
+
+| 2026-10-01 | `b1228a86..bc6d587c` (branch `sweep/branch-3-anomaly-reminder`, ROADMAP section 32; the reviewed diff excluded version bumps and lockfiles, `scripts/tests/_partition.md`, the plan and ROADMAP prose; only the `clavity-dotnet/plugin/` copy, the classic mirror being byte-identical and test-pinned) | 1 | **GREEN - owner-confirmed 2026-10-01** at the reviewed tip `bc6d587c` | Fix `d327711f` (three of four new rows fail before it; mutants M1/M2/M3 each redden exactly their own row); gates at `bc6d587c`: lefthook pre-push `--all-files` exit 0, full `scripts/tests` 1732 passed / 0 failed / 1 skipped; brief `.clavity/seams/capstone-branch3.md`; driver probe of the peer's least-exercised leg `.clavity/scratch/capstone-branch3/probe-subfile.sh` |
+
+**Reviewer: agy, cascade `c16d9026`.** R1 (Boundary Smuggler, Cascade Analyst, Axiom Breaker, Mechanism Gamer;
+file-viewer only, no breach, echo correct): no findings. Its weakest-point answer named the jq-path leg where a
+file in a SUBDIRECTORY resolves to a non-root parent; the driver measured it on both paths with a control, all
+correct. Below the floor (peer): a NUL in `cwd` (JSON cannot carry one); `cwd = "/"`. The design was settled
+with the same peer at AGY-FIRST, so R1 reviewed an approach it had recommended; the owner was told at GREEN.
