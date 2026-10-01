@@ -3478,7 +3478,7 @@ plugin pair.
 
 ---
 
-### §57 — The test-audit reminder never runs on a PowerShell tool call, and its matcher is unpinned — ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (sweep Branch 2 capstone round 4, Activation Auditor; owner-ruled DEFERRED at GREEN), not yet planned** · ▶ **SCHEDULED 2026-09-30: new sweep Branch 14, before Branch 8 (owner-approved after AGY-FIRST `.clavity/seams/branch3-forks-negotiate.md`)**
+### §57 — The test-audit reminder never runs on a PowerShell tool call, and its matcher is unpinned — ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (sweep Branch 2 capstone round 4, Activation Auditor; owner-ruled DEFERRED at GREEN), not yet planned** · ▶ **SCHEDULED 2026-09-30: new sweep Branch 14, before Branch 8 (owner-approved after AGY-FIRST `.clavity/seams/branch3-forks-negotiate.md`)** · ▶ **57b FOLDED IN 2026-10-01 from the anomalies conveyor (owner ruling at triage)**
 
 `agy-test-audit-reminder.sh` is registered PostToolUse under `"matcher": "Bash|Write|Edit"`
 (`plugin/hooks/hooks.json:32`, both plugins), while the consult guards use `Bash|PowerShell|mcp__.*agy_ask`.
@@ -3494,6 +3494,17 @@ change is expected - verify that before planning.
 
 **Blast radius:** both `hooks.json` files and the registration suite; a plugin pair, so a version bump,
 capstone, test audit and reinstall. Its own branch, NOT folded into Branch 3: the sweep spec groups branches by the code they touch, "never to save capstones or reinstalls" (spec line 19), and no scheduled branch touches `hooks.json` or the registration suite.
+
+**57b - `agy-mark-stamp.Tests.ps1` runs the hook with a bare `bash`** (captured 2026-09-30 on the Branch 15
+gate run; owner ruled at triage 2026-10-01 to fold it into Branch 14, as a second hook-test-harness defect).
+`Invoke-Stamp` (`scripts/tests/agy-mark-stamp.Tests.ps1:19`, every row but one) and the degraded-clock row
+(`:167`, the OUTER `& bash -c`) resolve `bash` by PATH lookup. MEASURED 2026-10-01: from a plain pwsh,
+`Get-Command bash -All` lists `C:\WINDOWS\system32\bash.exe` (WSL) first, then WindowsApps, then Git Bash; on
+2026-09-30 a detached gate run measured all 8 `Invoke-Stamp` rows failing with exit 127. CI is green only because
+its runner has no WSL. The suite never dot-sources `BashHookHelpers.ps1`, whose `Get-GitBashOrThrow` skips the
+System32 shim. **Fix outline:** dot-source the helper in `BeforeAll` and call `& (Get-GitBashOrThrow)` at both
+sites (the inner `bash` at `:167` runs under Git Bash's own PATH and needs no change); failing control first,
+under a WSL-first PATH. Test-only, so it adds no bump of its own.
 
 ---
 
