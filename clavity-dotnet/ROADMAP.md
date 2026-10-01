@@ -2750,7 +2750,7 @@ counter-argument after one negotiation turn: `agy-discipline-reaching.sh:129-132
 `.clavity/.gitignore`, so the created directory never reaches the unrelated repository's `git status`.
 **The harm is to the OWNER'S ATTENTION, not to any repository's integrity.**
 
-### §32 — Two pathological-input defects in `agy-anomaly-reminder.sh`, deferred at the round-7 capstone cap — ▶ **PROMOTED 2026-09-04 from the anomalies conveyor, not yet planned**
+### §32 — Two pathological-input defects in `agy-anomaly-reminder.sh`, deferred at the round-7 capstone cap — ▶ **PROMOTED 2026-09-04 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-10-01 on sweep Branch 3 (`d327711f`) - a file cwd resolves to its directory on both paths; the payload is read with a builtin, so an empty PATH writes no stderr**
 
 Both were raised by the live peer in AGY-CAPSTONE round 7 on the SessionStart hook-emission fix, both are
 REACHABLE rather than unreachable — which is why neither carries a `DISCARDED-BELOW-FLOOR` citation — and
@@ -2773,9 +2773,10 @@ the degraded path the same anomalies-file guard.
 **32b — an EMPTY `PATH` makes the hook write to stderr**, violating the no-stderr-on-any-path invariant
 that `14101f5` established and that the suite's `Invoke-Hook` wrapper asserts on every call.
 **MEASURED 2026-09-04:** `printf '{"cwd":".","source":"startup"}' | PATH='' bash <hook>` writes
-`bash: command not found` to stderr. ⚠ **The peer's CLAIM was right and its stated MECHANISM was wrong** —
-it predicted `cat: command not found` from `input=$(cat)` at `:33`; the observed error comes from bash
-itself. Score claim and evidence separately. The suite cannot see this because the degraded-path fixtures
+`bash: command not found` to stderr. ⚠ **CORRECTED 2026-09-30: that measurement was a PROBE artifact** —
+`PATH='' bash <hook>` cannot find `bash` itself, so the error was the probe's. Invoked by absolute path
+(`/usr/bin/bash <hook>` under `PATH=`), the hook writes `line 33: cat: command not found` - the mechanism
+the peer had predicted. Score claim and evidence separately, and give a probe a failing control. The suite cannot see this because the degraded-path fixtures
 set `PATH` to a directory that still contains `cat`. **Genuinely pathological** — nothing invokes a hook
 with an empty `PATH`, and in that state bash cannot find its own tools either — so note that a bare
 `2>/dev/null` here would suppress the diagnostic saying the environment is broken, which is arguably worse
