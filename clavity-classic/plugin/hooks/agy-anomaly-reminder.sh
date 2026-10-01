@@ -30,7 +30,11 @@
 # Suppressed by .no-agy (workspace or global) like the other reminders. Byte-identical across both driver
 # plugins (kept honest by the seed-sync gate).
 set +e
-input=$(cat)
+# BUILTIN, not `$(cat)`: with an empty PATH, `cat` is not found and bash writes that to stderr, breaking the
+# no-stderr-on-any-path invariant (ROADMAP section 32b). `read -d ''` reads to EOF, returns 1 there (ignored
+# under `set +e`) and keeps the payload byte for byte; the trailing newline it keeps is read by neither jq nor
+# the regex below. With nothing on PATH the hook then says jq is missing, which is true.
+IFS= read -r -d '' input
 
 # jq is needed to read cwd out of the payload. Without it, say so once rather than failing silently -- a
 # silent failure here is indistinguishable from "no anomalies", which is the exact confusion this hook
@@ -44,6 +48,11 @@ if ! command -v jq >/dev/null 2>&1; then
   [[ $input =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && cwd=${BASH_REMATCH[1]}
   cwd_path=${cwd//\\\\//}
   [ -z "$cwd_path" ] && cwd_path="."
+  # A FILE as cwd is resolved to its DIRECTORY, or the kill-switch below never fires (ROADMAP section 32a):
+  # the walk is gated on `[ -d ]`, so both probes became <file>/.no-agy. The same line as
+  # agy-seam-inject.sh. Parameter expansion, not `dirname`: an empty PATH must not turn an opt-out into a
+  # leak. `%/*` leaves nothing for a path at the root, hence the guard.
+  [ -f "$cwd_path" ] && { cwd_path=${cwd_path%/*}; [ -z "$cwd_path" ] && cwd_path="/"; }
   [ -f "$HOME/.claude/.no-agy" ] && exit 0
   root=$cwd_path
   # ONE stat gates the walk. On an unreachable share EVERY level pays an SMB timeout - MEASURED
@@ -83,6 +92,9 @@ cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
 # exactly like a working fix. Do NOT unify the two spellings.
 cwd_path=${cwd//\\//}
 [ -z "$cwd_path" ] && cwd_path="."
+# A FILE as cwd is resolved to its DIRECTORY - see the note on the degraded path above. Here the miss was
+# masked for the kill-switch (no anomalies file under <file>/ either) but it also HID the root's anomalies.
+[ -f "$cwd_path" ] && { cwd_path=${cwd_path%/*}; [ -z "$cwd_path" ] && cwd_path="/"; }
 
 [ -f "$HOME/.claude/.no-agy" ] && exit 0
 

@@ -119,6 +119,66 @@ Describe 'agy-anomaly-reminder.sh' {
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # --- ROADMAP section 32a: a FILE cwd. Claude Code sends a directory, but the payload is not ours, and
+    # `.no-agy` is the user-facing off switch. Before the fix the walk was skipped for a file cwd, so both
+    # kill-switch probes became <file>/.no-agy and missed; on the degraded path nothing else stopped the
+    # notice, and on the jq path the same miss also hid the root's anomalies file.
+    It 'honours a root .no-agy when cwd is a FILE, on the DEGRADED (no jq) path (section 32a)' {
+        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        try {
+            New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
+            $f = Join-Path $r 'afile.txt'; Set-Content -LiteralPath $f -Value 'x' -Encoding ascii
+            $x = Invoke-Hook -Payload (RawPayload $f) -Env @{ PATH = $script:NoJqPath; HOME = $h }
+            $x.StdOut   | Should -BeNullOrEmpty -Because 'a file cwd must resolve to its directory, so the root opt-out still fires'
+            $x.ExitCode | Should -Be 0
+        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'REPORTS the root anomalies when cwd is a FILE, on the jq path (section 32a)' {
+        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        try {
+            $f = Join-Path $r 'afile.txt'; Set-Content -LiteralPath $f -Value 'x' -Encoding ascii
+            $x = Invoke-Hook -Payload (RawPayload $f) -Env @{ HOME = $h }
+            $x.StdOut   | Should -Match '1 untriaged' -Because 'a file cwd must reach the repo root, where the anomalies file lives'
+            $x.ExitCode | Should -Be 0
+        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'honours a root .no-agy when cwd is a FILE, on the jq path (pairs the REPORTS row above)' {
+        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        try {
+            New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
+            $f = Join-Path $r 'afile.txt'; Set-Content -LiteralPath $f -Value 'x' -Encoding ascii
+            $x = Invoke-Hook -Payload (RawPayload $f) -Env @{ HOME = $h }
+            $x.StdOut | Should -BeNullOrEmpty -Because 'the same repo that reports above must go silent under its root opt-out'
+        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # --- ROADMAP section 32b: an EMPTY PATH. Invoke-BashHook cannot reach this: Get-GitBashOrThrow returns
+    # Git\bin\bash.exe, a wrapper that puts /mingw64/bin:/usr/bin back on PATH (measured 2026-09-30), so the
+    # unfixed hook found `cat` and stayed silent there. Claude Code runs Git\usr\bin\bash.exe, which does not,
+    # so this row launches THAT binary with an environment whose PATH is empty. (MSYS hands the child PATH as
+    # `=`, a relative directory that does not exist - measured; no command resolves, which is the condition.)
+    # FAILING CONTROL, measured 2026-10-01 with this exact launcher: the unfixed hook writes
+    # `line 33: cat: command not found` to stderr.
+    It 'writes NOTHING to stderr with an EMPTY PATH, and still says jq is missing (section 32b)' {
+        $h = New-CleanHome
+        $usrBash = Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin\bash.exe'
+        try {
+            Test-Path -LiteralPath $usrBash | Should -BeTrue -Because 'the row needs the non-wrapper Git Bash'
+            $psi = [Diagnostics.ProcessStartInfo]::new($usrBash)
+            $psi.ArgumentList.Add(($script:Hook -replace '\\', '/'))
+            $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
+            $psi.UseShellExecute = $false
+            $psi.Environment['PATH'] = ''
+            $psi.Environment['HOME'] = $h
+            $p = [Diagnostics.Process]::Start($psi)
+            $p.StandardInput.Write('{"cwd":".","source":"startup"}'); $p.StandardInput.Close()
+            $out = $p.StandardOutput.ReadToEnd(); $err = $p.StandardError.ReadToEnd(); $p.WaitForExit()
+            $err        | Should -BeNullOrEmpty -Because 'no external command may run before the jq check'
+            $out        | Should -Match 'guard inactive: missing jq' -Because 'with nothing on PATH, jq IS missing - the designed notice'
+            $p.ExitCode | Should -Be 0
+        } finally { Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     # --- THE cwd FALLBACK TIER: malformed and cwd-less payloads ----------------------------------
     # AGY-CAPSTONE round 6, Payload Shape Adversary. Every fixture in this file sends well-formed JSON
     # with a non-empty cwd, so the hook's ENTIRE defensive tier was structurally unpinned.
