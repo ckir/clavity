@@ -10,3 +10,7 @@ end_of_line = crlf
 
 [installer/_shared/register-plugin.ps1]
 end_of_line = crlf
+
+# The owner's own untracked work lives inside this checkout; this file must not reach it.
+[{AIBridgeWeb/**,TODO.md}]
+end_of_line = unset

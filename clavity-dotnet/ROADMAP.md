@@ -3520,6 +3520,13 @@ cache); any Pester row expecting CRLF on disk; `.iss` files if anything still re
 **Blast radius:** `.gitattributes`, a new `.editorconfig`, and every working-tree file's bytes (not its
 blob). Its own branch: it touches the whole tree, so it rides no other.
 
+**After it lands, other existing clones stay as they were until refreshed** (capstone F2, DEBT): git rewrites a
+working-tree file only when it next writes it, so a clone checked out before this change keeps its CRLF files
+and drifts towards mixed as later pulls touch some of them. Harmless - the index is unaffected and every gate that
+needs LF was pinned before - but a one-time refresh on a clean tree ends it: delete each file `git ls-files --eol`
+reports as `w/crlf` (other than the two CRLF exceptions) and `git checkout -- <path>`. `git checkout-index --force`
+does NOT do it: it skips a file git considers stat-clean (measured 2026-09-30).
+
 ---
 
 ## Non-goals / accepted limitations
