@@ -1,43 +1,28 @@
-# Shipped Bash hooks/scripts MUST stay LF: under core.autocrlf these get CRLF on checkout, and a
-# CRLF `\r` in a shebang/command breaks the hook on Linux/macOS (and Git-Bash). Force LF regardless.
-*.sh text eol=lf
+# LINE ENDINGS: LF IN THE INDEX AND IN EVERY CHECKOUT (ROADMAP section 58).
+# The index has always held LF for every text file. What varied was the WORKING TREE: Git for Windows
+# sets core.autocrlf=true system-wide, so a checkout manufactured CRLF for any file no rule below pinned
+# (measured 2026-09-30: 421 files CRLF, 260 LF, 4 mixed). Every tool then wrote whichever ending it
+# preferred, and this file grew one pin per incident - the *.sh hooks, the cheatsheet trio, the knowledge
+# store, the review-relay fixtures - each after a fresh Windows clone broke a gate. The default below ends
+# that class: text is LF everywhere, whatever core.autocrlf says. `text=auto` still lets git detect a
+# binary file by its content, so an unlisted binary is never converted.
+* text=auto eol=lf
 
-# Golden wire-capture oracles must never be line-ending normalized (they contain raw protobuf
-# bytes, incl. 0x0a). Without this, autocrlf would corrupt them on checkout.
-*.bin binary
-tests/Clavity.Ls.Tests/TestData/** binary
-
-# Shell scripts (e.g. shipped plugin hooks) must stay LF on every platform — a CRLF *.sh
-# fails on Linux/macOS with "bad interpreter". Keeps the portable hooks runnable cross-OS.
-*.sh text eol=lf
+# --- EXCEPTIONS. Each one is a file whose bytes must NOT be LF text. -----------------------------------
 
 # Byte-determinism for the hash-pinned registrar: identical EOL in every checkout so the build-time SHA-256
 # pin (register-plugin-hash.iss) matches the packed bytes the uninstaller verifies (GetSHA256OfFile). See
 # docs/superpowers/plans/2026-07-19-installer-registration-convergence.md Task 5.
 installer/_shared/register-plugin.ps1 text eol=crlf
 
-# The driver-cheatsheet source and its two GENERATED literals must be LF everywhere. The pre-commit
-# parity hook compares the generator's output against the INDEX blob, which git stores as LF, so a
-# CRLF checkout of any of these three would mismatch on every commit. Measured 2026-08-14:
-# core.autocrlf is true and `git check-attr text eol` reported `unspecified` for all three, so a fresh
-# clone checked them out as CRLF. Same mechanism, same reason, as the *.sh pin above.
-agy-autotrain/knowledge/driver-cheatsheet.core.md text eol=lf
-clavity-classic/src/driver_cheatsheet.rs text eol=lf
-clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs text eol=lf
+# cmd.exe batch files: CRLF, which is what cmd.exe is written for.
+*.cmd text eol=crlf
+*.bat text eol=crlf
 
-# The knowledge STORE must be LF everywhere. check-knowledge-store.ps1 enforces LF + pure ASCII, and
-# without this pin `git check-attr text eol` reports `unspecified` for these files, so under
-# core.autocrlf a fresh clone checks all 19 out as CRLF and the gate fails immediately on content it
-# has never touched. MEASURED 2026-08-28 on a default `git clone` of this repository: 19 of 19 rule
-# files came out CRLF and the gate reported 19 problems. CI runs on windows-latest, so that fresh
-# clone IS the CI checkout - the gate would have failed on its very first run.
-# Same mechanism, same reason, as the cheatsheet trio above.
-agy-autotrain/knowledge/rules/*.md text eol=lf
+# Golden wire-capture oracles must never be line-ending normalized (they contain raw protobuf bytes,
+# incl. 0x0a). `text=auto` would already detect most of them by content; this makes it unconditional.
+*.bin binary
+
 # The bundled AiSaveDev extension ships to a browser byte for byte (install-extension.ps1 copies it):
 # no line-ending conversion, so every checkout carries exactly the committed bytes.
 review-relay/extension/aisavedev/** -text
-# review-relay extension fixtures: the golden capture is compared BYTE FOR BYTE with what content.js
-# emits (LF only). Under core.autocrlf a Windows checkout would turn it CRLF and the test would fail on
-# every Windows box while passing on Linux. MEASURED 2026-09-29: an existing review-relay fixture
-# checks out i/lf w/crlf without a rule like this one.
-review-relay/extension/test/fixtures/** text eol=lf

@@ -1,0 +1,16 @@
+# Editors and agents write what git checks out (ROADMAP section 58): LF everywhere, with the same
+# exceptions .gitattributes makes. Keep the two files in step.
+root = true
+
+[*]
+end_of_line = lf
+
+[*.{cmd,bat}]
+end_of_line = crlf
+
+[installer/_shared/register-plugin.ps1]
+end_of_line = crlf
+
+# The owner's own untracked work lives inside this checkout; this file must not reach it.
+[{AIBridgeWeb/**,TODO.md}]
+end_of_line = unset

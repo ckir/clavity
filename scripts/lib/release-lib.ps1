@@ -78,7 +78,7 @@ function Get-SharedPathsFor([string]$Key) {
 # shared-shipping have had their say, so listing a prefix here can never mask a real bump.
 $script:DevOnlyPaths = @(
     'scripts/', '.github/', 'docs/', '.claude/', '.vscode/', '.worktrees/',
-    '.antigravityignore', '.gitattributes', '.gitignore', '.mlc.toml',
+    '.antigravityignore', '.editorconfig', '.gitattributes', '.gitignore', '.mlc.toml',
     'CLAUDE.md', 'CODE_OF_CONDUCT.md', 'CONTRIBUTING.md', 'DevelopersCockpit.ps1',
     'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'justfile', 'lefthook.yml',
     # Inno-retirement (2026-09-14). '.claude-plugin/' is the repo-ROOT marketplace that
