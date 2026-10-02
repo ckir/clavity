@@ -72,22 +72,78 @@ if (Clavity.Ls.Install.CliRouter.IsInstallerVerb(args))
     return Clavity.Ls.Install.CliRouter.Run(args, Console.Out);
 }
 
-// `clavity start <folder> [claude-args...]` — open a visible human-owned agy tab (per-session LS log) + launch Claude.
+// `clavity-ls agy [folder]` (Linux/macOS) - run a new session's agy in THIS terminal, for when `start` cannot open
+// one (no display, or no terminal it knows). It prints the `start --attach` command for a second terminal.
+if (args.Length > 0 && args[0] == "agy")
+{
+    if (OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("clavity: `clavity-ls agy` is for Linux and macOS - on Windows, `clavity-ls start` opens agy in a Windows Terminal tab.");
+        return 2;
+    }
+    var agyFolder = args.Length > 1 ? Path.GetFullPath(args[1]) : Directory.GetCurrentDirectory();
+    if (!Directory.Exists(agyFolder))
+    {
+        Console.Error.WriteLine($"clavity: {agyFolder} does not exist.");
+        return 2;
+    }
+    var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    var agySession = Guid.NewGuid().ToString("D");
+    var agyPaths = SessionPaths.For(home, agySession);
+    Directory.CreateDirectory(Path.GetDirectoryName(agyPaths.AgyLog)!);
+    if (PosixAgyTab.FindOnPath("agy", Environment.GetEnvironmentVariable("PATH")) is null)
+    {
+        Console.Error.WriteLine("clavity: agy is not on PATH - install Antigravity's agy CLI, or add its directory to PATH, then retry.");
+        return 1;
+    }
+    string agyDoc;
+    try
+    {
+        agyDoc = PairingDoc.Materialize(Path.GetDirectoryName(agyPaths.Endpoint)!);
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+    {
+        Console.Error.WriteLine($"clavity: cannot write the agy pairing instructions ({ex.Message}) - not launching.");
+        return 1;
+    }
+    PosixAgyTab.WriteScript(agyPaths.AgyScript, Launcher.BuildPosixScript(new LaunchOptions
+    {
+        Folder = agyFolder,
+        SessionId = agySession,
+        ProjectId = AgyEnvironment.TryReadProjectId(Path.Combine(home, ".gemini", "antigravity-cli")),
+        AgyLogFilePath = agyPaths.AgyLog,
+        AgyEndpointFilePath = agyPaths.Endpoint,
+        SkipPermissions = true,
+        AgyInstallDocPath = agyDoc,
+    }, agyPaths.Claim));
+
+    // agy's full-screen interface takes this terminal over, so the command must be read BEFORE it starts.
+    Console.Error.Write(PosixAgyTab.AttachHint(agyFolder, agySession));
+    if (!Console.IsInputRedirected)
+    {
+        Console.Error.Write("  Press Enter to start agy here.");
+        Console.ReadLine();
+    }
+    using var agyProcess = Process.Start(new ProcessStartInfo("/bin/sh") { ArgumentList = { agyPaths.AgyScript }, UseShellExecute = false })!;
+    agyProcess.WaitForExit();
+    return agyProcess.ExitCode;
+}
+
+// `clavity start [folder] [--attach <session-id>] [claude-args...]` - open a visible human-owned agy tab (per-session
+// LS log) + launch Claude. With --attach, launch Claude only, paired with the agy `clavity-ls agy` started.
 if (args.Length > 0 && args[0] == "start")
 {
-    var rest = args.Skip(1).ToArray();
-    string folder;
-    string[] claudeArgs;
-    if (rest.Length > 0 && !rest[0].StartsWith('-'))
+    StartArgs start;
+    try
     {
-        folder = Path.GetFullPath(rest[0]);
-        claudeArgs = rest.Skip(1).ToArray();
+        start = StartArgs.Parse(args.Skip(1).ToArray(), Directory.GetCurrentDirectory());
     }
-    else
+    catch (ArgumentException ex)
     {
-        folder = Directory.GetCurrentDirectory();
-        claudeArgs = rest;
+        Console.Error.WriteLine($"clavity: {ex.Message}");
+        return 2;
     }
+    var folder = start.Folder;
 
     if (!Directory.Exists(Path.Combine(folder, ".git")))
         Console.Error.WriteLine($"clavity: warning — {folder} is not a git repository.");
@@ -95,7 +151,7 @@ if (args.Length > 0 && args[0] == "start")
     var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     var agyHome = Path.Combine(userProfile, ".gemini", "antigravity-cli");
 
-    var sessionId = Guid.NewGuid().ToString("D");
+    var sessionId = start.AttachSessionId ?? Guid.NewGuid().ToString("D");
     // Per-session files (SessionPaths): the agy log, and the pairing rendezvous keyed by session so two concurrent
     // clavity sessions cannot clobber one another's endpoint (both the agy side and clavity-ls get this exact path
     // via CLAVITY_AGY_ENDPOINT).
@@ -103,8 +159,21 @@ if (args.Length > 0 && args[0] == "start")
     var logsDir = Path.GetDirectoryName(paths.AgyLog)!;
     Directory.CreateDirectory(logsDir); // idempotent + concurrency-safe (spec §11a).
     LogRetention.Prune(logsDir, LogRetention.DefaultMaxAge, DateTime.UtcNow);
-    var agyLogPath = paths.AgyLog;
-    var agyEndpointPath = paths.Endpoint;
+
+    if (start.AttachSessionId is not null)
+    {
+        // agy already runs in another terminal (`clavity-ls agy`) and publishes to this session's endpoint.
+        var attached = Launcher.Build(new LaunchOptions
+        {
+            Folder = folder,
+            SessionId = sessionId,
+            ClaudeArgs = start.ClaudeArgs,
+            AgyLogFilePath = paths.AgyLog,
+            AgyEndpointFilePath = paths.Endpoint,
+        });
+        Spawn(attached.ClaudeLaunch, wait: true);
+        return 0;
+    }
 
     // The pairing doc is embedded in this binary and written out on every start (PairingDoc). Without it agy gets
     // no -i prompt, never publishes its endpoint, and the pairing is dead on arrival - so refuse, loudly, rather
@@ -112,7 +181,7 @@ if (args.Length > 0 && args[0] == "start")
     string agyInstallDoc;
     try
     {
-        agyInstallDoc = PairingDoc.Materialize(Path.GetDirectoryName(agyEndpointPath)!);
+        agyInstallDoc = PairingDoc.Materialize(Path.GetDirectoryName(paths.Endpoint)!);
     }
     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
     {
@@ -120,22 +189,55 @@ if (args.Length > 0 && args[0] == "start")
         return 1;
     }
 
-    var plan = Launcher.Build(new LaunchOptions
+    var options = new LaunchOptions
     {
         Folder = folder,
         SessionId = sessionId,
-        ClaudeArgs = claudeArgs,
-        ProjectId = TryReadProjectId(agyHome),
-        AgyLogFilePath = agyLogPath,
-        AgyEndpointFilePath = agyEndpointPath,
+        ClaudeArgs = start.ClaudeArgs,
+        ProjectId = AgyEnvironment.TryReadProjectId(agyHome),
+        AgyLogFilePath = paths.AgyLog,
+        AgyEndpointFilePath = paths.Endpoint,
         // User decision 2026-06-30: agy ALWAYS launches with --dangerously-skip-permissions so unattended
         // bus/LS consults never stall on per-tool approval prompts. (Supersedes spec §4 "NOT default".)
         SkipPermissions = true,
         AgyInstallDocPath = agyInstallDoc,
-    });
+    };
+    var plan = Launcher.Build(options);
 
-    Spawn(plan.AgyTab, wait: false);    // agy tab boots asynchronously; human owns it.
-    Spawn(plan.ClaudeLaunch, wait: true); // Claude runs in the foreground.
+    if (OperatingSystem.IsWindows())
+    {
+        Spawn(plan.AgyTab, wait: false);    // agy tab boots asynchronously; human owns it.
+        Spawn(plan.ClaudeLaunch, wait: true); // Claude runs in the foreground.
+        return 0;
+    }
+
+    // Linux / macOS (ROADMAP sections 60 + 62): there is no `wt`. Open agy from a generated POSIX script in a terminal
+    // the user can see, and start Claude only once a terminal really ran it - otherwise Claude's full-screen interface
+    // would hide the reason pairing never happens.
+    // The script's `cd` runs after its claim, so a missing folder would look like success here: refuse it first.
+    if (!Directory.Exists(folder))
+    {
+        Console.Error.WriteLine($"clavity: {folder} does not exist.");
+        return 2;
+    }
+    // Check BOTH programs before opening anything: a missing `claude` found only after agy's tab is up would leave
+    // an orphaned agy behind an unhandled exception.
+    var pathVar = Environment.GetEnvironmentVariable("PATH");
+    foreach (var (exe, what) in new[] { ("agy", "Antigravity's agy CLI"), ("claude", "Claude Code") })
+    {
+        if (PosixAgyTab.FindOnPath(exe, pathVar) is null)
+        {
+            Console.Error.WriteLine($"clavity: {exe} is not on PATH - install {what}, or add its directory to PATH, then retry.");
+            return 1;
+        }
+    }
+    PosixAgyTab.WriteScript(paths.AgyScript, Launcher.BuildPosixScript(options, paths.Claim));
+    if (PosixAgyTab.TryOpen(paths, folder, PosixAgyTab.RealDeps(), PosixAgyTab.ReadyTimeout) is null)
+    {
+        Console.Error.Write(PosixAgyTab.FallbackMessage(folder));
+        return 1;
+    }
+    Spawn(plan.ClaudeLaunch, wait: true);
     return 0;
 
     static void Spawn(LaunchCommand cmd, bool wait)
@@ -153,16 +255,7 @@ if (args.Length > 0 && args[0] == "start")
         if (wait)
             process?.WaitForExit();
     }
-
-    static string? TryReadProjectId(string agyHome)
-    {
-        var path = Path.Combine(agyHome, "cache", "default_project_id.txt");
-        if (!File.Exists(path))
-            return null;
-        var id = File.ReadAllText(path).Trim();
-        return id.Length > 0 ? id : null;
-    }
 }
 
-Console.WriteLine("clavity-ls — usage: clavity-ls start <folder> [claude-args...]   |   clavity-ls --mcp   (MCP stdio server: agy_look / agy_status / agy_ask)");
+Console.WriteLine("clavity-ls — usage: clavity-ls start [folder] [--attach <session-id>] [claude-args...]   |   clavity-ls agy [folder]   (Linux/macOS: agy in this terminal)   |   clavity-ls --mcp   (MCP stdio server: agy_look / agy_status / agy_ask)");
 return 0;
