@@ -3709,6 +3709,34 @@ nothing placed; proven non-vacuous by deleting the `|| { _note ...; exit 0; }`.
 
 ---
 
+### §65 — Pairing over ssh needs a copy/paste of a 36-character session id; and the agy-side environment variables may be retirable — ▶ **RAISED 2026-10-03 by the owner; SCHEDULED as its own sweep branch after Branch 18; not yet AGY-FIRST'd**
+
+**Today (Branch 18):** with no display, `clavity-ls start` stops and says to run `clavity-ls agy <folder>`, which runs agy
+in that terminal and prints `clavity-ls start <folder> --attach <session-id>` for a SECOND ssh session - a GUID to copy
+between two terminals. Since Branch 18, `start` (and `--attach`) waits until agy has paired, so the two sessions can be
+opened in either order.
+
+**Driver proposal (to put to AGY-FIRST, owner agreed in principle):**
+- `start --attach` with NO id picks the single agy session that is waiting for a Claude, alive (its endpoint port
+  listens) and in this folder; with zero or several, it refuses and lists them.
+- A short pairing code as the explicit fallback (`clavity-ls agy` prints e.g. `K7M2`; `~/.clavity/pair/<code>` maps it
+  to the session id, owner-only, deleted once paired).
+- README: `ssh -X` sets DISPLAY, so the terminal ladder opens a window on the client; from a Windows client the
+  fallback can print a ready `wt new-tab ssh -t <host> clavity-ls agy ...` line.
+- Rejected: running agy hidden in the same ssh session (a background PTY or tmux) - it breaks "see and fix agy", and
+  tmux is clavity-classic's transport.
+
+**Owner idea, same branch - retire the variables that pass agy's options.** Driver's read: the agy-side
+`CLAVITY_AGY_ENDPOINT` can go (a per-session pairing doc, or the path in the `-i` prompt) - which also drops the Windows
+`$env:` baking that exists only because Windows Terminal does not pass the environment to a new tab;
+`ANTIGRAVITY_PROJECT_ID` is agy's own variable. The Claude-side variables (`CLAVITY_SESSION_ID`, `CLAVITY_AGY_ENDPOINT`,
+`CLAVITY_AGY_LOG`) are the only channel to the `.mcp.json`-launched `clavity-ls --mcp`, and the per-process identity
+that keeps two Claude sessions in one folder apart - keep them, and add the session registry as a FALLBACK (a plain
+`claude` in a folder with a waiting agy would then pair too). `CLAVITY_AGY_LOG` feeds the pre-endpoint cli.log
+discovery; retire only after checking the oldest supported agy.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
