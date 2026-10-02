@@ -22,7 +22,17 @@ BIN_DIR="$DATA/bin"
 TARGET="$BIN_DIR/clavity-ls.exe"             # universal fixed name (see header)
 STAMP="$BIN_DIR/.clavity-ls.version"
 
-_note() { echo "[clavity-ls] $1 - install clavity-ls manually and place it at $TARGET" >&2; }
+# A SessionStart hook's STDERR is not shown to the user at startup (ROADMAP section 61: a fresh install whose fetch
+# failed surfaced later as a bare ENOENT from /mcp). So every outcome the user must act on is ALSO printed on
+# STDOUT as the hook JSON Claude Code shows: systemMessage for the user, additionalContext for the model. jq is
+# optional on this path, so escape by hand: backslash first, then double quote, then drop control characters.
+_json_str() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr -d '\000-\037'; }
+_say() {
+  echo "$1" >&2
+  _m=$(_json_str "$1")
+  printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$_m" "$_m"
+}
+_note() { _say "[clavity-ls] $1 - install clavity-ls manually and place it at $TARGET"; }
 
 # Version from the plugin's own manifest (the release asset name embeds it).
 VER=""
@@ -78,5 +88,5 @@ chmod +x "$_bin" 2>/dev/null
 cp -f "$_bin" "$TARGET" 2>/dev/null || { _note "could not place binary at $TARGET"; exit 0; }
 chmod +x "$TARGET" 2>/dev/null
 printf '%s' "$VER" > "$STAMP"
-echo "[clavity-ls] fetched $ASSET -> $TARGET" >&2
+_say "[clavity-ls] fetched $ASSET -> $TARGET. If the clavity-ls MCP server failed to start in this session, run /mcp and reconnect it."
 exit 0
