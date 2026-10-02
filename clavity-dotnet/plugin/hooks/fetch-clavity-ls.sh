@@ -32,7 +32,13 @@ _say() {
   _m=$(_json_str "$1")
   printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$_m" "$_m"
 }
-_note() { _say "[clavity-ls] $1 - install clavity-ls manually and place it at $TARGET"; }
+# Each message is assigned to a msg* variable at the start of its own line: that is the shape the injected-context
+# gate (scripts/check-injected-context.ps1, Get-HookMessages) extracts to hold every hook message to its payload
+# budget and tag rules. A message passed straight to _say is invisible to it.
+_note() {
+  msg="[clavity-ls] $1 - install clavity-ls manually and place it at $TARGET"
+  _say "$msg"
+}
 
 # Version from the plugin's own manifest (the release asset name embeds it).
 VER=""
@@ -88,5 +94,6 @@ chmod +x "$_bin" 2>/dev/null
 cp -f "$_bin" "$TARGET" 2>/dev/null || { _note "could not place binary at $TARGET"; exit 0; }
 chmod +x "$TARGET" 2>/dev/null
 printf '%s' "$VER" > "$STAMP"
-_say "[clavity-ls] fetched $ASSET -> $TARGET. If the clavity-ls MCP server failed to start in this session, run /mcp and reconnect it."
+msg_ok="[clavity-ls] fetched $ASSET -> $TARGET. If the clavity-ls MCP server failed to start in this session, run /mcp and reconnect it."
+_say "$msg_ok"
 exit 0
