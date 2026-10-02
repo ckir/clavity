@@ -1618,6 +1618,13 @@ Nothing in CI executes this path. The VM is `ssh user@169.58.38.179` (Ubuntu 26.
   - Resource Vampire: launcher `Process` objects are never disposed -> DISCARDED-BELOW-FLOOR (see Stand-downs).
   - Fold Auditor: no findings. PANEL VERDICT (driver): no live challenge -> GREEN after solo R1 + agy R1-R3.
 
+## Execution notes
+- Task 4: the plan's mutant "drop `&& launcher.ExitCode != 0`" left ALL 24 rows green - the row it named uses a launcher
+  that never exits, and no row had a launcher that exits 0 BEFORE its script claims, which is exactly the measured
+  mate-terminal shape (client exits 0 at ~60 ms, script claims at ~100 ms). Added
+  `A_launcher_that_exits_0_BEFORE_its_script_claims_is_still_waited_for` (fake clock, claim at 100 ms); that mutant now
+  reddens exactly it. 25 rows; all five mutants redden their intended rows.
+
 ## Stand-downs
 - DISCARDED-BELOW-FLOOR: `StartsWith` vs `==` in terminal detection - equivalent on every reachable comm (<= 15 bytes).
 - DISCARDED-BELOW-FLOOR: a terminal slower than `ReadyTimeout` (5 s) - measured 80-130 ms.
