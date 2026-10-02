@@ -92,20 +92,19 @@ if (args.Length > 0 && args[0] == "start")
     if (!Directory.Exists(Path.Combine(folder, ".git")))
         Console.Error.WriteLine($"clavity: warning — {folder} is not a git repository.");
 
-    var agyHome = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity-cli");
+    var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    var agyHome = Path.Combine(userProfile, ".gemini", "antigravity-cli");
 
     var sessionId = Guid.NewGuid().ToString("D");
-    var logsDir = Path.Combine(agyHome, "logs");
+    // Per-session files (SessionPaths): the agy log, and the pairing rendezvous keyed by session so two concurrent
+    // clavity sessions cannot clobber one another's endpoint (both the agy side and clavity-ls get this exact path
+    // via CLAVITY_AGY_ENDPOINT).
+    var paths = SessionPaths.For(userProfile, sessionId);
+    var logsDir = Path.GetDirectoryName(paths.AgyLog)!;
     Directory.CreateDirectory(logsDir); // idempotent + concurrency-safe (spec §11a).
     LogRetention.Prune(logsDir, LogRetention.DefaultMaxAge, DateTime.UtcNow);
-    var agyLogPath = Path.Combine(logsDir, $"clavity-{sessionId}.log");
-
-    // Per-session pairing rendezvous. The reader's default is <userProfile>/.clavity/agy-endpoint.json
-    // (AgyEnvironment.ResolveEndpointPath); we key it by session so two concurrent clavity sessions cannot
-    // clobber one another's endpoint (both agy tab and clavity-ls get this exact path via CLAVITY_AGY_ENDPOINT).
-    var agyEndpointPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".clavity", $"agy-endpoint.{sessionId}.json");
+    var agyLogPath = paths.AgyLog;
+    var agyEndpointPath = paths.Endpoint;
 
     // The pairing doc is embedded in this binary and written out on every start (PairingDoc). Without it agy gets
     // no -i prompt, never publishes its endpoint, and the pairing is dead on arrival - so refuse, loudly, rather
