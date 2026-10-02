@@ -558,6 +558,7 @@ agy-consult-guard.Tests.ps1                     134,4s   44 tests   <- SLOW, mov
                                                                       registration oracle can settle, a
                                                                       time is not.
 accept-drain.Tests.ps1                           42,4s   10 tests   <- SLOW, re-measured 2026-08-06
+advance-release-channel.Tests.ps1                68,3s   8 tests   <- SLOW, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled)
 agy-after-reminder.Tests.ps1                      9,7s   14 tests   <- COUNT 2026-08-06 (+4: root-walk
                                                                       silence + control, jq and no-jq).
                                                                       TIME is the 2026-08-05 solo figure.
@@ -1086,12 +1087,14 @@ drain-lib.Tests.ps1                               4,2s   36 tests   <- FAST, re-
                                                                       COUNT 29 -> 36 on 2026-08-28 (AGY-TEST-AUDIT
                                                                       covered the output-manifest producer).
   (cold 6,1s) after the test-audit closure added 2 tests and strengthened 3.
+fetch-clavity-ls.Tests.ps1                       47,9s   7 tests   <- SLOW, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled)
 generate-cheatsheet-literals.Tests.ps1           41,6s   18 tests   <- SLOW, NEW 2026-08-16 (14e): the
                                                                       cheatsheet-literal generator's pinning
                                                                       suite. Measured solo as the sole
                                                                       command: "Tests completed in 41,57s",
                                                                       12 passed / 0 failed.
 generate-scoped-manifest.Tests.ps1                2,1s    2 tests   <- FAST, re-measured 2026-08-05
+marketplace-manifest.Tests.ps1                    4,6s  10 tests   <- FAST, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled)
 plugin-hooks-registration.Tests.ps1               0,6s   37 tests   <- FAST, re-measured 2026-09-13 (+2 2026-10-01: section 57 test-audit-reminder PostToolUse matcher row; +2 since; +1 for the section-15 consult-recovery registration row; was
                                                                       0,5s / 18 tests; +4 for the recorder's
                                                                       SessionStart registration, which this
