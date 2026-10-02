@@ -132,6 +132,8 @@ jobs:
     # Atomic all-or-nothing: any failed member build blocks the whole clavity release (no continue-on-error).
     needs: [dotnet, classic, agy-autotrain, commonmemory, review-relay]
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.notes.outputs.tag }}
     permissions:
       contents: write
     steps:
@@ -229,3 +231,24 @@ jobs:
             out/clavity-ls-*-*.tar.gz.sha256
             out/clavity-classic-setup-*.exe
             out/clavity-classic-setup-*.exe.sha256
+
+  release-channel:
+    # ROADMAP section 61. The root marketplace serves the clavity plugin from branch `release`
+    # (.claude-plugin/marketplace.json, git-subdir source). Move it ONLY here, after `publish` attached the
+    # assets: the script re-checks every clavity-ls asset by name and fast-forwards, so a plugin version never
+    # reaches users before its binary exists, and a re-run of an old release cannot move the branch backwards.
+    needs: [publish, dotnet]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout (full history + tags, for the tag's commit and manifest)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Advance branch release to this release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/advance-release-channel.sh "${{ needs.publish.outputs.tag }}" "${{ needs.dotnet.outputs.version }}"
