@@ -3541,6 +3541,34 @@ does NOT do it: it skips a file git considers stat-clean (measured 2026-09-30).
 
 ---
 
+### §59 — Seven more hooks write stderr under an empty `PATH`; the §32b fix reached only one — ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (captured 2026-10-01 starting Branch 14), owner ruling at triage: tracked debt, SCHEDULED as new sweep Branch 16 (plugin pair; version bump + reinstall), before Branch 8**
+
+Branch 3 fixed §32b in `agy-anomaly-reminder.sh` alone: it reads its payload with the builtin
+`IFS= read -r -d '' input`, and under an empty `PATH` it now writes NOTHING to stderr and degrades loudly on
+stdout (`guard inactive: missing jq`). Seven siblings still read with `input=$(cat)`, in BOTH plugins:
+`agy-after-reminder.sh:11`, `agy-anomaly-capture-reminder.sh:41`, `agy-anomaly-dispatch-reminder.sh:36`,
+`agy-anomaly-model-notice.sh:19`, `agy-seam-inject.sh:24`, `agy-test-audit-reminder.sh:16`,
+`assertion-strength-reminder.sh:15` (line numbers as of `61f45bcd`; the classic copies are byte-identical).
+
+**MEASURED 2026-10-02** (`printf '{}' | PATH= "C:/Program Files/Git/bin/bash.exe" <hook>`, the hook invoked by
+absolute bash so the error is the hook's, not the probe's - the §32b correction): `agy-test-audit-reminder.sh`
+writes `line 16: cat: command not found`; `agy-seam-inject.sh` writes `line 24: cat` AND `line 63: grep: command
+not found`; `assertion-strength-reminder.sh` writes `line 15: cat` AND `line 30: grep`. Every one exits 0. Control:
+`agy-anomaly-reminder.sh` under the same probe with a real `cwd` - rc 0, stderr empty.
+
+**So replacing `cat` is NOT the whole fix.** At least two hooks also need `grep`, and under an empty `PATH` they
+silently do nothing rather than degrading loudly as the fixed hook does. Decide at plan time, per hook: the
+builtin read plus a "missing tool" degrade on stdout (the Branch 3 shape), or accept the noise for a hook whose
+silence is harmless. §32b's reachability note still applies - nothing in a real Claude Code session invokes a
+hook with an empty `PATH` - which is why this is debt, not a defect class that blocks anything; the owner chose
+consistency with Branch 3 over leaving one hook the odd one out. Do NOT add a bare `2>/dev/null`: §32b records
+why suppressing the diagnostic is arguably worse than the noise.
+
+**Measure before deciding:** every external tool each hook calls (not only `cat`/`grep`), and whether its suite's
+degraded-path fixtures set `PATH` to a directory that still contains `cat` - the blind spot that hid §32b.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
