@@ -61,7 +61,8 @@ binary + `.sha256` to the `clavity-v<N>` GitHub release.
 clavity-ls start C:\path\to\your\project
 ```
 
-Opens a visible `agy` tab in that folder and launches Claude Code in the foreground. Warns (without
+Opens a visible `agy` tab in that folder, waits until agy has paired (published its endpoint - after 10 s it reminds
+you to check agy's tab for a prompt; Ctrl+C aborts), then launches Claude Code in the foreground. Warns (without
 blocking) if the folder is not a git repository. To uninstall, run `claude plugin uninstall
 clavity@clavity`.
 

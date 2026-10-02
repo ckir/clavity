@@ -171,6 +171,7 @@ if (args.Length > 0 && args[0] == "start")
             AgyLogFilePath = paths.AgyLog,
             AgyEndpointFilePath = paths.Endpoint,
         });
+        WaitForPairing(paths.Endpoint);
         Spawn(attached.ClaudeLaunch, wait: true);
         return 0;
     }
@@ -207,6 +208,7 @@ if (args.Length > 0 && args[0] == "start")
     if (OperatingSystem.IsWindows())
     {
         Spawn(plan.AgyTab, wait: false);    // agy tab boots asynchronously; human owns it.
+        WaitForPairing(paths.Endpoint);     // Claude starts only once agy has published its endpoint.
         Spawn(plan.ClaudeLaunch, wait: true); // Claude runs in the foreground.
         return 0;
     }
@@ -237,8 +239,17 @@ if (args.Length > 0 && args[0] == "start")
         Console.Error.Write(PosixAgyTab.FallbackMessage(folder));
         return 1;
     }
+    WaitForPairing(paths.Endpoint);
     Spawn(plan.ClaudeLaunch, wait: true);
     return 0;
+
+    // Owner request 2026-10-03: the user sees agy - and any prompt it waits on - before Claude takes the terminal.
+    static void WaitForPairing(string endpointPath)
+    {
+        var clock = Stopwatch.StartNew();
+        PairingWait.WaitForEndpoint(endpointPath, new SystemListeningPorts(), Console.Error,
+            () => clock.ElapsedMilliseconds, t => Thread.Sleep(t));
+    }
 
     static void Spawn(LaunchCommand cmd, bool wait)
     {
