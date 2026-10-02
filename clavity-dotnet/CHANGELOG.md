@@ -1,4 +1,9 @@
 # dotnet changelog
+## 0.10.2 - 2026-10-02
+
+### Fixes
+- fix(hooks): run the test-audit reminder on PowerShell calls and pin its matcher (section 57)
+
 ## 0.10.0 - 2026-10-01
 
 ### Features
