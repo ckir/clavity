@@ -23,10 +23,13 @@ env knobs) reaches it. A driver's own docs cover its transport mechanics.
   subprocess and see whether it now returns promptly instead of hanging; if it does, a headless
   direct-invoke path may have become viable.
 
-- **agy's shell tool is PowerShell (pwsh), not bash** - even on setups where bash is otherwise the
-  default. Any shell snippet handed to agy as an instruction must be pwsh-syntax, or it'll fail or
-  behave unexpectedly. **Re-verify:** ask agy to run a pwsh-only construct and a bash-only construct in
-  the same turn and observe which succeeds, or check agy's own logs for the shell it actually invoked.
+- **agy's BUILT-IN shell tool runs the host's shell: PowerShell (pwsh) on Windows, the user's `$SHELL` (bash) on
+  Linux** - even where pwsh is installed (measured on Ubuntu 2026-10-02: a pwsh snippet failed with exit 2, the bash
+  form published). Hand agy shell snippets in the host's syntax, or one per shell and let it pick. agy may ALSO run a
+  "run this in your shell" instruction through a third-party MCP shell tool it has installed; that tool's processes
+  do not inherit the `ANTIGRAVITY_*` variables agy injects into its own shell, so a snippet that reads them must name
+  the built-in tool and refuse empty values. **Re-verify:** ask agy to run a pwsh-only construct and a bash-only
+  construct in the same turn and observe which succeeds, or check agy's own logs for the shell it actually invoked.
 
 - **agy reads its skill files once per session and caches their content.** A skill file edited mid-session
   is not picked up until agy is restarted - this is about skill *content* being cached, not the

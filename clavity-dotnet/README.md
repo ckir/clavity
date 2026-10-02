@@ -65,10 +65,19 @@ Opens a visible `agy` tab in that folder and launches Claude Code in the foregro
 blocking) if the folder is not a git repository. To uninstall, run `claude plugin uninstall
 clavity@clavity`.
 
+On Linux, `start` opens agy as a new tab in the terminal you ran it from (mate-terminal, gnome-terminal, konsole or
+xfce4-terminal), otherwise in `xdg-terminal-exec` or `x-terminal-emulator`; set `CLAVITY_TERMINAL` to choose one. With
+no display (over ssh, say) it starts nothing and tells you to run `clavity-ls agy <folder>` instead, which runs agy in
+that terminal and prints the `clavity-ls start <folder> --attach <session-id>` to run in a second one. A new agy may
+ask you to trust the folder before it pairs - answer it in agy's tab.
+
 ## Command reference
 
-- `clavity-ls start <folder> [claude-args...]` — launch a visible agy tab + Claude Code in `<folder>`
-  (per-session log; defaults to the current directory).
+- `clavity-ls start <folder> [--attach <session-id>] [claude-args...]` — launch a visible agy tab + Claude Code in `<folder>`
+  (per-session log; defaults to the current directory). `--attach` starts Claude only, paired with the agy that
+  `clavity-ls agy` started.
+- `clavity-ls agy [folder]` — Linux/macOS: run a new session's agy in this terminal and print the `start --attach`
+  command for another.
 - `clavity-ls --mcp` — run the MCP stdio server (`agy_look` / `agy_status` / `agy_ask`); started
   automatically via `.mcp.json`, not normally run by hand.
 - `clavity-ls install [--plugin <name>]` — register a plugin with every detected agent (Claude Code
@@ -89,6 +98,8 @@ clavity@clavity`.
 - `CLAVITY_AGY_LOG` — set automatically by `clavity-ls start`; the per-session agy log path `--mcp`
   reads to resolve that session's Language Server port.
 - `CLAVITY_SESSION_ID` — set automatically by `clavity-ls start`; reserved for bus/memory scoping.
+- `CLAVITY_TERMINAL` — Linux: the terminal command `start` opens agy with, run by `/bin/sh` with the script path
+  appended as its last argument, so shell quoting works (e.g. `gnome-terminal --tab --`).
 - `CLAVITY_DATA_DIR` — overrides the dir removed by `uninstall --purge-data` (default
   `%USERPROFILE%\.clavity`); mainly used by the test suite.
 

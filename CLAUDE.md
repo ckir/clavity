@@ -15,7 +15,7 @@ agy / psmux / agentmemory update can silently change things and break it.
 **If anything agy-facing misbehaves, or before you change anything agy-facing, read
 [`clavity-dotnet/plugin/knowledge/agy-assumptions.md`](clavity-dotnet/plugin/knowledge/agy-assumptions.md) first**
 (the canonical, agy-version-current manual). It lists every load-bearing assumption
-(footer markers, agy's pwsh shell, skill caching, workspace-scoped writes, headless-print hanging,
+(footer markers, agy's shell (pwsh on Windows, bash on Linux), skill caching, workspace-scoped writes, headless-print hanging,
 the bus, keyring auth, …), the versions verified against, **how each was verified**, and **how to
 re-verify and fix** — most breakages are fixable via an `AGY_*` env override or the responder skill,
 not code.

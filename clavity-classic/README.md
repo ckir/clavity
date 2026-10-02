@@ -206,7 +206,7 @@ All optional; sensible defaults. Environment variables:
   four request-mode templates + skill-cache and write-scope re-verifications) to **re-run after an
   `agy update`** and confirm the profile + protocol still hold.
 - **[agy assumptions & re-verification playbook](plugin/knowledge/agy-assumptions.md)** — the external `agy` /
-  `psmux` / `agentmemory` behaviors clavity depends on (footer markers, pwsh shell, skill caching,
+  `psmux` / `agentmemory` behaviors clavity depends on (footer markers, agy's shell (pwsh on Windows, bash on Linux), skill caching,
   headless-print hang, the daemon REST API, …), the versions verified against, and **how to
   re-verify/fix after an agy update**. Read this first if something breaks.
 
