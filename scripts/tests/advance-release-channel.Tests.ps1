@@ -136,6 +136,26 @@ Describe 'advance-release-channel.sh' {
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'refuses a tag that does not exist, and creates nothing' {
+        $fx = New-Fixture
+        try {
+            $res = Invoke-Advance $fx (All-Assets '1.2.3') 'no-such-tag' '1.2.3'
+            $res.ExitCode | Should -Not -Be 0
+            $res.Out | Should -Match 'tag no-such-tag does not resolve to a commit'
+            Get-RemoteRelease $fx | Should -BeNullOrEmpty
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'succeeds when release is ALREADY at the tag (a re-run of the same release)' {
+        $fx = New-Fixture
+        try {
+            (Invoke-Advance $fx (All-Assets '1.2.3') 't1' '1.2.3').ExitCode | Should -Be 0
+            $res = Invoke-Advance $fx (All-Assets '1.2.3') 't1' '1.2.3'
+            $res.ExitCode | Should -Be 0 -Because $res.Out
+            Get-RemoteRelease $fx | Should -Be (& git -C $fx.Work rev-parse 't1^{commit}')
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'rejects a call with missing arguments' {
         $fx = New-Fixture
         try {

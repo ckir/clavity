@@ -37,7 +37,7 @@ esac
         (& $script:Bash -c 'PATH="$(cygpath -u "$1"):$PATH"; uname -s; type -P curl' _ $fx.Shim | Out-String) | Should -Match '(?s)^Linux\s+\S*/shim/curl'
         return $fx
     }
-    function Invoke-Fetch($Fx, [string]$Mode, [string]$Data = $Fx.Data, [switch]$NoPluginContext) {
+    function Invoke-Fetch($Fx, [string]$Mode, [string]$Data = $Fx.Data, [switch]$NoPluginContext, [switch]$NoJq) {
         # NOT Invoke-BashHook: Git's bin/bash.exe launcher puts its own dirs ahead of a PATH handed in from Windows,
         # so the fake uname/curl were ignored and the hook queried the REAL GitHub API (measured). The shim dir is
         # prepended INSIDE bash, the same way the fixture-sanity line in New-Fx proves it resolves.
@@ -48,7 +48,14 @@ esac
         $errFile = [IO.Path]::GetTempFileName()
         try {
             foreach ($k in $vars.Keys) { Set-Item -Path "Env:$k" -Value $vars[$k] }
-            $out = & $script:Bash -c 'PATH="$(cygpath -u "$1"):$PATH" bash "$2" </dev/null' _ $Fx.Shim ($script:Hook -replace '\\', '/') 2>$errFile | Out-String
+            # -NoJq drops every PATH directory holding a jq, so the hook takes its grep fallback. MEASURED: this box's
+            # Git Bash finds jq in the portable-tools dir, so without it the fallback never runs here.
+            $cmd = if ($NoJq) {
+                'np=; IFS=:; for d in $PATH; do [ -x "$d/jq" ] || [ -x "$d/jq.exe" ] || np="$np${np:+:}$d"; done; unset IFS
+                 PATH="$(cygpath -u "$1"):$np"; command -v jq >/dev/null && { echo "fixture: jq still on PATH" >&2; exit 99; }
+                 bash "$2" </dev/null'
+            } else { 'PATH="$(cygpath -u "$1"):$PATH" bash "$2" </dev/null' }
+            $out = & $script:Bash -c $cmd _ $Fx.Shim ($script:Hook -replace '\\', '/') 2>$errFile | Out-String
             $code = $LASTEXITCODE
             return [pscustomobject]@{ StdOut = $out.Trim(); StdErr = "$(Get-Content -Raw -LiteralPath $errFile)".Trim(); ExitCode = $code }
         } finally {
@@ -136,6 +143,38 @@ Describe 'fetch-clavity-ls.sh tells the user what happened' {
             $res = Invoke-Fetch $fx 'fail' -Data $odd
             $msg = Get-Message $res
             $msg | Should -Match ([regex]::Escape('C:\Users\o"neil\data/bin/clavity-ls.exe'))
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'keeps stdout ONE valid JSON line when the data path carries a newline and a tab' {
+        $fx = New-Fx
+        try {
+            $res = Invoke-Fetch $fx 'fail' -Data "C:\a`nb`tc\data"
+            @($res.StdOut -split "`n").Count | Should -Be 1 -Because "a raw newline inside a JSON string splits the hook output: $($res.StdOut)"
+            $msg = Get-Message $res
+            $msg | Should -Match ([regex]::Escape('C:\abc\data/bin/clavity-ls.exe'))
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'without jq, the grep fallback finds BOTH the asset and its checksum (a bad checksum is caught)' {
+        $fx = New-Fx
+        try {
+            Set-Content -LiteralPath (Join-Path $fx.Srv "$($script:Asset).sha256") -Value ('0' * 64 + "  $($script:Asset)") -NoNewline
+            $res = Invoke-Fetch $fx 'ok' -NoJq
+            $res.ExitCode | Should -Be 0 -Because $res.StdErr
+            # A lost asset URL says "no release asset"; a lost checksum URL skips verification and says "fetched".
+            Get-Message $res | Should -Match 'sha256 mismatch'
+            Test-Path (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -BeFalse
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'fetches again when the stamp is current but the binary is gone' {
+        $fx = New-Fx
+        try {
+            Get-Message (Invoke-Fetch $fx 'ok') | Should -Match 'fetched'
+            Remove-Item -LiteralPath (Join-Path $fx.Data 'bin/clavity-ls.exe')
+            Get-Message (Invoke-Fetch $fx 'ok') | Should -Match ([regex]::Escape("fetched $($script:Asset)"))
+            Get-Content -Raw -LiteralPath (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -BeExactly 'BIN'
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
