@@ -3569,7 +3569,7 @@ degraded-path fixtures set `PATH` to a directory that still contains `cat` - the
 
 ---
 
-### §60 — On Linux, agy's shell is bash, so the pwsh-only pairing step cannot publish the endpoint — ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (two entries, Linux VM remediation of the 0.10.1 `clavity-ls` ENOENT), not yet planned**
+### §60 — On Linux, agy's shell is bash, so the pwsh-only pairing step cannot publish the endpoint — ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (two entries, Linux VM remediation of the 0.10.1 `clavity-ls` ENOENT), not yet planned** · ✅ **FIXED on sweep Branch 18 (`6c05ec48..914201c8`) - the pairing doc has a POSIX publish line next to the pwsh one, both refusing empty `ANTIGRAVITY_*` values and naming the built-in shell tool (agy ran it through an MCP shell tool first, MEASURED); both manuals and three `CLAUDE.md` say pwsh on Windows, bash on Linux. Suite `scripts/tests/pairing-doc.Tests.ps1` RUNS both lines (9).**
 
 **MEASURED 2026-10-02, Linux x86_64, agy 1.2.14 launched as plain `agy` from bash in a terminal (not
 `clavity start`):** the pairing Step 1 one-liner, given to agy to run, did not publish anything. agy's
@@ -3641,7 +3641,7 @@ only a release does. Verifying an installed change means cutting a release, or a
 
 ---
 
-### §62 — `clavity-ls start` is Windows-only: on Linux it crashes, and there is no visible agy to watch or fix — ▶ **RAISED 2026-10-02 by the owner; AGY-FIRST R1-R2 ALIGNED, owner-adopted; SCHEDULED with section 60 as ONE "Linux support" sweep branch, after Branch 17 merges**
+### §62 — `clavity-ls start` is Windows-only: on Linux it crashes, and there is no visible agy to watch or fix — ▶ **RAISED 2026-10-02 by the owner; AGY-FIRST R1-R2 ALIGNED, owner-adopted; SCHEDULED with section 60 as ONE "Linux support" sweep branch, after Branch 17 merges** · ✅ **FIXED on sweep Branch 18 (`6c05ec48..914201c8`) - Linux `start` writes a per-session POSIX script (one `set -C` claim file) and opens it via `PosixAgyTab`: CLAVITY_TERMINAL, the detected terminal's tab, xdg-terminal-exec, x-terminal-emulator, other tab verbs; no display -> fallback, `clavity-ls agy` + `start --attach`. Suites SessionPathsTests, StartArgsTests, PosixScriptRunTests, PosixAgyTabTests (25). VM: no-display fallback, desktop start (endpoint in 28,7 s), and owner-run tab + --attach all worked 2026-10-03.**
 
 **MEASURED 2026-10-02 on an Ubuntu 26.04 MATE VM (desktop over RDP).** `clavity-ls start /tmp/x` ->
 `Unhandled exception. System.ComponentModel.Win32Exception (2): An error occurred trying to start process 'wt' ...

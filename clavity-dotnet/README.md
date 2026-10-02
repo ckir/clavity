@@ -68,8 +68,9 @@ clavity@clavity`.
 On Linux, `start` opens agy as a new tab in the terminal you ran it from (mate-terminal, gnome-terminal, konsole or
 xfce4-terminal), otherwise in `xdg-terminal-exec` or `x-terminal-emulator`; set `CLAVITY_TERMINAL` to choose one. With
 no display (over ssh, say) it starts nothing and tells you to run `clavity-ls agy <folder>` instead, which runs agy in
-that terminal and prints the `clavity-ls start <folder> --attach <session-id>` to run in a second one. A new agy may
-ask you to trust the folder before it pairs - answer it in agy's tab.
+that terminal and prints the `clavity-ls start <folder> --attach <session-id>` to run in a second one. In a folder
+neither has seen before, both agy and Claude Code ask you to trust it, each in its own window: answer agy's in its tab,
+or it does not pair.
 
 ## Command reference
 
