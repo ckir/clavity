@@ -3569,6 +3569,43 @@ degraded-path fixtures set `PATH` to a directory that still contains `cat` - the
 
 ---
 
+### §60 — On Linux, agy's shell is bash, so the pwsh-only pairing step cannot publish the endpoint — ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (two entries, Linux VM remediation of the 0.10.1 `clavity-ls` ENOENT), not yet planned**
+
+**MEASURED 2026-10-02, Linux x86_64, agy 1.2.14 launched as plain `agy` from bash in a terminal (not
+`clavity start`):** the pairing Step 1 one-liner, given to agy to run, did not publish anything. agy's
+`cli.log` shows `Registered shell command 0 ... "$dest = if ($env:CLAVITY_AGY_ENDPOINT) ..."` followed by
+`bgTask 0: finished (exit=2)` 4 ms later, and no `agy-endpoint.json` appeared anywhere on disk. agy's
+environment carries `SHELL=/bin/bash`; the same line under `bash -c` fails with `syntax error near unexpected
+token '('`, exit 2. A bash + `jq` equivalent (`dest="${CLAVITY_AGY_ENDPOINT:-$HOME/.clavity/agy-endpoint.json}"`
+... `jq -cn --arg csrf "$ANTIGRAVITY_CSRF_TOKEN" --arg addr "$ANTIGRAVITY_LS_ADDRESS" ...`) did publish, and
+`agy_status` went from `auth_failed` / `missing CSRF token` to `idle`; `agy_ask` then round-tripped.
+**NOT established:** whether the command ran through agy's own shell TOOL or through a shell passthrough the
+owner typed into agy. Either way the shell was bash. Re-verify per the manual's own probe (pwsh-only and
+bash-only constructs in one agy turn) before rewriting the assumption.
+
+- **60a — the manual's shell assumption is Windows-only.** `clavity-dotnet/plugin/knowledge/agy-assumptions.md:26`
+  (and its classic copy, `clavity-classic/plugin/knowledge/agy-assumptions.md:26`) say agy's shell is pwsh "even
+  on setups where bash is otherwise the default". The same claim is summarised as "agy's pwsh shell" in the
+  root, dotnet and classic `CLAUDE.md`, and `clavity-classic/plugin/README.md:154` relies on it. Restate it as
+  platform-dependent once re-verified.
+- **60b — the pairing doc only works on Windows.** `clavity-dotnet/pairing/agy-pairing-INSTALL.md:19` is pwsh
+  syntax, and its fallback path is `$env:USERPROFILE\.clavity\agy-endpoint.json`. MEASURED: `pwsh -c
+  '$env:USERPROFILE'` on Linux is empty (`$HOME` is `/home/user`), so even under pwsh the default lands at
+  `/.clavity/...` (or fails), never where `AgyEnvironment` reads (`<UserProfile>/.clavity/agy-endpoint.json`, which
+  .NET resolves to `$HOME`). The doc is EMBEDDED (`src/Clavity.Ls/PairingDoc.cs`) and `clavity start` hands it to agy
+  through `-i` (`src/Clavity.Ls/Launcher.cs:113`), so the defect rides the supported launch path wherever agy's
+  shell is bash. That launch path itself is UNMEASURED on Linux: `Launcher.cs` builds a pwsh command line
+  (`PwshSingleQuote`) and has no OS branch.
+
+**Fix outline:** give the doc a POSIX-shell variant next to the pwsh one (agy picks by the shell it actually
+has), using `$HOME` and the `CLAVITY_AGY_ENDPOINT` override in both; pin both forms in `PairingDocTests.cs`.
+Decide separately whether `clavity start` is in scope on Linux at all; if it is not, say so in the doc.
+
+**Blast radius:** `pairing/agy-pairing-INSTALL.md` (+ its embedded copy via the csproj), `PairingDocTests.cs`, both
+`agy-assumptions.md` copies, three `CLAUDE.md` summaries, `clavity-classic/plugin/README.md:154`.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
