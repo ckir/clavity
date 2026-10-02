@@ -103,6 +103,14 @@ Push failures are classified, not blindly retried: rejection signatures are fata
 signatures retry. That is deliberate — a retry must never turn a real refusal into a silent second
 attempt that appears to succeed.
 
+The release's final CI job (`release-channel`) then fast-forwards branch `release` - the ref the root
+marketplace serves the `clavity` plugin from - once every `clavity-ls` asset is attached. **Until that job is
+green, installed copies do not see the new version.** It refuses a non-fast-forward, so re-running an old
+release cannot roll users back; a deliberate rollback is a manual `git push --force origin <tag>^{commit}:refs/heads/release`.
+A change merged to `main` reaches installed copies only through a release. **Verify it moved** once the
+workflow is done: `git ls-remote origin refs/heads/release` must print the commit `git rev-parse <tag>^{commit}`
+prints. If it does not, read the `release-channel` job's log - it names the missing asset or the refusal.
+
 ## Phase 3 — install
 
 - [ ] **Close every active Claude Code session first**, including the one you are reading this in. The

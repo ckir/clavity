@@ -8,8 +8,13 @@
   "plugins": [
     {
       "name": "clavity",
-      "source": "./clavity-dotnet/plugin",
-      "description": "Pair Claude with a live agy peer via the clavity-ls Language-Server bridge (agy_look / agy_status / agy_ask). The clavity-ls binary is fetched on first run from the matching clavity-v<N> GitHub release."
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/ckir/clavity.git",
+        "path": "clavity-dotnet/plugin",
+        "ref": "release"
+      },
+      "description": "Pair Claude with a live agy peer via the clavity-ls Language-Server bridge (agy_look / agy_status / agy_ask). Served from the `release` branch, which advances only once a clavity-v<N> release has attached the clavity-ls binary its hook fetches on first run."
     },
     {
       "name": "agy-autotrain",

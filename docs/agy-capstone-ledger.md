@@ -759,3 +759,17 @@ ALIGNED, one DEBT item DISCARDED-BELOW-FLOOR - `Push-Location $Repo` sits outsid
 but `New-Repo` creates that directory with `New-Item` immediately before (`agy-mark-stamp.Tests.ps1:9-14`), so the
 push cannot fail. Coverage caveat told to the owner at GREEN: the peer's `[VERIFIED]` named only the brief, the
 diff, `agy-mark.sh` and `BashHookHelpers.ps1`; it judged the two suites and `hooks.json` from the diff.
+
+| 2026-10-02 | `6db2a3e6..452e4933` (branch `sweep/branch-17-release-gated-marketplace`, ROADMAP section 61; the reviewed diff excluded the plan, ROADMAP prose and `scripts/tests/_partition.md`) | 2 | **GREEN - owner-confirmed 2026-10-02** at the reviewed tip `452e4933` | No folds. Gates at `452e4933`: lefthook exit 0, full `scripts/tests` 1760 passed / 0 failed / 1 skipped; suites advance-release-channel 8/8, marketplace-manifest 10/10, fetch-clavity-ls 7/7. Briefs `.clavity/seams/capstone-branch17.md` and `capstone-branch17-r2.md`; diff `.clavity/scratch/capstone-branch17/branch17-6db2a3e6-452e4933.diff` |
+
+**Reviewer: agy, cascade `f2cdbc7a`.** R1 (Cascade Analyst, State Corruptor, Protocol Pedant, Mechanism Gamer,
+Boundary Smuggler; file-viewer only, no breach, echo correct): no findings, but its `[VERIFIED]` named only the
+brief and the diff, and it claimed the dispatch tag is trigger-enforced `clavity-v*` (measured false: free-text
+`inputs.tag`, bounded by the guard's `rev-list`). Not accepted as clean; R2 rotated seats (Axiom Breaker,
+Blindspot Auditor, Literal Implementer, Mechanism Gamer over full files) and required the nine full files, all
+named in `[VERIFIED]`. R2 one finding: on `workflow_dispatch`, `build-dotnet.yml` checkouts carry no `ref:`, so a
+dispatch builds the dispatch branch and publishes it to `inputs.tag`'s release - verified by reading, pre-existing
+(outside the range), contained by the new script's manifest-version check - DEFERRED-TO-ANOMALIES
+`.github/workflows/build-dotnet.yml:27 * 2026-10-02`, owner-ruled. Below the floor: dropping `-F` from
+`grep -qxF` (asset names are fixed by `build-dotnet.yml`); no row sends a control character through `_say`
+(handed to the test audit).

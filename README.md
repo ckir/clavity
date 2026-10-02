@@ -78,6 +78,11 @@ release (win-x64 / linux-x64 / osx-arm64 / osx-x64), so nothing lands on your PA
 when a `.sha256` companion asset is published and `sha256sum` is on PATH; otherwise the fetch proceeds
 unverified.
 
+The `clavity` plugin itself is served from this repository's `release` branch, which CI advances only after a
+release has attached every `clavity-ls` binary. So a plugin update and the binary it fetches always arrive
+together. If the fetch still fails (offline, rate-limited), the session start shows a message saying where to
+place `clavity-ls` by hand.
+
 Upgrading from an old `<member>-setup-<version>.exe` installer? See
 [`docs/migrating-from-the-inno-installers.md`](docs/migrating-from-the-inno-installers.md).
 
