@@ -3678,6 +3678,37 @@ macOS (`open -a Terminal`?) is untested and explicitly out of the first cut unle
 
 ---
 
+### §63 — A `workflow_dispatch` release builds `clavity-ls` from the dispatch branch, not the tag — ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (AGY-CAPSTONE Branch 17 round 2, owner-deferred), not yet planned**
+
+**Verified by reading at `b6c2d87d`.** `.github/workflows/umbrella-release.yml` takes a free-text `inputs.tag` on
+dispatch, but its `dotnet` job calls `./.github/workflows/build-dotnet.yml`, whose two `actions/checkout@v7` steps
+(`build-dotnet.yml:27` and `:68`) carry no `ref:`. On dispatch they check out the dispatch branch (normally `main`
+HEAD), so the version, the build and the asset names come from that branch, and `publish` attaches those assets to
+`inputs.tag`'s release - binaries that do not match the tag. The comment at `umbrella-release.yml:110`
+("FILE ref = this tag's main commit") is true only for a tag push.
+
+**Contained, not fixed:** since section 61, `scripts/ci/advance-release-channel.sh` compares the tag's own
+`plugin.json` version with the version the build reports, so a mismatched dispatch refuses to move branch
+`release` and users are not served it. The release object itself is still published with the wrong assets.
+Every recorded release run so far was a tag push (`gh run list --workflow umbrella-release.yml`: 5 of 5 `push`).
+
+**Fix direction (unmeasured):** pass the effective tag into `build-dotnet.yml` as a `ref` input for its checkouts,
+or refuse a dispatch whose tag commit differs from the checked-out commit in the `guard` job; and correct the
+comment at `:110`.
+
+---
+
+### §64 — `fetch-clavity-ls.sh`'s `mktemp -d` failure exit has no test — ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (AGY-TEST-AUDIT Branch 17 gap F, owner-deferred), not yet planned**
+
+`clavity-dotnet/plugin/hooks/fetch-clavity-ls.sh:77` -
+`_tmp=$(mktemp -d 2>/dev/null) || { _note "mktemp failed"; exit 0; }` - has no row in
+`scripts/tests/fetch-clavity-ls.Tests.ps1`. A regression dropping that short-circuit passes every row: the script
+would continue with an empty `_tmp` and download to `/<asset>`. The test that should exist: a fake `mktemp` on PATH
+that exits non-zero -> stdout is one hook-JSON message naming `mktemp failed` and the binary's target path, exit 0,
+nothing placed; proven non-vacuous by deleting the `|| { _note ...; exit 0; }`.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
