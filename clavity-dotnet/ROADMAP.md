@@ -3606,7 +3606,7 @@ Decide separately whether `clavity start` is in scope on Linux at all; if it is 
 
 ---
 
-### §61 — A plugin version reaches users before its `clavity-ls` binary exists, and the fetch miss is silent — ▶ **RAISED 2026-10-02 by the owner (a fresh Linux install failed with `ENOENT`); AGY-FIRST R1-R3 ALIGNED, owner-ruled; SCHEDULED as sweep Branch 17**
+### §61 — A plugin version reaches users before its `clavity-ls` binary exists, and the fetch miss is silent — ▶ **RAISED 2026-10-02 by the owner (a fresh Linux install failed with `ENOENT`); AGY-FIRST R1-R3 ALIGNED, owner-ruled; SCHEDULED as sweep Branch 17** · ✅ **FIXED on sweep Branch 17 (`dcc340fc..30630e98`) - marketplace serves `clavity` from `git-subdir` ref `release`; `umbrella-release.yml` job `release-channel` runs `scripts/ci/advance-release-channel.sh` (asset check, fast-forward only); `fetch-clavity-ls.sh` reports on stdout. Suites: advance-release-channel (8), marketplace-manifest (10), fetch-clavity-ls (7). Branch `release` must exist before the merge is pushed (owner, at `clavity-v24`).**
 
 **MEASURED 2026-10-02.** A fresh install of plugin 0.10.1 on a Linux VM: `/mcp` showed
 `Failed to reconnect to plugin:clavity:clavity-ls: ENOENT`. The root marketplace served the plugin from `main`
@@ -3638,6 +3638,43 @@ only a release does. Verifying an installed change means cutting a release, or a
 
 **Accepted residual (agy R2):** `main`'s `marketplace.json` names the plugin's `path`; renaming that folder on
 `main` points the marketplace at a path the `release` branch does not have until the next release.
+
+---
+
+### §62 — `clavity-ls start` is Windows-only: on Linux it crashes, and there is no visible agy to watch or fix — ▶ **RAISED 2026-10-02 by the owner; AGY-FIRST R1-R2 ALIGNED, owner-adopted; SCHEDULED with section 60 as ONE "Linux support" sweep branch, after Branch 17 merges**
+
+**MEASURED 2026-10-02 on an Ubuntu 26.04 MATE VM (desktop over RDP).** `clavity-ls start /tmp/x` ->
+`Unhandled exception. System.ComponentModel.Win32Exception (2): An error occurred trying to start process 'wt' ...
+No such file or directory`, exit 134, and Claude never starts. `clavity-dotnet/src/Clavity.Ls/Launcher.cs:75-83` builds
+the agy tab only as `wt new-tab ... pwsh -NoExit -EncodedCommand <script>`, the script is pwsh syntax (`:103-115`), and
+`clavity-dotnet/src/Clavity.Cli/Program.cs` spawns it with no error handling. On Windows the separate agy tab is what
+lets the owner SEE and FIX agy; on Linux he had to start agy by hand and publish its endpoint with a bash one-liner.
+
+**Measured terminal behaviour (same VM, from the desktop session `DISPLAY=:10.0`):**
+- `x-terminal-emulator -e <script>` (here `mate-terminal`) and `mate-terminal --tab --working-directory=D -e <script>`
+  both return exit 0 in about 0.1 s.
+- The new window or tab receives the launcher's environment and working directory, even with a `mate-terminal`
+  already running - unlike Windows Terminal.
+- With no display, or a wrong one, both exit 1 synchronously.
+- `xdg-terminal-exec` is not installed (Ubuntu offers 0.14.0).
+
+**Decided (owner, after AGY-FIRST R1-R2; notes `.clavity/scratch/linux-agy-tab/r1-summary.md`). No tmux: tmux/psmux is
+clavity-classic's transport.**
+- **The agy command:** a per-session POSIX script runs agy with the same `--log-file`, `--dangerously-skip-permissions`
+  and `-i "Fetch and follow the instructions at <pairing doc>"` as Windows, plus the per-session `CLAVITY_AGY_ENDPOINT`.
+  It touches a readiness file when it starts.
+- **With a display:** try `CLAVITY_TERMINAL`, then `xdg-terminal-exec`, then `x-terminal-emulator -e`, then known `--tab`
+  verbs. Accept the first launch whose readiness file appears, because a D-Bus terminal client can exit 0 and fail later
+  (agy R2).
+- **With no display, or if every launcher failed:** print and exit BEFORE starting Claude, whose full-screen interface
+  would hide the hint. `clavity-ls agy <folder>` runs agy in the current terminal and prints the exact
+  `clavity-ls start <folder> --attach <session-id>` to run in a second terminal. The explicit session id avoids
+  guessing at stale or concurrent endpoint files.
+- **Pairing:** the pairing doc gains a POSIX publish step (section 60), so pairing works under agy's bash.
+- **Windows** keeps `wt` unchanged.
+
+**Measure before planning:** the readiness-file timing on a real desktop launch; `xdg-terminal-exec` once installed;
+macOS (`open -a Terminal`?) is untested and explicitly out of the first cut unless measured.
 
 ---
 
