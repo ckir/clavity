@@ -709,7 +709,7 @@ agy-mark.Tests.ps1                               93,0s   50 tests   <- SLOW, NEW
                                                                       chained head calls proving the debounce breaks on a
                                                                       different session id, one against a git-tracked marker
                                                                       needing git rm --cached).
-agy-mark-stamp.Tests.ps1                         24,4s  11 tests    <- SLOW, NEW 2026-09-04. Task 3 (2026-09-04-phase-2-conduct-s24-s25
+agy-mark-stamp.Tests.ps1                         24,4s  12 tests    <- SLOW, NEW 2026-09-04 (+1 2026-10-02: Branch 14 test audit, discipline-whitespace row). Task 3 (2026-09-04-phase-2-conduct-s24-s25
                                                                       plan): the new `stamp` subcommand on agy-mark.sh that records
                                                                       consult/review cascade isolation (SHARED-CONTEXT vs ISOLATED).
                                                                       Two runs at the top level: 27,4s cold / 24,4s warm. Background
@@ -1092,7 +1092,7 @@ generate-cheatsheet-literals.Tests.ps1           41,6s   18 tests   <- SLOW, NEW
                                                                       command: "Tests completed in 41,57s",
                                                                       12 passed / 0 failed.
 generate-scoped-manifest.Tests.ps1                2,1s    2 tests   <- FAST, re-measured 2026-08-05
-plugin-hooks-registration.Tests.ps1               0,6s   35 tests   <- FAST, re-measured 2026-09-13 (+2 since; +1 for the section-15 consult-recovery registration row; was
+plugin-hooks-registration.Tests.ps1               0,6s   37 tests   <- FAST, re-measured 2026-09-13 (+2 2026-10-01: section 57 test-audit-reminder PostToolUse matcher row; +2 since; +1 for the section-15 consult-recovery registration row; was
                                                                       0,5s / 18 tests; +4 for the recorder's
                                                                       SessionStart registration, which this
                                                                       suite had never covered)

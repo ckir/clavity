@@ -3478,7 +3478,7 @@ plugin pair.
 
 ---
 
-### §57 — The test-audit reminder never runs on a PowerShell tool call, and its matcher is unpinned — ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (sweep Branch 2 capstone round 4, Activation Auditor; owner-ruled DEFERRED at GREEN), not yet planned** · ▶ **SCHEDULED 2026-09-30: new sweep Branch 14, before Branch 8 (owner-approved after AGY-FIRST `.clavity/seams/branch3-forks-negotiate.md`)** · ▶ **57b FOLDED IN 2026-10-01 from the anomalies conveyor (owner ruling at triage)**
+### §57 — The test-audit reminder never runs on a PowerShell tool call, and its matcher is unpinned — ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (sweep Branch 2 capstone round 4, Activation Auditor; owner-ruled DEFERRED at GREEN), not yet planned** · ▶ **SCHEDULED 2026-09-30: new sweep Branch 14, before Branch 8 (owner-approved after AGY-FIRST `.clavity/seams/branch3-forks-negotiate.md`)** · ▶ **57b FOLDED IN 2026-10-01 from the anomalies conveyor (owner ruling at triage)** · ✅ **FIXED 2026-10-01 on sweep Branch 14 (`5acaf41f`, 57b `13fcd695`) - the reminder runs on PowerShell calls under an exactly-pinned matcher in both plugins; the stamp suite launches Git Bash, and its three rejection rows assert exit 64 and the message**
 
 `agy-test-audit-reminder.sh` is registered PostToolUse under `"matcher": "Bash|Write|Edit"`
 (`plugin/hooks/hooks.json:32`, both plugins), while the consult guards use `Bash|PowerShell|mcp__.*agy_ask`.

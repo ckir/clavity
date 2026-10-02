@@ -125,6 +125,23 @@ Describe 'shipped plugin hook registration' {
         $matchers[0]    | Should -BeExactly 'Skill'
     }
 
+    It 'registers agy-test-audit-reminder.sh on PostToolUse Bash|PowerShell|Write|Edit - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        # ROADMAP section 57. The hook reads no tool_name, so the matcher decides only WHEN it gets a chance
+        # to run: without PowerShell a GREEN capstone's audit nudge waits for the next Bash/Write/Edit call.
+        # EXACT, like the siblings: a 'contains PowerShell' pin would pass a matcher narrowed to PowerShell
+        # alone. Not mcp__.*agy_ask - a consult is not a code change (AGY-FIRST, 2026-10-01).
+        $matchers = @(Get-OwningMatchers -Manifest $script:Manifests[$Driver] -Event 'PostToolUse' -Script 'agy-test-audit-reminder.sh')
+        $matchers.Count | Should -Be 1
+        $matchers[0]    | Should -BeExactly 'Bash|PowerShell|Write|Edit'
+        # EXACTLY ONE ENTRY IN THE WHOLE MANIFEST (test audit 2026-10-02). The query above returns one matcher
+        # per OWNING GROUP of ONE event, so a second copy of the entry inside the same group, or a copy under
+        # another event, left this row green - MEASURED: both mutants 37/37. Either copy fires the reminder twice.
+        $entries = @(Get-AllCommands $script:Manifests[$Driver] | Where-Object { $_ -like '*agy-test-audit-reminder.sh*' })
+        $entries.Count | Should -Be 1 -Because "one registration across every event and group, got: [$($entries -join '; ')]"
+    }
+
     It 'names only hook files that EXIST in that plugin - <Driver>' -ForEach @(
         @{ Driver = 'dotnet' }, @{ Driver = 'classic' }, @{ Driver = 'autotrain' }
     ) {
