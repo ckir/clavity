@@ -3606,6 +3606,41 @@ Decide separately whether `clavity start` is in scope on Linux at all; if it is 
 
 ---
 
+### §61 — A plugin version reaches users before its `clavity-ls` binary exists, and the fetch miss is silent — ▶ **RAISED 2026-10-02 by the owner (a fresh Linux install failed with `ENOENT`); AGY-FIRST R1-R3 ALIGNED, owner-ruled; SCHEDULED as sweep Branch 17**
+
+**MEASURED 2026-10-02.** A fresh install of plugin 0.10.1 on a Linux VM: `/mcp` showed
+`Failed to reconnect to plugin:clavity:clavity-ls: ENOENT`. The root marketplace served the plugin from `main`
+(`.claude-plugin/marketplace.json`, `"source": "./clavity-dotnet/plugin"`), so the 0.10.0 -> 0.10.1 bump was live the
+moment it was pushed. `clavity-dotnet/plugin/hooks/fetch-clavity-ls.sh` fetches only the EXACT-version asset
+`clavity-ls-<rid>-<version>.tar.gz`; no release carried 0.10.1, so the hook wrote a note to STDERR - which Claude Code
+does not show at SessionStart - and exited 0. Nothing was placed at `${CLAUDE_PLUGIN_DATA}/bin/clavity-ls.exe`. An
+existing install hid the gap (the hook replaces the binary only on success). And `just release` bumps the version
+itself (v24 went 0.10.1 -> 0.10.2), so a version pushed between releases NEVER gets a binary.
+
+**Decided (owner, after AGY-FIRST R1-R3, notes `.clavity/scratch/fetch-version-gap/r1-summary.md`):**
+- The marketplace serves the `clavity` plugin from a `git-subdir` source pinned to the floating branch `release`.
+- `umbrella-release.yml` gains a final job that checks every `clavity-ls` asset of the tag is attached, then advances
+  `release` to the tag's commit, FAST-FORWARD ONLY. A rollback is a manual force-push by the owner.
+- The fetch hook prints every outcome the user must act on to STDOUT as a SessionStart `systemMessage`.
+- No fallback to an older binary (agy R1: a plugin can depend on features an older binary lacks).
+
+**Measured before planning** (Claude Code 2.1.287, isolated `CLAUDE_CONFIG_DIR`):
+- A `git-subdir` ref moved from `clavity-v23` to `clavity-v24` updated the plugin from 0.10.0 to 0.10.2.
+- A ref naming a missing tag fails the update loudly and keeps the installed version.
+- An install from today's relative-path source migrated to `git-subdir@clavity-v24`.
+- A BRANCH ref advanced with `marketplace.json` unchanged was picked up (1.0.0 -> 1.1.0); updates key on the version
+  field, so a same-version content change is not.
+- `main` requires `merge-gate` and only admins bypass it, so CI could not push a pin to `main` - hence the
+  branch, which CI's `GITHUB_TOKEN` may push.
+
+**Consequence for the workflow:** after this lands, a merge plus push to `main` no longer reaches installed copies -
+only a release does. Verifying an installed change means cutting a release, or a project-scoped dev marketplace.
+
+**Accepted residual (agy R2):** `main`'s `marketplace.json` names the plugin's `path`; renaming that folder on
+`main` points the marketplace at a path the `release` branch does not have until the next release.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
