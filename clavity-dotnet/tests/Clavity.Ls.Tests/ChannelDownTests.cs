@@ -17,6 +17,21 @@ public class ChannelDownTests
     };
 
     [Fact]
+    public void Only_the_auth_hint_tells_the_user_to_look_for_a_pending_prompt_in_the_agy_tab()
+    {
+        // MEASURED 2026-10-02 (Linux VM): a NEW agy on a new folder stopped on a folder-trust prompt and published its
+        // endpoint only after the user approved it; until then every call is an auth refusal.
+        foreach (var f in Enum.GetValues<ChannelDown.Fault>())
+        {
+            var hint = ChannelDown.Hint(RepresentativeDiagnosticFor(f));
+            if (f == ChannelDown.Fault.AuthFailed)
+                Assert.Contains("approve a prompt in its tab", hint);
+            else
+                Assert.DoesNotContain("approve a prompt in its tab", hint);
+        }
+    }
+
+    [Fact]
     public void Every_fault_maps_to_its_own_status_so_a_new_arm_cannot_silently_report_channel_down()
     {
         // StatusFor's fallback is `_ => Status` ("channel_down"). A fault added to Classify and to Hint but

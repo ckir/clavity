@@ -98,7 +98,9 @@ public static class ChannelDown
                 "mints a new per-session token on each Language Server (re)start, so a published endpoint goes " +
                 "stale; the token in ~/.clavity/agy-endpoint.json is stale or the file is missing. Relaunch agy " +
                 "(clavity start) so it republishes its endpoint, then retry. Restarting the Claude session alone " +
-                "will NOT fix a token refusal.",
+                "will NOT fix a token refusal. If this session's agy only just started, look at its terminal first: a " +
+                "new agy may be waiting for you to approve a prompt in its tab (folder trust, for example), and it " +
+                "publishes its endpoint only after you answer.",
 
             Fault.InvalidRequest =>
                 prefix + "The channel is UP and agy answered — it rejected the REQUEST, not the connection. " +
