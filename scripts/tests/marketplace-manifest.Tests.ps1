@@ -71,3 +71,39 @@ Describe 'umbrella-release advances the release channel' {
         $built.Count | Should -Be 4
     }
 }
+
+Describe 'root marketplace serves clavity from branch release' {
+    BeforeAll {
+        $script:Market = Get-Content -Raw -LiteralPath (Join-Path $script:Root '.claude-plugin/marketplace.json') | ConvertFrom-Json
+    }
+
+    It 'lists exactly the four members, by name' {
+        @($script:Market.plugins.name) | Should -Be @('clavity', 'agy-autotrain', 'commonmemory', 'review-relay')
+    }
+
+    It 'serves clavity from a git-subdir source pinned to ref release - exactly' {
+        $src = ($script:Market.plugins | Where-Object name -eq 'clavity').source
+        $src.source | Should -BeExactly 'git-subdir'
+        $src.url    | Should -BeExactly 'https://github.com/ckir/clavity.git'
+        $src.path   | Should -BeExactly 'clavity-dotnet/plugin'
+        $src.ref    | Should -BeExactly 'release'
+        @($src.PSObject.Properties.Name | Sort-Object) | Should -Be @('path', 'ref', 'source', 'url') -Because 'a sha pin would freeze the plugin forever'
+    }
+
+    It 'the served path is the clavity plugin in this tree' {
+        $path = ($script:Market.plugins | Where-Object name -eq 'clavity').source.path
+        $path | Should -Not -BeNullOrEmpty
+        $manifest = Join-Path (Join-Path $script:Root $path) '.claude-plugin/plugin.json'
+        Test-Path -LiteralPath $manifest | Should -BeTrue
+        (Get-Content -Raw -LiteralPath $manifest | ConvertFrom-Json).name | Should -BeExactly 'clavity'
+    }
+
+    It 'every OTHER member stays a relative path that exists - <Name>' -ForEach @(
+        @{ Name = 'agy-autotrain' }, @{ Name = 'commonmemory' }, @{ Name = 'review-relay' }
+    ) {
+        $src = ($script:Market.plugins | Where-Object name -eq $Name).source
+        $src | Should -BeOfType [string]
+        $src | Should -Match '^\./'
+        Test-Path -LiteralPath (Join-Path $script:Root $src) | Should -BeTrue
+    }
+}
