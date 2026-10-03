@@ -124,7 +124,7 @@ if (args.Length > 0 && args[0] == "agy")
         Console.Error.Write("  Press Enter to start agy here.");
         Console.ReadLine();
     }
-    using var agyProcess = Process.Start(new ProcessStartInfo("/bin/sh") { ArgumentList = { agyPaths.AgyScript }, UseShellExecute = false })!;
+    using var agyProcess = Process.Start(new ProcessStartInfo("/bin/sh") { ArgumentList = { agyPaths.AgyScript, "--here" }, UseShellExecute = false })!;
     agyProcess.WaitForExit();
     return agyProcess.ExitCode;
 }
@@ -204,6 +204,8 @@ if (args.Length > 0 && args[0] == "start")
         SkipPermissions = true,
         AgyInstallDocPath = agyInstallDoc,
         AgyExitedFilePath = paths.Exited,
+        WindowsShell = Launcher.PickWindowsShell(
+            exe => PosixAgyTab.FindOnPath(exe, Environment.GetEnvironmentVariable("PATH")) is not null),
     };
     var plan = Launcher.Build(options);
 

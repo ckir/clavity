@@ -45,6 +45,9 @@ public sealed class LaunchOptions
     /// <c>start</c> waiting for pairing stops waiting (<see cref="PairingWait"/>). Null omits it. The POSIX script
     /// takes its path as a parameter of <see cref="BuildPosixScript"/> instead.</summary>
     public string? AgyExitedFilePath { get; init; }
+    /// <summary>The shell the Windows agy tab runs: <c>pwsh</c>, or <c>powershell</c> where PowerShell 7 is absent
+    /// (<see cref="PickWindowsShell"/>; the tab script is measured to work under both).</summary>
+    public string WindowsShell { get; init; } = "pwsh";
 }
 
 /// <summary>
@@ -56,6 +59,10 @@ public sealed class LaunchOptions
 /// </summary>
 public static class Launcher
 {
+    /// <summary>PowerShell 7 when it is installed, else Windows PowerShell 5.1, which every Windows has (capstone R2:
+    /// a box without pwsh got a tab that never ran agy).</summary>
+    public static string PickWindowsShell(Func<string, bool> isOnPath) => isOnPath("pwsh.exe") ? "pwsh" : "powershell";
+
     public static LaunchPlan Build(LaunchOptions options)
     {
         var agyEnv = BuildAgyEnv(options);
@@ -76,7 +83,7 @@ public static class Launcher
             Arguments: new[]
             {
                 "new-tab", "--startingDirectory", options.Folder,
-                "pwsh", "-NoExit", "-EncodedCommand", encodedScript,
+                options.WindowsShell, "-NoExit", "-EncodedCommand", encodedScript,
             },
             WorkingDirectory: options.Folder,
             Environment: agyEnv);
@@ -159,9 +166,11 @@ public static class Launcher
         sb.Append("trap 'exit 129' HUP\n");
         sb.Append("trap 'exit 143' TERM\n");
         sb.Append("trap ':' INT\n");
-        // Record the end at once, then keep the tab open so its message can be read: a terminal closes the tab when its
-        // command ends.
-        sb.Append("clavity_end() { [ -e \"$clavity_exited\" ] || echo \"$1\" > \"$clavity_exited\"; trap - INT; printf 'clavity: %s (exit %s) Press Enter to close.\\n' \"$2\" \"$1\"; read _; exit \"$1\"; }\n");
+        // Record the end at once, then keep a TAB open so its message can be read - a terminal closes the tab when its
+        // command ends. `clavity-ls agy` runs the script in the user's own terminal with --here: no hold there.
+        sb.Append("clavity_here=; [ \"${1:-}\" = --here ] && clavity_here=1\n");
+        sb.Append("clavity_end() { [ -e \"$clavity_exited\" ] || echo \"$1\" > \"$clavity_exited\"; trap - INT; printf 'clavity: %s (exit %s)\\n' \"$2\" \"$1\"; " +
+                  "[ -n \"$clavity_here\" ] || { printf 'Press Enter to close.\\n'; read _; }; exit \"$1\"; }\n");
         foreach (var (key, value) in BuildAgyEnv(options))
             sb.Append("export ").Append(key).Append('=').Append(ShQuote(value)).Append('\n');
         sb.Append("cd ").Append(ShQuote(options.Folder)).Append(" || clavity_end 1 'cannot enter the session folder.'\n");

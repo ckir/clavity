@@ -111,13 +111,33 @@ public sealed class PosixScriptRunTests : IDisposable
     }
 
     [Fact]
+    public void Run_with_here_in_the_users_own_terminal_it_does_not_wait_for_Enter()
+    {
+        // `clavity-ls agy` runs the script in the user's terminal with --here; the hold is only for a tab that would
+        // otherwise close. stdin stays open until the script has ended - or ~6 s pass, which only a script that waits
+        // for Enter lets happen (then "$3.timedout" exists). Decided by the writer side, not a clock.
+        var (bin, script, _, exited) = Setup("exit 4\n");
+        var rc = RunSh(script, bin,
+            "( i=0; while [ ! -e \"$3.done\" ] && [ $i -lt 60 ]; do sleep 0.1; i=$((i+1)); done; " +
+            "[ -e \"$3.done\" ] || : > \"$3.timedout\" ) | { sh \"$2\" --here; rc=$?; : > \"$3.done\"; exit $rc; }",
+            extra: exited);
+        Assert.Equal(4, rc);
+        Assert.Equal("4", File.ReadAllText(exited).Trim());
+        Assert.False(File.Exists(exited + ".timedout"), "the script waited for Enter despite --here");
+    }
+
+    [Fact]
     public void A_hangup_while_agy_runs_still_records_an_end()
     {
-        // A closed tab sends SIGHUP. The shell defers a trapped signal until agy returns; agy then exits by itself
-        // here (a real terminal hangs agy up too). Without the HUP trap the shell would die from the signal - and a
-        // dash shell does not run an EXIT trap on a signal death.
-        var (bin, script, _, exited) = Setup("sleep 2\n");
-        var rc = RunSh(script, bin, "sh \"$2\" & pid=$!; sleep 1; kill -HUP $pid; wait $pid");
+        // A closed tab sends SIGHUP. The shell defers a trapped signal until agy returns, then exits 129 and the EXIT
+        // trap records it. Without the HUP trap a dash shell dies from the signal and records NOTHING (measured on the
+        // VM). Ordered by files, not sleeps: the fake agy announces it started, the HUP goes in, THEN agy may end.
+        var marks = Fwd(Path.Combine(_dir, "agy"));
+        var (bin, script, _, exited) = Setup(
+            ": > '" + marks + ".started'; i=0; while [ ! -e '" + marks + ".go' ] && [ $i -lt 200 ]; do sleep 0.1; i=$((i+1)); done\n");
+        var rc = RunSh(script, bin,
+            "sh \"$2\" & pid=$!; i=0; while [ ! -e \"$3.started\" ] && [ $i -lt 200 ]; do sleep 0.1; i=$((i+1)); done; " +
+            "kill -HUP $pid; : > \"$3.go\"; wait $pid", extra: marks);
         Assert.Equal(129, rc);
         Assert.Equal("129", File.ReadAllText(exited).Trim());
     }

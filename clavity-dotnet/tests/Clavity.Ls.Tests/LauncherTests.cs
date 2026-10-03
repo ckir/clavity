@@ -135,6 +135,23 @@ public class LauncherTests
     }
 
     [Fact]
+    public void The_Windows_tab_runs_pwsh_when_installed_and_Windows_PowerShell_otherwise()
+    {
+        Assert.Equal("pwsh", Launcher.PickWindowsShell(exe => exe == "pwsh.exe"));
+        Assert.Equal("powershell", Launcher.PickWindowsShell(_ => false));
+        // A distractor: some other program on PATH does not count as PowerShell 7.
+        Assert.Equal("powershell", Launcher.PickWindowsShell(exe => exe == "powershell.exe"));
+
+        var plan = Launcher.Build(new LaunchOptions
+        {
+            Folder = "C:\\proj", SessionId = "sid", AgyLogFilePath = "C:\\logs\\agy.log",
+            AgyEndpointFilePath = "C:\\ep\\agy-endpoint.sid.json", WindowsShell = "powershell",
+        });
+        Assert.Equal(new[] { "new-tab", "--startingDirectory", "C:\\proj", "powershell", "-NoExit", "-EncodedCommand" },
+            plan.AgyTab.Arguments.Take(6));
+    }
+
+    [Fact]
     public void ClaudeLaunch_threads_session_identity_and_drops_legacy_marker()
     {
         var plan = Launcher.Build(Opts(claudeArgs: new[] { "--model", "opus" }));
@@ -202,8 +219,10 @@ public class LauncherTests
             "trap 'exit 129' HUP\n" +
             "trap 'exit 143' TERM\n" +
             "trap ':' INT\n" +
+            "clavity_here=; [ \"${1:-}\" = --here ] && clavity_here=1\n" +
             "clavity_end() { [ -e \"$clavity_exited\" ] || echo \"$1\" > \"$clavity_exited\"; trap - INT; " +
-            "printf 'clavity: %s (exit %s) Press Enter to close.\\n' \"$2\" \"$1\"; read _; exit \"$1\"; }\n" +
+            "printf 'clavity: %s (exit %s)\\n' \"$2\" \"$1\"; " +
+            "[ -n \"$clavity_here\" ] || { printf 'Press Enter to close.\\n'; read _; }; exit \"$1\"; }\n" +
             "export ANTIGRAVITY_PROJECT_ID='proj-123'\n" +
             "export CLAVITY_AGY_ENDPOINT='/home/u/.clavity/agy-endpoint.11111111-2222-3333-4444-555555555555.json'\n" +
             "cd '/home/u/repo' || clavity_end 1 'cannot enter the session folder.'\n" +
