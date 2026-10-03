@@ -626,7 +626,10 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
         var fx = new Fake { Waiting = [W(Attached, taken: true)] };
         Assert.Equal(1, StartFlow.Start([Repo, "--attach"], fx));
         Assert.Equal(L("find"), fx.Calls);
-        Assert.Equal($"clavity: agy session {Attached} already has a Claude - another `clavity-ls start --attach` is using it.{Environment.NewLine}",
+        var nl = Environment.NewLine;
+        Assert.Equal(
+            $"clavity: agy session {Attached} already has a Claude - another `clavity-ls start --attach` is using it.{nl}" +
+            $"clavity: for another Claude in this folder, run `clavity-ls agy {Launcher.ShQuote(Repo)}` in a new terminal first.{nl}",
             fx.Err.ToString());
     }
 
@@ -812,9 +815,11 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
         }
         if (waiting.Count == 0 && all.Count > 0)
         {
-            // Every agy in this folder already has a Claude: saying "run agy first" would start a redundant one.
+            // Every agy in this folder already has a Claude. Say so first ("run agy first" alone would hide that), then
+            // what to do for ANOTHER Claude (panel round 2: the refusal must name a next step).
             foreach (var s in all)
                 fx.Error.WriteLine(AlreadyTaken(s.SessionId));
+            fx.Error.WriteLine($"clavity: for another Claude in this folder, run `clavity-ls agy {Launcher.ShQuote(folder)}` in a new terminal first.");
             return null;
         }
         if (waiting.Count == 0)
