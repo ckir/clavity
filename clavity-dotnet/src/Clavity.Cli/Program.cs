@@ -72,98 +72,16 @@ if (Clavity.Ls.Install.CliRouter.IsInstallerVerb(args))
     return Clavity.Ls.Install.CliRouter.Run(args, Console.Out);
 }
 
-// `clavity start <folder> [claude-args...]` — open a visible human-owned agy tab (per-session LS log) + launch Claude.
+// `clavity-ls agy [folder]` (Linux/macOS) - run a new session's agy in THIS terminal, for when `start` cannot open
+// one (no display, or no terminal it knows). It prints the `start --attach` command for a second terminal.
+if (args.Length > 0 && args[0] == "agy")
+    return StartFlow.Agy(args.Skip(1).ToArray(), new Clavity.Cli.RealStartEffects());
+
+// `clavity start [folder] [--attach <session-id>] [claude-args...]` - open a visible human-owned agy tab (per-session
+// LS log) + launch Claude. With --attach, launch Claude only, paired with the agy `clavity-ls agy` started. The order and
+// the exit codes live in StartFlow (unit-tested); RealStartEffects is the thin OS side.
 if (args.Length > 0 && args[0] == "start")
-{
-    var rest = args.Skip(1).ToArray();
-    string folder;
-    string[] claudeArgs;
-    if (rest.Length > 0 && !rest[0].StartsWith('-'))
-    {
-        folder = Path.GetFullPath(rest[0]);
-        claudeArgs = rest.Skip(1).ToArray();
-    }
-    else
-    {
-        folder = Directory.GetCurrentDirectory();
-        claudeArgs = rest;
-    }
+    return StartFlow.Start(args.Skip(1).ToArray(), new Clavity.Cli.RealStartEffects());
 
-    if (!Directory.Exists(Path.Combine(folder, ".git")))
-        Console.Error.WriteLine($"clavity: warning — {folder} is not a git repository.");
-
-    var agyHome = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity-cli");
-
-    var sessionId = Guid.NewGuid().ToString("D");
-    var logsDir = Path.Combine(agyHome, "logs");
-    Directory.CreateDirectory(logsDir); // idempotent + concurrency-safe (spec §11a).
-    LogRetention.Prune(logsDir, LogRetention.DefaultMaxAge, DateTime.UtcNow);
-    var agyLogPath = Path.Combine(logsDir, $"clavity-{sessionId}.log");
-
-    // Per-session pairing rendezvous. The reader's default is <userProfile>/.clavity/agy-endpoint.json
-    // (AgyEnvironment.ResolveEndpointPath); we key it by session so two concurrent clavity sessions cannot
-    // clobber one another's endpoint (both agy tab and clavity-ls get this exact path via CLAVITY_AGY_ENDPOINT).
-    var agyEndpointPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".clavity", $"agy-endpoint.{sessionId}.json");
-
-    // The pairing doc is embedded in this binary and written out on every start (PairingDoc). Without it agy gets
-    // no -i prompt, never publishes its endpoint, and the pairing is dead on arrival - so refuse, loudly, rather
-    // than launch a half-working session (the old install-root lookup failed SILENTLY on every non-Inno install).
-    string agyInstallDoc;
-    try
-    {
-        agyInstallDoc = PairingDoc.Materialize(Path.GetDirectoryName(agyEndpointPath)!);
-    }
-    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
-    {
-        Console.Error.WriteLine($"clavity: cannot write the agy pairing instructions ({ex.Message}) - not launching.");
-        return 1;
-    }
-
-    var plan = Launcher.Build(new LaunchOptions
-    {
-        Folder = folder,
-        SessionId = sessionId,
-        ClaudeArgs = claudeArgs,
-        ProjectId = TryReadProjectId(agyHome),
-        AgyLogFilePath = agyLogPath,
-        AgyEndpointFilePath = agyEndpointPath,
-        // User decision 2026-06-30: agy ALWAYS launches with --dangerously-skip-permissions so unattended
-        // bus/LS consults never stall on per-tool approval prompts. (Supersedes spec §4 "NOT default".)
-        SkipPermissions = true,
-        AgyInstallDocPath = agyInstallDoc,
-    });
-
-    Spawn(plan.AgyTab, wait: false);    // agy tab boots asynchronously; human owns it.
-    Spawn(plan.ClaudeLaunch, wait: true); // Claude runs in the foreground.
-    return 0;
-
-    static void Spawn(LaunchCommand cmd, bool wait)
-    {
-        var psi = new ProcessStartInfo(cmd.FileName)
-        {
-            WorkingDirectory = cmd.WorkingDirectory,
-            UseShellExecute = false,
-        };
-        foreach (var arg in cmd.Arguments)
-            psi.ArgumentList.Add(arg);
-        foreach (var (key, value) in cmd.Environment)
-            psi.Environment[key] = value;
-        var process = Process.Start(psi);
-        if (wait)
-            process?.WaitForExit();
-    }
-
-    static string? TryReadProjectId(string agyHome)
-    {
-        var path = Path.Combine(agyHome, "cache", "default_project_id.txt");
-        if (!File.Exists(path))
-            return null;
-        var id = File.ReadAllText(path).Trim();
-        return id.Length > 0 ? id : null;
-    }
-}
-
-Console.WriteLine("clavity-ls — usage: clavity-ls start <folder> [claude-args...]   |   clavity-ls --mcp   (MCP stdio server: agy_look / agy_status / agy_ask)");
+Console.WriteLine("clavity-ls — usage: clavity-ls start [folder] [--attach <session-id>] [claude-args...]   |   clavity-ls agy [folder]   (Linux/macOS: agy in this terminal)   |   clavity-ls --mcp   (MCP stdio server: agy_look / agy_status / agy_ask)");
 return 0;

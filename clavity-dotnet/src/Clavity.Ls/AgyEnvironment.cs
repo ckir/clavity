@@ -33,6 +33,17 @@ public static class AgyEnvironment
             ? Path.Combine(userProfileDir, ".clavity", "agy-endpoint.json")
             : envPath;
 
+    /// <summary>agy's default project id (<c>&lt;agyHome&gt;/cache/default_project_id.txt</c>), exported to the agy it
+    /// launches as ANTIGRAVITY_PROJECT_ID; null when absent or empty.</summary>
+    public static string? TryReadProjectId(string agyHomeDir)
+    {
+        var path = Path.Combine(agyHomeDir, "cache", "default_project_id.txt");
+        if (!File.Exists(path))
+            return null;
+        var id = File.ReadAllText(path).Trim();
+        return id.Length > 0 ? id : null;
+    }
+
     /// <summary>Parse a positive-seconds env value to a TimeSpan. Unset/blank/non-numeric/negative -> <paramref
     /// name="fallback"/>. Zero -> fallback UNLESS <paramref name="allowZero"/> (the absolute-max "unbounded"
     /// sentinel), in which case "0" -> <see cref="TimeSpan.Zero"/>.</summary>

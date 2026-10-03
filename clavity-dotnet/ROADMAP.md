@@ -3569,7 +3569,7 @@ degraded-path fixtures set `PATH` to a directory that still contains `cat` - the
 
 ---
 
-### §60 — On Linux, agy's shell is bash, so the pwsh-only pairing step cannot publish the endpoint — ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (two entries, Linux VM remediation of the 0.10.1 `clavity-ls` ENOENT), not yet planned**
+### §60 — On Linux, agy's shell is bash, so the pwsh-only pairing step cannot publish the endpoint — ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (two entries, Linux VM remediation of the 0.10.1 `clavity-ls` ENOENT), not yet planned** · ✅ **FIXED on sweep Branch 18 (`6c05ec48..914201c8`) - the pairing doc has a POSIX publish line next to the pwsh one, both refusing empty `ANTIGRAVITY_*` values and naming the built-in shell tool (agy ran it through an MCP shell tool first, MEASURED); both manuals and three `CLAUDE.md` say pwsh on Windows, bash on Linux. Suite `scripts/tests/pairing-doc.Tests.ps1` RUNS both lines (9).**
 
 **MEASURED 2026-10-02, Linux x86_64, agy 1.2.14 launched as plain `agy` from bash in a terminal (not
 `clavity start`):** the pairing Step 1 one-liner, given to agy to run, did not publish anything. agy's
@@ -3641,7 +3641,7 @@ only a release does. Verifying an installed change means cutting a release, or a
 
 ---
 
-### §62 — `clavity-ls start` is Windows-only: on Linux it crashes, and there is no visible agy to watch or fix — ▶ **RAISED 2026-10-02 by the owner; AGY-FIRST R1-R2 ALIGNED, owner-adopted; SCHEDULED with section 60 as ONE "Linux support" sweep branch, after Branch 17 merges**
+### §62 — `clavity-ls start` is Windows-only: on Linux it crashes, and there is no visible agy to watch or fix — ▶ **RAISED 2026-10-02 by the owner; AGY-FIRST R1-R2 ALIGNED, owner-adopted; SCHEDULED with section 60 as ONE "Linux support" sweep branch, after Branch 17 merges** · ✅ **FIXED on sweep Branch 18 (`6c05ec48..914201c8`) - Linux `start` writes a per-session POSIX script (one `set -C` claim file) and opens it via `PosixAgyTab`: CLAVITY_TERMINAL, the detected terminal's tab, xdg-terminal-exec, x-terminal-emulator, other tab verbs; no display -> fallback, `clavity-ls agy` + `start --attach`. Suites SessionPathsTests, StartArgsTests, PosixScriptRunTests, PosixAgyTabTests (25). VM: no-display fallback, desktop start (endpoint in 28,7 s), and owner-run tab + --attach all worked 2026-10-03.**
 
 **MEASURED 2026-10-02 on an Ubuntu 26.04 MATE VM (desktop over RDP).** `clavity-ls start /tmp/x` ->
 `Unhandled exception. System.ComponentModel.Win32Exception (2): An error occurred trying to start process 'wt' ...
@@ -3706,6 +3706,34 @@ comment at `:110`.
 would continue with an empty `_tmp` and download to `/<asset>`. The test that should exist: a fake `mktemp` on PATH
 that exits non-zero -> stdout is one hook-JSON message naming `mktemp failed` and the binary's target path, exit 0,
 nothing placed; proven non-vacuous by deleting the `|| { _note ...; exit 0; }`.
+
+---
+
+### §65 — Pairing over ssh needs a copy/paste of a 36-character session id; and the agy-side environment variables may be retirable — ▶ **RAISED 2026-10-03 by the owner; SCHEDULED as its own sweep branch after Branch 18; not yet AGY-FIRST'd**
+
+**Today (Branch 18):** with no display, `clavity-ls start` stops and says to run `clavity-ls agy <folder>`, which runs agy
+in that terminal and prints `clavity-ls start <folder> --attach <session-id>` for a SECOND ssh session - a GUID to copy
+between two terminals. Since Branch 18, `start` (and `--attach`) waits until agy has paired, so the two sessions can be
+opened in either order.
+
+**Driver proposal (to put to AGY-FIRST, owner agreed in principle):**
+- `start --attach` with NO id picks the single agy session that is waiting for a Claude, alive (its endpoint port
+  listens) and in this folder; with zero or several, it refuses and lists them.
+- A short pairing code as the explicit fallback (`clavity-ls agy` prints e.g. `K7M2`; `~/.clavity/pair/<code>` maps it
+  to the session id, owner-only, deleted once paired).
+- README: `ssh -X` sets DISPLAY, so the terminal ladder opens a window on the client; from a Windows client the
+  fallback can print a ready `wt new-tab ssh -t <host> clavity-ls agy ...` line.
+- Rejected: running agy hidden in the same ssh session (a background PTY or tmux) - it breaks "see and fix agy", and
+  tmux is clavity-classic's transport.
+
+**Owner idea, same branch - retire the variables that pass agy's options.** Driver's read: the agy-side
+`CLAVITY_AGY_ENDPOINT` can go (a per-session pairing doc, or the path in the `-i` prompt) - which also drops the Windows
+`$env:` baking that exists only because Windows Terminal does not pass the environment to a new tab;
+`ANTIGRAVITY_PROJECT_ID` is agy's own variable. The Claude-side variables (`CLAVITY_SESSION_ID`, `CLAVITY_AGY_ENDPOINT`,
+`CLAVITY_AGY_LOG`) are the only channel to the `.mcp.json`-launched `clavity-ls --mcp`, and the per-process identity
+that keeps two Claude sessions in one folder apart - keep them, and add the session registry as a FALLBACK (a plain
+`claude` in a folder with a waiting agy would then pair too). `CLAVITY_AGY_LOG` feeds the pre-endpoint cli.log
+discovery; retire only after checking the oldest supported agy.
 
 ---
 
