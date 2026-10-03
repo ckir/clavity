@@ -214,7 +214,7 @@ if (args.Length > 0 && args[0] == "start")
     {
         if (!ClaudeIsStartable())            // before the tab: a missing claude must not leave an agy behind
             return 1;
-        if (!Spawn(plan.AgyTab, wait: false))  // agy tab boots asynchronously; human owns it.
+        if (Spawn(plan.AgyTab, wait: false) is null)  // agy tab boots asynchronously; human owns it.
             return 1;
         if (!WaitForPairing(paths))          // Claude starts only once agy has published its endpoint.
             return 1;
@@ -276,17 +276,19 @@ if (args.Length > 0 && args[0] == "start")
         return false;
     }
 
-    // Claude, after agy is already up: if it cannot start after all, say that agy is still running.
+    // Claude, after agy is already up: `start` exits with Claude's own exit code (capstone R5); if Claude cannot start
+    // after all, say that agy is still running.
     static int RunClaude(LaunchCommand claude)
     {
-        if (Spawn(claude, wait: true))
-            return 0;
+        if (Spawn(claude, wait: true) is { } exitCode)
+            return exitCode;
         Console.Error.WriteLine("clavity: agy is still running - close its tab (or press Ctrl+C in its terminal).");
         return 1;
     }
 
-    // False, with the reason printed, when the program cannot be started at all (not installed / not on PATH).
-    static bool Spawn(LaunchCommand cmd, bool wait)
+    // Null, with the reason printed, when the program cannot be started at all (not installed / not on PATH);
+    // otherwise its exit code when waited for, else 0.
+    static int? Spawn(LaunchCommand cmd, bool wait)
     {
         var psi = new ProcessStartInfo(cmd.FileName)
         {
@@ -305,11 +307,12 @@ if (args.Length > 0 && args[0] == "start")
         catch (System.ComponentModel.Win32Exception ex)
         {
             Console.Error.WriteLine(Launcher.CannotStartMessage(cmd.FileName, ex.Message));
-            return false;
+            return null;
         }
-        if (wait)
-            process?.WaitForExit();
-        return true;
+        if (!wait || process is null)
+            return 0;
+        process.WaitForExit();
+        return process.ExitCode;
     }
 }
 

@@ -216,6 +216,10 @@ public class PosixAgyTabTests
             Assert.Equal(Path.Combine(dir, "agy"), PosixAgyTab.FindOnPath("agy", "/nope" + Path.PathSeparator + dir));
             Assert.Null(PosixAgyTab.FindOnPath("agy", "/nope"));
             Assert.Null(PosixAgyTab.FindOnPath("agy", null));
+            // A QUOTED entry is not searched - exactly like process creation (capstone R5, measured on Windows 11: a
+            // bare-name Process.Start does not find an exe in a quoted PATH entry, native error 2). A preflight that
+            // stripped the quotes would pass for a program Spawn then cannot start.
+            Assert.Null(PosixAgyTab.FindOnPath("agy", "\"" + dir + "\""));
         }
         finally { Directory.Delete(dir, recursive: true); }
     }
