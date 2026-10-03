@@ -390,14 +390,16 @@ public sealed class StartFlowTests
     }
 
     [Fact]
-    public void An_explicit_id_to_a_taken_session_in_another_folder_promises_nothing_it_then_breaks()
+    public void An_explicit_id_to_a_taken_session_in_another_folder_says_where_it_runs_and_then_that_it_is_taken()
     {
-        // Capstone R3: the switch notice ("starting Claude there") printed, then "already has a Claude" refused.
+        // Capstone R3: a PROMISE ("starting Claude there") was contradicted by the refusal. Capstone R5: deferring the
+        // notice past the lock left the refusal naming a folder the user never typed. The notice is now a fact, printed
+        // when the folder is decided - true whatever follows.
         var fx = new Fake { Records = { [Attached] = "/srv/agy-repo" }, TakeSucceeds = false };
         Assert.Equal(1, StartFlow.Start([Repo, "--attach", Attached], fx));
         var err = fx.Err.ToString();
-        Assert.Contains(StartFlow.AlreadyTaken(Attached), err);
-        Assert.DoesNotContain("Claude uses that folder", err);
+        var notice = err.IndexOf("runs in /srv/agy-repo, so Claude uses that folder", StringComparison.Ordinal);
+        Assert.True(notice >= 0 && notice < err.IndexOf(StartFlow.AlreadyTaken(Attached), StringComparison.Ordinal), err);
     }
 
     [Fact]
@@ -436,7 +438,10 @@ public sealed class StartFlowTests
         var fx = new Fake { Records = { [Attached] = gone }, MissingDirs = { gone } };
         Assert.Equal(2, StartFlow.Start([Repo, "--attach", Attached], fx));
         Assert.Empty(fx.Ran);
-        Assert.Contains(StartFlow.MissingFolder(gone), fx.Err.ToString());
+        // Capstone R5: the refusal names agy's folder, so the notice saying why comes first.
+        var err = fx.Err.ToString();
+        var notice = err.IndexOf($"agy session {Attached} runs in {gone}, so Claude uses that folder", StringComparison.Ordinal);
+        Assert.True(notice >= 0 && notice < err.IndexOf(StartFlow.MissingFolder(gone), StringComparison.Ordinal), err);
     }
 
     [Fact]

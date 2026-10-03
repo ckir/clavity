@@ -134,14 +134,14 @@ public static class StartFlow
         // THE folder, decided once, before any check (capstone R4, agy's answer to the frame question). An explicit id whose
         // `.folder` record names a folder makes THAT the folder: Claude in one folder and agy in another is a split brain
         // (capstone R1, AGY-FIRST, owner-approved), and every check below then sees the folder Claude really uses. The
-        // notice states a fact rather than a promise, and waits for the session lock (a taken session would contradict it).
+        // notice states a FACT, so it prints at once: true whatever follows, and every later refusal that names agy's
+        // folder needs it to make sense (capstone R5; a promise worded "starting Claude there" was what had to wait).
         var folder = start.Folder;
-        string? folderNotice = null;
         if (start.AttachSessionId is { } givenId
             && fx.ReadSessionFolder(SessionPaths.For(fx.UserProfile, givenId)) is { } agyFolder
             && !SessionRegistry.SameFolder(agyFolder, folder))
         {
-            folderNotice = $"clavity: agy session {givenId} runs in {agyFolder}, so Claude uses that folder, not {folder}.";
+            fx.Error.WriteLine($"clavity: agy session {givenId} runs in {agyFolder}, so Claude uses that folder, not {folder}.");
             folder = agyFolder;
         }
         // Before anything else, on every platform and for --attach (capstone R7): Windows used to go on and fail at the
@@ -185,8 +185,6 @@ public static class StartFlow
                 fx.Error.WriteLine(AlreadyTaken(sessionId));
                 return 1;
             }
-            if (folderNotice is not null)
-                fx.Error.WriteLine(folderNotice);
             var attached = Launcher.Build(new LaunchOptions
             {
                 Folder = folder,
