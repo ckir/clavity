@@ -152,6 +152,25 @@ public class LauncherTests
     }
 
     [Fact]
+    public void A_program_that_cannot_start_gets_a_message_that_names_what_to_install()
+    {
+        // The real error is shown and the install advice is conditional: a present-but-broken wt (access denied on a
+        // disabled alias) must not be told it is missing.
+        var wt = Launcher.CannotStartMessage("wt", "Access is denied.");
+        Assert.StartsWith("clavity: cannot start Windows Terminal (wt): Access is denied.", wt);
+        Assert.Contains("If it is not installed: winget install Microsoft.WindowsTerminal", wt);
+        Assert.DoesNotContain("is not installed -", wt);
+
+        var claude = Launcher.CannotStartMessage("claude", "The system cannot find the file specified.");
+        Assert.Contains("cannot start claude (The system cannot find the file specified.)", claude);
+        Assert.Contains("Claude Code installed and on PATH", claude);
+        Assert.DoesNotContain("Windows Terminal", claude);
+
+        // A distractor: a name that merely CONTAINS "wt" is not Windows Terminal.
+        Assert.Equal("clavity: cannot start wtx (gone).", Launcher.CannotStartMessage("wtx", "gone"));
+    }
+
+    [Fact]
     public void ClaudeLaunch_threads_session_identity_and_drops_legacy_marker()
     {
         var plan = Launcher.Build(Opts(claudeArgs: new[] { "--model", "opus" }));

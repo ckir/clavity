@@ -63,6 +63,17 @@ public static class Launcher
     /// a box without pwsh got a tab that never ran agy).</summary>
     public static string PickWindowsShell(Func<string, bool> isOnPath) => isOnPath("pwsh.exe") ? "pwsh" : "powershell";
 
+    /// <summary>What <c>start</c> prints when it cannot start <paramref name="fileName"/> at all (not installed / not on
+    /// PATH) instead of dying with an unhandled exception (capstone R3: Windows without Windows Terminal).</summary>
+    public static string CannotStartMessage(string fileName, string detail) => fileName switch
+    {
+        // The detail is the real error: a present-but-broken wt (a disabled alias) must not be told it is missing.
+        "wt" => $"clavity: cannot start Windows Terminal (wt): {detail} - `clavity-ls start` opens agy in a wt tab. If " +
+                "it is not installed: winget install Microsoft.WindowsTerminal",
+        "claude" => $"clavity: cannot start claude ({detail}) - is Claude Code installed and on PATH?",
+        _ => $"clavity: cannot start {fileName} ({detail}).",
+    };
+
     public static LaunchPlan Build(LaunchOptions options)
     {
         var agyEnv = BuildAgyEnv(options);

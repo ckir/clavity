@@ -171,10 +171,11 @@ if (args.Length > 0 && args[0] == "start")
             AgyLogFilePath = paths.AgyLog,
             AgyEndpointFilePath = paths.Endpoint,
         });
+        if (!ClaudeIsStartable())    // refuse before a wait that would end in a failed start anyway
+            return 1;
         if (!WaitForPairing(paths))
             return 1;
-        Spawn(attached.ClaudeLaunch, wait: true);
-        return 0;
+        return Spawn(attached.ClaudeLaunch, wait: true) ? 0 : 1;
     }
 
     // The pairing doc is embedded in this binary and written out on every start (PairingDoc). Without it agy gets
@@ -211,11 +212,13 @@ if (args.Length > 0 && args[0] == "start")
 
     if (OperatingSystem.IsWindows())
     {
-        Spawn(plan.AgyTab, wait: false);    // agy tab boots asynchronously; human owns it.
+        if (!ClaudeIsStartable())            // before the tab: a missing claude must not leave an agy behind
+            return 1;
+        if (!Spawn(plan.AgyTab, wait: false))  // agy tab boots asynchronously; human owns it.
+            return 1;
         if (!WaitForPairing(paths))          // Claude starts only once agy has published its endpoint.
             return 1;
-        Spawn(plan.ClaudeLaunch, wait: true); // Claude runs in the foreground.
-        return 0;
+        return Spawn(plan.ClaudeLaunch, wait: true) ? 0 : 1; // Claude runs in the foreground.
     }
 
     // Linux / macOS (ROADMAP sections 60 + 62): there is no `wt`. Open agy from a generated POSIX script in a terminal
@@ -246,8 +249,7 @@ if (args.Length > 0 && args[0] == "start")
     }
     if (!WaitForPairing(paths))
         return 1;
-    Spawn(plan.ClaudeLaunch, wait: true);
-    return 0;
+    return Spawn(plan.ClaudeLaunch, wait: true) ? 0 : 1;
 
     // Owner request 2026-10-03: the user sees agy - and any prompt it waits on - before Claude takes the terminal.
     // False when agy ended before it paired (its script recorded that); the reason was printed.
@@ -258,7 +260,19 @@ if (args.Length > 0 && args[0] == "start")
             () => clock.ElapsedMilliseconds, t => Thread.Sleep(t)) is not null;
     }
 
-    static void Spawn(LaunchCommand cmd, bool wait)
+    // Mirrors what Spawn can start: with UseShellExecute=false a bare name resolves to NAME.exe on Windows and never to
+    // a .cmd shim (measured on .NET 10: `claude` with only claude.cmd on PATH -> Win32Exception, native error 2).
+    static bool ClaudeIsStartable()
+    {
+        var exe = OperatingSystem.IsWindows() ? "claude.exe" : "claude";
+        if (PosixAgyTab.FindOnPath(exe, Environment.GetEnvironmentVariable("PATH")) is not null)
+            return true;
+        Console.Error.WriteLine(Launcher.CannotStartMessage("claude", $"{exe} is not on PATH"));
+        return false;
+    }
+
+    // False, with the reason printed, when the program cannot be started at all (not installed / not on PATH).
+    static bool Spawn(LaunchCommand cmd, bool wait)
     {
         var psi = new ProcessStartInfo(cmd.FileName)
         {
@@ -269,9 +283,19 @@ if (args.Length > 0 && args[0] == "start")
             psi.ArgumentList.Add(arg);
         foreach (var (key, value) in cmd.Environment)
             psi.Environment[key] = value;
-        var process = Process.Start(psi);
+        Process? process;
+        try
+        {
+            process = Process.Start(psi);
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            Console.Error.WriteLine(Launcher.CannotStartMessage(cmd.FileName, ex.Message));
+            return false;
+        }
         if (wait)
             process?.WaitForExit();
+        return true;
     }
 }
 
