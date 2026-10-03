@@ -366,6 +366,17 @@ public sealed class StartFlowTests
     }
 
     [Fact]
+    public void An_explicit_id_to_a_taken_session_in_another_folder_promises_nothing_it_then_breaks()
+    {
+        // Capstone R3: the switch notice ("starting Claude there") printed, then "already has a Claude" refused.
+        var fx = new Fake { Records = { [Attached] = "/srv/agy-repo" }, TakeSucceeds = false };
+        Assert.Equal(1, StartFlow.Start([Repo, "--attach", Attached], fx));
+        var err = fx.Err.ToString();
+        Assert.Contains(StartFlow.AlreadyTaken(Attached), err);
+        Assert.DoesNotContain("starting Claude there", err);
+    }
+
+    [Fact]
     public void An_explicit_id_checks_the_git_repository_of_the_folder_Claude_really_starts_in()
     {
         // Capstone R2: the warning used to check the GIVEN folder, before the switch to agy's folder.

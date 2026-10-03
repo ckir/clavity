@@ -144,7 +144,9 @@ public static class StartFlow
 
         // An explicit id may name an agy in ANOTHER folder (or this one by another path). Claude in one folder and agy in
         // another is a split brain, so Claude starts where agy runs (capstone R1, AGY-FIRST, owner-approved) - decided
-        // here, before the git-repository warning, so the warning checks the folder Claude really uses (capstone R2).
+        // here, before the git-repository warning, so the warning checks the folder Claude really uses (capstone R2). The
+        // notice waits until the session lock is held: printed here, a taken session would contradict it (capstone R3).
+        string? switchNotice = null;
         if (start.AttachSessionId is { } givenId
             && fx.ReadSessionFolder(SessionPaths.For(fx.UserProfile, givenId)) is { } agyFolder
             && !SessionRegistry.SameFolder(agyFolder, folder))
@@ -154,7 +156,7 @@ public static class StartFlow
                 fx.Error.WriteLine(MissingFolder(agyFolder));
                 return 2;
             }
-            fx.Error.WriteLine($"clavity: agy session {givenId} runs in {agyFolder} - starting Claude there, not in {folder}.");
+            switchNotice = $"clavity: agy session {givenId} runs in {agyFolder} - starting Claude there, not in {folder}.";
             folder = agyFolder;
         }
 
@@ -189,6 +191,8 @@ public static class StartFlow
                 fx.Error.WriteLine(AlreadyTaken(sessionId));
                 return 1;
             }
+            if (switchNotice is not null)
+                fx.Error.WriteLine(switchNotice);
             var attached = Launcher.Build(new LaunchOptions
             {
                 Folder = folder,
