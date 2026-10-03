@@ -362,7 +362,31 @@ public sealed class StartFlowTests
         var fx = new Fake { Records = { [Attached] = agyFolder } };
         Assert.Equal(0, StartFlow.Start([Repo, "--attach", Attached], fx));
         Assert.Equal(agyFolder, fx.Ran.Single().WorkingDirectory);
-        Assert.Contains($"clavity: agy session {Attached} runs in {agyFolder} - starting Claude there, not in {Repo}.", fx.Err.ToString());
+        Assert.Contains($"clavity: agy session {Attached} runs in {agyFolder}, so Claude uses that folder, not {Repo}.", fx.Err.ToString());
+    }
+
+    [Fact]
+    public void An_explicit_id_with_a_record_decides_the_folder_before_any_check_so_a_mistyped_folder_does_not_matter()
+    {
+        // Capstone R4 (agy's frame answer): the recorded folder IS the folder - decided once, up front - so the
+        // missing-folder check and the git warning only ever look at the folder Claude uses.
+        const string typo = "/srv/no-such-folder";
+        const string agyFolder = "/srv/agy-repo";
+        var fx = new Fake { Records = { [Attached] = agyFolder }, MissingDirs = { Path.GetFullPath(typo) } };
+        Assert.Equal(0, StartFlow.Start([typo, "--attach", Attached], fx));
+        Assert.Equal(agyFolder, fx.Ran.Single().WorkingDirectory);
+        Assert.DoesNotContain("does not exist", fx.Err.ToString());
+    }
+
+    [Fact]
+    public void The_folder_notice_states_a_fact_so_a_later_failure_does_not_contradict_it()
+    {
+        // Capstone R4: "starting Claude there" was a promise a missing claude or a failed pairing then broke.
+        var fx = new Fake { Records = { [Attached] = "/srv/agy-repo" }, ClaudeThere = false };
+        Assert.Equal(1, StartFlow.Start([Repo, "--attach", Attached], fx));
+        var err = fx.Err.ToString();
+        Assert.Contains($"clavity: agy session {Attached} runs in /srv/agy-repo, so Claude uses that folder, not {Repo}.", err);
+        Assert.DoesNotContain("starting Claude there", err);
     }
 
     [Fact]
@@ -373,7 +397,7 @@ public sealed class StartFlowTests
         Assert.Equal(1, StartFlow.Start([Repo, "--attach", Attached], fx));
         var err = fx.Err.ToString();
         Assert.Contains(StartFlow.AlreadyTaken(Attached), err);
-        Assert.DoesNotContain("starting Claude there", err);
+        Assert.DoesNotContain("Claude uses that folder", err);
     }
 
     [Fact]
@@ -394,7 +418,7 @@ public sealed class StartFlowTests
         var fx = new Fake { Records = { [Attached] = Repo + Path.DirectorySeparatorChar } };
         StartFlow.Start([Repo, "--attach", Attached], fx);
         Assert.Equal(Repo, fx.Ran.Single().WorkingDirectory);
-        Assert.DoesNotContain("starting Claude there", fx.Err.ToString());
+        Assert.DoesNotContain("Claude uses that folder", fx.Err.ToString());
     }
 
     [Fact]

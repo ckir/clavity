@@ -131,7 +131,19 @@ public static class StartFlow
             fx.Error.WriteLine($"clavity: {ex.Message}");
             return 2;
         }
+        // THE folder, decided once, before any check (capstone R4, agy's answer to the frame question). An explicit id whose
+        // `.folder` record names a folder makes THAT the folder: Claude in one folder and agy in another is a split brain
+        // (capstone R1, AGY-FIRST, owner-approved), and every check below then sees the folder Claude really uses. The
+        // notice states a fact rather than a promise, and waits for the session lock (a taken session would contradict it).
         var folder = start.Folder;
+        string? folderNotice = null;
+        if (start.AttachSessionId is { } givenId
+            && fx.ReadSessionFolder(SessionPaths.For(fx.UserProfile, givenId)) is { } agyFolder
+            && !SessionRegistry.SameFolder(agyFolder, folder))
+        {
+            folderNotice = $"clavity: agy session {givenId} runs in {agyFolder}, so Claude uses that folder, not {folder}.";
+            folder = agyFolder;
+        }
         // Before anything else, on every platform and for --attach (capstone R7): Windows used to go on and fail at the
         // tab's working directory with "cannot start Windows Terminal ... winget install", and --attach waited for a
         // pairing only to fail starting Claude there. On Linux the script's `cd` runs after its claim, so a missing
@@ -140,24 +152,6 @@ public static class StartFlow
         {
             fx.Error.WriteLine(MissingFolder(folder));
             return 2;
-        }
-
-        // An explicit id may name an agy in ANOTHER folder (or this one by another path). Claude in one folder and agy in
-        // another is a split brain, so Claude starts where agy runs (capstone R1, AGY-FIRST, owner-approved) - decided
-        // here, before the git-repository warning, so the warning checks the folder Claude really uses (capstone R2). The
-        // notice waits until the session lock is held: printed here, a taken session would contradict it (capstone R3).
-        string? switchNotice = null;
-        if (start.AttachSessionId is { } givenId
-            && fx.ReadSessionFolder(SessionPaths.For(fx.UserProfile, givenId)) is { } agyFolder
-            && !SessionRegistry.SameFolder(agyFolder, folder))
-        {
-            if (!fx.DirectoryExists(agyFolder))
-            {
-                fx.Error.WriteLine(MissingFolder(agyFolder));
-                return 2;
-            }
-            switchNotice = $"clavity: agy session {givenId} runs in {agyFolder} - starting Claude there, not in {folder}.";
-            folder = agyFolder;
         }
 
         if (!fx.DirectoryExists(Path.Combine(folder, ".git")))
@@ -191,8 +185,8 @@ public static class StartFlow
                 fx.Error.WriteLine(AlreadyTaken(sessionId));
                 return 1;
             }
-            if (switchNotice is not null)
-                fx.Error.WriteLine(switchNotice);
+            if (folderNotice is not null)
+                fx.Error.WriteLine(folderNotice);
             var attached = Launcher.Build(new LaunchOptions
             {
                 Folder = folder,
