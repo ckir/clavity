@@ -919,3 +919,18 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
   `command -v python3` on the VM; if absent, serve the port with `nc -l 47123` (or whatever listener exists - name it in
   the run report). Write the script as a FILE (Write tool), never a here-doc.
 - [ ] **Step 3:** Update the execution index (memory) with every commit sha.
+
+---
+
+## Stand-downs (adversarial panel, 3 rounds, GREEN in round 3; briefs `.clavity/seams/s65-plan-panel-r{1,2,3}.md`)
+
+- UNVERIFIED-ACCEPTED (owner to confirm at plan approval): `--attach=<id>` with an equals sign is not recognised - it
+  falls through to a plain start and reaches Claude as an argument, exactly as on `main` today (`StartArgs.cs:26` tests
+  `rest[i] == AttachFlag`). Not folded: no user has asked for it and it widens the parser.
+- UNVERIFIED-ACCEPTED (owner to confirm): a FIRST argument after `--attach` made only of hex digits and dashes, 8+
+  characters (a git hash such as `deadbeef`), is refused as a malformed id - the price of refusing truncated ids. The
+  user writes `--attach -- deadbeef`, and `--` reaches Claude with it.
+- REJECTED (round 1): a missing `using System.IO` - `ImplicitUsings` is enabled (`clavity-dotnet/src/Clavity.Ls/Clavity.Ls.csproj:24`,
+  `clavity-dotnet/tests/Clavity.Ls.Tests/Clavity.Ls.Tests.csproj:5`).
+- WITHDRAWN by the peer (round 2): abort the pairing wait when `.alive` is released - `.alive` measures `clavity-ls agy`,
+  not agy, which outlives a killed `clavity-ls agy` and can still pair.
