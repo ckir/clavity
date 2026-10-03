@@ -74,4 +74,15 @@ internal sealed class RealStartEffects : IStartEffects
         process.WaitForExit();
         return process.ExitCode;
     }
+
+    public void WriteSessionFolder(string path, string folder) =>
+        File.WriteAllText(path, folder + "\n", new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+    public IReadOnlyList<WaitingSession> FindWaitingSessions(string folder) =>
+        SessionRegistry.Find(UserProfile, folder, new SystemListeningPorts(), SessionLock.IsTaken);
+
+    public IDisposable? TryTakeSession(SessionPaths paths) => SessionLock.TryTake(paths.Lock);
+
+    public IDisposable HoldSessionAlive(SessionPaths paths) =>
+        SessionLock.TryTake(paths.Alive) ?? throw new IOException($"cannot hold {paths.Alive}: another process holds it.");
 }

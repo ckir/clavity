@@ -36,6 +36,15 @@ public interface IStartEffects
     void WaitForEnter();
     /// <summary>Runs the agy script with `/bin/sh &lt;script&gt; --here` in this terminal and returns its exit code.</summary>
     int RunScriptHere(string scriptPath);
+    /// <summary>Writes the `.folder` record that lets `start --attach` without an id find this session (ROADMAP section 65).</summary>
+    void WriteSessionFolder(string path, string folder);
+    /// <summary><see cref="SessionRegistry.Find"/> over the real files, listening ports and locks.</summary>
+    IReadOnlyList<WaitingSession> FindWaitingSessions(string folder);
+    /// <summary><see cref="SessionLock.TryTake"/> on this session's lock: null when another `start` holds it.</summary>
+    IDisposable? TryTakeSession(SessionPaths paths);
+    /// <summary>Holds this session's `.alive` lock for as long as `clavity-ls agy` runs it (<see cref="SessionLock.TryTake"/>;
+    /// the id is fresh, so nobody else can hold it).</summary>
+    IDisposable HoldSessionAlive(SessionPaths paths);
 }
 
 /// <summary>The `clavity-ls start` and `clavity-ls agy` verbs. Exit codes: 2 for a bad argument or a missing folder, 1 for a
@@ -48,6 +57,10 @@ public static class StartFlow
     /// <summary>Both verbs' refusal of a folder argument that is not a directory - missing, or a FILE (capstone R8: "does
     /// not exist" was false for a file).</summary>
     public static string MissingFolder(string folder) => $"clavity: {folder} does not exist or is not a folder.";
+
+    /// <summary>`start --attach` refusing a session another `start` already paired with (ROADMAP section 65).</summary>
+    public static string AlreadyTaken(string sessionId) =>
+        $"clavity: agy session {sessionId} already has a Claude - another `clavity-ls start --attach` is using it.";
 
     /// <summary>`clavity-ls agy [folder]` (Linux/macOS) - run a new session's agy in THIS terminal, for when `start` cannot
     /// open one (no display, or no terminal it knows). It prints the `start --attach` command for a second terminal.
@@ -86,6 +99,10 @@ public static class StartFlow
             SkipPermissions = true,
             AgyInstallDocPath = doc,
         }, paths.Claim, paths.Exited));
+        // `start --attach` without an id finds this session through its folder record, and counts it only while this
+        // process holds .alive - taken FIRST, so a record never exists without a live holder (ROADMAP section 65).
+        using var alive = fx.HoldSessionAlive(paths);
+        fx.WriteSessionFolder(paths.Folder, folder);
 
         // agy's full-screen interface takes this terminal over, so the command must be read BEFORE it starts.
         fx.Error.Write(PosixAgyTab.AttachHint(folder, session));
@@ -97,9 +114,9 @@ public static class StartFlow
         return fx.RunScriptHere(paths.AgyScript);
     }
 
-    /// <summary>`clavity-ls start [folder] [--attach &lt;session-id&gt;] [claude-args...]` - open a visible human-owned agy tab
+    /// <summary>`clavity-ls start [folder] [--attach [&lt;session-id&gt;]] [claude-args...]` - open a visible human-owned agy tab
     /// (per-session LS log) + launch Claude. With --attach, launch Claude only, paired with the agy `clavity-ls agy`
-    /// started. <paramref name="args"/> are the arguments after the verb.</summary>
+    /// started - without an id, the one waiting in the folder. <paramref name="args"/> are the arguments after the verb.</summary>
     public static int Start(string[] args, IStartEffects fx)
     {
         StartArgs start;
@@ -127,7 +144,15 @@ public static class StartFlow
             fx.Error.WriteLine($"clavity: warning — {folder} is not a git repository.");
 
         var agyHome = Path.Combine(fx.UserProfile, ".gemini", "antigravity-cli");
-        var sessionId = start.AttachSessionId ?? fx.NewSessionId();
+        string sessionId;
+        if (!start.Attach)
+            sessionId = fx.NewSessionId();
+        else if (start.AttachSessionId is { } given)
+            sessionId = given;
+        else if (PickWaitingSession(fx, folder) is { } picked)
+            sessionId = picked;
+        else
+            return 1;
         // Per-session files (SessionPaths): the agy log, and the pairing rendezvous keyed by session so two concurrent
         // clavity sessions cannot clobber one another's endpoint (both the agy side and clavity-ls get this exact path
         // via CLAVITY_AGY_ENDPOINT).
@@ -136,9 +161,16 @@ public static class StartFlow
         fx.CreateDirectory(logsDir); // idempotent + concurrency-safe (spec §11a).
         fx.PruneLogs(logsDir);
 
-        if (start.AttachSessionId is not null)
+        if (start.Attach)
         {
-            // agy already runs in another terminal (`clavity-ls agy`) and publishes to this session's endpoint.
+            // agy already runs in another terminal (`clavity-ls agy`) and publishes to this session's endpoint. One Claude
+            // per agy (ROADMAP section 65): the lock is held until Claude ends, and the OS drops it if this process dies.
+            using var taken = fx.TryTakeSession(paths);
+            if (taken is null)
+            {
+                fx.Error.WriteLine(AlreadyTaken(sessionId));
+                return 1;
+            }
             var attached = Launcher.Build(new LaunchOptions
             {
                 Folder = folder,
@@ -210,6 +242,38 @@ public static class StartFlow
         if (!fx.WaitForPairing(paths))
             return 1;
         return RunClaude(fx, plan.ClaudeLaunch);
+    }
+
+    // `start --attach` without an id (ROADMAP section 65): the ONE usable, untaken agy session `clavity-ls agy` started in
+    // this folder. None or several: say so, list them, and pair with nothing.
+    private static string? PickWaitingSession(IStartEffects fx, string folder)
+    {
+        var all = fx.FindWaitingSessions(folder);
+        var waiting = all.Where(s => !s.Taken).ToList();
+        if (waiting.Count == 1)
+        {
+            fx.Error.WriteLine($"clavity: attaching to agy session {waiting[0].SessionId}.");
+            return waiting[0].SessionId;
+        }
+        if (waiting.Count == 0 && all.Count > 0)
+        {
+            // Every agy in this folder already has a Claude. Say so first ("run agy first" alone would hide that), then
+            // what to do for ANOTHER Claude.
+            foreach (var s in all)
+                fx.Error.WriteLine(AlreadyTaken(s.SessionId));
+            fx.Error.WriteLine($"clavity: for another Claude in this folder, run `clavity-ls agy {Launcher.ShQuote(folder)}` in a new terminal first.");
+            return null;
+        }
+        if (waiting.Count == 0)
+        {
+            fx.Error.WriteLine($"clavity: no agy session is waiting in {folder}. Run `clavity-ls agy {Launcher.ShQuote(folder)}` in another terminal first.");
+            return null;
+        }
+        fx.Error.WriteLine($"clavity: {waiting.Count} agy sessions are waiting in {folder} - choose one:");
+        foreach (var s in waiting)
+            fx.Error.WriteLine($"    clavity-ls start {Launcher.ShQuote(folder)} --attach {s.SessionId}   " +
+                               $"({(s.Paired ? "paired" : "starting")}, since {s.StartedUtc:yyyy-MM-dd HH:mm:ss} UTC)");
+        return null;
     }
 
     private static string? TryMaterialize(IStartEffects fx, SessionPaths paths)

@@ -88,6 +88,35 @@ public sealed class StartFlowTests
             Calls.Add("here");
             return ScriptExit;
         }
+
+        public List<WaitingSession> Waiting { get; init; } = new();
+        public bool TakeSucceeds { get; init; } = true;
+        public readonly List<(string Path, string Folder)> FolderRecords = new();
+
+        public void WriteSessionFolder(string path, string folder)
+        {
+            Calls.Add("folder");
+            FolderRecords.Add((path, folder));
+        }
+        public IReadOnlyList<WaitingSession> FindWaitingSessions(string folder)
+        {
+            Calls.Add("find");
+            return Waiting;
+        }
+        public IDisposable? TryTakeSession(SessionPaths paths)
+        {
+            Calls.Add("take");
+            return TakeSucceeds ? new Release(Calls, "release") : null;
+        }
+        public IDisposable HoldSessionAlive(SessionPaths paths)
+        {
+            Calls.Add("alive");
+            return new Release(Calls, "alive-release");
+        }
+        private sealed class Release(List<string> calls, string name) : IDisposable
+        {
+            public void Dispose() => calls.Add(name);
+        }
     }
 
     private static string[] L(params string[] calls) => calls;
@@ -218,9 +247,9 @@ public sealed class StartFlowTests
     public void A_bad_argument_exits_2_before_anything_happens()
     {
         var fx = new Fake { IsWindows = true };
-        Assert.Equal(2, StartFlow.Start([Repo, "--attach"], fx));
+        Assert.Equal(2, StartFlow.Start([Repo, "--attach", "11111111-2222-3333-4444-55555555555"], fx));
         Assert.Empty(fx.Calls);
-        Assert.StartsWith("clavity: --attach needs the session id", fx.Err.ToString());
+        Assert.StartsWith("clavity: --attach '11111111-2222-3333-4444-55555555555' is not a session id", fx.Err.ToString());
     }
 
     // ---- start --attach ----
@@ -232,7 +261,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { IsWindows = windows, Exit = new() { ["claude"] = 3 } };
         Assert.Equal(3, StartFlow.Start([Repo, "--attach", Attached], fx));
-        Assert.Equal(L("mkdir", "prune", "claude?", "wait", "run:claude:wait"), fx.Calls);
+        Assert.Equal(L("mkdir", "prune", "take", "claude?", "wait", "run:claude:wait", "release"), fx.Calls);
         Assert.Equal(Attached, fx.Ran.Single().Environment[AgyEnvironment.SessionIdVar]);
     }
 
@@ -241,7 +270,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { ClaudeThere = false };
         Assert.Equal(1, StartFlow.Start([Repo, "--attach", Attached], fx));
-        Assert.Equal(L("mkdir", "prune", "claude?"), fx.Calls);
+        Assert.Equal(L("mkdir", "prune", "take", "claude?", "release"), fx.Calls);
     }
 
     [Fact]
@@ -249,7 +278,95 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { Pairs = false };
         Assert.Equal(1, StartFlow.Start([Repo, "--attach", Attached], fx));
-        Assert.Equal("wait", fx.Calls[^1]);
+        Assert.Equal(["wait", "release"], fx.Calls[^2..]);
+    }
+
+    private static WaitingSession W(string id, bool paired = true, bool taken = false) =>
+        new(id, paired, new DateTime(2026, 10, 3, 9, 0, 0, DateTimeKind.Utc), taken);
+
+    [Fact]
+    public void Attach_without_an_id_pairs_with_the_one_waiting_session_and_holds_its_lock_until_Claude_ends()
+    {
+        var fx = new Fake { Waiting = [W(Attached)], Exit = new() { ["claude"] = 6 } };
+        Assert.Equal(6, StartFlow.Start([Repo, "--attach"], fx));
+        Assert.Equal(L("find", "mkdir", "prune", "take", "claude?", "wait", "run:claude:wait", "release"), fx.Calls);
+        Assert.Equal(Attached, fx.Ran.Single().Environment[AgyEnvironment.SessionIdVar]);
+        Assert.Contains($"clavity: attaching to agy session {Attached}.", fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Attach_without_an_id_and_no_waiting_session_says_to_run_agy_first()
+    {
+        var fx = new Fake();
+        Assert.Equal(1, StartFlow.Start([Repo, "--attach"], fx));
+        Assert.Equal(L("find"), fx.Calls);
+        Assert.Equal($"clavity: no agy session is waiting in {Repo}. Run `clavity-ls agy {Launcher.ShQuote(Repo)}` in another terminal first.{Environment.NewLine}",
+            fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Attach_without_an_id_and_several_waiting_sessions_lists_one_command_per_session()
+    {
+        const string other = "cccccccc-0000-0000-0000-000000000003";
+        var fx = new Fake { Waiting = [W(Attached), W(other, paired: false)] };
+        Assert.Equal(1, StartFlow.Start([Repo, "--attach"], fx));
+        Assert.Equal(L("find"), fx.Calls);
+        var err = fx.Err.ToString();
+        Assert.Contains($"clavity: 2 agy sessions are waiting in {Repo} - choose one:", err);
+        Assert.Contains($"    clavity-ls start {Launcher.ShQuote(Repo)} --attach {Attached}   (paired, since 2026-10-03 09:00:00 UTC)", err);
+        Assert.Contains($"    clavity-ls start {Launcher.ShQuote(Repo)} --attach {other}   (starting, since 2026-10-03 09:00:00 UTC)", err);
+    }
+
+    [Fact]
+    public void Attach_without_an_id_whose_only_session_is_taken_says_so_instead_of_run_agy_first()
+    {
+        var fx = new Fake { Waiting = [W(Attached, taken: true)] };
+        Assert.Equal(1, StartFlow.Start([Repo, "--attach"], fx));
+        Assert.Equal(L("find"), fx.Calls);
+        var nl = Environment.NewLine;
+        Assert.Equal(
+            $"clavity: agy session {Attached} already has a Claude - another `clavity-ls start --attach` is using it.{nl}" +
+            $"clavity: for another Claude in this folder, run `clavity-ls agy {Launcher.ShQuote(Repo)}` in a new terminal first.{nl}",
+            fx.Err.ToString());
+    }
+
+    [Fact]
+    public void A_taken_session_is_not_one_of_the_choices()
+    {
+        const string free = "cccccccc-0000-0000-0000-000000000003";
+        var fx = new Fake { Waiting = [W(Attached, taken: true), W(free)] };
+        Assert.Equal(0, StartFlow.Start([Repo, "--attach"], fx));
+        Assert.Equal(free, fx.Ran.Single().Environment[AgyEnvironment.SessionIdVar]);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Attach_to_a_session_another_start_holds_is_refused_before_anything_else(bool withId)
+    {
+        var fx = new Fake { Waiting = [W(Attached)], TakeSucceeds = false };
+        Assert.Equal(1, StartFlow.Start(withId ? [Repo, "--attach", Attached] : [Repo, "--attach"], fx));
+        Assert.Equal("take", fx.Calls[^1]);
+        Assert.Contains($"clavity: agy session {Attached} already has a Claude - another `clavity-ls start --attach` is using it.",
+            fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Attach_with_an_id_does_not_search()
+    {
+        var fx = new Fake { Waiting = [W("cccccccc-0000-0000-0000-000000000003")] };
+        StartFlow.Start([Repo, "--attach", Attached], fx);
+        Assert.DoesNotContain("find", fx.Calls);
+        Assert.Equal(Attached, fx.Ran.Single().Environment[AgyEnvironment.SessionIdVar]);
+    }
+
+    [Fact]
+    public void A_plain_start_takes_no_lock_and_does_not_search()
+    {
+        var fx = new Fake { IsWindows = true };
+        StartFlow.Start([Repo], fx);
+        Assert.DoesNotContain("take", fx.Calls);
+        Assert.DoesNotContain("find", fx.Calls);
     }
 
     // ---- start, Linux / macOS ----
@@ -358,8 +475,8 @@ public sealed class StartFlowTests
         var fx = new Fake { ScriptExit = 9 };
         Assert.Equal(9, StartFlow.Agy([Repo], fx));
         // It never prunes logs (only `start` does), and the script exists before it runs.
-        Assert.Equal(L("mkdir", "onpath:agy", "doc", "script", "enter", "here"), fx.Calls);
-        Assert.Contains($"clavity-ls start {Launcher.ShQuote(Repo)} --attach 11111111-2222-3333-4444-555555555555", fx.Err.ToString());
+        Assert.Equal(L("mkdir", "onpath:agy", "doc", "script", "alive", "folder", "enter", "here", "alive-release"), fx.Calls);
+        Assert.Contains($"    clavity-ls start {Launcher.ShQuote(Repo)} --attach\n", fx.Err.ToString());
     }
 
     [Fact]
@@ -367,7 +484,17 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { InputRedirected = true };
         StartFlow.Agy([Repo], fx);
-        Assert.Equal(L("mkdir", "onpath:agy", "doc", "script", "here"), fx.Calls);
+        Assert.Equal(L("mkdir", "onpath:agy", "doc", "script", "alive", "folder", "here", "alive-release"), fx.Calls);
+    }
+
+    [Fact]
+    public void Agy_records_its_folder_so_attach_without_an_id_can_find_it()
+    {
+        var fx = new Fake { InputRedirected = true };
+        StartFlow.Agy([Repo], fx);
+        var (path, folder) = Assert.Single(fx.FolderRecords);
+        Assert.Equal(SessionPaths.For(fx.UserProfile, fx.NewSessionId()).Folder, path);
+        Assert.Equal(Repo, folder);
     }
 
     [Fact]

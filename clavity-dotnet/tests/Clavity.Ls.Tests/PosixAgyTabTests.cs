@@ -253,6 +253,7 @@ public class PosixAgyTabTests
     public void AttachHint_names_the_session_and_the_start_command()
     {
         var m = PosixAgyTab.AttachHint("/repo", "11111111-2222-3333-4444-555555555555");
-        Assert.Contains("    clavity-ls start '/repo' --attach 11111111-2222-3333-4444-555555555555\n", m);
+        Assert.Contains("    clavity-ls start '/repo' --attach\n", m);
+        Assert.Contains("  (if more than one agy is waiting in that folder: --attach 11111111-2222-3333-4444-555555555555)\n", m);
     }
 }
