@@ -34,9 +34,13 @@ public sealed class StartFlowTests
         public bool InputRedirected { get; init; }
         public int ScriptExit { get; init; }
 
-        /// <summary>The folder and its .git exist together, or neither does (capstone R7: a .git inside a missing folder is
-        /// a state no real disk produces).</summary>
-        public bool DirectoryExists(string path) => FolderExists;
+        public bool GitExists { get; init; } = true;
+        public readonly List<(string Path, string Content)> Scripts = new();
+
+        /// <summary>A .git exists only inside an existing folder (capstone R7: a .git inside a missing folder is a state no
+        /// real disk produces); <see cref="GitExists"/> false is a folder that is not a git repository.</summary>
+        public bool DirectoryExists(string path) =>
+            path.EndsWith(".git", StringComparison.Ordinal) ? FolderExists && GitExists : FolderExists;
         public void CreateDirectory(string path) => Calls.Add("mkdir");
         public void PruneLogs(string logsDir) => Calls.Add("prune");
         public string? ReadProjectId(string agyHome) => null;
@@ -57,7 +61,11 @@ public sealed class StartFlowTests
                 throw DocFails;
             return Path.Combine(dir, "agy-pairing-INSTALL.md");
         }
-        public void WriteScript(string path, string content) => Calls.Add("script");
+        public void WriteScript(string path, string content)
+        {
+            Calls.Add("script");
+            Scripts.Add((path, content));
+        }
         public bool OpenPosixTerminal(SessionPaths paths, string folder)
         {
             Calls.Add("terminal");
@@ -125,9 +133,66 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { IsWindows = true, Exit = new() { ["wt"] = 0, ["claude"] = null } };
         Assert.Equal(1, StartFlow.Start([Repo], fx));
-        var err = fx.Err.ToString();
-        Assert.Contains("clavity: cannot start claude (The system cannot find the file specified.)", err);
-        Assert.Contains("clavity: agy is still running - close its tab (or press Ctrl+C in its terminal).", err);
+        var nl = Environment.NewLine;
+        Assert.Equal(
+            Launcher.CannotStartMessage("claude", "The system cannot find the file specified.") + nl +
+            "clavity: agy is still running - close its tab (or press Ctrl+C in its terminal)." + nl, fx.Err.ToString());
+    }
+
+    // ---- what reaches Claude and the agy script (test audit round 2) ----
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Start_hands_Claude_its_arguments_the_folder_and_this_sessions_id(bool windows)
+    {
+        var fx = new Fake { IsWindows = windows };
+        Assert.Equal(0, StartFlow.Start([Repo, "--model", "opus", "-c"], fx));
+        var claude = fx.Ran.Single(c => c.FileName == "claude");
+        Assert.Equal(["--model", "opus", "-c"], claude.Arguments);
+        Assert.Equal(Repo, claude.WorkingDirectory);
+        Assert.Equal(fx.NewSessionId(), claude.Environment[AgyEnvironment.SessionIdVar]);
+        if (windows)
+            Assert.Equal(Repo, fx.Ran.Single(c => c.FileName == "wt").WorkingDirectory);
+    }
+
+    [Fact]
+    public void Attach_hands_Claude_its_arguments_and_the_folder()
+    {
+        var fx = new Fake();
+        StartFlow.Start([Repo, "--attach", Attached, "-c"], fx);
+        var claude = fx.Ran.Single();
+        Assert.Equal(["-c"], claude.Arguments);
+        Assert.Equal(Repo, claude.WorkingDirectory);
+    }
+
+    [Fact]
+    public void A_folder_that_is_not_a_git_repository_is_warned_about_and_start_goes_on()
+    {
+        var fx = new Fake { GitExists = false, Exit = new() { ["claude"] = 4 } };
+        Assert.Equal(4, StartFlow.Start([Repo], fx));
+        Assert.StartsWith($"clavity: warning — {Repo} is not a git repository.{Environment.NewLine}", fx.Err.ToString());
+        var repo = new Fake();
+        StartFlow.Start([Repo], repo);
+        Assert.DoesNotContain("not a git repository", repo.Err.ToString());   // control: a repository gets no warning
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_agy_script_claims_this_sessions_claim_file_and_records_its_exited_file(bool agyVerb)
+    {
+        var fx = new Fake();
+        if (agyVerb)
+            StartFlow.Agy([Repo], fx);
+        else
+            StartFlow.Start([Repo], fx);
+        var paths = SessionPaths.For(fx.UserProfile, fx.NewSessionId());
+        var (path, content) = fx.Scripts.Single();
+        Assert.Equal(paths.AgyScript, path);
+        Assert.Contains($"( set -C; : > {Launcher.ShQuote(paths.Claim)} ) 2>/dev/null || exit 0\n", content);
+        Assert.Contains($"clavity_exited={Launcher.ShQuote(paths.Exited)}\n", content);
+        Assert.Contains($"cd {Launcher.ShQuote(Repo)} ||", content);
     }
 
     [Theory]
@@ -275,6 +340,16 @@ public sealed class StartFlowTests
         Assert.Equal(1, StartFlow.Agy([Repo], fx));
         Assert.Equal(L("mkdir", "onpath:agy"), fx.Calls);
         Assert.Contains(StartFlow.AgyNotOnPath, fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Agy_whose_pairing_doc_cannot_be_written_runs_nothing()
+    {
+        var fx = new Fake { DocFails = new UnauthorizedAccessException("denied") };
+        Assert.Equal(1, StartFlow.Agy([Repo], fx));
+        Assert.Equal(L("mkdir", "onpath:agy", "doc"), fx.Calls);
+        Assert.Equal($"clavity: cannot write the agy pairing instructions (denied) - not launching.{Environment.NewLine}",
+            fx.Err.ToString());
     }
 
     [Fact]
