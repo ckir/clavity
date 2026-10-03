@@ -70,15 +70,18 @@ clavity@clavity`.
 On Linux, `start` opens agy as a new tab in the terminal you ran it from (mate-terminal, gnome-terminal, konsole or
 xfce4-terminal), otherwise in `xdg-terminal-exec` or `x-terminal-emulator`; set `CLAVITY_TERMINAL` to choose one. With
 no display (over ssh, say) it starts nothing and tells you to run `clavity-ls agy <folder>` instead, which runs agy in
-that terminal and prints the `clavity-ls start <folder> --attach <session-id>` to run in a second one. In a folder
+that terminal; in a second one, `clavity-ls start <folder> --attach` pairs Claude with it (add the session id agy's
+terminal prints if more than one agy is waiting in that folder). Each agy takes one Claude: a second `--attach` to the
+same agy is refused. Over `ssh -X` (X11 forwarding) DISPLAY is set, so `start` opens agy's terminal window on your own
+machine instead. In a folder
 neither has seen before, both agy and Claude Code ask you to trust it, each in its own window: answer agy's in its tab,
 or it does not pair.
 
 ## Command reference
 
-- `clavity-ls start <folder> [--attach <session-id>] [claude-args...]` — launch a visible agy tab + Claude Code in `<folder>`
+- `clavity-ls start <folder> [--attach [<session-id>]] [claude-args...]` — launch a visible agy tab + Claude Code in `<folder>`
   (per-session log; defaults to the current directory). `--attach` starts Claude only, paired with the agy that
-  `clavity-ls agy` started.
+  `clavity-ls agy` started; without an id it picks the one agy waiting in that folder.
 - `clavity-ls agy [folder]` — Linux/macOS: run a new session's agy in this terminal and print the `start --attach`
   command for another.
 - `clavity-ls --mcp` — run the MCP stdio server (`agy_look` / `agy_status` / `agy_ask`); started

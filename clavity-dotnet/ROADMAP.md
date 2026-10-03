@@ -3709,7 +3709,7 @@ nothing placed; proven non-vacuous by deleting the `|| { _note ...; exit 0; }`.
 
 ---
 
-### §65 — Pairing over ssh needs a copy/paste of a 36-character session id; and the agy-side environment variables may be retirable — ▶ **RAISED 2026-10-03 by the owner; SCHEDULED as its own sweep branch after Branch 18; not yet AGY-FIRST'd**
+### §65 — Pairing over ssh needs a copy/paste of a 36-character session id; and the agy-side environment variables may be retirable — ✅ **Fork 1 SHIPPED on Branch 19** (owner-approved scope after AGY-FIRST + AGY-NEGOTIATE, 2026-10-03); Forks 2 and 3 DEFERRED (see Decision below)
 
 **Today (Branch 18):** with no display, `clavity-ls start` stops and says to run `clavity-ls agy <folder>`, which runs agy
 in that terminal and prints `clavity-ls start <folder> --attach <session-id>` for a SECOND ssh session - a GUID to copy
@@ -3734,6 +3734,21 @@ opened in either order.
 that keeps two Claude sessions in one folder apart - keep them, and add the session registry as a FALLBACK (a plain
 `claude` in a folder with a waiting agy would then pair too). `CLAVITY_AGY_LOG` feeds the pre-endpoint cli.log
 discovery; retire only after checking the oldest supported agy.
+
+**Decision (2026-10-03, owner-approved; plan `docs/superpowers/plans/2026-10-03-sweep-branch-19-ssh-pairing.md`):**
+- **Fork 1 SHIPPED (Branch 19):** `clavity-ls start <folder> --attach` without an id pairs with the ONE agy that
+  `clavity-ls agy <folder>` is running and no Claude has taken; none / several / all taken -> exit 1 with what to type
+  next. "Taken" is an exclusive lock on the session's `.lock` file held by the attaching `start` until Claude ends;
+  "alive" is a second lock, `.alive`, held by `clavity-ls agy` for agy's whole run, so a session left by a killed
+  terminal or a reboot never counts (both measured on Windows 11 and Ubuntu: a held lock blocks another process and is
+  released on `kill -9`). Every `--attach`, with or without an id, takes the lock: one Claude per agy. The pairing code
+  was NOT built.
+- **Fork 2 DEFERRED** (retire the agy-side `CLAVITY_AGY_ENDPOINT`): the variable already survives a Language Server
+  restart (it lives in agy's own environment), and the Windows `$env:` baking stays anyway for `ANTIGRAVITY_PROJECT_ID`,
+  so removing it buys little.
+- **Fork 3 DEFERRED** (a plain `claude` pairing automatically): `clavity-ls --mcp` starts with every `claude` in the
+  folder - even `claude mcp list` - so it cannot tell an intent to pair from browsing; taking the lock at startup would
+  take an agy meant for `start --attach`, taking it at the first call is a race. agy conceded this in AGY-NEGOTIATE.
 
 ---
 
