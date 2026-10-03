@@ -19,6 +19,9 @@ public class SessionPathsTests
         Assert.Equal(Path.Combine(home, ".clavity", $"agy-session.{Sid}.sh"), p.AgyScript);
         Assert.Equal(Path.Combine(home, ".clavity", $"agy-session.{Sid}.claim"), p.Claim);
         Assert.Equal(Path.Combine(home, ".clavity", $"agy-session.{Sid}.exited"), p.Exited);
+        Assert.Equal(Path.Combine(home, ".clavity", $"agy-session.{Sid}.folder"), p.Folder);
+        Assert.Equal(Path.Combine(home, ".clavity", $"agy-session.{Sid}.lock"), p.Lock);
+        Assert.Equal(Path.Combine(home, ".clavity", $"agy-session.{Sid}.alive"), p.Alive);
     }
 
     [Theory]

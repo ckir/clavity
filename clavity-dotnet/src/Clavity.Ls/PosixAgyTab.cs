@@ -202,7 +202,8 @@ public static class PosixAgyTab
     public static string AttachHint(string folder, string sessionId) =>
         $"clavity: this terminal runs agy for session {sessionId}.\n" +
         "  In ANOTHER terminal, start Claude paired with it:\n" +
-        $"    clavity-ls start {Launcher.ShQuote(folder)} --attach {sessionId}\n";
+        $"    clavity-ls start {Launcher.ShQuote(folder)} --attach\n" +
+        $"  (if more than one agy is waiting in that folder: --attach {sessionId})\n";
 
     public static PosixAgyTabDeps RealDeps()
     {

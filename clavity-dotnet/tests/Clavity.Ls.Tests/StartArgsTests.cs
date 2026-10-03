@@ -30,6 +30,7 @@ public class StartArgsTests
     {
         var a = StartArgs.Parse(new[] { Repo, "--attach", Sid, "--model", "opus" }, Cwd);
         Assert.Equal(Repo, a.Folder);
+        Assert.True(a.Attach);
         Assert.Equal(Sid, a.AttachSessionId);
         Assert.Equal(new[] { "--model", "opus" }, a.ClaudeArgs);
     }
@@ -39,6 +40,7 @@ public class StartArgsTests
     {
         var a = StartArgs.Parse(new[] { "--attach", Sid }, Cwd);
         Assert.Equal(Cwd, a.Folder);
+        Assert.True(a.Attach);
         Assert.Equal(Sid, a.AttachSessionId);
     }
 
@@ -51,16 +53,48 @@ public class StartArgsTests
     }
 
     [Fact]
-    public void Attach_with_no_id_is_refused_naming_the_flag()
+    public void Attach_with_nothing_after_it_has_no_id()
     {
-        var ex = Assert.Throws<ArgumentException>(() => StartArgs.Parse(new[] { Repo, "--attach" }, Cwd));
-        Assert.Contains("--attach", ex.Message);
+        var a = StartArgs.Parse(new[] { Repo, "--attach" }, Cwd);
+        Assert.True(a.Attach);
+        Assert.Null(a.AttachSessionId);
+        Assert.Empty(a.ClaudeArgs);
+    }
+
+    [Fact]
+    public void Attach_followed_by_a_dash_argument_has_no_id_and_the_argument_reaches_Claude()
+    {
+        var a = StartArgs.Parse(new[] { Repo, "--attach", "--model", "opus" }, Cwd);
+        Assert.True(a.Attach);
+        Assert.Null(a.AttachSessionId);
+        Assert.Equal(new[] { "--model", "opus" }, a.ClaudeArgs);
+    }
+
+    [Fact]
+    public void Without_attach_Attach_is_false()
+        => Assert.False(StartArgs.Parse(new[] { Repo }, Cwd).Attach);
+
+    [Fact]
+    public void Attach_followed_by_a_positional_prompt_has_no_id_and_the_prompt_reaches_Claude()
+    {
+        var a = StartArgs.Parse(new[] { Repo, "--attach", "fix the tests" }, Cwd);
+        Assert.True(a.Attach);
+        Assert.Null(a.AttachSessionId);
+        Assert.Equal(new[] { "fix the tests" }, a.ClaudeArgs);
+    }
+
+    [Fact]
+    public void A_path_after_attach_is_not_an_id_and_never_becomes_a_file_name()
+    {
+        var a = StartArgs.Parse(new[] { Repo, "--attach", "../../etc" }, Cwd);
+        Assert.Null(a.AttachSessionId);
+        Assert.Equal(new[] { "../../etc" }, a.ClaudeArgs);
     }
 
     [Theory]
-    [InlineData("../../etc")]
-    [InlineData("11111111222233334444555555555555")]
-    [InlineData("--model")]
+    [InlineData("11111111222233334444555555555555")]      // GUID "N" form
+    [InlineData("11111111-2222-3333-4444-55555555555")]   // one digit short
+    [InlineData("deadbeef")]                              // 8 hex: shaped like a truncated id
     public void Attach_with_a_malformed_id_is_refused_quoting_it(string bad)
     {
         var ex = Assert.Throws<ArgumentException>(() => StartArgs.Parse(new[] { Repo, "--attach", bad }, Cwd));
