@@ -3752,6 +3752,31 @@ discovery; retire only after checking the oldest supported agy.
 
 ---
 
+### §66 — `agy_ask` reports an agy quota stop as a truncated reply, so the driver cannot tell it from a dropped one — ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-03, Branch 18 test-audit round 2), not yet planned**
+
+**Observed once, live (cascade `f2cdbc7a`, error id `-458`).** agy stopped with "Individual quota reached ... Resets
+in Nm" - a step of kind 17 with no reply text. `agy_ask` returned `[13b] TRUNCATED REPLY` with `Answer` null and
+`PeerStillBusy` false. The quota message was visible only in agy's terminal tab. A quota stop needs a different
+response from a dropped reply (wait for the reset, not resend), and nothing in the tool result tells them apart.
+
+**Fix direction (unmeasured):** in `Clavity.Ls`'s reply assembly, recognise a terminal error step (kind 17) and
+surface its message - and the reset time when present - as a distinct status instead of `[13b]`. Needs a recorded
+kind-17 step as a fixture first; the shape above is from one observation, not from the proto.
+
+---
+
+### §67 — `lefthook run pre-commit --all-files` is not read-only: its ruff job reformats and stages `telemetry.py` — ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-03, Branch 19 Task 7 gates), not yet planned**
+
+**Measured 2026-10-04:** `ruff format --check clavity-classic/agy-mcp-bridge/telemetry.py` -> "Would reformat", exit
+1. The `pre-commit` `ruff` job (`lefthook.yml:71-82`) runs `ruff check --fix` + `ruff format` with
+`stage_fixed: true`, so a whole-tree gate run reformats that file and STAGES the result - an unrelated change left
+behind by what reads as a check. Restored at the time with `git restore --staged --worktree`.
+
+**Fix direction:** ruff-format `telemetry.py` once on `main` (one commit, no logic change), so the gate is a no-op
+on a clean tree. Optionally add a `ruff format --check` over the bridge to CI so the drift cannot recur.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
