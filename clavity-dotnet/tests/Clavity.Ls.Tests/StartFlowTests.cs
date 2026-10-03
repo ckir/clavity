@@ -210,7 +210,7 @@ public sealed class StartFlowTests
         var fx = new Fake { IsWindows = windows, FolderExists = false };
         Assert.Equal(2, StartFlow.Start(attach ? [Repo, "--attach", Attached] : [Repo], fx));
         Assert.Empty(fx.Calls);
-        Assert.Equal($"clavity: {Repo} does not exist.{Environment.NewLine}", fx.Err.ToString());
+        Assert.Equal($"clavity: {Repo} does not exist or is not a folder.{Environment.NewLine}", fx.Err.ToString());
     }
 
     [Fact]
@@ -265,6 +265,7 @@ public sealed class StartFlowTests
         var fx = new Fake { FolderExists = false };
         Assert.Equal(2, StartFlow.Agy([Repo], fx));
         Assert.Empty(fx.Calls);
+        Assert.Equal($"clavity: {Repo} does not exist or is not a folder.{Environment.NewLine}", fx.Err.ToString());
     }
 
     [Fact]

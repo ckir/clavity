@@ -45,6 +45,10 @@ public static class StartFlow
     public const string AgyNotOnPath =
         "clavity: agy is not on PATH - install Antigravity's agy CLI, or add its directory to PATH, then retry.";
 
+    /// <summary>Both verbs' refusal of a folder argument that is not a directory - missing, or a FILE (capstone R8: "does
+    /// not exist" was false for a file).</summary>
+    public static string MissingFolder(string folder) => $"clavity: {folder} does not exist or is not a folder.";
+
     /// <summary>`clavity-ls agy [folder]` (Linux/macOS) - run a new session's agy in THIS terminal, for when `start` cannot
     /// open one (no display, or no terminal it knows). It prints the `start --attach` command for a second terminal.
     /// <paramref name="args"/> are the arguments after the verb.</summary>
@@ -58,7 +62,7 @@ public static class StartFlow
         var folder = args.Length > 0 ? Path.GetFullPath(args[0], fx.CurrentDirectory) : fx.CurrentDirectory;
         if (!fx.DirectoryExists(folder))
         {
-            fx.Error.WriteLine($"clavity: {folder} does not exist.");
+            fx.Error.WriteLine(MissingFolder(folder));
             return 2;
         }
         var home = fx.UserProfile;
@@ -115,7 +119,7 @@ public static class StartFlow
         // folder would also look like success.
         if (!fx.DirectoryExists(folder))
         {
-            fx.Error.WriteLine($"clavity: {folder} does not exist.");
+            fx.Error.WriteLine(MissingFolder(folder));
             return 2;
         }
 
