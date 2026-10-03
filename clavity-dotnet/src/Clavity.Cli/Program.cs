@@ -175,7 +175,7 @@ if (args.Length > 0 && args[0] == "start")
             return 1;
         if (!WaitForPairing(paths))
             return 1;
-        return Spawn(attached.ClaudeLaunch, wait: true) ? 0 : 1;
+        return RunClaude(attached.ClaudeLaunch);
     }
 
     // The pairing doc is embedded in this binary and written out on every start (PairingDoc). Without it agy gets
@@ -218,7 +218,7 @@ if (args.Length > 0 && args[0] == "start")
             return 1;
         if (!WaitForPairing(paths))          // Claude starts only once agy has published its endpoint.
             return 1;
-        return Spawn(plan.ClaudeLaunch, wait: true) ? 0 : 1; // Claude runs in the foreground.
+        return RunClaude(plan.ClaudeLaunch);  // Claude runs in the foreground.
     }
 
     // Linux / macOS (ROADMAP sections 60 + 62): there is no `wt`. Open agy from a generated POSIX script in a terminal
@@ -231,16 +231,14 @@ if (args.Length > 0 && args[0] == "start")
         return 2;
     }
     // Check BOTH programs before opening anything: a missing `claude` found only after agy's tab is up would leave
-    // an orphaned agy behind an unhandled exception.
-    var pathVar = Environment.GetEnvironmentVariable("PATH");
-    foreach (var (exe, what) in new[] { ("agy", "Antigravity's agy CLI"), ("claude", "Claude Code") })
+    // an orphaned agy behind.
+    if (PosixAgyTab.FindOnPath("agy", Environment.GetEnvironmentVariable("PATH")) is null)
     {
-        if (PosixAgyTab.FindOnPath(exe, pathVar) is null)
-        {
-            Console.Error.WriteLine($"clavity: {exe} is not on PATH - install {what}, or add its directory to PATH, then retry.");
-            return 1;
-        }
+        Console.Error.WriteLine("clavity: agy is not on PATH - install Antigravity's agy CLI, or add its directory to PATH, then retry.");
+        return 1;
     }
+    if (!ClaudeIsStartable())
+        return 1;
     PosixAgyTab.WriteScript(paths.AgyScript, Launcher.BuildPosixScript(options, paths.Claim, paths.Exited));
     if (PosixAgyTab.TryOpen(paths, folder, PosixAgyTab.RealDeps(), PosixAgyTab.ReadyTimeout) is null)
     {
@@ -249,7 +247,7 @@ if (args.Length > 0 && args[0] == "start")
     }
     if (!WaitForPairing(paths))
         return 1;
-    return Spawn(plan.ClaudeLaunch, wait: true) ? 0 : 1;
+    return RunClaude(plan.ClaudeLaunch);
 
     // Owner request 2026-10-03: the user sees agy - and any prompt it waits on - before Claude takes the terminal.
     // False when agy ended before it paired (its script recorded that); the reason was printed.
@@ -260,15 +258,31 @@ if (args.Length > 0 && args[0] == "start")
             () => clock.ElapsedMilliseconds, t => Thread.Sleep(t)) is not null;
     }
 
-    // Mirrors what Spawn can start: with UseShellExecute=false a bare name resolves to NAME.exe on Windows and never to
-    // a .cmd shim (measured on .NET 10: `claude` with only claude.cmd on PATH -> Win32Exception, native error 2).
+    // Mirrors what Spawn can start. Windows: with UseShellExecute=false a bare name resolves to NAME.exe and never to a
+    // .cmd shim (measured on .NET 10: `claude` with only claude.cmd on PATH -> Win32Exception, native error 2), searched
+    // the way CreateProcess searches - this program's directory, the current directory, the system and Windows
+    // directories, then PATH (capstone R4). Elsewhere: PATH, as execvp does.
     static bool ClaudeIsStartable()
     {
         var exe = OperatingSystem.IsWindows() ? "claude.exe" : "claude";
-        if (PosixAgyTab.FindOnPath(exe, Environment.GetEnvironmentVariable("PATH")) is not null)
+        var path = Environment.GetEnvironmentVariable("PATH");
+        var search = OperatingSystem.IsWindows()
+            ? string.Join(Path.PathSeparator, AppContext.BaseDirectory, Environment.CurrentDirectory,
+                Environment.SystemDirectory, Environment.GetFolderPath(Environment.SpecialFolder.Windows), path ?? "")
+            : path;
+        if (PosixAgyTab.FindOnPath(exe, search) is not null)
             return true;
         Console.Error.WriteLine(Launcher.CannotStartMessage("claude", $"{exe} is not on PATH"));
         return false;
+    }
+
+    // Claude, after agy is already up: if it cannot start after all, say that agy is still running.
+    static int RunClaude(LaunchCommand claude)
+    {
+        if (Spawn(claude, wait: true))
+            return 0;
+        Console.Error.WriteLine("clavity: agy is still running - close its tab (or press Ctrl+C in its terminal).");
+        return 1;
     }
 
     // False, with the reason printed, when the program cannot be started at all (not installed / not on PATH).
