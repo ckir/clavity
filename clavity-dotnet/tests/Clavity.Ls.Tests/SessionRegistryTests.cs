@@ -105,6 +105,23 @@ public sealed class SessionRegistryTests : IDisposable
     }
 
     [Fact]
+    public void Sessions_started_at_the_same_moment_come_back_in_session_id_order()
+    {
+        var t = new DateTime(2026, 10, 3, 10, 0, 0, DateTimeKind.Utc);
+        Record(B, _repo, t);
+        Record(A, _repo, t);
+        Assert.Equal([A, B], Find().Select(s => s.SessionId));
+    }
+
+    [Fact]
+    public void An_empty_folder_record_is_skipped_even_when_every_folder_is_listed()
+    {
+        Record(A, "  ");            // a record that was created but never written (a crash in between)
+        Record(B, _repo);
+        Assert.Equal(B, Assert.Single(SessionRegistry.Find(_home, null, new Ports(), AliveOnly)).SessionId);
+    }
+
+    [Fact]
     public void Without_a_folder_every_folders_sessions_come_back_each_with_its_recorded_folder()
     {
         var elsewhere = Path.Combine(_home, "other");

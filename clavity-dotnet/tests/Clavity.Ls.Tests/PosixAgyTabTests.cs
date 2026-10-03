@@ -243,17 +243,23 @@ public class PosixAgyTabTests
     [Fact]
     public void FallbackMessage_says_Claude_did_not_start_and_names_the_exact_command()
     {
-        var m = PosixAgyTab.FallbackMessage("/home/o'brien/repo");
-        Assert.Contains("Claude was NOT started", m);
-        Assert.Contains("    clavity-ls agy '/home/o'\\''brien/repo'\n", m);
-        Assert.Contains("CLAVITY_TERMINAL", m);
+        Assert.Equal(
+            "clavity: could not open a terminal for agy - there is no display (DISPLAY / WAYLAND_DISPLAY unset), or no\n" +
+            "  terminal started it within 5 s. Claude was NOT started. Run agy yourself, in a terminal you can see:\n" +
+            "    clavity-ls agy '/home/o'\\''brien/repo'\n" +
+            "  It prints the command that starts Claude paired with that agy. To choose the terminal instead, set\n" +
+            "  CLAVITY_TERMINAL to a command that runs its last argument, for example \"gnome-terminal --tab --\".\n",
+            PosixAgyTab.FallbackMessage("/home/o'brien/repo"));
     }
 
     [Fact]
     public void AttachHint_names_the_session_and_the_start_command()
     {
-        var m = PosixAgyTab.AttachHint("/repo", "11111111-2222-3333-4444-555555555555");
-        Assert.Contains("    clavity-ls start '/repo' --attach\n", m);
-        Assert.Contains("  (if more than one agy is waiting in that folder: --attach 11111111-2222-3333-4444-555555555555)\n", m);
+        Assert.Equal(
+            "clavity: this terminal runs agy for session 11111111-2222-3333-4444-555555555555.\n" +
+            "  In ANOTHER terminal, start Claude paired with it:\n" +
+            "    clavity-ls start '/repo' --attach\n" +
+            "  (if more than one agy is waiting in that folder: --attach 11111111-2222-3333-4444-555555555555)\n",
+            PosixAgyTab.AttachHint("/repo", "11111111-2222-3333-4444-555555555555"));
     }
 }
