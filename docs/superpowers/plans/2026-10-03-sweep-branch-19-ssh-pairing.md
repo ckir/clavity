@@ -34,7 +34,7 @@ port number was reused would read as alive). The OS releases `.alive` exactly wh
 - `start <folder> --attach` (no id): exactly one usable untaken session in `<folder>` -> prints
   `clavity: attaching to agy session <id>.` and pairs with it; none at all -> exit 1, says to run `clavity-ls agy
   <folder>` first; none free but some taken -> exit 1, one "already has a Claude" line per taken session (panel round 1:
-  "run agy first" would send the user to start a redundant agy); several free -> exit 1, lists one
+  "run agy first" alone would hide that), then the `clavity-ls agy <folder>` line for ANOTHER Claude (panel round 2); several free -> exit 1, lists one
   `clavity-ls start <folder> --attach <id>` line per FREE session.
 - "Usable": its `.folder` record names this folder, its `.alive` lock is HELD (the `clavity-ls agy` running it is alive),
   its own `.lock` is free, it has no `.exited` file, and either it has not published an
