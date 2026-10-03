@@ -22,12 +22,20 @@ first call is a race).
 **Measured precondition (2026-10-03, probe `.clavity/scratch/s65-lock/`):** on Windows 11 and on Ubuntu (VM
 `192.168.1.8`), a second process's `FileShare.None` open of a held file throws `IOException` ("being used by another
 process"); after the holder is killed with `kill -9`, the open succeeds. Controls: with no holder, the open succeeds.
+A second exclusive open inside the SAME process also throws `IOException` on both platforms (probe mode `twice`), so the
+in-process unit tests below guard on Linux as well as on Windows CI.
+
+**Liveness (panel round 1 fold):** a session counts only while the `clavity-ls agy` process that runs it holds a second
+exclusive lock, `.alive`, for agy's whole run. A terminal killed with `kill -9`, or a reboot, skips the exit trap and
+leaves no `.exited` file - without `.alive` such a session would read as "starting" forever (and a dead paired one whose
+port number was reused would read as alive). The OS releases `.alive` exactly when that process dies.
 
 **Behaviour after this branch:**
 - `start <folder> --attach` (no id): exactly one usable untaken session in `<folder>` -> prints
   `clavity: attaching to agy session <id>.` and pairs with it; none -> exit 1, says to run `clavity-ls agy <folder>`
   first; several -> exit 1, lists one `clavity-ls start <folder> --attach <id>` line per session.
-- "Usable": its `.folder` record names this folder, it has no `.exited` file, and either it has not published an
+- "Usable": its `.folder` record names this folder, its `.alive` lock is HELD (the `clavity-ls agy` running it is alive),
+  its own `.lock` is free, it has no `.exited` file, and either it has not published an
   endpoint yet (agy starting, or waiting on a trust prompt) or its published port listens. A published endpoint whose
   port does NOT listen means that agy is gone: skipped.
 - `start <folder> --attach <id>` and the no-id form both take the session's lock before anything else; a held lock ->
@@ -76,6 +84,7 @@ pass line: `Passed!  - Failed:     0, Passed:   N`); integration: `dotnet test t
 ```csharp
         Assert.Equal(Path.Combine(home, ".clavity", $"agy-session.{Sid}.folder"), p.Folder);
         Assert.Equal(Path.Combine(home, ".clavity", $"agy-session.{Sid}.lock"), p.Lock);
+        Assert.Equal(Path.Combine(home, ".clavity", $"agy-session.{Sid}.alive"), p.Alive);
 ```
 
 - [ ] **Step 2: Run it - expect a COMPILE failure** (`'SessionPaths' does not contain a definition for 'Folder'`):
@@ -85,7 +94,7 @@ pass line: `Passed!  - Failed:     0, Passed:   N`); integration: `dotnet test t
 
 ```csharp
 public sealed record SessionPaths(string SessionId, string AgyLog, string Endpoint, string AgyScript, string Claim, string Exited,
-    string Folder, string Lock)
+    string Folder, string Lock, string Alive)
 {
     public static SessionPaths For(string userProfileDir, string sessionId)
     {
@@ -103,7 +112,10 @@ public sealed record SessionPaths(string SessionId, string AgyLog, string Endpoi
             // (ROADMAP section 65).
             Folder: Path.Combine(clavity, $"agy-session.{sessionId}.folder"),
             // Held exclusively by the `start --attach` that paired with this session, for as long as it runs (SessionLock).
-            Lock: Path.Combine(clavity, $"agy-session.{sessionId}.lock"));
+            Lock: Path.Combine(clavity, $"agy-session.{sessionId}.lock"),
+            // Held exclusively by the `clavity-ls agy` that runs this session, for agy's whole run: a session counts as
+            // waiting only while it is held, so a terminal killed -9 (no exit trap) or a reboot leaves no stale session.
+            Alive: Path.Combine(clavity, $"agy-session.{sessionId}.alive"));
     }
 ```
 
@@ -268,8 +280,19 @@ public sealed class SessionRegistryTests : IDisposable
     private static void Publish(SessionPaths p, int port) =>
         File.WriteAllText(p.Endpoint, $$"""{"csrf":"t","addr":"127.0.0.1:{{port}}","published":"x"}""");
 
-    private IReadOnlyList<WaitingSession> Find(IListeningPorts? ports = null, Func<string, bool>? taken = null) =>
-        SessionRegistry.Find(_home, _repo, ports ?? new Ports(), taken ?? (_ => false));
+    // Default: every session's `clavity-ls agy` is alive (its .alive held) and no `start` holds its .lock.
+    private static bool AliveOnly(string path) => path.EndsWith(".alive", StringComparison.Ordinal);
+
+    private IReadOnlyList<WaitingSession> Find(IListeningPorts? ports = null, Func<string, bool>? held = null) =>
+        SessionRegistry.Find(_home, _repo, ports ?? new Ports(), held ?? AliveOnly);
+
+    [Fact]
+    public void A_session_whose_agy_process_is_gone_is_skipped_even_without_an_exited_file()
+    {
+        Record(A, _repo);                                       // killed -9 or rebooted: no .exited, .alive released
+        Assert.Empty(Find(held: _ => false));
+        Assert.Single(Find());                                  // control: the same record while .alive is held
+    }
 
     [Fact]
     public void A_session_that_has_not_published_yet_is_waiting_unpaired()
@@ -295,7 +318,7 @@ public sealed class SessionRegistryTests : IDisposable
         File.WriteAllText(ended.Exited, "0\n");
         var held = Record(B, _repo);
         Record("cccccccc-0000-0000-0000-000000000003", Path.Combine(_home, "other"));
-        Assert.Empty(Find(taken: path => path == held.Lock));
+        Assert.Empty(Find(held: path => AliveOnly(path) || path == held.Lock));
         // control: B is found when its lock is free
         Assert.Equal(B, Assert.Single(Find()).SessionId);
     }
@@ -318,7 +341,7 @@ public sealed class SessionRegistryTests : IDisposable
 
     [Fact]
     public void No_clavity_directory_means_no_sessions()
-        => Assert.Empty(SessionRegistry.Find(Path.Combine(_home, "nobody"), _repo, new Ports(), _ => false));
+        => Assert.Empty(SessionRegistry.Find(Path.Combine(_home, "nobody"), _repo, new Ports(), AliveOnly));
 }
 ```
 
@@ -335,15 +358,16 @@ namespace Clavity.Ls;
 public sealed record WaitingSession(string SessionId, bool Paired, DateTime StartedUtc);
 
 /// <summary>Finds the agy sessions in a folder that `start --attach` without an id may pair with (ROADMAP section 65). A
-/// session counts when its `.folder` record names the folder, it has no `.exited` file, its published endpoint (if any)
-/// still listens, and its `.lock` is not held by another `start`.</summary>
+/// session counts when its `.folder` record names the folder, the `clavity-ls agy` running it still holds its `.alive`
+/// lock, it has no `.exited` file, its published endpoint (if any) still listens, and its `.lock` is not held by another
+/// `start`. <paramref name="isHeld"/> answers "does some process hold this lock file?" (<see cref="SessionLock.IsTaken"/>).</summary>
 public static class SessionRegistry
 {
     private const string Prefix = "agy-session.";
     private const string Suffix = ".folder";
 
     public static IReadOnlyList<WaitingSession> Find(string userProfileDir, string folder, IListeningPorts listening,
-        Func<string, bool> isTaken)
+        Func<string, bool> isHeld)
     {
         var dir = Path.Combine(userProfileDir, ".clavity");
         if (!Directory.Exists(dir))
@@ -368,6 +392,8 @@ public static class SessionRegistry
             if (recorded.Length == 0 || Normalize(recorded) != want)
                 continue;
             var paths = SessionPaths.For(userProfileDir, id);
+            if (!isHeld(paths.Alive))
+                continue;   // its `clavity-ls agy` is gone - killed, or the machine rebooted - even if no .exited exists
             if (File.Exists(paths.Exited))
                 continue;
             var paired = false;
@@ -377,7 +403,7 @@ public static class SessionRegistry
                     continue;   // published, but nothing listens: that agy is gone
                 paired = true;
             }
-            if (isTaken(paths.Lock))
+            if (isHeld(paths.Lock))
                 continue;
             found.Add(new WaitingSession(id, paired, File.GetLastWriteTimeUtc(record)));
         }
@@ -389,9 +415,9 @@ public static class SessionRegistry
 }
 ```
 
-- [ ] **Step 4: Run** the same filter. Expected: `Passed!`, Total 6.
-- [ ] **Step 5: Logic mutants (script-applied, one match asserted, non-empty diff, restore):** (a) drop the `Exited`
-  skip -> row 3 red; (b) drop the `isTaken` skip -> row 3 red; (c) `continue` -> fall through when the port does not
+- [ ] **Step 4: Run** the same filter. Expected: `Passed!`, Total 7.
+- [ ] **Step 5: Logic mutants (script-applied, one match asserted, non-empty diff, restore):** (0) drop the `.alive`
+  skip -> `A_session_whose_agy_process_is_gone...` red; (a) drop the `Exited` skip -> row 3 red; (b) drop the `isTaken` skip -> row 3 red; (c) `continue` -> fall through when the port does not
   listen -> row 2 red; (d) drop `TrimEndingDirectorySeparator` -> row 4 red; (e) drop the `OrderBy` -> row 5 red (if
   enumeration order happens to match, also swap the two record times in a second run to confirm).
 - [ ] **Step 6: Commit** `git add clavity-dotnet/src/Clavity.Ls/SessionRegistry.cs clavity-dotnet/tests/Clavity.Ls.Tests/SessionRegistryTests.cs`
@@ -513,11 +539,16 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
         public IDisposable? TryTakeSession(SessionPaths paths)
         {
             Calls.Add("take");
-            return TakeSucceeds ? new Release(Calls) : null;
+            return TakeSucceeds ? new Release(Calls, "release") : null;
         }
-        private sealed class Release(List<string> calls) : IDisposable
+        public IDisposable HoldSessionAlive(SessionPaths paths)
         {
-            public void Dispose() => calls.Add("release");
+            Calls.Add("alive");
+            return new Release(Calls, "alive-release");
+        }
+        private sealed class Release(List<string> calls, string name) : IDisposable
+        {
+            public void Dispose() => calls.Add(name);
         }
 ```
 
@@ -530,9 +561,13 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
   - `Attach_whose_agy_ends_before_pairing_never_starts_Claude`: replace `Assert.Equal("wait", fx.Calls[^1]);` with
     `Assert.Equal(["wait", "release"], fx.Calls[^2..]);`.
   - `Agy_prints_the_attach_command_waits_for_Enter_then_returns_the_scripts_code`: the `L(...)` becomes
-    `L("mkdir", "onpath:agy", "doc", "script", "folder", "enter", "here")`, and its `--attach 1111...` assertion becomes
+    `L("mkdir", "onpath:agy", "doc", "script", "alive", "folder", "enter", "here", "alive-release")`, and its
+    `--attach 1111...` assertion becomes
     `Assert.Contains($"    clavity-ls start {Launcher.ShQuote(Repo)} --attach\n", fx.Err.ToString());`.
-  - `Agy_with_redirected_input_does_not_wait_for_Enter`: `L("mkdir", "onpath:agy", "doc", "script", "folder", "here")`.
+  - `Agy_with_redirected_input_does_not_wait_for_Enter`:
+    `L("mkdir", "onpath:agy", "doc", "script", "alive", "folder", "here", "alive-release")`.
+  - (`.alive` is taken BEFORE the `.folder` record is written, so a record never exists without a live holder, and it
+    is released only after agy has ended.)
 
 - [ ] **Step 3: Add the new rows** (in the `// ---- start --attach ----` section):
 
@@ -630,13 +665,21 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
     IReadOnlyList<WaitingSession> FindWaitingSessions(string folder);
     /// <summary><see cref="SessionLock.TryTake"/> on this session's lock: null when another `start` holds it.</summary>
     IDisposable? TryTakeSession(SessionPaths paths);
+    /// <summary>Holds this session's `.alive` lock for as long as `clavity-ls agy` runs it (<see cref="SessionLock.TryTake"/>;
+    /// the id is fresh, so nobody else can hold it).</summary>
+    IDisposable HoldSessionAlive(SessionPaths paths);
 ```
 
 - [ ] **Step 6: Implement - `Agy`.** After the `fx.WriteScript(...)` statement (ends line 88), add:
 
 ```csharp
+        // `start --attach` without an id finds this session through its folder record, and counts it only while this
+        // process holds .alive - taken FIRST, so a record never exists without a live holder (ROADMAP section 65).
+        using var alive = fx.HoldSessionAlive(paths);
         fx.WriteSessionFolder(paths.Folder, folder);
 ```
+
+  (`using var` keeps it held through `fx.RunScriptHere(...)` at the end of the method.)
 
 - [ ] **Step 7: Implement - `Start`.** Replace lines 130-155 (from `var sessionId = ...` to the end of the
   `if (start.AttachSessionId is not null) { ... }` block) with:
@@ -739,6 +782,9 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
         SessionRegistry.Find(UserProfile, folder, new SystemListeningPorts(), SessionLock.IsTaken);
 
     public IDisposable? TryTakeSession(SessionPaths paths) => SessionLock.TryTake(paths.Lock);
+
+    public IDisposable HoldSessionAlive(SessionPaths paths) =>
+        SessionLock.TryTake(paths.Alive) ?? throw new IOException($"cannot hold {paths.Alive}: another process holds it.");
 ```
 
 - [ ] **Step 10: Run** `dotnet test tests/Clavity.Ls.Tests` - expected `Passed!`, Failed 0.
@@ -747,7 +793,8 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
   taken` (lock never released) -> the no-id row (`release` missing); (c) skip the `taken is null` check -> the
   held-lock theory; (d) `if (!start.Attach)` -> `if (start.AttachSessionId is null)` -> the no-id row; (e) drop
   `fx.WriteSessionFolder(...)` -> `Agy_records_its_folder...`; (f) the folder record written with `fx.CurrentDirectory`
-  instead of `folder` -> the same row.
+  instead of `folder` -> the same row; (g) drop `using` from `using var alive` -> the two `Agy_...` order rows
+  (`alive-release` missing); (h) move `HoldSessionAlive` after `WriteSessionFolder` -> the same rows.
 - [ ] **Step 12: Commit** `git add` the six files; `git commit -m "feat(start): --attach without an id pairs with the one waiting agy; one Claude per agy (section 65)"`
 
 ### Task 6: README and ROADMAP
@@ -779,5 +826,8 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
   Measure, each with its exit code: (1) `clavity-ls agy ws </dev/null &` then `clavity-ls start ws --attach` -> pairs
   with that session, prints its id, Claude sees it; (2) a second `start ws --attach` while (1)'s Claude runs ->
   "already has a Claude", exit 1; (3) after agy is stopped (`.exited` written) -> "no agy session is waiting", exit 1;
-  (4) two `clavity-ls agy ws` -> the list of two, exit 1. Write the script as a FILE (Write tool), never a here-doc.
+  (4) two `clavity-ls agy ws` -> the list of two, exit 1; (5) `kill -9` the `clavity-ls agy` process (its stand-in
+  agy may live on) -> "no agy session is waiting", exit 1 - the `.alive` lock went with it. First check
+  `command -v python3` on the VM; if absent, serve the port with `nc -l 47123` (or whatever listener exists - name it in
+  the run report). Write the script as a FILE (Write tool), never a here-doc.
 - [ ] **Step 3:** Update the execution index (memory) with every commit sha.
