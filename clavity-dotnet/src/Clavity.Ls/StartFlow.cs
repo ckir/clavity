@@ -142,6 +142,22 @@ public static class StartFlow
             return 2;
         }
 
+        // An explicit id may name an agy in ANOTHER folder (or this one by another path). Claude in one folder and agy in
+        // another is a split brain, so Claude starts where agy runs (capstone R1, AGY-FIRST, owner-approved) - decided
+        // here, before the git-repository warning, so the warning checks the folder Claude really uses (capstone R2).
+        if (start.AttachSessionId is { } givenId
+            && fx.ReadSessionFolder(SessionPaths.For(fx.UserProfile, givenId)) is { } agyFolder
+            && !SessionRegistry.SameFolder(agyFolder, folder))
+        {
+            if (!fx.DirectoryExists(agyFolder))
+            {
+                fx.Error.WriteLine(MissingFolder(agyFolder));
+                return 2;
+            }
+            fx.Error.WriteLine($"clavity: agy session {givenId} runs in {agyFolder} - starting Claude there, not in {folder}.");
+            folder = agyFolder;
+        }
+
         if (!fx.DirectoryExists(Path.Combine(folder, ".git")))
             fx.Error.WriteLine($"clavity: warning — {folder} is not a git repository.");
 
@@ -172,19 +188,6 @@ public static class StartFlow
             {
                 fx.Error.WriteLine(AlreadyTaken(sessionId));
                 return 1;
-            }
-            // An explicit id may name an agy in ANOTHER folder (or this one by another path). Claude in one folder and agy
-            // in another is a split brain, so Claude starts where agy runs (capstone R1, AGY-FIRST, owner-approved).
-            if (start.AttachSessionId is not null && fx.ReadSessionFolder(paths) is { } agyFolder
-                && !SessionRegistry.SameFolder(agyFolder, folder))
-            {
-                if (!fx.DirectoryExists(agyFolder))
-                {
-                    fx.Error.WriteLine(MissingFolder(agyFolder));
-                    return 2;
-                }
-                fx.Error.WriteLine($"clavity: agy session {sessionId} runs in {agyFolder} - starting Claude there, not in {folder}.");
-                folder = agyFolder;
             }
             var attached = Launcher.Build(new LaunchOptions
             {
@@ -286,8 +289,10 @@ public static class StartFlow
             var elsewhere = fx.FindWaitingSessions(null).Where(s => !s.Taken).ToList();
             if (elsewhere.Count > 0)
             {
+                var folders = elsewhere.Select(s => s.Folder).Distinct(StringComparer.Ordinal).Count();
                 fx.Error.WriteLine($"clavity: no agy session is waiting in {folder}, but {elsewhere.Count} " +
-                                   $"{(elsewhere.Count == 1 ? "is" : "are")} waiting in another folder (the same folder through a symlink shows up here too):");
+                                   $"{(elsewhere.Count == 1 ? "is" : "are")} waiting in {(folders == 1 ? "another folder" : "other folders")} " +
+                                   "(the same folder through a symlink shows up here too):");
                 foreach (var s in elsewhere)
                     fx.Error.WriteLine(ChoiceLine(s.Folder, s));
                 return null;

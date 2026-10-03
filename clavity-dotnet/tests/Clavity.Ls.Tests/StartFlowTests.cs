@@ -322,6 +322,7 @@ public sealed class StartFlowTests
         var fx = new Fake { Elsewhere = [W(Attached, folder: "/srv/repo"), W(other, taken: true, folder: "/srv/b")] };
         Assert.Equal(1, StartFlow.Start([link, "--attach"], fx));
         Assert.Equal(L("find", "find-all"), fx.Calls);
+        // (the taken session in /srv/b is not offered, so exactly one folder is named: "another folder")
         var nl = Environment.NewLine;
         Assert.Equal(
             $"clavity: no agy session is waiting in {Path.GetFullPath(link)}, but 1 is waiting in another folder (the same folder through a symlink shows up here too):{nl}" +
@@ -345,6 +346,15 @@ public sealed class StartFlowTests
     }
 
     [Fact]
+    public void Sessions_waiting_in_several_other_folders_are_said_to_be_in_other_folders()
+    {
+        const string other = "cccccccc-0000-0000-0000-000000000003";
+        var fx = new Fake { Elsewhere = [W(Attached, folder: "/srv/a"), W(other, folder: "/srv/b")] };
+        StartFlow.Start(["/srv/c", "--attach"], fx);
+        Assert.Contains("but 2 are waiting in other folders (", fx.Err.ToString());
+    }
+
+    [Fact]
     public void An_explicit_id_starts_Claude_in_the_folder_that_agy_session_runs_in()
     {
         // Capstone R1 (agy's option, owner-approved): Claude in one folder and agy in another is a split brain.
@@ -353,6 +363,18 @@ public sealed class StartFlowTests
         Assert.Equal(0, StartFlow.Start([Repo, "--attach", Attached], fx));
         Assert.Equal(agyFolder, fx.Ran.Single().WorkingDirectory);
         Assert.Contains($"clavity: agy session {Attached} runs in {agyFolder} - starting Claude there, not in {Repo}.", fx.Err.ToString());
+    }
+
+    [Fact]
+    public void An_explicit_id_checks_the_git_repository_of_the_folder_Claude_really_starts_in()
+    {
+        // Capstone R2: the warning used to check the GIVEN folder, before the switch to agy's folder.
+        const string agyFolder = "/srv/agy-repo";
+        var fx = new Fake { Records = { [Attached] = agyFolder }, MissingDirs = { Path.Combine(agyFolder, ".git") } };
+        StartFlow.Start([Repo, "--attach", Attached], fx);
+        var err = fx.Err.ToString();
+        Assert.Contains($"clavity: warning — {agyFolder} is not a git repository.", err);
+        Assert.DoesNotContain($"warning — {Repo} is not", err);
     }
 
     [Fact]
