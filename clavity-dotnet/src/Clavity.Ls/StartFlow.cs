@@ -109,6 +109,15 @@ public static class StartFlow
             return 2;
         }
         var folder = start.Folder;
+        // Before anything else, on every platform and for --attach (capstone R7): Windows used to go on and fail at the
+        // tab's working directory with "cannot start Windows Terminal ... winget install", and --attach waited for a
+        // pairing only to fail starting Claude there. On Linux the script's `cd` runs after its claim, so a missing
+        // folder would also look like success.
+        if (!fx.DirectoryExists(folder))
+        {
+            fx.Error.WriteLine($"clavity: {folder} does not exist.");
+            return 2;
+        }
 
         if (!fx.DirectoryExists(Path.Combine(folder, ".git")))
             fx.Error.WriteLine($"clavity: warning — {folder} is not a git repository.");
@@ -178,12 +187,6 @@ public static class StartFlow
         // Linux / macOS (ROADMAP sections 60 + 62): there is no `wt`. Open agy from a generated POSIX script in a terminal
         // the user can see, and start Claude only once a terminal really ran it - otherwise Claude's full-screen interface
         // would hide the reason pairing never happens.
-        // The script's `cd` runs after its claim, so a missing folder would look like success here: refuse it first.
-        if (!fx.DirectoryExists(folder))
-        {
-            fx.Error.WriteLine($"clavity: {folder} does not exist.");
-            return 2;
-        }
         // Check BOTH programs before opening anything: a missing `claude` found only after agy's tab is up would leave
         // an orphaned agy behind.
         if (!fx.OnPath("agy"))

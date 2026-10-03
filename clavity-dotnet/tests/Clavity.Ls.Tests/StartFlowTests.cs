@@ -34,7 +34,9 @@ public sealed class StartFlowTests
         public bool InputRedirected { get; init; }
         public int ScriptExit { get; init; }
 
-        public bool DirectoryExists(string path) => path.EndsWith(".git", StringComparison.Ordinal) || FolderExists;
+        /// <summary>The folder and its .git exist together, or neither does (capstone R7: a .git inside a missing folder is
+        /// a state no real disk produces).</summary>
+        public bool DirectoryExists(string path) => FolderExists;
         public void CreateDirectory(string path) => Calls.Add("mkdir");
         public void PruneLogs(string logsDir) => Calls.Add("prune");
         public string? ReadProjectId(string agyHome) => null;
@@ -196,13 +198,19 @@ public sealed class StartFlowTests
             "run:claude:wait"), fx.Calls);
     }
 
-    [Fact]
-    public void Linux_start_refuses_a_missing_folder_with_2_before_looking_for_programs()
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public void A_missing_folder_exits_2_before_anything_happens_on_every_platform_and_for_attach(bool windows, bool attach)
     {
-        var fx = new Fake { FolderExists = false };
-        Assert.Equal(2, StartFlow.Start([Repo], fx));
-        Assert.DoesNotContain("onpath:agy", fx.Calls);
-        Assert.Contains($"clavity: {Repo} does not exist.", fx.Err.ToString());
+        // Capstone R7: Windows used to go on to the tab and fail there with "cannot start Windows Terminal ... winget
+        // install"; --attach waited for a pairing first.
+        var fx = new Fake { IsWindows = windows, FolderExists = false };
+        Assert.Equal(2, StartFlow.Start(attach ? [Repo, "--attach", Attached] : [Repo], fx));
+        Assert.Empty(fx.Calls);
+        Assert.Equal($"clavity: {Repo} does not exist.{Environment.NewLine}", fx.Err.ToString());
     }
 
     [Fact]
