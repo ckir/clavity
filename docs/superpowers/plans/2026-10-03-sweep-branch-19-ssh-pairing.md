@@ -32,16 +32,20 @@ port number was reused would read as alive). The OS releases `.alive` exactly wh
 
 **Behaviour after this branch:**
 - `start <folder> --attach` (no id): exactly one usable untaken session in `<folder>` -> prints
-  `clavity: attaching to agy session <id>.` and pairs with it; none -> exit 1, says to run `clavity-ls agy <folder>`
-  first; several -> exit 1, lists one `clavity-ls start <folder> --attach <id>` line per session.
+  `clavity: attaching to agy session <id>.` and pairs with it; none at all -> exit 1, says to run `clavity-ls agy
+  <folder>` first; none free but some taken -> exit 1, one "already has a Claude" line per taken session (panel round 1:
+  "run agy first" would send the user to start a redundant agy); several free -> exit 1, lists one
+  `clavity-ls start <folder> --attach <id>` line per FREE session.
 - "Usable": its `.folder` record names this folder, its `.alive` lock is HELD (the `clavity-ls agy` running it is alive),
   its own `.lock` is free, it has no `.exited` file, and either it has not published an
   endpoint yet (agy starting, or waiting on a trust prompt) or its published port listens. A published endpoint whose
   port does NOT listen means that agy is gone: skipped.
 - `start <folder> --attach <id>` and the no-id form both take the session's lock before anything else; a held lock ->
   exit 1, `clavity: agy session <id> already has a Claude - another \`clavity-ls start --attach\` is using it.`
-- `--attach` followed by an argument starting with `-` (or by nothing) has no id; that argument reaches Claude. Any
-  other argument after `--attach` must be a valid id, else exit 2 (unchanged refusal for typos and path tricks).
+- After `--attach`: a valid id is the id; an argument SHAPED like an id (only hex digits and dashes, 8+ characters) that
+  is not a valid one is refused, exit 2 (a mistyped id must not silently become a prompt); anything else - a `-` option,
+  a positional prompt such as `"fix the tests"`, or nothing - means no id, and it reaches Claude (panel round 1). Only a
+  valid id ever becomes part of a file name.
 - The `agy` verb's hint shows the short command first and the id form for when several agy sessions wait.
 - On Windows nothing writes a `.folder` record (`clavity-ls agy` refuses there), so a no-id `--attach` on Windows always
   reports "no agy session is waiting" - accepted: `--attach` exists for sessions `clavity-ls agy` started.
@@ -312,15 +316,21 @@ public sealed class SessionRegistryTests : IDisposable
     }
 
     [Fact]
-    public void An_ended_session_a_taken_session_and_another_folders_session_are_skipped()
+    public void An_ended_session_and_another_folders_session_are_skipped()
     {
         var ended = Record(A, _repo);
         File.WriteAllText(ended.Exited, "0\n");
-        var held = Record(B, _repo);
+        Record(B, _repo);
         Record("cccccccc-0000-0000-0000-000000000003", Path.Combine(_home, "other"));
-        Assert.Empty(Find(held: path => AliveOnly(path) || path == held.Lock));
-        // control: B is found when its lock is free
         Assert.Equal(B, Assert.Single(Find()).SessionId);
+    }
+
+    [Fact]
+    public void A_session_another_start_holds_comes_back_marked_taken()
+    {
+        var held = Record(A, _repo);
+        Assert.True(Assert.Single(Find(held: path => AliveOnly(path) || path == held.Lock)).Taken);
+        Assert.False(Assert.Single(Find()).Taken);              // control: free lock
     }
 
     [Fact]
@@ -354,13 +364,15 @@ namespace Clavity.Ls;
 
 /// <summary>An agy session started by `clavity-ls agy` that `start --attach` without an id may pair with. <see
 /// cref="Paired"/>: agy has published an endpoint whose port listens; false while agy is still starting (or waiting on a
-/// trust prompt).</summary>
-public sealed record WaitingSession(string SessionId, bool Paired, DateTime StartedUtc);
+/// trust prompt). <see cref="Taken"/>: another `start` holds its lock - returned, not dropped, so the caller can say
+/// "already has a Claude" instead of "run agy first" (panel round 1).</summary>
+public sealed record WaitingSession(string SessionId, bool Paired, DateTime StartedUtc, bool Taken = false);
 
 /// <summary>Finds the agy sessions in a folder that `start --attach` without an id may pair with (ROADMAP section 65). A
 /// session counts when its `.folder` record names the folder, the `clavity-ls agy` running it still holds its `.alive`
-/// lock, it has no `.exited` file, its published endpoint (if any) still listens, and its `.lock` is not held by another
-/// `start`. <paramref name="isHeld"/> answers "does some process hold this lock file?" (<see cref="SessionLock.IsTaken"/>).</summary>
+/// lock, it has no `.exited` file, and its published endpoint (if any) still listens; a session another `start` holds is
+/// returned with <see cref="WaitingSession.Taken"/> set. <paramref name="isHeld"/> answers "does some process hold this
+/// lock file?" (<see cref="SessionLock.IsTaken"/>).</summary>
 public static class SessionRegistry
 {
     private const string Prefix = "agy-session.";
@@ -403,9 +415,7 @@ public static class SessionRegistry
                     continue;   // published, but nothing listens: that agy is gone
                 paired = true;
             }
-            if (isHeld(paths.Lock))
-                continue;
-            found.Add(new WaitingSession(id, paired, File.GetLastWriteTimeUtc(record)));
+            found.Add(new WaitingSession(id, paired, File.GetLastWriteTimeUtc(record), Taken: isHeld(paths.Lock)));
         }
         return found.OrderBy(s => s.StartedUtc).ThenBy(s => s.SessionId, StringComparer.Ordinal).ToList();
     }
@@ -415,10 +425,13 @@ public static class SessionRegistry
 }
 ```
 
-- [ ] **Step 4: Run** the same filter. Expected: `Passed!`, Total 7.
-- [ ] **Step 5: Logic mutants (script-applied, one match asserted, non-empty diff, restore):** (0) drop the `.alive`
-  skip -> `A_session_whose_agy_process_is_gone...` red; (a) drop the `Exited` skip -> row 3 red; (b) drop the `isTaken` skip -> row 3 red; (c) `continue` -> fall through when the port does not
-  listen -> row 2 red; (d) drop `TrimEndingDirectorySeparator` -> row 4 red; (e) drop the `OrderBy` -> row 5 red (if
+- [ ] **Step 4: Run** the same filter. Expected: `Passed!`, Total 8.
+- [ ] **Step 5: Logic mutants (script-applied, one match asserted, non-empty diff, restore), by row NAME:** (0) drop
+  the `.alive` skip -> `A_session_whose_agy_process_is_gone...` red; (a) drop the `Exited` skip ->
+  `An_ended_session_and_another_folders_session_are_skipped` red; (b) `Taken: isHeld(paths.Lock)` -> `Taken: false` ->
+  `A_session_another_start_holds_comes_back_marked_taken` red; (c) `continue` -> fall through when the port does not
+  listen -> `A_published_session_counts_only_while_its_port_listens` red; (d) drop `TrimEndingDirectorySeparator` ->
+  `A_trailing_separator...` red; (e) drop the `OrderBy` -> `Several_waiting_sessions_come_back_oldest_first` red (if
   enumeration order happens to match, also swap the two record times in a second run to confirm).
 - [ ] **Step 6: Commit** `git add clavity-dotnet/src/Clavity.Ls/SessionRegistry.cs clavity-dotnet/tests/Clavity.Ls.Tests/SessionRegistryTests.cs`
   `git commit -m "feat(start): SessionRegistry - the usable, untaken agy sessions in a folder (section 65)"`
@@ -454,8 +467,31 @@ public static class SessionRegistry
         => Assert.False(StartArgs.Parse(new[] { Repo }, Cwd).Attach);
 ```
 
-  Keep the theory with its two remaining rows (`"../../etc"`, `"11111111222233334444555555555555"`), and in the two
-  existing tests that pass an id (lines 29-43) add `Assert.True(a.Attach);`.
+  Also add:
+
+```csharp
+    [Fact]
+    public void Attach_followed_by_a_positional_prompt_has_no_id_and_the_prompt_reaches_Claude()
+    {
+        var a = StartArgs.Parse(new[] { Repo, "--attach", "fix the tests" }, Cwd);
+        Assert.True(a.Attach);
+        Assert.Null(a.AttachSessionId);
+        Assert.Equal(new[] { "fix the tests" }, a.ClaudeArgs);
+    }
+
+    [Fact]
+    public void A_path_after_attach_is_not_an_id_and_never_becomes_a_file_name()
+    {
+        var a = StartArgs.Parse(new[] { Repo, "--attach", "../../etc" }, Cwd);
+        Assert.Null(a.AttachSessionId);
+        Assert.Equal(new[] { "../../etc" }, a.ClaudeArgs);
+    }
+```
+
+  Replace the theory's rows with id-SHAPED near-misses (each must still be refused, quoting it):
+  `[InlineData("11111111222233334444555555555555")]` (GUID "N" form), `[InlineData("11111111-2222-3333-4444-55555555555")]`
+  (one digit short), `[InlineData("deadbeef")]` (8 hex). In the two existing tests that pass an id (lines 29-43) add
+  `Assert.True(a.Attach);`.
 
 - [ ] **Step 2: Run - expect a COMPILE failure** (`'StartArgs' does not contain a definition for 'Attach'`):
   `dotnet test tests/Clavity.Ls.Tests --filter "FullyQualifiedName~StartArgsTests"`
@@ -470,9 +506,9 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
 
     /// <summary>The folder is the first argument unless it starts with '-'. <c>--attach</c> is ours only DIRECTLY after
     /// it (or first, with no folder), so every later argument still reaches Claude untouched. Its id is optional (ROADMAP
-    /// section 65: with none, `start` pairs with the one agy session waiting in the folder): a next argument starting
-    /// with '-' belongs to Claude, and any other must be a valid id. Throws <see cref="ArgumentException"/> for a
-    /// malformed id - a mistyped id is refused, never passed to Claude or used in a file name.</summary>
+    /// section 65: with none, `start` pairs with the one agy session waiting in the folder): a valid id is consumed; an
+    /// argument SHAPED like an id but invalid throws <see cref="ArgumentException"/> (a mistyped id must not silently
+    /// become a prompt); anything else is Claude's. Only a valid id ever becomes part of a file name.</summary>
     public static StartArgs Parse(string[] rest, string currentDirectory)
     {
         var i = 0;
@@ -493,23 +529,31 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
         {
             attach = true;
             i++;
-            if (i < rest.Length && !rest[i].StartsWith('-'))
+            if (i < rest.Length && SessionPaths.IsValidSessionId(rest[i]))
             {
-                if (!SessionPaths.IsValidSessionId(rest[i]))
-                    throw new ArgumentException(
-                        $"{AttachFlag} '{rest[i]}' is not a session id - use the one `clavity-ls agy` printed, or none.");
                 id = rest[i];
                 i++;
+            }
+            else if (i < rest.Length && LooksLikeAnId(rest[i]))
+            {
+                throw new ArgumentException(
+                    $"{AttachFlag} '{rest[i]}' is not a session id - use the one `clavity-ls agy` printed, or none.");
             }
         }
 
         return new StartArgs(folder, attach, id, rest[i..]);
     }
+
+    // Hex digits and dashes only, 8 or more: what a mistyped or truncated session id looks like.
+    private static bool LooksLikeAnId(string s) => s.Length >= 8 && s.All(c => c == '-' || char.IsAsciiHexDigit(c));
 }
 ```
 
 - [ ] **Step 4: Build** - `dotnet build` FAILS in `StartFlow.cs` only if it constructs `StartArgs`; it does not (it
-  calls `Parse`), so expect success. Run the filter: `Passed!`, Total 10.
+  calls `Parse`), so expect success. Run the filter: `Passed!`, Total 13 (5 kept facts + 5 new facts + 3 theory rows).
+- [ ] **Step 4b: Logic mutants (script-applied, one match, non-empty diff, restore):** (a) drop the `LooksLikeAnId`
+  branch -> the theory rows red; (b) `s.Length >= 8` -> `>= 40` -> the theory rows red; (c) consume ANY non-dash
+  argument as the id -> `Attach_followed_by_a_positional_prompt...` red.
 - [ ] **Step 5: Commit** `git add clavity-dotnet/src/Clavity.Ls/StartArgs.cs clavity-dotnet/tests/Clavity.Ls.Tests/StartArgsTests.cs`
   `git commit -m "feat(start): --attach takes an optional session id (section 65)"`
 
@@ -554,8 +598,9 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
 
 - [ ] **Step 2: Update the existing rows** - located by TEST NAME (Step 1 shifted the line numbers; at `c02cbe8f`-era
   HEAD they were 221, 235, 244, 248-253, 361-362, 370). Each change is forced by the new behaviour:
-  - `A_bad_argument_exits_2_before_anything_happens`: `[Repo, "--attach"]` is now valid; use
-    `[Repo, "--attach", "../../etc"]` and `Assert.StartsWith("clavity: --attach '../../etc' is not a session id", ...)`.
+  - `A_bad_argument_exits_2_before_anything_happens`: `[Repo, "--attach"]` is now valid; use the id-shaped near-miss
+    `[Repo, "--attach", "11111111-2222-3333-4444-55555555555"]` and
+    `Assert.StartsWith("clavity: --attach '11111111-2222-3333-4444-55555555555' is not a session id", ...)`.
   - `Attach_checks_claude_then_waits_then_runs_only_Claude`: `L("mkdir", "prune", "take", "claude?", "wait", "run:claude:wait", "release")`.
   - `Attach_with_claude_missing_does_not_wait`: `L("mkdir", "prune", "take", "claude?", "release")`.
   - `Attach_whose_agy_ends_before_pairing_never_starts_Claude`: replace `Assert.Equal("wait", fx.Calls[^1]);` with
@@ -572,7 +617,27 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
 - [ ] **Step 3: Add the new rows** (in the `// ---- start --attach ----` section):
 
 ```csharp
-    private static WaitingSession W(string id, bool paired = true) => new(id, paired, new DateTime(2026, 10, 3, 9, 0, 0, DateTimeKind.Utc));
+    private static WaitingSession W(string id, bool paired = true, bool taken = false) =>
+        new(id, paired, new DateTime(2026, 10, 3, 9, 0, 0, DateTimeKind.Utc), taken);
+
+    [Fact]
+    public void Attach_without_an_id_whose_only_session_is_taken_says_so_instead_of_run_agy_first()
+    {
+        var fx = new Fake { Waiting = [W(Attached, taken: true)] };
+        Assert.Equal(1, StartFlow.Start([Repo, "--attach"], fx));
+        Assert.Equal(L("find"), fx.Calls);
+        Assert.Equal($"clavity: agy session {Attached} already has a Claude - another `clavity-ls start --attach` is using it.{Environment.NewLine}",
+            fx.Err.ToString());
+    }
+
+    [Fact]
+    public void A_taken_session_is_not_one_of_the_choices()
+    {
+        const string free = "cccccccc-0000-0000-0000-000000000003";
+        var fx = new Fake { Waiting = [W(Attached, taken: true), W(free)] };
+        Assert.Equal(0, StartFlow.Start([Repo, "--attach"], fx));
+        Assert.Equal(free, fx.Ran.Single().Environment[AgyEnvironment.SessionIdVar]);
+    }
 
     [Fact]
     public void Attach_without_an_id_pairs_with_the_one_waiting_session_and_holds_its_lock_until_Claude_ends()
@@ -709,7 +774,7 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
             using var taken = fx.TryTakeSession(paths);
             if (taken is null)
             {
-                fx.Error.WriteLine($"clavity: agy session {sessionId} already has a Claude - another `clavity-ls start --attach` is using it.");
+                fx.Error.WriteLine(AlreadyTaken(sessionId));
                 return 1;
             }
             var attached = Launcher.Build(new LaunchOptions
@@ -738,11 +803,19 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
     // this folder. None or several: say so, list them, and pair with nothing.
     private static string? PickWaitingSession(IStartEffects fx, string folder)
     {
-        var waiting = fx.FindWaitingSessions(folder);
+        var all = fx.FindWaitingSessions(folder);
+        var waiting = all.Where(s => !s.Taken).ToList();
         if (waiting.Count == 1)
         {
             fx.Error.WriteLine($"clavity: attaching to agy session {waiting[0].SessionId}.");
             return waiting[0].SessionId;
+        }
+        if (waiting.Count == 0 && all.Count > 0)
+        {
+            // Every agy in this folder already has a Claude: saying "run agy first" would start a redundant one.
+            foreach (var s in all)
+                fx.Error.WriteLine(AlreadyTaken(s.SessionId));
+            return null;
         }
         if (waiting.Count == 0)
         {
@@ -755,6 +828,14 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
                                $"({(s.Paired ? "paired" : "starting")}, since {s.StartedUtc:yyyy-MM-dd HH:mm:ss} UTC)");
         return null;
     }
+```
+
+  And, next to `MissingFolder` (line 50):
+
+```csharp
+    /// <summary>`start --attach` refusing a session another `start` already paired with (ROADMAP section 65).</summary>
+    public static string AlreadyTaken(string sessionId) =>
+        $"clavity: agy session {sessionId} already has a Claude - another `clavity-ls start --attach` is using it.";
 ```
 
   Also update the `Start` doc comment (line 100) to `[--attach [&lt;session-id&gt;]]`.
@@ -789,7 +870,9 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
 
 - [ ] **Step 10: Run** `dotnet test tests/Clavity.Ls.Tests` - expected `Passed!`, Failed 0.
 - [ ] **Step 11: Logic mutants (script-applied, one match, non-empty diff, restore), each must turn its named row red:**
-  (a) `waiting.Count == 1` -> `waiting.Count >= 1` -> the several-sessions row; (b) remove `using` from `using var
+  (a) `waiting.Count == 1` -> `waiting.Count >= 1` -> the several-sessions row; (a2) `all.Where(s => !s.Taken)` ->
+  `all` -> `A_taken_session_is_not_one_of_the_choices`; (a3) drop the `all.Count > 0` branch ->
+  `Attach_without_an_id_whose_only_session_is_taken...`; (b) remove `using` from `using var
   taken` (lock never released) -> the no-id row (`release` missing); (c) skip the `taken is null` check -> the
   held-lock theory; (d) `if (!start.Attach)` -> `if (start.AttachSessionId is null)` -> the no-id row; (e) drop
   `fx.WriteSessionFolder(...)` -> `Agy_records_its_folder...`; (f) the folder record written with `fx.CurrentDirectory`
