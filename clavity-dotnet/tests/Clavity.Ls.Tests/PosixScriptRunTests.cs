@@ -24,7 +24,11 @@ public sealed class PosixScriptRunTests : IDisposable
     /// <summary>Runs <paramref name="body"/> (which sees the script as "$2") with <paramref name="binDir"/> first on
     /// PATH; <paramref name="extra"/> arrives as "$3". stdin is closed, so the script's "Press Enter" read returns at
     /// once instead of hanging the test.</summary>
-    private static int RunSh(string script, string binDir, string body = "exec sh \"$2\"", string extra = "")
+    private static int RunSh(string script, string binDir, string body = "exec sh \"$2\"", string extra = "") =>
+        RunShOut(script, binDir, body, extra).rc;
+
+    /// <summary><see cref="RunSh"/>, also returning what the script printed on stdout.</summary>
+    private static (int rc, string stdout) RunShOut(string script, string binDir, string body = "exec sh \"$2\"", string extra = "")
     {
         ProcessStartInfo psi;
         if (OperatingSystem.IsWindows())
@@ -43,20 +47,28 @@ public sealed class PosixScriptRunTests : IDisposable
         psi.RedirectStandardError = true;
         using var p = Process.Start(psi)!;
         p.StandardInput.Close();
-        p.StandardOutput.ReadToEnd();
+        var stdout = p.StandardOutput.ReadToEnd();
         p.StandardError.ReadToEnd();
         Assert.True(p.WaitForExit(30_000), "the script did not finish within 30 s");
-        return p.ExitCode;
+        return (p.ExitCode, stdout);
     }
 
-    private (string bin, string script, string claim, string exited) Setup(string fakeAgyBody)
+    /// <summary><paramref name="folderExists"/> false names a session folder that does not exist; <paramref name="withAgy"/>
+    /// false leaves the fake agy out of the bin directory.</summary>
+    private (string bin, string script, string claim, string exited) Setup(string fakeAgyBody, bool folderExists = true,
+        bool withAgy = true)
     {
         var bin = Directory.CreateDirectory(Path.Combine(_dir, "bin")).FullName;
-        var work = Directory.CreateDirectory(Path.Combine(_dir, "work dir")).FullName;   // a space, on purpose
-        var fakeAgy = Path.Combine(bin, "agy");
-        File.WriteAllText(fakeAgy, "#!/bin/sh\n" + fakeAgyBody);
-        if (!OperatingSystem.IsWindows())
-            File.SetUnixFileMode(fakeAgy, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var work = Path.Combine(_dir, "work dir");   // a space, on purpose
+        if (folderExists)
+            Directory.CreateDirectory(work);
+        if (withAgy)
+        {
+            var fakeAgy = Path.Combine(bin, "agy");
+            File.WriteAllText(fakeAgy, "#!/bin/sh\n" + fakeAgyBody);
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(fakeAgy, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
 
         var claim = Fwd(Path.Combine(_dir, "s.claim"));
         var exited = Fwd(Path.Combine(_dir, "s p.exited"));   // a space: it is used inside the single-quoted trap
@@ -140,5 +152,45 @@ public sealed class PosixScriptRunTests : IDisposable
             "kill -HUP $pid; : > \"$3.go\"; wait $pid", extra: marks);
         Assert.Equal(129, rc);
         Assert.Equal("129", File.ReadAllText(exited).Trim());
+    }
+
+    [Fact]
+    public void A_terminate_signal_while_agy_runs_still_records_an_end()
+    {
+        // `kill`, a logout or a shutdown sends SIGTERM: like the hang-up, the shell turns it into exit 143 once agy returns.
+        var marks = Fwd(Path.Combine(_dir, "agy"));
+        var (bin, script, _, exited) = Setup(
+            ": > '" + marks + ".started'; i=0; while [ ! -e '" + marks + ".go' ] && [ $i -lt 200 ]; do sleep 0.1; i=$((i+1)); done\n");
+        var rc = RunSh(script, bin,
+            "sh \"$2\" & pid=$!; i=0; while [ ! -e \"$3.started\" ] && [ $i -lt 200 ]; do sleep 0.1; i=$((i+1)); done; " +
+            "kill -TERM $pid; : > \"$3.go\"; wait $pid", extra: marks);
+        Assert.Equal(143, rc);
+        Assert.Equal("143", File.ReadAllText(exited).Trim());
+    }
+
+    [Fact]
+    public void A_session_folder_it_cannot_enter_records_exit_1_and_never_runs_agy()
+    {
+        // `start` checks the folder first, but it can vanish (or lose its permissions) before a slow terminal runs the
+        // script. agy must not then start in whatever directory the terminal opened in.
+        var ran = Fwd(Path.Combine(_dir, "agy.ran"));
+        var (bin, script, _, exited) = Setup(": > '" + ran + "'\n", folderExists: false);
+        var (rc, stdout) = RunShOut(script, bin, "exec sh \"$2\" --here");
+        Assert.Equal(1, rc);
+        Assert.Equal("1", File.ReadAllText(exited).Trim());
+        Assert.False(File.Exists(ran), "agy ran although the session folder could not be entered");
+        Assert.Contains("clavity: cannot enter the session folder. (exit 1)", stdout);
+    }
+
+    [Fact]
+    public void Agy_missing_from_the_terminals_PATH_records_127_and_says_so()
+    {
+        // The terminal's PATH can differ from the one `start` checked (a login shell, a terminal server). PATH here is the
+        // empty bin directory alone, so no agy installed on this machine can answer either.
+        var (bin, script, _, exited) = Setup("", withAgy: false);
+        var (rc, stdout) = RunShOut(script, bin, "s=$(command -v sh); PATH=\"${PATH%%:*}\"; exec \"$s\" \"$2\" --here");
+        Assert.Equal(127, rc);
+        Assert.Equal("127", File.ReadAllText(exited).Trim());
+        Assert.Contains("clavity: agy is not on PATH in this terminal. (exit 127)", stdout);
     }
 }

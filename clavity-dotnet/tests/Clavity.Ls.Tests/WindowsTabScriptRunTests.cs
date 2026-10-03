@@ -21,9 +21,9 @@ public sealed class WindowsTabScriptRunTests : IDisposable
 
     /// <summary>Runs the decoded tab script with PATH = <paramref name="binDir"/> + the Windows system directory only,
     /// so a real agy installed on the box cannot answer for the fake.</summary>
-    private string RunTabScript(string binDir, string shell)
+    private string RunTabScript(string binDir, string shell, string exitedName = "o'x agy-session.exited")
     {
-        var exited = Path.Combine(_dir, "o'x agy-session.exited");   // a quote and a space: both must survive quoting
+        var exited = Path.Combine(_dir, exitedName);   // default: a quote and a space - both must survive quoting
         var plan = Launcher.Build(new LaunchOptions
         {
             Folder = _dir, SessionId = "sid", AgyLogFilePath = Path.Combine(_dir, "agy.log"),
@@ -64,5 +64,19 @@ public sealed class WindowsTabScriptRunTests : IDisposable
             return;
         var empty = Directory.CreateDirectory(Path.Combine(_dir, "empty")).FullName;
         Assert.Equal("", RunTabScript(empty, shell));
+    }
+
+    [Theory]
+    [InlineData("pwsh")]
+    [InlineData("powershell")]
+    public void An_exited_path_with_wildcard_characters_is_written_literally(string shell)
+    {
+        // PowerShell reads [ ] * ? in a -Path as a wildcard pattern; the exited path comes from the user profile, which
+        // the script does not control. Under -Path, "a[1]" would match a file named "a1" - never this one.
+        if (!OperatingSystem.IsWindows())
+            return;
+        var bin = Directory.CreateDirectory(Path.Combine(_dir, "bin")).FullName;
+        File.WriteAllText(Path.Combine(bin, "agy.cmd"), "@exit /b 6\r\n");
+        Assert.Equal("6", RunTabScript(bin, shell, exitedName: "a[1] agy-session.exited"));
     }
 }

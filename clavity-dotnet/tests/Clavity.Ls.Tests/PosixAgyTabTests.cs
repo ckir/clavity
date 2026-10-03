@@ -225,6 +225,22 @@ public class PosixAgyTabTests
     }
 
     [Fact]
+    public void FindOnPath_does_not_read_an_empty_PATH_entry_as_the_current_directory()
+    {
+        // A PATH with an empty entry ("a::b", a trailing ":") is ordinary. Combined as-is, the entry would make a bare
+        // relative name and match a file in whatever directory this process runs in.
+        var name = "clavity-cwd-probe-" + Guid.NewGuid().ToString("N");
+        File.WriteAllText(name, "");   // in the CURRENT directory, on purpose
+        try
+        {
+            Assert.True(File.Exists(name));   // control: the probe is really visible through a bare relative name
+            Assert.Null(PosixAgyTab.FindOnPath(name, "/nope" + Path.PathSeparator + Path.PathSeparator + "/nope2"));
+            Assert.Null(PosixAgyTab.FindOnPath(name, "/nope" + Path.PathSeparator));
+        }
+        finally { File.Delete(name); }
+    }
+
+    [Fact]
     public void FallbackMessage_says_Claude_did_not_start_and_names_the_exact_command()
     {
         var m = PosixAgyTab.FallbackMessage("/home/o'brien/repo");
