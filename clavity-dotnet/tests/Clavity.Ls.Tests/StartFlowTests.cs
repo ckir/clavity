@@ -40,7 +40,8 @@ public sealed class StartFlowTests
         /// <summary>A .git exists only inside an existing folder (capstone R7: a .git inside a missing folder is a state no
         /// real disk produces); <see cref="GitExists"/> false is a folder that is not a git repository.</summary>
         public bool DirectoryExists(string path) =>
-            path.EndsWith(".git", StringComparison.Ordinal) ? FolderExists && GitExists : FolderExists;
+            !MissingDirs.Contains(path) &&
+            (path.EndsWith(".git", StringComparison.Ordinal) ? FolderExists && GitExists : FolderExists);
         public void CreateDirectory(string path) => Calls.Add("mkdir");
         public void PruneLogs(string logsDir) => Calls.Add("prune");
         public string? ReadProjectId(string agyHome) => null;
@@ -98,11 +99,18 @@ public sealed class StartFlowTests
             Calls.Add("folder");
             FolderRecords.Add((path, folder));
         }
-        public IReadOnlyList<WaitingSession> FindWaitingSessions(string folder)
+        /// <summary>What a search across ALL folders adds (capstone R1: the same folder through a symlink lands here).</summary>
+        public List<WaitingSession> Elsewhere { get; init; } = new();
+        /// <summary>`.folder` records by session id (what `clavity-ls agy` wrote).</summary>
+        public Dictionary<string, string> Records { get; init; } = new();
+        public HashSet<string> MissingDirs { get; init; } = new();
+
+        public IReadOnlyList<WaitingSession> FindWaitingSessions(string? folder)
         {
-            Calls.Add("find");
-            return Waiting;
+            Calls.Add(folder is null ? "find-all" : "find");
+            return folder is null ? Waiting.Concat(Elsewhere).ToList() : Waiting;
         }
+        public string? ReadSessionFolder(SessionPaths paths) => Records.GetValueOrDefault(paths.SessionId);
         public IDisposable? TryTakeSession(SessionPaths paths)
         {
             Calls.Add("take");
@@ -281,8 +289,8 @@ public sealed class StartFlowTests
         Assert.Equal(["wait", "release"], fx.Calls[^2..]);
     }
 
-    private static WaitingSession W(string id, bool paired = true, bool taken = false) =>
-        new(id, paired, new DateTime(2026, 10, 3, 9, 0, 0, DateTimeKind.Utc), taken);
+    private static WaitingSession W(string id, bool paired = true, bool taken = false, string? folder = null) =>
+        new(id, paired, new DateTime(2026, 10, 3, 9, 0, 0, DateTimeKind.Utc), taken, folder ?? Repo);
 
     [Fact]
     public void Attach_without_an_id_pairs_with_the_one_waiting_session_and_holds_its_lock_until_Claude_ends()
@@ -299,8 +307,25 @@ public sealed class StartFlowTests
     {
         var fx = new Fake();
         Assert.Equal(1, StartFlow.Start([Repo, "--attach"], fx));
-        Assert.Equal(L("find"), fx.Calls);
+        Assert.Equal(L("find", "find-all"), fx.Calls);
         Assert.Equal($"clavity: no agy session is waiting in {Repo}. Run `clavity-ls agy {Launcher.ShQuote(Repo)}` in another terminal first.{Environment.NewLine}",
+            fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Attach_without_an_id_lists_free_sessions_waiting_in_other_folders_instead_of_run_agy_first()
+    {
+        // Capstone R1, measured on the VM: the same folder through a symlink does not compare equal, so its waiting agy
+        // looked absent and the user was told to start another. Now it is listed, with a command that works.
+        const string link = "/srv/link-to-repo";
+        const string other = "cccccccc-0000-0000-0000-000000000003";
+        var fx = new Fake { Elsewhere = [W(Attached, folder: "/srv/repo"), W(other, taken: true, folder: "/srv/b")] };
+        Assert.Equal(1, StartFlow.Start([link, "--attach"], fx));
+        Assert.Equal(L("find", "find-all"), fx.Calls);
+        var nl = Environment.NewLine;
+        Assert.Equal(
+            $"clavity: no agy session is waiting in {Path.GetFullPath(link)}, but 1 is waiting in another folder (the same folder through a symlink shows up here too):{nl}" +
+            $"    clavity-ls start '/srv/repo' --attach {Attached}   # paired, since 2026-10-03 09:00:00 UTC{nl}",
             fx.Err.ToString());
     }
 
@@ -313,8 +338,48 @@ public sealed class StartFlowTests
         Assert.Equal(L("find"), fx.Calls);
         var err = fx.Err.ToString();
         Assert.Contains($"clavity: 2 agy sessions are waiting in {Repo} - choose one:", err);
-        Assert.Contains($"    clavity-ls start {Launcher.ShQuote(Repo)} --attach {Attached}   (paired, since 2026-10-03 09:00:00 UTC)", err);
-        Assert.Contains($"    clavity-ls start {Launcher.ShQuote(Repo)} --attach {other}   (starting, since 2026-10-03 09:00:00 UTC)", err);
+        // The state is a shell COMMENT (capstone R1): a whole line pasted into a shell is the command, nothing more.
+        var nl = Environment.NewLine;
+        Assert.Contains($"    clavity-ls start {Launcher.ShQuote(Repo)} --attach {Attached}   # paired, since 2026-10-03 09:00:00 UTC{nl}", err);
+        Assert.Contains($"    clavity-ls start {Launcher.ShQuote(Repo)} --attach {other}   # starting, since 2026-10-03 09:00:00 UTC{nl}", err);
+    }
+
+    [Fact]
+    public void An_explicit_id_starts_Claude_in_the_folder_that_agy_session_runs_in()
+    {
+        // Capstone R1 (agy's option, owner-approved): Claude in one folder and agy in another is a split brain.
+        const string agyFolder = "/srv/agy-repo";
+        var fx = new Fake { Records = { [Attached] = agyFolder } };
+        Assert.Equal(0, StartFlow.Start([Repo, "--attach", Attached], fx));
+        Assert.Equal(agyFolder, fx.Ran.Single().WorkingDirectory);
+        Assert.Contains($"clavity: agy session {Attached} runs in {agyFolder} - starting Claude there, not in {Repo}.", fx.Err.ToString());
+    }
+
+    [Fact]
+    public void An_explicit_id_whose_record_names_this_folder_changes_nothing()
+    {
+        var fx = new Fake { Records = { [Attached] = Repo + Path.DirectorySeparatorChar } };
+        StartFlow.Start([Repo, "--attach", Attached], fx);
+        Assert.Equal(Repo, fx.Ran.Single().WorkingDirectory);
+        Assert.DoesNotContain("starting Claude there", fx.Err.ToString());
+    }
+
+    [Fact]
+    public void An_explicit_id_with_no_record_keeps_the_given_folder()
+    {
+        var fx = new Fake();
+        StartFlow.Start([Repo, "--attach", Attached], fx);
+        Assert.Equal(Repo, fx.Ran.Single().WorkingDirectory);
+    }
+
+    [Fact]
+    public void An_explicit_id_whose_recorded_folder_is_gone_exits_2()
+    {
+        const string gone = "/srv/gone";
+        var fx = new Fake { Records = { [Attached] = gone }, MissingDirs = { gone } };
+        Assert.Equal(2, StartFlow.Start([Repo, "--attach", Attached], fx));
+        Assert.Empty(fx.Ran);
+        Assert.Contains(StartFlow.MissingFolder(gone), fx.Err.ToString());
     }
 
     [Fact]

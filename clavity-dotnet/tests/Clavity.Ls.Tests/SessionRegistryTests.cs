@@ -105,6 +105,24 @@ public sealed class SessionRegistryTests : IDisposable
     }
 
     [Fact]
+    public void Without_a_folder_every_folders_sessions_come_back_each_with_its_recorded_folder()
+    {
+        var elsewhere = Path.Combine(_home, "other");
+        Record(A, _repo);
+        Record(B, elsewhere + Path.DirectorySeparatorChar);
+        var all = SessionRegistry.Find(_home, null, new Ports(), AliveOnly);
+        Assert.Equal(_repo, all.Single(s => s.SessionId == A).Folder);
+        Assert.Equal(elsewhere + Path.DirectorySeparatorChar, all.Single(s => s.SessionId == B).Folder);
+        Assert.Equal(A, Assert.Single(Find()).SessionId);       // control: with a folder, only that folder's
+    }
+
+    [Theory]
+    [InlineData("a/b", "a/b/", true)]
+    [InlineData("a/b", "a/c", false)]
+    public void SameFolder_ignores_a_trailing_separator_only(string x, string y, bool same)
+        => Assert.Equal(same, SessionRegistry.SameFolder(Path.Combine(_home, x), Path.Combine(_home, y)));
+
+    [Fact]
     public void No_clavity_directory_means_no_sessions()
         => Assert.Empty(SessionRegistry.Find(Path.Combine(_home, "nobody"), _repo, new Ports(), AliveOnly));
 }

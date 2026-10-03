@@ -38,8 +38,10 @@ public interface IStartEffects
     int RunScriptHere(string scriptPath);
     /// <summary>Writes the `.folder` record that lets `start --attach` without an id find this session (ROADMAP section 65).</summary>
     void WriteSessionFolder(string path, string folder);
-    /// <summary><see cref="SessionRegistry.Find"/> over the real files, listening ports and locks.</summary>
-    IReadOnlyList<WaitingSession> FindWaitingSessions(string folder);
+    /// <summary><see cref="SessionRegistry.Find"/> over the real files, listening ports and locks; null = every folder.</summary>
+    IReadOnlyList<WaitingSession> FindWaitingSessions(string? folder);
+    /// <summary>The folder this session's `.folder` record names, or null when it has none (or it cannot be read).</summary>
+    string? ReadSessionFolder(SessionPaths paths);
     /// <summary><see cref="SessionLock.TryTake"/> on this session's lock: null when another `start` holds it.</summary>
     IDisposable? TryTakeSession(SessionPaths paths);
     /// <summary>Holds this session's `.alive` lock for as long as `clavity-ls agy` runs it (<see cref="SessionLock.TryTake"/>;
@@ -171,6 +173,19 @@ public static class StartFlow
                 fx.Error.WriteLine(AlreadyTaken(sessionId));
                 return 1;
             }
+            // An explicit id may name an agy in ANOTHER folder (or this one by another path). Claude in one folder and agy
+            // in another is a split brain, so Claude starts where agy runs (capstone R1, AGY-FIRST, owner-approved).
+            if (start.AttachSessionId is not null && fx.ReadSessionFolder(paths) is { } agyFolder
+                && !SessionRegistry.SameFolder(agyFolder, folder))
+            {
+                if (!fx.DirectoryExists(agyFolder))
+                {
+                    fx.Error.WriteLine(MissingFolder(agyFolder));
+                    return 2;
+                }
+                fx.Error.WriteLine($"clavity: agy session {sessionId} runs in {agyFolder} - starting Claude there, not in {folder}.");
+                folder = agyFolder;
+            }
             var attached = Launcher.Build(new LaunchOptions
             {
                 Folder = folder,
@@ -266,15 +281,31 @@ public static class StartFlow
         }
         if (waiting.Count == 0)
         {
+            // Nothing here - but the same folder reached through a symlink does not compare equal (capstone R1, measured),
+            // so before saying "run agy first", list what waits ANYWHERE, with commands that work as they are.
+            var elsewhere = fx.FindWaitingSessions(null).Where(s => !s.Taken).ToList();
+            if (elsewhere.Count > 0)
+            {
+                fx.Error.WriteLine($"clavity: no agy session is waiting in {folder}, but {elsewhere.Count} " +
+                                   $"{(elsewhere.Count == 1 ? "is" : "are")} waiting in another folder (the same folder through a symlink shows up here too):");
+                foreach (var s in elsewhere)
+                    fx.Error.WriteLine(ChoiceLine(s.Folder, s));
+                return null;
+            }
             fx.Error.WriteLine($"clavity: no agy session is waiting in {folder}. Run `clavity-ls agy {Launcher.ShQuote(folder)}` in another terminal first.");
             return null;
         }
         fx.Error.WriteLine($"clavity: {waiting.Count} agy sessions are waiting in {folder} - choose one:");
         foreach (var s in waiting)
-            fx.Error.WriteLine($"    clavity-ls start {Launcher.ShQuote(folder)} --attach {s.SessionId}   " +
-                               $"({(s.Paired ? "paired" : "starting")}, since {s.StartedUtc:yyyy-MM-dd HH:mm:ss} UTC)");
+            fx.Error.WriteLine(ChoiceLine(folder, s));
         return null;
     }
+
+    // One pasteable command per session; its state is a shell COMMENT, so a whole copied line runs as just the command
+    // (capstone R1: a trailing "(paired, ...)" was copied along with it).
+    private static string ChoiceLine(string folder, WaitingSession s) =>
+        $"    clavity-ls start {Launcher.ShQuote(folder)} --attach {s.SessionId}   " +
+        $"# {(s.Paired ? "paired" : "starting")}, since {s.StartedUtc:yyyy-MM-dd HH:mm:ss} UTC";
 
     private static string? TryMaterialize(IStartEffects fx, SessionPaths paths)
     {
