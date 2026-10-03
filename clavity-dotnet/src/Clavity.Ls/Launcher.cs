@@ -41,6 +41,10 @@ public sealed class LaunchOptions
     /// <c>start</c> command always supplies it (<see cref="PairingDoc.Materialize"/>); null stays legal here only
     /// so the Launcher remains policy-free.</summary>
     public string? AgyInstallDocPath { get; init; }
+    /// <summary>If set, the Windows agy tab writes agy's exit code here when agy ends (a <c>finally</c>), so a
+    /// <c>start</c> waiting for pairing stops waiting (<see cref="PairingWait"/>). Null omits it. The POSIX script
+    /// takes its path as a parameter of <see cref="BuildPosixScript"/> instead.</summary>
+    public string? AgyExitedFilePath { get; init; }
 }
 
 /// <summary>
@@ -56,7 +60,8 @@ public static class Launcher
     {
         var agyEnv = BuildAgyEnv(options);
 
-        var script = BuildAgyTabScript(agyEnv, options.AgyLogFilePath, options.SkipPermissions, options.AgyInstallDocPath);
+        var script = BuildAgyTabScript(agyEnv, options.AgyLogFilePath, options.SkipPermissions, options.AgyInstallDocPath,
+            options.AgyExitedFilePath);
 
         // Windows Terminal treats ';' in its command line as a tab/pane separator and re-parses GetCommandLineW
         // itself, so a structured-argv inline `-Command "...; ...; agy ..."` is still shattered into broken
@@ -95,16 +100,28 @@ public static class Launcher
     }
 
     private static string BuildAgyTabScript(
-        IReadOnlyDictionary<string, string> env, string logFilePath, bool skipPermissions, string? installDocPath)
+        IReadOnlyDictionary<string, string> env, string logFilePath, bool skipPermissions, string? installDocPath,
+        string? exitedPath)
     {
         var sb = new StringBuilder();
         foreach (var (key, value) in env)
             sb.Append("$env:").Append(key).Append('=').Append(PwshSingleQuote(value)).Append("; ");
+        // With an exited file, agy runs inside try/finally: when agy ends - or cannot start - its exit code (empty when
+        // unknown) lands there and a `start` waiting for pairing stops waiting. Closing the tab kills pwsh before the
+        // finally runs; PairingWait's hint covers that case.
+        if (exitedPath is not null)
+            sb.Append("$clavityRc = ''; try { ");
         sb.Append("agy --log-file ").Append(PwshSingleQuote(logFilePath));
         if (skipPermissions)
             sb.Append(" --dangerously-skip-permissions");
         if (!string.IsNullOrEmpty(installDocPath))
             sb.Append(" -i ").Append(PwshSingleQuote($"Fetch and follow the instructions at {installDocPath}"));
+        if (exitedPath is not null)
+        {
+            var quoted = PwshSingleQuote(exitedPath);
+            sb.Append("; $clavityRc = $LASTEXITCODE } finally { if (-not (Test-Path -LiteralPath ").Append(quoted)
+              .Append(")) { Set-Content -LiteralPath ").Append(quoted).Append(" -Value $clavityRc } }");
+        }
         return sb.ToString();
     }
 
@@ -125,7 +142,7 @@ public static class Launcher
     /// <c>set -C</c> (O_EXCL; measured atomic under dash and bash): only one copy can ever run agy, and the claim
     /// file is the launcher's proof that a terminal really started - an exit code is not (a terminal returns 0 even
     /// when the command it was given does not exist).</summary>
-    public static string BuildPosixScript(LaunchOptions options, string claimPath)
+    public static string BuildPosixScript(LaunchOptions options, string claimPath, string exitedPath)
     {
         var sb = new StringBuilder();
         sb.Append("#!/bin/sh\n");
@@ -133,19 +150,29 @@ public static class Launcher
         sb.Append("# Only the copy that creates the claim file runs agy; a second copy (a slower terminal from an earlier\n");
         sb.Append("# launch attempt) exits here. The claim file is also what tells clavity-ls the terminal really started.\n");
         sb.Append("( set -C; : > ").Append(ShQuote(claimPath)).Append(" ) 2>/dev/null || exit 0\n");
+        // From the claim on, however this script ends, the exited file records it: `clavity-ls start` waits for agy to
+        // pair and stops waiting when it appears. dash runs an EXIT trap only on a normal exit, so the signals a closed
+        // tab or `kill` sends are turned into one; Ctrl+C belongs to agy, so the shell ignores it while agy runs (a
+        // handler, not '' - an ignored signal would be inherited by agy).
+        sb.Append("clavity_exited=").Append(ShQuote(exitedPath)).Append('\n');
+        sb.Append("trap 'rc=$?; [ -e \"$clavity_exited\" ] || echo \"$rc\" > \"$clavity_exited\"' EXIT\n");
+        sb.Append("trap 'exit 129' HUP\n");
+        sb.Append("trap 'exit 143' TERM\n");
+        sb.Append("trap ':' INT\n");
+        // Record the end at once, then keep the tab open so its message can be read: a terminal closes the tab when its
+        // command ends.
+        sb.Append("clavity_end() { [ -e \"$clavity_exited\" ] || echo \"$1\" > \"$clavity_exited\"; trap - INT; printf 'clavity: %s (exit %s) Press Enter to close.\\n' \"$2\" \"$1\"; read _; exit \"$1\"; }\n");
         foreach (var (key, value) in BuildAgyEnv(options))
             sb.Append("export ").Append(key).Append('=').Append(ShQuote(value)).Append('\n');
-        // A failed cd happens AFTER the claim, so clavity-ls already reported success: hold the tab open long enough to
-        // read why, instead of closing it in a flash.
-        sb.Append("cd ").Append(ShQuote(options.Folder))
-          .Append(" || { echo 'clavity: cannot enter the session folder.'; sleep 60; exit 1; }\n");
-        sb.Append("command -v agy >/dev/null 2>&1 || { echo 'clavity: agy is not on PATH in this terminal.'; sleep 60; exit 127; }\n");
-        sb.Append("exec agy --log-file ").Append(ShQuote(options.AgyLogFilePath));
+        sb.Append("cd ").Append(ShQuote(options.Folder)).Append(" || clavity_end 1 'cannot enter the session folder.'\n");
+        sb.Append("command -v agy >/dev/null 2>&1 || clavity_end 127 'agy is not on PATH in this terminal.'\n");
+        sb.Append("agy --log-file ").Append(ShQuote(options.AgyLogFilePath));
         if (options.SkipPermissions)
             sb.Append(" --dangerously-skip-permissions");
         if (!string.IsNullOrEmpty(options.AgyInstallDocPath))
             sb.Append(" -i ").Append(ShQuote($"Fetch and follow the instructions at {options.AgyInstallDocPath}"));
         sb.Append('\n');
+        sb.Append("clavity_end $? 'agy exited.'\n");
         return sb.ToString();
     }
 

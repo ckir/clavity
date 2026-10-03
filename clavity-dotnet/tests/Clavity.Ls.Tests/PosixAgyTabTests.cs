@@ -129,7 +129,7 @@ public class PosixAgyTabTests
     }
 
     [Fact]
-    public void Exit_zero_without_a_claim_waits_the_timeout_and_a_still_running_launcher_is_killed()
+    public void A_launcher_still_running_without_a_claim_is_killed_at_the_timeout_and_the_ladder_moves_on()
     {
         var w = new World();
         var hung = new FakeProc(false, 0);
