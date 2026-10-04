@@ -3775,6 +3775,22 @@ behind by what reads as a check. Restored at the time with `git restore --staged
 **Fix direction:** ruff-format `telemetry.py` once on `main` (one commit, no logic change), so the gate is a no-op
 on a clean tree. Optionally add a `ruff format --check` over the bridge to CI so the drift cannot recur.
 
+### §68 — agy's copy of the plugin is registered ONCE and never refreshed, so plugin upgrades do not reach agy — ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-04 in agy's log while testing the owner's ECONNRESET hypothesis), not yet planned**
+
+**Measured 2026-10-04:** `clavity-dotnet-setup.sh:44-45` registers the plugin with agy (`agy plugin uninstall` +
+`agy plugin install "$ROOT"`) only while the stamp `$CLAUDE_PLUGIN_DATA/.agy-registered` is absent, and
+`CLAUDE_PLUGIN_DATA` survives plugin upgrades. The stamp here was written 2026-09-23 14:25 (local), so every release
+since - including v21's `86664e31`, which quoted the `agy-capstone` / `agy-test-audit` descriptions because unquoted
+they are invalid YAML - never reached agy's copy at `~/.gemini/config/plugins/clavity`. agy's log for session
+`f2e7ce54` (started 2026-10-04 08:01 local) shows `Failed to parse skill file ... agy-capstone\SKILL.md: ... yaml:
+line 2: mapping values are not allowed` 43x, and the same for `agy-test-audit`: agy ran without both skills. Something
+rewrote agy's copy at 13:19 local the same day (the quoted text is there now, and agy's next session logged 0 parse
+errors), but nothing in this hook did, so the next upgrade goes stale the same way.
+
+**Fix direction:** key the stamp to the plugin version (write the version into it; re-register when it differs), so
+each upgrade re-registers once. Pin it with a row in the setup hook's suite: a stamp from an older version must
+trigger `agy plugin install`, a stamp from the current version must not.
+
 ---
 
 ## Non-goals / accepted limitations
