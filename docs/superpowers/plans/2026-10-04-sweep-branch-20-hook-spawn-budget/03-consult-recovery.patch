@@ -1,0 +1,242 @@
+diff --git a/clavity-dotnet/plugin/hooks/agy-consult-recovery.sh b/clavity-dotnet/plugin/hooks/agy-consult-recovery.sh
+index bc8a18c1..c39be12f 100644
+--- a/clavity-dotnet/plugin/hooks/agy-consult-recovery.sh
++++ b/clavity-dotnet/plugin/hooks/agy-consult-recovery.sh
+@@ -14,6 +14,11 @@
+ # The guard prologue (stdin, cwd, .no-agy, root walk, 31b zero-footprint gate) is COPIED VERBATIM
+ # from agy-discipline-reaching.sh - see that file's comments for why each line is shaped as it is.
+ # Fail-open: any error -> exit 0. Byte-identical across both driver plugins (check-seed-artifacts-synced.sh).
++#
++# PROCESS BUDGET: this hook starts a bounded, seam-count-INDEPENDENT number of processes (every process
++# costs ~200 ms on Windows Git Bash): the enumeration, classification, top-N selection and conclusion test are
++# all bash builtins (`-nt`, `[[ ]]`, `printf -v`); only the SHOWN set (at most CAP=3 paths) costs externals -
++# one `stat`, one `git log`, one `jq`. Needs bash >= 4.3 (namerefs).
+ set +e
+ export TZ=UTC
+ 
+@@ -70,18 +75,48 @@ _seams=( "$seams_dir"/*.md )
+ shopt -u nocaseglob 2>/dev/null
+ [ ${#_seams[@]} -eq 0 ] && exit 0
+ 
+-# The token list is the LITERAL closed table (spec section 3a) - never derived from agy-marks/.
+-_tokens='agy-capstone|agy-panel|agy-test-audit|agy-first'
+ # ROADMAP section 39: the marker path comes from the SAME builder agy-mark.sh writes with. If it cannot be
+ # loaded no seam can be shown concluded, so every candidate is surfaced - the loud direction for a reader
+ # whose job is recovery. A lib that loads but does not define the builder counts as missing, otherwise the
+ # marker path collapses to $root/ and hides every seam (capstone Branch 2 round 1).
++# `${0%[/\\]*}` rather than `$(dirname "$0")` (a fork). BACKSLASH counts as a separator, as msys dirname treats
++# it: a Windows caller (the Pester suites, a backslash CLAUDE_PLUGIN_ROOT) hands bash `C:\x\hooks\h.sh`
++# (MEASURED: `${0%/*}` returns it UNCHANGED, the lib is then not found and every seam reads as open).
++# A separator-less $0 means the current directory, as dirname says.
++_hd=${0%[/\\]*}; [ "$_hd" = "$0" ] && _hd=.
+ _marker_lib_ok=0
+-. "$(dirname "$0" 2>/dev/null)/agy-marker-lib.sh" 2>/dev/null && command -v agy_marker_rel >/dev/null 2>&1 && _marker_lib_ok=1
++. "$_hd/agy-marker-lib.sh" 2>/dev/null && command -v agy_marker_rel >/dev/null 2>&1 && _marker_lib_ok=1
+ 
+-# rank1[] = on-convention unconcluded "path|token|round"; rank2[] = off-convention paths;
+-# bad[]   = basenames failing the allowlist (reported as a bare count only).
+-rank1=(); rank2=(); bad=()
++CAP=3
++LINECAP=240
++
++# Only the CAP most-recent candidates of each rank are ever shown, so only those are kept: a bounded
++# insertion into a CAP-long list ordered by mtime (`-nt`, a builtin) replaces `ls -t` over the whole set.
++# Seams are visited in glob (name) order and a new one enters only AHEAD of entries it is STRICTLY newer
++# than, so equal mtimes keep name order - the same tie-break `ls -t` applies (mtime desc, then name).
++# _top_insert <paths-array> <entries-array> <path> <entry>
++_top_insert() {
++  local -n _tp=$1 _te=$2
++  local _np=$3 _ne=$4 _i _n=${#_tp[@]}
++  # Full, and not strictly newer than the CAPth entry: cannot enter the top - one comparison, not CAP.
++  if [ "$_n" -ge "$CAP" ] && ! [ "$_np" -nt "${_tp[CAP-1]}" ]; then return 0; fi
++  for (( _i=0; _i<_n; _i++ )); do
++    [ "$_np" -nt "${_tp[_i]}" ] && break
++  done
++  _tp=( "${_tp[@]:0:_i}" "$_np" "${_tp[@]:_i:CAP-1-_i}" )
++  _te=( "${_te[@]:0:_i}" "$_ne" "${_te[@]:_i:CAP-1-_i}" )
++}
++
++# r1_* = on-convention unconcluded (path / "path|token|round"), r2_* = off-convention paths, each
++# most-recent-first and at most CAP long; *_n = the FULL unconcluded count (the "+N more" arithmetic).
++# bad[] = basenames failing the allowlist (reported as a bare count only).
++_r1_p=(); _r1_e=(); _r1_n=0
++_r2_p=(); _r2_e=(); _r2_n=0
++bad=()
++# Degrade, never drop (capstone r1 F1; r2 R2-F2/R2-F3): an unconcluded candidate that cannot be stat-ed
++# (read-but-not-execute seams dir, a dangling link) makes every `-nt` comparison false, so the shown set is
++# in NAME order, not recency - say so below rather than silently imply the shown seams are the most recent.
++_ordering_lost=0
+ for _s in "${_seams[@]}"; do
+   _base=${_s##*/}
+   # PURE-BASH lowercase (bash 4+); NOT $(... | tr ...) which forks per seam in this hot loop.
+@@ -92,64 +127,81 @@ for _s in "${_seams[@]}"; do
+   case "$_base" in
+     *[!A-Za-z0-9._-]*) bad+=( "$_base" ); continue ;;
+   esac
+-  # Anchored FULL match against the lowercased basename; token from the literal alternation.
+-  if [[ $_lc =~ ^(${_tokens})-r([0-9]+)(-.+)?\.md$ ]]; then
+-    _tok=${BASH_REMATCH[1]}; _rnd=${BASH_REMATCH[2]}
++  # KEYWORD classification (owner-approved 2026-10-04; replaces the `agy-<token>-rN` name convention that
++  # almost no real seam follows). The lowercased stem, wrapped in hyphens, is matched for WHOLE hyphen-
++  # delimited words, in this precedence: test-audit|testaudit, capstone, panel|review, first.
++  _w="-${_lc%.md}-"
++  _tok=''
++  if   [[ $_w == *-test-audit-* || $_w == *-testaudit-* ]]; then _tok=agy-test-audit
++  elif [[ $_w == *-capstone-* ]];                           then _tok=agy-capstone
++  elif [[ $_w == *-panel-* || $_w == *-review-* ]];         then _tok=agy-panel
++  elif [[ $_w == *-first-* ]];                              then _tok=agy-first
++  fi
++  if [ -n "$_tok" ]; then
++    # Round = the number of the LAST `-rN` word (greedy `.*`); none -> the literal `?` (printed "r?").
++    _rnd='?'
++    [[ $_w =~ .*-r([0-9]+)- ]] && _rnd=${BASH_REMATCH[1]}
+     _marker=''
+     if [ "$_marker_lib_ok" = 1 ]; then agy_marker_rel _mrel "$_tok"; _marker="$root/$_mrel"; fi
+     # Concluded iff the seam's OWN marker is newer than it.
+     if [ -n "$_marker" ] && [ -e "$_marker" ] && [ "$_marker" -nt "$_s" ]; then
+       continue
+     fi
+-    rank1+=( "$_s|$_tok|$_rnd" )
++    [ -e "$_s" ] || _ordering_lost=1
++    _r1_n=$((_r1_n+1))
++    _top_insert _r1_p _r1_e "$_s" "$_s|$_tok|$_rnd"
+   else
+-    rank2+=( "$_s" )
++    [ -e "$_s" ] || _ordering_lost=1
++    _r2_n=$((_r2_n+1))
++    _top_insert _r2_p _r2_e "$_s" "$_s"
+   fi
+ done
+ 
+-# Sort each rank most-recent-first by mtime. `ls -t` orders by mtime desc; feed it the paths.
+-_sort_by_mtime() { # prints most-recent-first
+-  ls -t -d "$@" 2>/dev/null
+-}
+-
+-declare -A _meta   # path -> "token|round"
+-_r1_paths=()
+-for _e in "${rank1[@]}"; do
+-  _p=${_e%%|*}; _meta["$_p"]=${_e#*|}; _r1_paths+=( "$_p" )
+-done
+-_r1_sorted=(); if [ ${#_r1_paths[@]} -gt 0 ]; then while IFS= read -r _l; do _r1_sorted+=( "$_l" ); done < <(_sort_by_mtime "${_r1_paths[@]}"); fi
+-_r2_sorted=(); if [ ${#rank2[@]} -gt 0 ]; then while IFS= read -r _l; do _r2_sorted+=( "$_l" ); done < <(_sort_by_mtime "${rank2[@]}"); fi
+-
+-# Degrade, never drop (capstone r1 F1; r2 R2-F2/R2-F3): if the external `ls` sort emitted nothing while
+-# candidates exist, fall back to the UNSORTED source - otherwise the remainder math below reads an empty
+-# array (0 - 0 = 0) and the hook goes SILENT on open seams, the one outcome this reader exists to prevent.
+-# This fires more readily than just ARG_MAX (r1's stated trigger): a seams dir with read-but-not-execute
+-# permission lets the glob match NAMES while `ls -t` cannot stat, so `ls` emits nothing at ANY seam count.
+-# The fallback order is bash-glob (alphabetical), NOT recency, so set a flag and say so below (R2-F3)
+-# rather than silently imply the shown seams are the most recent.
+-_ordering_lost=0
+-[ ${#_r1_sorted[@]} -eq 0 ] && [ ${#_r1_paths[@]} -gt 0 ] && { _r1_sorted=( "${_r1_paths[@]}" ); _ordering_lost=1; }
+-[ ${#_r2_sorted[@]} -eq 0 ] && [ ${#rank2[@]} -gt 0 ] && { _r2_sorted=( "${rank2[@]}" ); _ordering_lost=1; }
++# What is shown: rank 1 first, rank 2 fills what is left of CAP.
++_shown_r1=${#_r1_p[@]}
++_shown_r2=${#_r2_p[@]}
++[ "$_shown_r2" -gt $((CAP-_shown_r1)) ] && _shown_r2=$((CAP-_shown_r1))
++_show_p=( "${_r1_p[@]}" "${_r2_p[@]:0:_shown_r2}" )
++
++# AGE of every shown seam in COMMITS (never wall-clock), with ONE `stat` and ONE `git log` for the whole
++# shown set. Degrade, never drop: a seam that cannot be stat-ed, or a repo whose git cannot count (no commit
++# yet), simply gets no age. The count per seam is the number of commits whose committer date is >= that
++# seam's mtime second, taken from the one log of the OLDEST shown seam's window (`--since` keeps a commit
++# whose date EQUALS the bound, so `>=` is the same predicate `rev-list --since` applies).
++_ages=()
++if [ ${#_show_p[@]} -gt 0 ]; then
++  _so=$(stat -L -c '%Y %n' -- "${_show_p[@]}" 2>/dev/null)
++  _st_e=(); _st_p=(); _min=''
++  while IFS= read -r _l; do
++    case ${_l%% *} in ''|*[!0-9]*) continue ;; esac
++    _st_e+=( "${_l%% *}" ); _st_p+=( "${_l#* }" )
++    if [ -z "$_min" ] || [ "${_l%% *}" -lt "$_min" ]; then _min=${_l%% *}; fi
++  done <<< "$_so"
++  if [ -n "$_min" ]; then
++    _gout=$(git -C "$root" -c log.showSignature=false log --format=%ct --since="@$_min" HEAD 2>/dev/null) && {
++      _cts=(); [ -n "$_gout" ] && mapfile -t _cts <<< "$_gout"
++      for _i in "${!_show_p[@]}"; do
++        for _j in "${!_st_p[@]}"; do
++          [ "${_st_p[_j]}" = "${_show_p[_i]}" ] || continue
++          _c=0
++          for _t in "${_cts[@]}"; do (( _t >= _st_e[_j] )) && _c=$((_c+1)); done
++          _ages[_i]=", written $_c commits ago"
++          break
++        done
++      done
++    }
++  fi
++fi
+ 
+-CAP=3
+-LINECAP=240
+-_lines=(); _shown=0; _shown_r1=0; _shown_r2=0
+-_age_of() { # $1 = seam path; echoes ", written N commits ago" or "" on failure (degrade, never drop)
+-  local _epoch _n
+-  _epoch=$(date -r "$1" +%s 2>/dev/null) || return 0
+-  [ -n "$_epoch" ] || return 0
+-  _n=$(git -C "$root" rev-list --count --since="@$_epoch" HEAD 2>/dev/null) || return 0
+-  [ -n "$_n" ] && printf ', written %s commits ago' "$_n"
+-}
+-_cap_line() { # $1 = line; truncate to LINECAP
+-  local _l=$1
+-  [ ${#_l} -le "$LINECAP" ] && { printf '%s' "$_l"; return 0; }
+-  printf '%s...(truncated)' "${_l:0:$LINECAP}"
++_cap_line_v() { # $1 = out-var, $2 = line; truncate to LINECAP
++  local _cl_in=$2   # NOT `_l`: a local named like the caller's out-var would swallow the printf -v
++  if [ ${#_cl_in} -le "$LINECAP" ]; then printf -v "$1" '%s' "$_cl_in"; else printf -v "$1" '%s...(truncated)' "${_cl_in:0:$LINECAP}"; fi
+ }
+-for _p in "${_r1_sorted[@]}"; do
+-  [ "$_shown" -ge "$CAP" ] && break
+-  _tok=${_meta["$_p"]%%|*}; _rnd=${_meta["$_p"]#*|}
+-  _age=$(_age_of "$_p")
++_lines=()
++for (( _i=0; _i<_shown_r1; _i++ )); do
++  _p=${_r1_p[_i]}; _e=${_r1_e[_i]}
++  _rnd=${_e##*|}; _e=${_e%|*}; _tok=${_e##*|}
++  _age=${_ages[_i]}
+   # Case-robust reply probe (capstone r1 F2 + r2 R2-F1). The -reply.md exclusion (line ~84) matches the
+   # LOWERCASED $_lc, so it is case-INsensitive; this probe must be equally flexible or a -REPLY.MD reply on
+   # a case-SENSITIVE FS becomes a GHOST - excluded from candidates yet missed here, so the note silently
+@@ -158,21 +210,21 @@ for _p in "${_r1_sorted[@]}"; do
+   # line 68 -> empty array when there is no reply); the stem is QUOTED so a '[' in the repo path is literal.
+   _rp=( "${_p%.[Mm][Dd]}"-[Rr][Ee][Pp][Ll][Yy].[Mm][Dd] )
+   if [ ${#_rp[@]} -gt 0 ]; then
+-    _lines+=( "$(_cap_line "workflow position: $_tok r$_rnd ($_p)$_age. A -REPLY EXISTS on disk. It may or may not have been folded already - check before re-folding it. Read that seam and its -REPLY before starting new work, or say why you are not resuming it.")" )
++    _cap_line_v _l "workflow position: $_tok r$_rnd ($_p)$_age. A -REPLY EXISTS on disk. It may or may not have been folded already - check before re-folding it. Read that seam and its -REPLY before starting new work, or say why you are not resuming it."
+   else
+-    _lines+=( "$(_cap_line "workflow position: $_tok r$_rnd ($_p)$_age. Read that seam before starting new work, or say why you are not resuming it.")" )
++    _cap_line_v _l "workflow position: $_tok r$_rnd ($_p)$_age. Read that seam before starting new work, or say why you are not resuming it."
+   fi
+-  _shown=$((_shown+1)); _shown_r1=$((_shown_r1+1))
++  _lines+=( "$_l" )
+ done
+-for _p in "${_r2_sorted[@]}"; do
+-  [ "$_shown" -ge "$CAP" ] && break
+-  _age=$(_age_of "$_p")
+-  _lines+=( "$(_cap_line "an unrecognised seam exists ($_p)$_age. Read it before starting new work, or say why you are not resuming it.")" )
+-  _shown=$((_shown+1)); _shown_r2=$((_shown_r2+1))
++for (( _k=0; _k<_shown_r2; _k++ )); do
++  _p=${_r2_p[_k]}
++  _age=${_ages[_shown_r1+_k]}
++  _cap_line_v _l "an unrecognised seam exists ($_p)$_age. Read it before starting new work, or say why you are not resuming it."
++  _lines+=( "$_l" )
+ done
+ 
+-_r1_rest=$(( ${#_r1_sorted[@]} - _shown_r1 ))
+-_r2_rest=$(( ${#_r2_sorted[@]} - _shown_r2 ))
++_r1_rest=$(( _r1_n - _shown_r1 ))
++_r2_rest=$(( _r2_n - _shown_r2 ))
+ [ "$_r1_rest" -gt 0 ] && _lines+=( "$_r1_rest more open seams are not shown. List .clavity/seams/ yourself before starting new work." )
+ [ "$_r2_rest" -gt 0 ] && _lines+=( "$_r2_rest unrecognised seams are not shown. If you are resuming work you cannot see listed above, list .clavity/seams/ yourself before starting." )
+ [ ${#bad[@]} -gt 0 ] && _lines+=( "${#bad[@]} unrecognised seams could not be named. If you are resuming work you cannot see listed above, list .clavity/seams/ yourself before starting." )
+@@ -183,7 +235,9 @@ _r2_rest=$(( ${#_r2_sorted[@]} - _shown_r2 ))
+ 
+ # Nothing to say -> print NOTHING (spec section 3b: not a header, not an empty section).
+ [ ${#_lines[@]} -eq 0 ] && exit 0
+-_msg=$(printf '%s\n' "${_lines[@]}")
++# `printf -v` (no fork); the trailing newline is stripped as `$(...)` did.
++printf -v _msg '%s\n' "${_lines[@]}"
++_msg=${_msg%$'\n'}
+ 
+ # jq owns the escaping ($_msg carries agent-authored PATHS). If jq is ABSENT, do NOT go silently mute:
+ # emit a FIXED-literal notice with NO interpolated path, mirroring agy-anomaly-reminder.sh:73-74.

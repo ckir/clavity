@@ -1,0 +1,72 @@
+diff --git a/clavity-dotnet/plugin/hooks/agy-after-reminder.sh b/clavity-dotnet/plugin/hooks/agy-after-reminder.sh
+index 2e495920..a7a456fd 100644
+--- a/clavity-dotnet/plugin/hooks/agy-after-reminder.sh
++++ b/clavity-dotnet/plugin/hooks/agy-after-reminder.sh
+@@ -8,13 +8,20 @@
+ # no residue in the user's CLAUDE.md. Fail-open: any error -> exit 0. Suppressed by a
+ # `.no-agy` kill-switch (cwd or ~/.claude), matching the other agy-weave hooks.
+ set +e
+-input=$(cat)
++# stderr is silenced ONCE, here: a per-command `2>/dev/null` inside a command substitution costs an extra
++# process (MEASURED: `x=$(jq -r . 2>/dev/null)` 6 vs `x=$(jq -r .)` 5). Nothing in this hook writes to stderr.
++exec 2>/dev/null
++# PROCESS BUDGET (owner ruling: at most 16 processes per hook run, bash's own boot included; on this
++# platform every process costs ~200ms and this hook runs after EVERY Write/Edit). The payload is read into
++# $input only when jq is ABSENT; with jq present, jq reads this hook's own stdin directly (no `$(cat)`, no
++# `printf | jq` pipelines, no `printf | tr | grep` match - all of those are 2-3 processes each).
++if command -v jq >/dev/null 2>&1; then _have_jq=1; else _have_jq=''; IFS= read -r -d '' input; fi
+ 
+ # --- jq guard (spec Decision 4 / SP-D). jq parses the payload + emits structured JSON. Without it,
+ # fall back to a separator-agnostic, FIELD-BOUNDED grep on the RAW payload's file_path and, ONLY on a
+ # spec/plan match, emit a loud hard-coded ASCII line so the AGY-AFTER reminder is never a silent no-op.
+ # Honor the kill-switch first (global; cwd falls back to the process cwd without jq). ---
+-if ! command -v jq >/dev/null 2>&1; then
++if [ -z "$_have_jq" ]; then
+   # Recover the REAL cwd from the raw payload rather than trusting the process cwd, which is not
+   # necessarily the session's workspace. Same technique the recorder uses; needs no jq. This value keeps
+   # its JSON escaping, hence the DOUBLE-backslash pattern - see the note at the jq path below.
+@@ -41,13 +48,24 @@ if ! command -v jq >/dev/null 2>&1; then
+     done
+   fi
+   if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then exit 0; fi
+-  if printf '%s' "$input" | grep -Eq '"(file_path|path)"[[:space:]]*:[[:space:]]*"[^"]*docs[\\/]+superpowers[\\/]+(specs|plans)[\\/]+[^"]*\.md'; then
+-    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[AGY-DISCIPLINES] guard inactive: missing jq - the AGY-AFTER panel reminder will not fire on spec/plan writes"}}'
+-  fi
++  # grep -Eq, line by line, in the shell: `[[ =~ ]]` is POSIX ERE like grep -E, and the per-line loop keeps
++  # grep's rule that a match never spans a newline.
++  _re='"(file_path|path)"[[:space:]]*:[[:space:]]*"[^"]*docs[\\/]+superpowers[\\/]+(specs|plans)[\\/]+[^"]*\.md'
++  while IFS= read -r _l; do
++    if [[ $_l =~ $_re ]]; then
++      printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[AGY-DISCIPLINES] guard inactive: missing jq - the AGY-AFTER panel reminder will not fire on spec/plan writes"}}'
++      break
++    fi
++  done <<<"$input"
+   exit 0
+ fi
+-fp=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.path // empty' 2>/dev/null)
+-cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
++# ONE jq call yields both fields (file path, cwd), joined by \u0001 - a character no path contains. The
++# `// ""` keeps an absent path an EMPTY field (the old `// empty` printed nothing), and `$(...)` strips
++# trailing newlines exactly as the two old substitutions did.
++out=$(jq -r '"\(.tool_input.file_path // .tool_input.path // "")\u0001\(.cwd // ".")"')
++fp=${out%%$'\001'*}
++cwd=${out#*$'\001'}
++while [[ $fp == *$'\n' ]]; do fp=${fp%$'\n'}; done
+ [ -z "$fp" ] && exit 0
+ 
+ # THE NORMALIZATION FORM MUST MATCH THE EXTRACTION SOURCE. jq -r DECODES the JSON escaping, so cwd holds
+@@ -89,8 +107,12 @@ if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
+ fi
+ 
+ # Normalize slashes; fire only for spec/plan artifacts under docs/superpowers/.
+-norm=$(printf '%s' "$fp" | tr '\\' '/')
+-if printf '%s' "$norm" | grep -Eq 'docs/superpowers/(specs|plans)/.*\.md$'; then
++norm=${fp//\\//}
++_hit=''
++while IFS= read -r _l; do   # grep -Eq is per line; so is this
++  if [[ $_l =~ docs/superpowers/(specs|plans)/.*\.md$ ]]; then _hit=1; break; fi
++done <<<"$norm"
++if [ -n "$_hit" ]; then
+   msg="AGY-AFTER: you just authored/edited a spec or plan. BEFORE presenting it to the user, run an adversarial panel over the FINISHED artifact - do NOT wait for the user to ask \"did agy check?\". Invoke the \`adversarial-panel-review\` skill (it carries the full procedure: seat/persona palette, the live-peer escalation round, fold-with-verification, the PANEL VERDICT, and the hard round cap). Load-bearing posture: stay adversarial (a panel is the review FLOOR, not the ceiling); VERIFY every bare factual claim the peer makes BY MEASUREMENT before folding (it makes confident false claims); neither fold-nor-dismiss on disagreement - negotiate; the user still owns the review gate. If the artifact is genuinely mid-draft (incomplete), defer until the final write."
+   jq -nc --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'
+ fi
