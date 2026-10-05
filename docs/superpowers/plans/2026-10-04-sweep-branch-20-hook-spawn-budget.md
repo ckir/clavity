@@ -16,7 +16,8 @@ Owner rulings (index `project_hook-perf_execution.md`; waivers in `.clavity/agy-
 
 - **O1. ONE ceiling, every hook, every path:** 16 processes total including 3 for bash boot, as the prototype harness counted them (Git's `bin\bash.exe` launcher + spin bash + exec'd hook bash). The new harness launches `usr\bin\bash.exe` directly (D3), so its boot is 2 and the ceiling is expressed as **13 processes beyond boot**. Same budget, different bookkeeping.
 - **O2. The consult path stays as it is:** the consult guard's real-consult path (`agy_guard_quad` + census, ~115 processes a side) moves to a separate branch with its own design consult (ROADMAP section 70, Task 12). This branch only **pins** it so it cannot grow, and adds the fast exit for non-consult calls.
-- **O3. Split:** this branch fixes the original nine hooks. The eight census-found hooks (`agy-inbox-snapshot`, `agy-anomaly-reminder`, `agy-verify-reminder`, `docs-audit-reminder`, `fetch-clavity-ls`, `agy-discipline-reaching`, `assertion-strength-reminder`, `migrate-inbox`) are Branch 21. Here they get a passing default-path row each, plus a named debt entry. That leaves the budget suite with exactly ONE red row until Branch 21 lands (the owner chose a visible failure over a pin). **Consequence the owner must keep in view:** `just test-scripts-slow` (and CI, if it runs that half) is red on that one row from this branch's merge until Branch 21 merges.
+- **O3. Split:** this branch fixes the original nine hooks. The eight census-found hooks (`agy-inbox-snapshot`, `agy-anomaly-reminder`, `agy-verify-reminder`, `docs-audit-reminder`, `fetch-clavity-ls`, `agy-discipline-reaching`, `assertion-strength-reminder`, `migrate-inbox`) are Branch 21. Here they get a passing default-path row each, plus a named debt entry. That leaves the budget suite with exactly ONE red row until Branch 21 lands (the owner chose a visible failure over a pin). **Fork A (owner ruling 2026-10-05, agreed with agy):** CI runs `Invoke-Pester scripts/tests` on every PR (`ci-scripts.yml`, no paths filter by design) and merge-gate guards main and Dependabot auto-merge. So the debt row is RED locally (`just test-scripts-slow`) and SKIPPED when `GITHUB_ACTIONS` is set, with the debt list in the skip reason so every CI log names it.
+- **O6. Forks B-D (owner ruling 2026-10-05, agreed with agy after an AGY-FIRST consult):** B - a compaction re-arms the test-audit reminder (Task 5 Step 4(c)); C - CI puts the real jq first on PATH (Task 10 Step 4), verified on the first CI run, with local-only budget rows as the fallback; D - Q1 below is ACCEPTED.
 - **O4. Debounce:** `agy-test-audit-reminder.sh` emits at most once per (session, HEAD).
 - **O5. Timeouts after re-measure:** this plan's S4 (Task 11).
 
@@ -33,7 +34,7 @@ Driver rulings, each measured (`.clavity/scratch/hook-perf/b20-protos/FINDINGS.m
 
 - **D5. Debounce state lives outside the repo:** a flat file `${TMPDIR:-/tmp}/claude-agy-test-audit-reminder.<sid>` holding the HEAD it last fired for, written with one `printf >` (the nested-directory + tmp/mv variant measured 17). The hook still "NEVER writes a marker"; a racing reader sees a partial sha and reminds again, which is the safe direction.
 
-**Open decision for the owner (approve with the plan, or rule otherwise):**
+**Owner decision (RESOLVED 2026-10-05: accept, ruling O6-D):**
 
 - **Q1. Multi-document settings file.** `agy-liveness-check.sh` today accepts a settings file holding two JSON documents (`{..} {..}`) silently, because `jq -e .` and `jq -s` take a stream. The prototype parses each file with `fromjson`, which rejects it, so such a file is now reported as `settings unreadable` plus the advisory. Claude Code itself rejects such a file, so the new message is the truthful one. Keeping the old behaviour costs extra jq calls and breaks the ceiling with three such files. **Driver recommends: accept** (Task 7 pins it with a row).
 
@@ -187,6 +188,9 @@ function Invoke-JobCountedBash {
             $out = $p.StandardOutput.ReadToEndAsync(); $err = $p.StandardError.ReadToEndAsync()
             if (-not $p.WaitForExit(120000)) { $p.Kill($true); throw "Invoke-JobCountedBash: '$ScriptPath' did not exit within 120 s" }
             $p.WaitForExit()
+            # A background child that inherited stdout/stderr would hold the pipes open after bash exits; bound
+            # the reads so such a hook fails this run instead of hanging the suite.
+            if (-not $out.Wait(10000) -or -not $err.Wait(10000)) { throw "Invoke-JobCountedBash: '$ScriptPath' exited but a child still holds its output open" }
             [pscustomobject]@{ Total = [int][ClavityJobCount]::Total($job); ExitCode = $p.ExitCode; StdOut = $out.Result; StdErr = $err.Result }
         } finally { [ClavityJobCount]::Close($job) }
     } finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
@@ -291,7 +295,14 @@ function New-HookFixture {
             # agy-liveness-check.sh reads USER-scope settings from CLAUDE_CONFIG_DIR, not only from HOME.
             CLAUDE_CONFIG_DIR = (Join-Path $homeDir '.claude')
             CLAUDE_PROJECT_DIR = $repo; CLAUDE_PLUGIN_DATA = ''; CLAUDE_PLUGIN_ROOT = ''
+            LOCALAPPDATA = $tmp
+            # EVERY other variable a hook reads from its environment (census 2026-10-05: an rg of `${UPPER` over
+            # the 4 hook dirs, minus the names the scripts set themselves). $null REMOVES it for the child, so a
+            # value set in the session running the tests cannot leak in. CLAVITY_GOLDEN_HEADER is the dangerous
+            # one: agy-drive-session-reset.sh deletes flag files under it.
             AGY_SESSION_ID = $null; CLAVITY_SESSION = $null; AGY_SESSION = $null
+            CLAVITY_GOLDEN_HEADER = $null; CLAVITY_AUDIT_BASE_REF = $null; AGY_GUARD_TTL_MIN = $null
+            AGY_CURATE_NUDGE_THRESHOLD = $null; AGY_CURATE_NUDGE_MAX_AGE_DAYS = $null; AGY_INBOX_SNAPSHOT_KEEP = $null
         }
     }
     if (-not $NoGit) {
@@ -474,7 +485,7 @@ $script:Rows = @(
         [IO.File]::WriteAllText((Join-Path $fx.Home '.clavity\agy-observations.md'), "# agy observations inbox`n`n## Pending`n`n$bullets`n", [Text.UTF8Encoding]::new($false))
         $s = Join-Path $fx.Home '.clavity\.agy-curate-snooze'; Set-Content -LiteralPath $s -Value '' -NoNewline; [IO.File]::SetLastWriteTime($s, (Get-Date).AddDays(-8))
         New-SessionStartPayload $fx
-    } -Expect 'agy-curate nudge'
+    } -Expect 'agy-curate is OVERDUE'   # 16 >= 2 x threshold 8 takes the OVERDUE message (agy-curate-nudge.sh:80), not the nudge
 
     # --- every other registered hook: its default path (Branch 21 adds the worst paths) ---
     New-BudgetRow "$D/agy-anomaly-dispatch-reminder.sh" 'Agent dispatch' { param($fx) New-ToolPayload $fx 'Agent' @{ prompt = 'x' } }
@@ -543,6 +554,13 @@ Describe 'hook spawn budget' {
     }
 
     It 'carries no Branch 21 debt (RED until Branch 21 lands - owner ruling 2026-10-04)' -Tag 'debt' {
+        # CI runs this whole directory on EVERY PR with no paths filter (ci-scripts.yml), and merge-gate guards
+        # main and Dependabot auto-merge, so a red row there would block every merge until Branch 21. Owner
+        # ruling 2026-10-05, agreed with agy (fork A): RED locally, SKIPPED on CI with the debt in the reason so
+        # every CI log still names it.
+        if ($env:GITHUB_ACTIONS -and $script:B21Debt.Count) {
+            Set-ItResult -Skipped -Because ('Branch 21 debt, CI-only skip: ' + (@($script:B21Debt | ForEach-Object { "$($_.Hook) [$($_.Path)] $($_.Total) total" }) -join '; '))
+        }
         (@($script:B21Debt | ForEach-Object { "$($_.Hook) [$($_.Path)] measured $($_.Total) total" }) -join '; ') | Should -BeExactly '' -Because 'each listed path is over the 16-process ceiling; Branch 21 removes an entry in the commit that brings its path under it'
     }
 
@@ -578,6 +596,7 @@ Describe 'hook spawn budget' {
 Run (backgrounded or foreground; ~60 rows x ~2-5 s): `pwsh -NoProfile -c "Invoke-Pester scripts/tests/hook-spawn-budget.Tests.ps1 -Output Detailed -CI"`
 Expected: the census row PASSES; the debt row FAILS; the scaling row FAILS (prototype-measured today: 1 seam 19 total, 1000 seams 37); the rows of the nine hooks fail where today's counts exceed 13 beyond boot (consult-guard-pre/post non-consult rows ~37, test-audit-reminder fire rows, seam-inject, liveness, curate worst, drive-reset, after-reminder, consult-recovery seam rows); every "every other registered hook" row PASSES; every PINNED row PASSES. **Any row failing for a reason other than its count (an `-Expect`/`-Silent` assertion, an exception) is a fixture defect: STOP and fix the fixture before Task 3** - with ONE designed exception: `agy-test-audit-reminder.sh: debounced: second call at the same HEAD` fails its `-Silent` assertion until Task 5 adds the debounce. If a scaling or nine-hook row unexpectedly PASSES, record it and continue (Task 3+ still applies).
 
+- [ ] **Step 4b: Give every row an output assertion (panel R1).** Rows that carry neither `-Expect` nor `-Silent` can certify an early exit. These are: both `agy-liveness-check.sh` rows, `agy-seam-inject.sh: skill value containing a newline`, and every row in the "every other registered hook" block. For each one, read the row's stdout in Step 4's detailed output (or call `Measure-BashHookProcesses` once with the row's fixture). If stdout is empty, add `-Silent`. Otherwise add `-Expect '<the first 20 characters of its stdout's additionalContext / systemMessage text>'`. A stdout that is NOT the path the row's name claims (for example a `.no-agy` notice) is a fixture defect: fix the fixture first. Re-run Step 4: those rows' outcomes must not change.
 - [ ] **Step 5: Partition row.** Add to the Measured runtimes table in `scripts/tests/_partition.md`, directly after the `pairing-doc.Tests.ps1` row:
 
 ```text
@@ -615,16 +634,40 @@ $env:HSB_HOOK = '<hook file name>'; pwsh -NoProfile -c "Invoke-Pester scripts/te
 **Files:** `clavity-dotnet/plugin/hooks/agy-consult-guard-{pre,post}.sh` + classic mirrors. **Oracle:** `scripts/tests/agy-consult-guard.Tests.ps1` (44 rows), which includes the rule that the guard does NOT honour `.no-agy`.
 
 - [ ] **Step 1:** filtered budget run for `HSB_HOOK=agy-consult-guard-pre.sh`, then for `HSB_HOOK=agy-consult-guard-post.sh`. Expected: the 4 non-pinned rows of each FAIL (about 37 beyond boot); the 3 pinned rows PASS.
+- [ ] **Step 1b: Case rows first (panel R1, verified).** Git Bash resolves commands case-insensitively on Windows (measured 2026-10-05: `CLAVITY-LS --help` and `Clavity-Ls.EXE --help` both ran `clavity-ls`), but the guard's command anchor matches only lower-case `clavity` (`agy-consult-guard-lib.sh`, `agy_guard_category`: `printf '%s' "$c" | grep -Eq "${anchor}ask..."`), so a consult typed `CLAVITY ask` runs unguarded. In `scripts/tests/agy-consult-guard.Tests.ps1`, directly after the row `It 'WARNS when the consult CLI is invoked as clavity.exe'`, add:
+
+```powershell
+    It 'WARNS when the consult CLI is invoked in another letter case (<Cmd>)' -ForEach @(
+        @{ Cmd = 'CLAVITY ask "review this"' }
+        @{ Cmd = 'Clavity.EXE ask "review this"' }
+    ) {
+        # Branch 20 panel R1, MEASURED: Git Bash on Windows runs CLAVITY / Clavity.EXE as clavity, so a
+        # case-sensitive anchor left these consults unguarded.
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'Bash' $Cmd $r
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            Push-Location $r; Set-Content 'e.txt' 'five' -Encoding ascii; git add e.txt; git commit -qm peer; Pop-Location
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+```
+
+Run the suite: exactly these 2 rows FAIL (44 pass).
 - [ ] **Step 2:** `git apply $P/01-consult-guard-pre.patch $P/02-consult-guard-post.patch`
-- [ ] **Step 3: Corrections:** none. The patches already read stdin with the chunked loop (variable `chunk` rather than `_c`; equivalent) and resolve the lib with `d=${0%[/\\]*}`. What they do: prefilter 1 on the raw JSON exits unless the text contains `agy_ask` or matches `clavity(\.exe)?([[:space:]]|\\[ntrf]|\\u[0-9a-fA-F]{4})+(ask|send|await-reply)`; prefilter 2 on the decoded command applies the lib's command-position anchor (plus a newline separator). Pre exits on an await-reply-only command and post on a send-only one. One `jq -j` NUL-separated call replaces the four `printf|jq`. `sid` is sanitized under `LC_ALL=C`, byte-wise like `tr -c`. Proven a superset of `agy_guard_category` on 30 + 14 commands (scripts `t4.sh`, `t5.sh` in `.clavity/scratch/hook-perf/b20-protos/scratch-b20/`).
-- [ ] **Step 4:** `cp clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh clavity-classic/plugin/hooks/`
+- [ ] **Step 3: Corrections.**
+  (a) Case-insensitive matching, in BOTH patched hooks: directly after the stdin line `input=; while IFS= read -r -N 1048576 chunk 2>/dev/null; do input+=$chunk; done; input+=$chunk` insert the line `shopt -s nocasematch   # Windows runs CLAVITY / Clavity.EXE as clavity (Branch 20 panel R1)`. This makes both prefilters' `[[ =~ ]]` matches case-insensitive. It cannot change the `sid` sanitize, whose class already spans `A-Za-z`.
+  (b) In `clavity-dotnet/plugin/hooks/agy-consult-guard-lib.sh`, `agy_guard_category`: change each of the three `grep -Eq` to `grep -Eiq` (lines `... grep -Eq "${anchor}ask([[:space:]]|$)" ...`, `... "${anchor}send..."`, `... "${anchor}await-reply..."`). Copy the lib to `clavity-classic/plugin/hooks/` in Step 4 as well.
+  Otherwise unchanged from the patches. The patches already read stdin with the chunked loop (variable `chunk` rather than `_c`; equivalent) and resolve the lib with `d=${0%[/\\]*}`. What they do: prefilter 1 on the raw JSON exits unless the text contains `agy_ask` or matches `clavity(\.exe)?([[:space:]]|\\[ntrf]|\\u[0-9a-fA-F]{4})+(ask|send|await-reply)`; prefilter 2 on the decoded command applies the lib's command-position anchor (plus a newline separator). Pre exits on an await-reply-only command and post on a send-only one. One `jq -j` NUL-separated call replaces the four `printf|jq`. `sid` is sanitized under `LC_ALL=C`, byte-wise like `tr -c`. Proven a superset of `agy_guard_category` on 30 + 14 commands (scripts `t4.sh`, `t5.sh` in `.clavity/scratch/hook-perf/b20-protos/scratch-b20/`).
+- [ ] **Step 4:** `cp clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh clavity-dotnet/plugin/hooks/agy-consult-guard-lib.sh clavity-classic/plugin/hooks/`
 - [ ] **Step 5:** `bash -n clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh && bash -n clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh` -> no output, exit 0.
-- [ ] **Step 6:** both filtered budget runs: all 14 rows PASS. Prototype counts (total incl. 3 boot): non-consult 3, prefilter hit 7, pinned 114-129.
-- [ ] **Step 7:** `pwsh -NoProfile -c "Invoke-Pester scripts/tests/agy-consult-guard.Tests.ps1 -Output Detailed -CI"` -> `Tests Passed: 44, Failed: 0`. A failing row is a behaviour regression: the ORACLE wins. Report it, do not edit the test.
+- [ ] **Step 6:** both filtered budget runs: all 14 rows PASS. Prototype counts (total incl. 3 boot): non-consult 3, prefilter hit 7, pinned 114-129. **Then re-pin (panel R1):** set each `$script:ConsultPin` value in `hook-spawn-budget.Rows.ps1` to the `Spawned` the row just reported (read it from the row's `-Because` text by temporarily lowering its `-Max` to 0, or from a one-off `Measure-BashHookProcesses` call with the same fixture), and change the comment's "measured BEFORE this branch" to "measured after Task 3". The counts are deterministic (run-to-run identical), so the pin has no slack and the consult path can no longer grow back the ~20 processes Task 3 removed. Re-run both filtered budget runs: PASS.
+- [ ] **Step 7:** `pwsh -NoProfile -c "Invoke-Pester scripts/tests/agy-consult-guard.Tests.ps1 -Output Detailed -CI"` -> `Tests Passed: 46, Failed: 0`. A failing row is a behaviour regression: the ORACLE wins. Report it, do not edit the test.
 - [ ] **Step 8:**
 
 ```bash
-git add clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh clavity-classic/plugin/hooks/agy-consult-guard-pre.sh clavity-classic/plugin/hooks/agy-consult-guard-post.sh
+git add clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh clavity-dotnet/plugin/hooks/agy-consult-guard-lib.sh clavity-classic/plugin/hooks/agy-consult-guard-pre.sh clavity-classic/plugin/hooks/agy-consult-guard-post.sh clavity-classic/plugin/hooks/agy-consult-guard-lib.sh scripts/tests/agy-consult-guard.Tests.ps1 scripts/tests/hook-spawn-budget.Rows.ps1
 git commit -m "perf(hooks): consult guard exits on non-consult calls before any process (40 -> 3)"
 ```
 
@@ -676,7 +719,7 @@ Run `pwsh -NoProfile -c "Invoke-Pester scripts/tests/agy-consult-recovery.Tests.
 
 - [ ] **Step 3:** `git apply $P/03-consult-recovery.patch`
 - [ ] **Step 4: Corrections.**
-  (a) stdin (D4): replace the line `IFS= read -r -d '' input` (line 20 of the file; the patch leaves it) with `input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c`.
+  (a) stdin (D4): replace the line `IFS= read -r -d '' input` (line 20 before the patch, line 25 after it; the patch leaves the line itself unchanged, and it is unique in the file) with `input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c`.
   (b) Grep the patched file for the stale comment references `line ~84` and `line 68` and make each point at the current line of what it names (the `*-reply.md` exclusion case; the `shopt -s nullglob` line).
 - [ ] **Step 5:** `cp clavity-dotnet/plugin/hooks/agy-consult-recovery.sh clavity-classic/plugin/hooks/` and `bash -n` it.
 - [ ] **Step 6:** filtered budget run -> all 3 rows + scaling row PASS (prototype: 11 total = 8 beyond boot with seams, flat 1..1000; concluded 3).
@@ -787,15 +830,59 @@ Describe 'agy-test-audit-reminder debounce (once per session and HEAD; Branch 20
 }
 ```
 
-Run the suite: exactly 3 of the 5 new rows FAIL before the patch: 'fires on the first call...', 'fires again after HEAD moves...' (each because the repeat call is not silent) and 'keeps its state under TMPDIR only' (no state file). 'fires again for another session' and 'still fires ... TMPDIR is a file' pass today and stay as guards against a debounce that silences too much. The 29 old rows pass.
+Run the suite: exactly 3 of these 5 new rows FAIL before the patch (the 6th row, added in Step 4(c), is written then and also fails before the patch): 'fires on the first call...', 'fires again after HEAD moves...' (each because the repeat call is not silent) and 'keeps its state under TMPDIR only' (no state file). 'fires again for another session' and 'still fires ... TMPDIR is a file' pass today and stay as guards against a debounce that silences too much. The 29 old rows pass.
 - [ ] **Step 3:** `git apply $P/04-test-audit-reminder.patch`
 - [ ] **Step 4: Corrections.**
   (a) D2: in the patched `emit()` function delete the line `  case "$OSTYPE" in msys*|cygwin*|win32*) eol=$'\r' ;; esac` and change `local m=$1 eol=''` to `local m=$1`, and the `printf` format `'{"hookSpecificOutput":...}%s\n' "$m" "$eol"` to the same format without the trailing `%s` and without `"$eol"`.
   (b) D4: in the line `if command -v jq >/dev/null 2>&1; then _have_jq=1; else _have_jq=''; IFS= read -r -d '' input; fi` replace `IFS= read -r -d '' input` with `input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c`.
-- [ ] **Step 5:** mirror to classic; `bash -n`.
-- [ ] **Step 6:** filtered budget run -> 4 rows PASS (prototype: worst fire 15 total = 12 beyond boot; debounced 8 total).
-- [ ] **Step 7:** suite -> `Tests Passed: 34, Failed: 0`. Then run the four prototype paths NOT yet measured (rename in range, merge commit in range, no-jq ledger fire, no-jq ledger debounced) through `Measure-BashHookProcesses` in a scratch script: each must be at most 13 beyond boot. A path over 13 is a STOP: report it, do not widen the budget.
-- [ ] **Step 8:** commit both hook copies + the suite: `perf(hooks): test-audit reminder fires once per session and HEAD, 55 -> 15 processes on its worst path`.
+  (c) Re-arm on compaction (ruling O6-B). The reminder's own text tells the user to `/compact`, and a compaction summarizes the one emitted reminder away. In `clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh`, directly after the line `event="${1:-PreCompact}"`, insert:
+
+```bash
+# Branch 20 (owner ruling 2026-10-05, agreed with agy): a compaction summarizes away the AGY-TEST-AUDIT
+# reminder, and its once-per-(session, HEAD) debounce (agy-test-audit-reminder.sh, _set_state) would keep it
+# silent at this HEAD for the rest of the session. Re-arm it by deleting this session's debounce file. The
+# session-id sanitising is _set_state's, character for character, so both sides name the same file.
+# Builtins plus one rm, PreCompact only, before any early exit.
+if [ "$event" = "PreCompact" ]; then
+  _rs=''
+  [[ $input =~ \"session_id\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && _rs=${BASH_REMATCH[1]}
+  _ok='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-'
+  _rs=${_rs//[^$_ok]/_}; [ -n "$_rs" ] || _rs=default
+  _rf="${TMPDIR:-/tmp}/claude-agy-test-audit-reminder.$_rs"
+  [ -e "$_rf" ] && rm -f -- "$_rf" 2>/dev/null
+fi
+```
+
+  Add to Step 2's debounce `Describe` (before its closing `}`), using a `$script:Capture` path set in its `BeforeAll` as `Join-Path $repoRoot 'clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh'`:
+
+```powershell
+    It 'fires again after a compaction in the same session (PreCompact re-arms it)' {
+        $d = New-DebounceRepo
+        try {
+            (Invoke-Debounced $d 's1').StdOut | Should -Match 'AGY-TEST-AUDIT auto-fire'
+            (Invoke-Debounced $d 's1').StdOut | Should -BeNullOrEmpty
+            $pc = @{ cwd = ($d -replace '\\', '/'); session_id = 's1'; hook_event_name = 'PreCompact'; trigger = 'manual' } | ConvertTo-Json -Compress
+            $null = Invoke-BashHook -HookPath $script:Capture -Payload $pc -Arguments @('PreCompact') -Env @{ TMPDIR = ($script:DTmp -replace '\\', '/'); HOME = ($script:DHome -replace '\\', '/') }
+            (Invoke-Debounced $d 's1').StdOut | Should -Match 'AGY-TEST-AUDIT auto-fire' -Because 'a compaction summarized the reminder away, so it must come back once'
+        } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+```
+
+  And add this budget row to `hook-spawn-budget.Rows.ps1`, after the existing `agy-anomaly-capture-reminder.sh` 'PreCompact' row:
+
+```powershell
+    New-BudgetRow "$D/agy-anomaly-capture-reminder.sh" 'PreCompact re-arming a test-audit debounce' {
+        param($fx)
+        Set-Content -LiteralPath (Join-Path $fx.Tmp 'claude-agy-test-audit-reminder.s1') -Value 'deadbeef'
+        ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'PreCompact'; trigger = 'manual' }
+    }
+```
+
+  (Give it `-Silent` or `-Expect` per Task 2 Step 4b - the PreCompact arm's output does not change.)
+- [ ] **Step 5:** mirror `agy-test-audit-reminder.sh` AND `agy-anomaly-capture-reminder.sh` to classic; `bash -n` both.
+- [ ] **Step 6:** filtered budget runs `HSB_HOOK=agy-test-audit-reminder.sh` -> 4 rows PASS (prototype: worst fire 15 total = 12 beyond boot; debounced 8 total), and `HSB_HOOK=agy-anomaly-capture-reminder.sh` -> its rows PASS (PreCompact was 11 total; the re-arm adds at most one `rm`).
+- [ ] **Step 7:** suite -> `Tests Passed: 35, Failed: 0`; then `pwsh -NoProfile -c "Invoke-Pester scripts/tests/agy-anomaly-capture-reminder.Tests.ps1 -Output Detailed -CI"` -> no failures (the PreCompact arm's output is unchanged). Then run the four prototype paths NOT yet measured (rename in range, merge commit in range, no-jq ledger fire, no-jq ledger debounced) through `Measure-BashHookProcesses` in a scratch script: each must be at most 13 beyond boot. A path over 13 is a STOP: report it, do not widen the budget.
+- [ ] **Step 8:** commit both copies of agy-test-audit-reminder.sh AND agy-anomaly-capture-reminder.sh, the suite and hook-spawn-budget.Rows.ps1: `perf(hooks): test-audit reminder fires once per session and HEAD, 55 -> 15 processes on its worst path`.
 
 ### Task 6: agy-after-reminder.sh
 
@@ -882,11 +969,26 @@ cwd=${cwd%"${cwd##*[!$'\n']}"}
 
 - [ ] **Step 1:** full budget suite: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/hook-spawn-budget.Tests.ps1 -Output Detailed -CI"`. Expected: exactly ONE failure, the Branch 21 debt row.
 - [ ] **Step 2: Mutation proofs (each must turn its row RED, then be reverted; verify `git diff --stat` is empty afterwards).**
-  (a) Scaling row: in `clavity-dotnet/plugin/hooks/agy-consult-recovery.sh`, after the line that fills `_seams=(...)`, insert `for _s in "${_seams[@]}"; do /usr/bin/true; done`. Run the suite with `-TagFilter scaling` -> FAIL. `git restore` the file.
+  (a) Scaling row: in `clavity-dotnet/plugin/hooks/agy-consult-recovery.sh`, after the line that fills `_seams=(...)`, insert `[ ${#_seams[@]} -gt 1 ] && /usr/bin/true` (2 extra processes with 1000 seams, none with 1 - so the row fails on its ASSERTION; a per-seam mutant would cost ~2000 processes and die on the harness's 120 s timeout instead, proving nothing about the assertion). Run the suite with `-TagFilter scaling` -> FAIL. `git restore` the file.
   (b) Ceiling row: in `agy-after-reminder.sh`, after `set +e`, insert 7 lines `/usr/bin/true`. Run the filtered budget run with `HSB_HOOK=agy-after-reminder.sh` -> 'non-plan Edit' FAILS (14 more). Restore.
   (c) Census row: add `{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/zz-unbudgeted.sh\"" }` to the `PreCompact` hooks array of `clavity-dotnet/plugin/hooks/hooks.json`. Run the suite with `-TagFilter census` (HSB_HOOK unset) -> FAIL naming `zz-unbudgeted.sh`. Restore.
   (d) Silent guard: in `agy-consult-guard-pre.sh` insert `echo leak` after the stdin loop. Run the filtered budget run with `HSB_HOOK=agy-consult-guard-pre.sh` -> its silent rows FAIL. Restore.
+- [ ] **Step 2b: Pester 6 (CI pins it: `.github/workflows/ci-scripts.yml` installs `-MinimumVersion 6.0.0`; this plan's discovery filter and tags were measured under the local Pester 5 only).** `pwsh -NoProfile -c "Save-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Path <session scratchpad>/pester6 -Force"`, then `pwsh -NoProfile -c "Import-Module <session scratchpad>/pester6/Pester -Force; Invoke-Pester scripts/tests/hook-spawn-budget.Tests.ps1 -Output Detailed -CI"` -> same outcome as Step 1. Repeat with `HSB_HOOK=agy-after-reminder.sh` and `-TagFilter row` -> exactly 2 tests. A different count under Pester 6 is a STOP.
 - [ ] **Step 3: Repo gates (one at a time).** `just seed-sync-check` (exit 0); `pwsh -NoProfile -c "Invoke-Pester scripts/tests/plugin-hooks-registration.Tests.ps1 -Output Detailed -CI"` (`Tests Passed: 37`); `just check-injected-context` (exit 0 - the reminders now build their message in bash; if the injected-context corpus can no longer see a hook message, that is a finding, report it); `just test-scripts-fast` (backgrounded; no failures); `just test-scripts-slow` (backgrounded; exactly one failure: the debt row).
+- [ ] **Step 4: CI's jq (ruling O6-C, agreed with agy).** Chocolatey's `bin\jq.exe` on `windows-latest` is a shim that starts the real `jq.exe` as a child, so every jq call would count one extra process on CI only and push at-ceiling rows (seam-inject worst = 13) over. NOT measurable here - verified on the first CI run. In `.github/workflows/ci-scripts.yml`, insert this step immediately BEFORE the step named `Install Pester v6`:
+
+```yaml
+      - name: Put the real jq first on PATH (Branch 20 process budget)
+        shell: pwsh
+        run: |
+          # Chocolatey's bin\jq.exe is a shim that starts lib\...\jq.exe as a CHILD, so every jq call costs one
+          # extra process in scripts/tests/hook-spawn-budget.Tests.ps1. Prepend the real binary's directory.
+          $real = Get-ChildItem 'C:\ProgramData\chocolatey\lib' -Recurse -Filter jq.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($real) { $real.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8; "real jq: $($real.FullName)" }
+          else { 'no Chocolatey jq under lib - PATH unchanged' }
+```
+
+  Commit it with Task 12. **First-CI-run check (owner pushes):** in that run's log, the step prints `real jq: ...` and the budget suite has no failed `row` test. If a `row` test fails on CI only, apply the fallback: in `hook-spawn-budget.Tests.ps1`, at the start of the `-ForEach $Rows` `It` body, add `if ($env:GITHUB_ACTIONS) { Set-ItResult -Skipped -Because 'process budgets are measured on the owner''s machine; CI jq differs' }` and record the CI difference in ROADMAP section 69.
 
 ### Task 11: S4 - SessionStart timeouts, re-measured (TOP-LEVEL ONLY)
 
@@ -919,13 +1021,13 @@ what each axis costs, which axes can share one git call.
 ```
 
 - [ ] **Step 2:** update `_partition.md` counts for every suite this branch changed (`agy-consult-recovery` 40, `agy-test-audit-reminder` 34, `agy-liveness-check` 41) and re-run `test-suite-registration.Tests.ps1` (`Tests Passed: 9`).
-- [ ] **Step 3:** commit: `docs(roadmap): section 69 (Branch 21 hooks) and 70 (consult-path budget); partition counts`.
+- [ ] **Step 3:** commit `clavity-dotnet/ROADMAP.md`, `scripts/tests/_partition.md` and `.github/workflows/ci-scripts.yml` (Task 10 Step 4): `docs(roadmap): section 69 (Branch 21 hooks) and 70 (consult-path budget); partition counts; CI real jq`.
 - [ ] **Step 4:** hand off to AGY-CAPSTONE (`clavity:agy-capstone`) on the committed range `4f0cb6a7..HEAD`.
 
 ---
 
 ## Self-audit (driver, at writing)
 
-- **Spec coverage:** S1 (count gate + scaling row, proven red by mutants) = Tasks 1, 2, 10; S2 (consult-recovery regex + builtins, keep "+N more") = Task 4; S3 (debounce + fork cuts) = Tasks 5, 6; S4 = Task 11; S5 (Branch 19 test-audit first) = done before this branch. Owner rulings O1-O3: ceiling everywhere (rows for all nine; census row for all 27 registered hooks), consult path pinned (Task 2 pins, Task 12 section 70), split (debt row, section 69).
+- **Spec coverage:** S1 (count gate + scaling row, proven red by mutants) = Tasks 1, 2, 10; S2 (consult-recovery regex + builtins, keep "+N more") = Task 4; S3 (debounce + fork cuts) = Tasks 5, 6; S4 = Task 11; S5 (Branch 19 test-audit first) = done before this branch. Owner rulings O1-O3: ceiling everywhere (rows for all nine; census row for all 22 registered hooks (measured: the census regex over the 4 registries yields 22 names)), consult path pinned (Task 2 pins, Task 12 section 70), split (debt row, section 69).
 - **Gaps left open, with where they close:** Q1 is the owner's (approve with the plan). The four unmeasured test-audit paths are measured in Task 5 Step 7, with a STOP if any is over. Task 5's debounce row bodies are specified by assertion, not pasted: they reuse that suite's own FIRES fixture, whose helper name must be read from the file, not invented here. Task 7's Q1 row copies the suite's existing corrupt-file assertion, for the same reason. The pinned consult limits come from a prototype fixture of the same shape (plain temp repo); if a pinned row fails in Task 2 Step 4 before any hook changes, the pin is wrong, not the hook: re-measure and STOP to report.
 - **Verified at writing:** `Invoke-Pester -FullNameFilter` does NOT match `-ForEach` rows by their expanded `<Hook>` names (measured: a filter on a hook name ran 0 tests). Hence the `HSB_HOOK` discovery filter plus `-Tag` (measured: `HSB_HOOK=agy-after-reminder.sh` + `-TagFilter row` ran exactly that row and excluded the debt row). A 0-test run is a FAILURE.
