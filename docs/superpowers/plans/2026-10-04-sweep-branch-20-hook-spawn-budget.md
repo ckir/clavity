@@ -450,6 +450,46 @@ $script:Rows = @(
         $null = Invoke-BashHook -HookPath (Join-Path $script:RepoRoot "$D/agy-test-audit-reminder.sh") -Payload $p -Env $fx.Env
         $p
     } -Silent
+    # The four paths the prototype never measured (agy panel R2) - rename and merge in the reviewed range, and the
+    # no-jq arm (PATH = <Git>\usr\bin only, the convention of agy-test-audit-reminder.Tests.ps1 line 8).
+    New-BudgetRow "$D/agy-test-audit-reminder.sh" 'fires: a code file RENAMED since main' {
+        param($fx)
+        Invoke-FxGit $fx checkout -q -b feat
+        $null = Add-FxCommit $fx 'src/a.cs'
+        Invoke-FxGit $fx mv src/a.cs src/b.cs
+        Invoke-FxGit $fx commit -qm rename
+        Set-FxMarker $fx 'agy-capstone' (Invoke-FxGit $fx rev-parse HEAD).Trim()
+        New-BashPayload $fx 'ls'
+    } -Expect 'AGY-TEST-AUDIT auto-fire'
+    New-BudgetRow "$D/agy-test-audit-reminder.sh" 'fires: a MERGE commit in the reviewed range' {
+        param($fx)
+        Invoke-FxGit $fx checkout -q -b feat
+        $null = Add-FxCommit $fx 'src/a.cs'
+        Invoke-FxGit $fx checkout -q -b side
+        $null = Add-FxCommit $fx 'src/b.cs'
+        Invoke-FxGit $fx checkout -q feat
+        Invoke-FxGit $fx merge -q --no-ff -m merge side
+        Set-FxMarker $fx 'agy-capstone' (Invoke-FxGit $fx rev-parse HEAD).Trim()
+        New-BashPayload $fx 'ls'
+    } -Expect 'AGY-TEST-AUDIT auto-fire'
+    New-BudgetRow "$D/agy-test-audit-reminder.sh" 'no jq: fires on the ledger shape (marker behind HEAD, docs since)' {
+        param($fx)
+        $fx.Env.PATH = Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin'
+        Invoke-FxGit $fx checkout -q -b feat
+        Set-FxMarker $fx 'agy-capstone' (Add-FxCommit $fx 'src/a.cs')
+        $null = Add-FxCommit $fx 'README.md' 'docs only'
+        New-BashPayload $fx 'ls'
+    } -Expect 'guard inactive: missing jq'
+    New-BudgetRow "$D/agy-test-audit-reminder.sh" 'no jq: debounced second call' {
+        param($fx)
+        $fx.Env.PATH = Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin'
+        Invoke-FxGit $fx checkout -q -b feat
+        Set-FxMarker $fx 'agy-capstone' (Add-FxCommit $fx 'src/a.cs')
+        $null = Add-FxCommit $fx 'README.md' 'docs only'
+        $p = New-BashPayload $fx 'ls'
+        $null = Invoke-BashHook -HookPath (Join-Path $script:RepoRoot "$D/agy-test-audit-reminder.sh") -Payload $p -Env $fx.Env
+        $p
+    } -Silent
 
     # --- agy-after-reminder.sh (PostToolUse Write|Edit) ---
     New-BudgetRow "$D/agy-after-reminder.sh" 'non-plan Edit' { param($fx) New-ToolPayload $fx 'Edit' @{ file_path = "$($fx.RepoFwd)/src/a.cs" } } -Silent
@@ -620,7 +660,7 @@ Describe 'hook spawn budget' {
 - [ ] **Step 4: Run the suite; record which rows fail.**
 
 Run (backgrounded or foreground; ~60 rows x ~2-5 s): `pwsh -NoProfile -c "Invoke-Pester scripts/tests/hook-spawn-budget.Tests.ps1 -Output Detailed -CI"`
-Expected: the census row PASSES; the debt row FAILS; the scaling row FAILS (prototype-measured today: 1 seam 19 total, 1000 seams 37); the rows of the nine hooks fail where today's counts exceed 13 beyond boot (consult-guard-pre/post non-consult rows ~37, test-audit-reminder fire rows, seam-inject, liveness, curate worst, drive-reset, after-reminder, consult-recovery seam rows); every "every other registered hook" row PASSES; every PINNED row PASSES. **Any row failing for a reason other than its count (an `-Expect`/`-Silent` assertion, an exception) is a fixture defect: STOP and fix the fixture before Task 3** - with ONE designed exception: `agy-test-audit-reminder.sh: debounced: second call at the same HEAD` fails its `-Silent` assertion until Task 5 adds the debounce. If a scaling or nine-hook row unexpectedly PASSES, record it and continue (Task 3+ still applies).
+Expected: the census row PASSES; the debt row FAILS; the scaling row FAILS (prototype-measured today: 1 seam 19 total, 1000 seams 37); the rows of the nine hooks fail where today's counts exceed 13 beyond boot (consult-guard-pre/post non-consult rows ~37, test-audit-reminder fire rows, seam-inject, liveness, curate worst, drive-reset, after-reminder, consult-recovery seam rows); every "every other registered hook" row PASSES; every PINNED row PASSES. **Any row failing for a reason other than its count (an `-Expect`/`-Silent` assertion, an exception) is a fixture defect: STOP and fix the fixture before Task 3** - with TWO designed exceptions: `agy-test-audit-reminder.sh: debounced: second call at the same HEAD` and `agy-test-audit-reminder.sh: no jq: debounced second call` fail their `-Silent` assertion until Task 5 adds the debounce. If a scaling or nine-hook row unexpectedly PASSES, record it and continue (Task 3+ still applies).
 
 - [ ] **Step 4b: Give every row an output assertion (panel R1).** Rows that carry neither `-Expect` nor `-Silent` can certify an early exit. These are: the `agy-liveness-check.sh` 'no settings files' row, `agy-seam-inject.sh: skill value containing a newline`, and every row in the "every other registered hook" block. For each one, read the row's stdout in Step 4's detailed output (or call `Measure-BashHookProcesses` once with the row's fixture). If stdout is empty, add `-Silent`. Otherwise add `-Expect '<the first 20 characters of its stdout's additionalContext / systemMessage text>'`. A stdout that is NOT the path the row's name claims (for example a `.no-agy` notice) is a fixture defect: fix the fixture first. Re-run Step 4: those rows' outcomes must not change.
 - [ ] **Step 5: Partition row.** Add to the Measured runtimes table in `scripts/tests/_partition.md`, directly after the `pairing-doc.Tests.ps1` row:
@@ -758,7 +798,7 @@ Run `pwsh -NoProfile -c "Invoke-Pester scripts/tests/agy-consult-recovery.Tests.
 
 **Files:** `clavity-dotnet/plugin/hooks/agy-test-audit-reminder.sh` + classic mirror; `scripts/tests/agy-test-audit-reminder.Tests.ps1`. **Oracle:** that suite (29 rows), `docs/agy-disciplines-marker-contract.md`, the file's own header (line 2-3: "exactly once for this HEAD").
 
-- [ ] **Step 1:** filtered budget run `HSB_HOOK=agy-test-audit-reminder.sh`. Expected FAIL: both fire rows (36 / 52 beyond boot), the debounced row (it fires again: today there is no debounce, so `-Silent` fails).
+- [ ] **Step 1:** filtered budget run `HSB_HOOK=agy-test-audit-reminder.sh`. Expected FAIL: every fire row on its count (prototype-measured before: 36 / 52 beyond boot; rename, merge and no-jq rows were never measured before - any count over 13 fails), and both debounced rows on `-Silent` (no debounce yet). The `no .clavity` row passes.
 - [ ] **Step 2: Isolate the suite's TMPDIR (the debounce makes shared state).** The suite's payloads carry no `session_id`, so every row would share the debounce key `default`. Two fixtures built in the same second with the same content get the SAME HEAD sha, so a FIRES row could go silent. The file has ONE top-level `Describe` (`Describe 'agy-test-audit-reminder.sh'`, line 1); its nested `Describe`s inherit what its `BeforeAll` sets. At the END of that top-level `BeforeAll` (before its closing `}`), add:
 
 ```powershell
@@ -907,8 +947,8 @@ fi
 
   (Give it `-Silent` or `-Expect` per Task 2 Step 4b - the PreCompact arm's output does not change.)
 - [ ] **Step 5:** mirror `agy-test-audit-reminder.sh` AND `agy-anomaly-capture-reminder.sh` to classic; `bash -n` both.
-- [ ] **Step 6:** filtered budget runs `HSB_HOOK=agy-test-audit-reminder.sh` -> 4 rows PASS (prototype: worst fire 15 total = 12 beyond boot; debounced 8 total), and `HSB_HOOK=agy-anomaly-capture-reminder.sh` -> its rows PASS (PreCompact was 11 total; the re-arm adds at most one `rm`).
-- [ ] **Step 7:** suite -> `Tests Passed: 35, Failed: 0`; then `pwsh -NoProfile -c "Invoke-Pester scripts/tests/agy-anomaly-capture-reminder.Tests.ps1 -Output Detailed -CI"` -> no failures (the PreCompact arm's output is unchanged). Then run the four prototype paths NOT yet measured (rename in range, merge commit in range, no-jq ledger fire, no-jq ledger debounced) through `Measure-BashHookProcesses` in a scratch script: each must be at most 13 beyond boot. A path over 13 is a STOP: report it, do not widen the budget.
+- [ ] **Step 6:** filtered budget runs `HSB_HOOK=agy-test-audit-reminder.sh` -> 8 rows PASS (prototype: worst fire 15 total = 12 beyond boot; debounced 8 total), and `HSB_HOOK=agy-anomaly-capture-reminder.sh` -> its rows PASS (PreCompact was 11 total; the re-arm adds at most one `rm`).
+- [ ] **Step 7:** suite -> `Tests Passed: 35, Failed: 0`; then `pwsh -NoProfile -c "Invoke-Pester scripts/tests/agy-anomaly-capture-reminder.Tests.ps1 -Output Detailed -CI"` -> no failures (the PreCompact arm's output is unchanged). The four paths the prototype never measured (rename in range, merge commit in range, no-jq ledger fire, no-jq debounced) are budget rows since Task 2 (agy panel R2); the filtered budget run in Step 6 covers them - each must pass at most 13 beyond boot. A row over 13 is a STOP: report it, do not widen the budget.
 - [ ] **Step 8:** commit both copies of agy-test-audit-reminder.sh AND agy-anomaly-capture-reminder.sh, the suite and hook-spawn-budget.Rows.ps1: `perf(hooks): test-audit reminder fires once per session and HEAD, 55 -> 15 processes on its worst path`.
 
 ### Task 6: agy-after-reminder.sh
