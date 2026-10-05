@@ -136,12 +136,28 @@ public static class ClavityJobCount {
     [DllImport("kernel32.dll", SetLastError=true)]
     static extern bool QueryInformationJobObject(IntPtr job, int cls, out BASIC info, int len, IntPtr ret);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool SetInformationJobObject(IntPtr job, int cls, ref EXTENDED info, int len);
     [StructLayout(LayoutKind.Sequential)]
     public struct BASIC {
         public long TotalUserTime, TotalKernelTime, ThisPeriodTotalUserTime, ThisPeriodTotalKernelTime;
         public uint TotalPageFaultCount, TotalProcesses, ActiveProcesses, TotalTerminatedProcesses;
     }
-    public static IntPtr Create() { var j = CreateJobObject(IntPtr.Zero, null); if (j == IntPtr.Zero) throw new Exception("CreateJobObject " + Marshal.GetLastWin32Error()); return j; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct LIMIT { public long PerProcessUserTimeLimit, PerJobUserTimeLimit; public uint LimitFlags; public UIntPtr MinimumWorkingSetSize, MaximumWorkingSetSize; public uint ActiveProcessLimit; public UIntPtr Affinity; public uint PriorityClass, SchedulingClass; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct IOCOUNTERS { public ulong ReadOps, WriteOps, OtherOps, ReadBytes, WriteBytes, OtherBytes; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct EXTENDED { public LIMIT Basic; public IOCOUNTERS Io; public UIntPtr ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemoryUsed, PeakJobMemoryUsed; }
+    // KILL_ON_JOB_CLOSE (0x2000): closing the handle kills everything still in the job. MEASURED 2026-10-05 (agy panel
+    // R1): without it a detached child of a hook survived the close; with it the child died on close.
+    public static IntPtr Create() {
+        var j = CreateJobObject(IntPtr.Zero, null);
+        if (j == IntPtr.Zero) throw new Exception("CreateJobObject " + Marshal.GetLastWin32Error());
+        var e = new EXTENDED(); e.Basic.LimitFlags = 0x2000;
+        if (!SetInformationJobObject(j, 9, ref e, Marshal.SizeOf(typeof(EXTENDED)))) throw new Exception("SetInformationJobObject " + Marshal.GetLastWin32Error());
+        return j;
+    }
     public static void Assign(IntPtr j, IntPtr p) { if (!AssignProcessToJobObject(j, p)) throw new Exception("AssignProcessToJobObject " + Marshal.GetLastWin32Error()); }
     public static uint Total(IntPtr j) { BASIC b; if (!QueryInformationJobObject(j, 1, out b, Marshal.SizeOf(typeof(BASIC)), IntPtr.Zero)) throw new Exception("QueryInformationJobObject " + Marshal.GetLastWin32Error()); return b.TotalProcesses; }
     public static void Close(IntPtr j) { CloseHandle(j); }
@@ -353,9 +369,11 @@ function New-BudgetRow {
     param(
         [Parameter(Mandatory)][string]$Hook, [Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][scriptblock]$Setup,
         [hashtable]$Fixture = @{}, [string[]]$HookArgs = @(), [int]$Max = $script:HookCeiling,
-        [string]$Expect = '', [switch]$Silent
+        [string]$Expect = '', [switch]$Silent, [scriptblock]$Verify = $null
     )
-    @{ Hook = $Hook; Name = $Name; Setup = $Setup; Fixture = $Fixture; HookArgs = $HookArgs; Max = $Max; Expect = $Expect; Silent = [bool]$Silent }
+    # -Verify: an EFFECT check run after the hook, for a path whose output is silent - a silent row alone
+    # cannot tell "did its work" from "exited early" (agy panel R1).
+    @{ Hook = $Hook; Name = $Name; Setup = $Setup; Fixture = $Fixture; HookArgs = $HookArgs; Max = $Max; Expect = $Expect; Silent = [bool]$Silent; Verify = $Verify }
 }
 
 $D = 'clavity-dotnet/plugin/hooks'; $C = 'clavity-classic/plugin/hooks'; $A = 'agy-autotrain/hooks'; $L = '.claude/hooks'
@@ -456,15 +474,18 @@ $script:Rows = @(
 
     # --- agy-liveness-check.sh (SessionStart startup) ---
     New-BudgetRow "$D/agy-liveness-check.sh" 'no settings files' { param($fx) New-SessionStartPayload $fx }
-    New-BudgetRow "$D/agy-liveness-check.sh" 'three settings files' {
+    New-BudgetRow "$D/agy-liveness-check.sh" 'three settings files, one a personal duplicate (warns)' {
         param($fx)
-        $s = '{"enabledPlugins":{"superpowers@x":true},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash x.sh"}]}]}}'
+        # A personal registration of a plugin hook is the state this hook warns about (its suite row 'reports the
+        # unreadable settings file BUT continues the sweep' uses the same command), so the row can ASSERT that the
+        # full sweep ran instead of passing on an early exit.
+        $s = '{"enabledPlugins":{"superpowers@superpowers-marketplace":true},"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"bash \"~/.claude/hooks/agy-liveness-check.sh\""}]}]}}'
         $null = New-Item -ItemType Directory -Force -Path (Join-Path $fx.Repo '.claude')
         Set-Content -LiteralPath (Join-Path $fx.Home '.claude\settings.json') -Value $s
         Set-Content -LiteralPath (Join-Path $fx.Repo '.claude\settings.json') -Value $s
         Set-Content -LiteralPath (Join-Path $fx.Repo '.claude\settings.local.json') -Value $s
         New-SessionStartPayload $fx
-    }
+    } -Expect 'agy-liveness-check'
 
     # --- agy-drive-session-reset.sh (classic only; DELETES flags under ~/.clavity) ---
     New-BudgetRow "$C/agy-drive-session-reset.sh" 'startup: own flag + 5 stale + 2 fresh' {
@@ -474,7 +495,11 @@ $script:Rows = @(
         foreach ($i in 1..5) { $f = Join-Path $dir ".active-drive-session-stale$i"; Set-Content -LiteralPath $f -Value '' -NoNewline; [IO.File]::SetLastWriteTime($f, (Get-Date).AddDays(-10)) }
         foreach ($i in 1..2) { Set-Content -LiteralPath (Join-Path $dir ".active-drive-session-fresh$i") -Value '' -NoNewline }
         New-SessionStartPayload $fx
-    } -Silent
+    } -Silent -Verify {
+        param($fx)
+        $left = @(Get-ChildItem -LiteralPath (Join-Path $fx.Home '.clavity') -Force -Filter '.active-drive-session-*' | ForEach-Object Name) | Sort-Object
+        ($left -join ',') | Should -BeExactly '.active-drive-session-fresh1,.active-drive-session-fresh2' -Because 'the reset must clear its own flag and the 5 stale ones and keep the 2 fresh - or the row measured an early exit'
+    }
 
     # --- agy-curate-nudge.sh (agy-autotrain, SessionStart) ---
     New-BudgetRow "$A/agy-curate-nudge.sh" 'inbox missing' { param($fx) New-SessionStartPayload $fx } -Silent
@@ -571,6 +596,7 @@ Describe 'hook spawn budget' {
             $r = Measure-BashHookProcesses -HookPath (Join-Path $script:RepoRoot $Hook) -Payload $payload -Env $fx.Env -Arguments $HookArgs -WorkingDirectory $fx.Repo
             if ($Expect) { $r.StdOut | Should -Match ([regex]::Escape($Expect)) -Because 'the row must reach the path it names, or its count proves nothing' }
             if ($Silent) { $r.StdOut | Should -BeNullOrEmpty -Because 'this path is silent; output means the fixture reached a different path' }
+            if ($Verify) { & $Verify $fx }
             $r.Spawned | Should -BeLessOrEqual $Max -Because "$Hook on '$Name' started $($r.Spawned) processes beyond the $($r.Boot)-process boot"
         } finally { Remove-Item -LiteralPath $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -596,7 +622,7 @@ Describe 'hook spawn budget' {
 Run (backgrounded or foreground; ~60 rows x ~2-5 s): `pwsh -NoProfile -c "Invoke-Pester scripts/tests/hook-spawn-budget.Tests.ps1 -Output Detailed -CI"`
 Expected: the census row PASSES; the debt row FAILS; the scaling row FAILS (prototype-measured today: 1 seam 19 total, 1000 seams 37); the rows of the nine hooks fail where today's counts exceed 13 beyond boot (consult-guard-pre/post non-consult rows ~37, test-audit-reminder fire rows, seam-inject, liveness, curate worst, drive-reset, after-reminder, consult-recovery seam rows); every "every other registered hook" row PASSES; every PINNED row PASSES. **Any row failing for a reason other than its count (an `-Expect`/`-Silent` assertion, an exception) is a fixture defect: STOP and fix the fixture before Task 3** - with ONE designed exception: `agy-test-audit-reminder.sh: debounced: second call at the same HEAD` fails its `-Silent` assertion until Task 5 adds the debounce. If a scaling or nine-hook row unexpectedly PASSES, record it and continue (Task 3+ still applies).
 
-- [ ] **Step 4b: Give every row an output assertion (panel R1).** Rows that carry neither `-Expect` nor `-Silent` can certify an early exit. These are: both `agy-liveness-check.sh` rows, `agy-seam-inject.sh: skill value containing a newline`, and every row in the "every other registered hook" block. For each one, read the row's stdout in Step 4's detailed output (or call `Measure-BashHookProcesses` once with the row's fixture). If stdout is empty, add `-Silent`. Otherwise add `-Expect '<the first 20 characters of its stdout's additionalContext / systemMessage text>'`. A stdout that is NOT the path the row's name claims (for example a `.no-agy` notice) is a fixture defect: fix the fixture first. Re-run Step 4: those rows' outcomes must not change.
+- [ ] **Step 4b: Give every row an output assertion (panel R1).** Rows that carry neither `-Expect` nor `-Silent` can certify an early exit. These are: the `agy-liveness-check.sh` 'no settings files' row, `agy-seam-inject.sh: skill value containing a newline`, and every row in the "every other registered hook" block. For each one, read the row's stdout in Step 4's detailed output (or call `Measure-BashHookProcesses` once with the row's fixture). If stdout is empty, add `-Silent`. Otherwise add `-Expect '<the first 20 characters of its stdout's additionalContext / systemMessage text>'`. A stdout that is NOT the path the row's name claims (for example a `.no-agy` notice) is a fixture defect: fix the fixture first. Re-run Step 4: those rows' outcomes must not change.
 - [ ] **Step 5: Partition row.** Add to the Measured runtimes table in `scripts/tests/_partition.md`, directly after the `pairing-doc.Tests.ps1` row:
 
 ```text
@@ -853,6 +879,7 @@ if [ "$event" = "PreCompact" ]; then
 fi
 ```
 
+  (d) D4 for the newly touched hook (agy panel R1): in `agy-anomaly-capture-reminder.sh`, replace its line `input=$(cat)` with `input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c`.
   Add to Step 2's debounce `Describe` (before its closing `}`), using a `$script:Capture` path set in its `BeforeAll` as `Join-Path $repoRoot 'clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh'`:
 
 ```powershell
@@ -900,7 +927,7 @@ fi
 
 **Oracle:** `scripts/tests/agy-seam-inject.Tests.ps1` (36 rows, includes the byte-identical-mirror row), `scripts/tests/agy-liveness-check.Tests.ps1` (40 rows).
 
-- [ ] **Step 1:** filtered budget runs `HSB_HOOK=agy-seam-inject.sh`, `HSB_HOOK=agy-liveness-check.sh` -> FAIL: both seam fire rows, liveness 'three settings files'.
+- [ ] **Step 1:** filtered budget runs `HSB_HOOK=agy-seam-inject.sh`, `HSB_HOOK=agy-liveness-check.sh` -> FAIL: both seam fire rows, liveness 'three settings files, one a personal duplicate (warns)'.
 - [ ] **Step 2 (Q1, tests first):** add to `scripts/tests/agy-liveness-check.Tests.ps1`, inside `Describe 'agy-liveness-check.sh'`, directly after the row `It 'reports the unreadable settings file BUT continues the sweep'` (same fixture shape: user-scope settings via `CLAUDE_CONFIG_DIR`, the file's own `New-CleanHome` and `Payload` helpers):
 
 ```powershell
