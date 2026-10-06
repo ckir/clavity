@@ -69,6 +69,10 @@ Describe 'hook spawn budget' {
                 if ($compat) { $fx.Env.CLAVITY_HOOK_BASH3 = '1' }
                 $payload = & $Setup $fx
                 $r = Measure-BashHookProcesses -HookPath (Join-Path $script:RepoRoot $Hook) -Payload $payload -Env $fx.Env -Arguments $HookArgs -WorkingDirectory $fx.Repo
+                # The row's effect check runs on BOTH paths: equal (often empty) output alone cannot tell a fallback
+                # that did its work from one that exited early (agy capstone R2). consult-recovery's bash 3.2 path
+                # exits on purpose, so its rows carry no effect check.
+                if ($Verify -and -not ($compat -and (Split-Path -Leaf $Hook) -eq 'agy-consult-recovery.sh')) { & $Verify $fx }
                 $t = "$($r.StdOut)"
                 foreach ($form in $fx.Root, ($fx.Root -replace '\\', '/'), ($fx.Root -replace '\\', '\\')) { $t = $t.Replace($form, '<ROOT>') }
                 $t
