@@ -189,6 +189,16 @@ Describe 'agy-consult-recovery output vocabulary' {
     $out | Should -Match 'unrecognised'
     Remove-Item -Recurse -Force $r
   }
+  It 'says LOUDLY that it needs bash 4.3 on an older bash (CLAVITY_HOOK_BASH3 forces that path)' {
+    # Capstone R1 (owner ruling 2026-10-06): this reader needs bash 4.3 (namerefs; ${v,,} and declare -A predate
+    # Branch 20). On macOS /bin/bash 3.2 it used to exit silently; it must say so instead.
+    $r = New-Repo; Seam $r 'agy-capstone-r1-x.md'
+    $env:CLAVITY_HOOK_BASH3 = '1'
+    try { $out = Run $r } finally { Remove-Item Env:CLAVITY_HOOK_BASH3 -ErrorAction SilentlyContinue }
+    $out | Should -Match 'inactive: needs bash 4.3 or newer'
+    $out | Should -Not -Match 'workflow position:'
+    Remove-Item -Recurse -Force $r
+  }
 }
 
 Describe 'agy-consult-recovery section-7 matrix (representative fixtures; each row names its mutant)' {

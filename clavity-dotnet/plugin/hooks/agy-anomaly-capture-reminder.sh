@@ -38,7 +38,8 @@
 # Fail-open: any error -> exit 0. Suppressed by .no-agy (workspace or global) like every other reminder.
 # Byte-identical across both driver plugins (kept honest by scripts/check-seed-artifacts-synced.sh).
 set +e
-input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c
+# stdin: read -N needs bash >= 4.1; older bash (macOS /bin/bash 3.2) keeps the pre-Branch-20 read.
+if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 401)); then input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c; else input=$(cat); fi
 
 event="${1:-PreCompact}"
 # Branch 20 (owner ruling 2026-10-05, agreed with agy): a compaction summarizes away the AGY-TEST-AUDIT

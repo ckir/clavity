@@ -22,7 +22,8 @@
 set +e
 export TZ=UTC
 
-input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c
+# stdin: read -N needs bash >= 4.1; older bash (macOS /bin/bash 3.2) keeps the pre-Branch-20 read.
+if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 401)); then input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c; else IFS= read -r -d '' input; fi
 
 cwd=''; sid=''
 [[ $input =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]        && cwd=${BASH_REMATCH[1]}
@@ -74,6 +75,14 @@ shopt -s nullglob nocaseglob 2>/dev/null
 _seams=( "$seams_dir"/*.md )
 shopt -u nocaseglob 2>/dev/null
 [ ${#_seams[@]} -eq 0 ] && exit 0
+
+# bash >= 4.3 (namerefs; ${v,,} and declare -A predate Branch 20). Older bash (macOS /bin/bash 3.2) used to
+# fail SILENTLY here; say so instead (capstone R1, owner ruling 2026-10-06). Fixed literal, so no jq needed.
+if [ -n "${CLAVITY_HOOK_BASH3:-}" ] || ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] < 403)); then
+  msg_old_bash="[consult-recovery] inactive: needs bash 4.3 or newer (this is bash ${BASH_VERSION%%[^0-9.]*}) - list .clavity/seams/ yourself before starting new work"
+  printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$msg_old_bash" "$msg_old_bash"
+  exit 0
+fi
 
 # ROADMAP section 39: the marker path comes from the SAME builder agy-mark.sh writes with. If it cannot be
 # loaded no seam can be shown concluded, so every candidate is surfaced - the loud direction for a reader
@@ -179,7 +188,7 @@ if [ ${#_show_p[@]} -gt 0 ]; then
   done <<< "$_so"
   if [ -n "$_min" ]; then
     _gout=$(git -C "$root" -c log.showSignature=false log --format=%ct --since="@$_min" HEAD 2>/dev/null) && {
-      _cts=(); [ -n "$_gout" ] && mapfile -t _cts <<< "$_gout"
+      _cts=(); [ -n "$_gout" ] && while IFS= read -r _l; do _cts+=("$_l"); done <<< "$_gout"
       for _i in "${!_show_p[@]}"; do
         for _j in "${!_st_p[@]}"; do
           [ "${_st_p[_j]}" = "${_show_p[_i]}" ] || continue

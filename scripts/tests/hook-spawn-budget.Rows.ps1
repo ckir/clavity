@@ -178,7 +178,12 @@ $script:Rows = @(
         $p = New-BashPayload $fx 'ls'
         $null = Invoke-BashHook -HookPath (Join-Path $script:RepoRoot "$D/agy-test-audit-reminder.sh") -Payload $p -Env $fx.Env
         $p
-    } -Silent
+    } -Silent -Verify {
+        param($fx)
+        $f = Join-Path $fx.Tmp 'claude-agy-test-audit-reminder.s1'
+        Test-Path -LiteralPath $f | Should -BeTrue -Because 'a silent second call proves the debounce only if the first call fired and recorded its HEAD (capstone R1, MG1)'
+        (Get-Content -Raw -LiteralPath $f).Trim() | Should -BeExactly (Invoke-FxGit $fx rev-parse HEAD).Trim()
+    }
     # The four paths the prototype never measured (agy panel R2) - rename and merge in the reviewed range, and the
     # no-jq arm (PATH = <Git>\usr\bin only, the convention of agy-test-audit-reminder.Tests.ps1 line 8).
     New-BudgetRow "$D/agy-test-audit-reminder.sh" 'fires: a code file RENAMED since main' {
@@ -218,7 +223,12 @@ $script:Rows = @(
         $p = New-BashPayload $fx 'ls'
         $null = Invoke-BashHook -HookPath (Join-Path $script:RepoRoot "$D/agy-test-audit-reminder.sh") -Payload $p -Env $fx.Env
         $p
-    } -Silent
+    } -Silent -Verify {
+        param($fx)
+        $f = Join-Path $fx.Tmp 'claude-agy-test-audit-reminder.s1'
+        Test-Path -LiteralPath $f | Should -BeTrue -Because 'a silent second call proves the debounce only if the first call fired and recorded its HEAD (capstone R1, MG1)'
+        (Get-Content -Raw -LiteralPath $f).Trim() | Should -BeExactly (Invoke-FxGit $fx rev-parse HEAD).Trim()
+    }
 
     # --- agy-after-reminder.sh (PostToolUse Write|Edit) ---
     New-BudgetRow "$D/agy-after-reminder.sh" 'non-plan Edit' { param($fx) New-ToolPayload $fx 'Edit' @{ file_path = "$($fx.RepoFwd)/src/a.cs" } } -Silent

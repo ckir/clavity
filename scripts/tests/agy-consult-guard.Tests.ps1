@@ -139,6 +139,17 @@ Describe 'agy-consult-guard' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'WARNS on the bash 3.2 code path too (CLAVITY_HOOK_BASH3 forces the pre-Branch-20 stdin read)' {
+        # Capstone R1: on macOS /bin/bash 3.2 `read -N` does not exist; the guard must fall back, not go blind.
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'Bash' 'clavity ask "review this"' $r
+            Invoke-BashHook -HookPath $script:Pre -Payload $p -Env @{ CLAVITY_HOOK_BASH3 = '1' } | Out-Null
+            Push-Location $r; Set-Content 'e.txt' 'five' -Encoding ascii; git add e.txt; git commit -qm peer; Pop-Location
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p -Env @{ CLAVITY_HOOK_BASH3 = '1' }).StdOut
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
     It 'WARNS when the consult CLI is invoked by an absolute path' {
         # Capstone round 1: MEASURED silent before the anchor allowed a path prefix.
         $r = New-GuardRepo

@@ -24,7 +24,7 @@ exec 2>/dev/null
 # The payload is read into $input only when jq is ABSENT (the degraded branch parses it with bash regexes).
 # With jq present, jq reads this hook's own stdin directly: feeding it from a variable (`<<<`) costs a
 # third process (MEASURED: `$(jq <<<x)` 6 vs `$(jq)` 5 on a 3-process boot).
-if command -v jq >/dev/null 2>&1; then _have_jq=1; else _have_jq=''; input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c; fi
+if command -v jq >/dev/null 2>&1; then _have_jq=1; else _have_jq=''; if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 401)); then input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c; else input=$(cat); fi; fi
 
 # DEBOUNCE (owner-approved): the directive is ~450 tokens and the gate holds for EVERY tool call until the
 # audit is done, so it is emitted at most once per (session, HEAD). The state lives OUTSIDE the repo, in
@@ -125,7 +125,7 @@ gate() {
     lst+=$'\n'"$oid^{commit}"
   done
   out=$(git -C "$cwd" cat-file --batch-check='%(objectname) %(objecttype)' <<<"$lst")
-  mapfile -t res <<<"$out"
+  res=(); while IFS= read -r _l; do res+=("$_l"); done <<<"$out"   # not mapfile: bash 3.2 has none
   _oid() { # $1 out-var, $2 index into the batch answer: the full commit sha, or empty if it did not resolve
     if [[ ${res[$2]-} =~ ^([0-9a-f]{40,64})\ commit$ ]]; then printf -v "$1" '%s' "${BASH_REMATCH[1]}"; else printf -v "$1" ''; fi
   }
@@ -335,6 +335,7 @@ emit() {
   local m=$1
   m=${m//\\/\\\\}
   m=${m//\"/\\\"}
+  m=${m//$'\n'/\\n}; m=${m//$'\r'/\\r}; m=${m//$'\t'/\\t}
   printf '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"%s"}}\n' "$m"
 }
 emit 'AGY-TEST-AUDIT auto-fire: AGY-CAPSTONE is GREEN for this HEAD (its marker is AT HEAD, or behind it with nothing executable landed since) and the branch changed executable code/tests. BEFORE you declare the branch done, invoke the `agy-test-audit` skill to convene the live agy peer to audit the TEST SUITES for coverage exhaustiveness (untested reachable behaviours, vacuous/weak assertions, missing edge cases) - the orthogonal question the capstone does NOT ask. Load-bearing posture (the skill carries the full procedure and your driver'"'"'s transport): point the peer at the diff'"'"'s real test+source files by filepath (never a pasted summary); VERIFY every claimed gap BY MEASUREMENT before folding (the peer over-counts and states false gaps with confidence); the OWNER scopes which gaps to close; the driver authors each test and proves it NON-VACUOUS with a logic mutant; log deferred gaps as tracked debt. End with exactly one ASCII [VERDICT] token. If closing a gap needs an implementation-source refactor, that invalidates the capstone GREEN - re-run AGY-CAPSTONE. If the peer is unreachable, halt-and-ask or abort `[VERDICT: agy-required-but-unreachable]` - never a silent pass. COST: this discipline re-reads the whole session context every round, so running it in a long session burns several times the tokens - and subscription quota - of running it fresh. If this session carries substantial history, do not run it inline: tell the user it runs about 5x leaner after /compact or in a fresh session, and follow their answer. This changes WHERE the review runs, never WHETHER.'

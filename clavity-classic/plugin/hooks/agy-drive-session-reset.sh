@@ -6,7 +6,8 @@ set +e
 # PROCESS BUDGET (<=16 per run on Windows, ~200 ms each): `read` is a builtin, `$(cat)` is two processes.
 # `read -d ''` returns non-zero at EOF but still fills $input; a trailing newline is kept, harmless since
 # $input only feeds a regex and jq below.
-input=; while IFS= read -r -N 1048576 _c 2>/dev/null; do input+=$_c; done; input+=$_c
+# stdin: read -N needs bash >= 4.1; older bash (macOS /bin/bash 3.2) keeps the pre-Branch-20 read.
+if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 401)); then input=; while IFS= read -r -N 1048576 _c 2>/dev/null; do input+=$_c; done; input+=$_c; else input=$(cat 2>/dev/null); fi
 
 # cwd is recovered from the RAW payload, not via jq: without jq the old code left cwd empty and tested
 # an absolute "/.no-agy", an undeclared degraded path in which the kill-switch silently did nothing.

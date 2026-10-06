@@ -50,7 +50,8 @@ set +e
 # found` - 83 bytes of stderr on an otherwise clean exit 0, rendered by Claude Code as a red hook error. A
 # builtin cannot be missing from PATH, so the leak is gone by construction. Trailing newlines survive here
 # (the `$(cat)` form stripped them); nothing below can see them.
-input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c
+# stdin: read -N needs bash >= 4.1; older bash (macOS /bin/bash 3.2) keeps the pre-Branch-20 read.
+if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 401)); then input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c; else input=$(cat); fi
 
 # --- jq guard. jq is needed to merge settings. Without it, honor the kill-switch (global + the session's
 # REAL workspace, recovered from the raw payload) then emit ONE loud dep warning (never silent; we cannot

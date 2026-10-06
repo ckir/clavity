@@ -15,7 +15,7 @@ exec 2>/dev/null
 # platform every process costs ~200ms and this hook runs after EVERY Write/Edit). The payload is read into
 # $input only when jq is ABSENT; with jq present, jq reads this hook's own stdin directly (no `$(cat)`, no
 # `printf | jq` pipelines, no `printf | tr | grep` match - all of those are 2-3 processes each).
-if command -v jq >/dev/null 2>&1; then _have_jq=1; else _have_jq=''; input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c; fi
+if command -v jq >/dev/null 2>&1; then _have_jq=1; else _have_jq=''; if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 401)); then input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c; else input=$(cat); fi; fi
 
 # --- jq guard (spec Decision 4 / SP-D). jq parses the payload + emits structured JSON. Without it,
 # fall back to a separator-agnostic, FIELD-BOUNDED grep on the RAW payload's file_path and, ONLY on a

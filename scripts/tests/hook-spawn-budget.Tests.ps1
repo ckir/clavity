@@ -59,6 +59,28 @@ Describe 'hook spawn budget' {
         } finally { Remove-Item -LiteralPath $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It '<Hook>: <Name> prints the same on the bash 3.2 code path' -ForEach $Rows -Tag 'compat' {
+        # Capstone R1 (owner ruling 2026-10-06, hybrid): on bash < 4.1 every hook falls back to its pre-Branch-20
+        # stdin read (and curate to `date` for its clock). CLAVITY_HOOK_BASH3=1 forces that path here, which has no
+        # bash 3.2. Same fixture shape both times; paths normalised, because each fixture has its own temp root.
+        $outs = foreach ($compat in $false, $true) {
+            $fx = New-HookFixture @Fixture
+            try {
+                if ($compat) { $fx.Env.CLAVITY_HOOK_BASH3 = '1' }
+                $payload = & $Setup $fx
+                $r = Measure-BashHookProcesses -HookPath (Join-Path $script:RepoRoot $Hook) -Payload $payload -Env $fx.Env -Arguments $HookArgs -WorkingDirectory $fx.Repo
+                $t = "$($r.StdOut)"
+                foreach ($form in $fx.Root, ($fx.Root -replace '\\', '/'), ($fx.Root -replace '\\', '\\')) { $t = $t.Replace($form, '<ROOT>') }
+                $t
+            } finally { Remove-Item -LiteralPath $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        if ((Split-Path -Leaf $Hook) -eq 'agy-consult-recovery.sh') {
+            $outs[1] | Should -Match 'inactive: needs bash 4.3 or newer' -Because 'consult-recovery needs bash 4.3 and must say so rather than fail silently'
+        } else {
+            $outs[1] | Should -BeExactly $outs[0] -Because 'the bash 3.2 fallback must behave exactly like the bash 4 path'
+        }
+    }
+
     It 'agy-consult-recovery.sh costs the same with 1 seam and with 1000 (the cost must not scale with the seam count)' -Tag 'scaling' {
         $one = New-HookFixture; $big = New-HookFixture
         try {

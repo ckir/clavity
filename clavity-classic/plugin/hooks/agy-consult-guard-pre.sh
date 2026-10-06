@@ -15,7 +15,8 @@ set +e
 # trailing-boundary test), so a prefilter miss can never be a consult.
 # (read -N, looped to EOF: `read -d ''` on a pipe is one syscall per byte and measured ~6x slower
 # than $(cat) on a 100 KB payload; -N reads in chunks.)
-input=; while IFS= read -r -N 1048576 chunk 2>/dev/null; do input+=$chunk; done; input+=$chunk
+# stdin: read -N needs bash >= 4.1; older bash (macOS /bin/bash 3.2) keeps the pre-Branch-20 read.
+if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 401)); then input=; while IFS= read -r -N 1048576 chunk 2>/dev/null; do input+=$chunk; done; input+=$chunk; else input=$(cat 2>/dev/null); fi
 shopt -s nocasematch   # Windows runs CLAVITY / Clavity.EXE as clavity (Branch 20 panel R1)
 if [[ $input != *agy_ask* ]]; then
   re='clavity(\.exe)?([[:space:]]|\\[ntrf]|\\u[0-9a-fA-F]{4})+(ask|send|await-reply)'

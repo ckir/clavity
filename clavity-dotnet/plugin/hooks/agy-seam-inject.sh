@@ -24,7 +24,8 @@ set +e
 # PROCESS BUDGET (Branch 20, hook spawn budget: at most 16 processes per run, bash's own 3 included): every process costs ~200ms on Windows, so this hook starts few. `read`
 # is a builtin where `$(cat)` is a subshell plus an external (2 processes). Trailing newlines survive, which
 # nothing below can see. No `2>/dev/null` is needed: `read` writes nothing to stderr.
-input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c
+# stdin: read -N needs bash >= 4.1; older bash (macOS /bin/bash 3.2) keeps the pre-Branch-20 read.
+if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 401)); then input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c; else input=$(cat); fi
 
 # --- jq guard (spec Decision 4). jq is required to parse stdin + emit structured JSON.
 # Without it, fall back to a FIELD-BOUNDED grep on the skill value (never a bare substring,

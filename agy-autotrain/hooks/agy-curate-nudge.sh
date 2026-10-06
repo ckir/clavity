@@ -19,7 +19,8 @@ SNOOZE="${HOME_DIR}/.clavity/.agy-curate-snooze"
 # PROCESS BUDGET (<=16 per run on Windows, ~200 ms each): `read` is a builtin (`$(cat)` costs two
 # processes); `read -d ''` returns non-zero at EOF but still fills $input; a trailing newline is kept,
 # harmless since $input only feeds jq. Here-string, not `printf | jq`, saves the pipeline's extra process.
-input=; while IFS= read -r -N 1048576 _c 2>/dev/null; do input+=$_c; done; input+=$_c
+# stdin: read -N needs bash >= 4.1; older bash (macOS /bin/bash 3.2) keeps the pre-Branch-20 read.
+if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 401)); then input=; while IFS= read -r -N 1048576 _c 2>/dev/null; do input+=$_c; done; input+=$_c; else input=$(cat 2>/dev/null); fi
 cwd="$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null)"
 [ -f "${cwd}/.no-agy" ] && exit 0
 # BOTH roots are checked on purpose, and the pair is load-bearing. The inbox path above resolves via
@@ -34,7 +35,7 @@ cwd="$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null)"
 
 # Snooze: if the marker exists and is younger than 7 days, stay silent.
 if [ -f "$SNOOZE" ]; then
-  printf -v now '%(%s)T' -1 2>/dev/null; mt="$(date -r "$SNOOZE" +%s 2>/dev/null)"
+  if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 402)); then printf -v now '%(%s)T' -1 2>/dev/null; else now=$(date +%s); fi; mt="$(date -r "$SNOOZE" +%s 2>/dev/null)"
   if [ -n "$now" ] && [ -n "$mt" ] && [ "$((now - mt))" -lt 604800 ]; then exit 0; fi
 fi
 
@@ -77,7 +78,7 @@ count=${scan%%|*}; oldest=${scan#*|}
 # Age gate (spec section 5.C-A: nudge on "N entries / an age threshold"): is the oldest pending entry too old?
 age_stale=0
 if [ -n "$oldest" ]; then
-  printf -v now '%(%s)T' -1 2>/dev/null; ots="$(date -d "$oldest" +%s 2>/dev/null)"
+  if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 402)); then printf -v now '%(%s)T' -1 2>/dev/null; else now=$(date +%s); fi; ots="$(date -d "$oldest" +%s 2>/dev/null)"
   if [ -n "$now" ] && [ -n "$ots" ] && [ "$(( (now - ots) / 86400 ))" -ge "$MAX_AGE_DAYS" ]; then age_stale=1; fi
 fi
 
