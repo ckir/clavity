@@ -559,9 +559,11 @@ agy-consult-guard.Tests.ps1                     134,4s   59 tests   <- SLOW, mov
                                                                       time is not.
 accept-drain.Tests.ps1                           42,4s   10 tests   <- SLOW, re-measured 2026-08-06
 advance-release-channel.Tests.ps1                68,3s  10 tests   <- SLOW, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled; +2 rows at the test audit, time NOT re-measured)
-agy-after-reminder.Tests.ps1                      9,7s   14 tests   <- COUNT 2026-08-06 (+4: root-walk
+agy-after-reminder.Tests.ps1                      9,7s   19 tests   <- COUNT 2026-08-06 (+4: root-walk
                                                                       silence + control, jq and no-jq).
                                                                       TIME is the 2026-08-05 solo figure.
+                                                                      14 -> 19 2026-10-06 (Branch 20 test-audit R2
+                                                                      DH1/DH1b: +5 no-jq .md boundary rows).
 agy-anomaly-reminder.Tests.ps1                   26,8s   37 tests   <- SLOW, re-measured 2026-08-06 (+4)
 agy-anomaly-capture-reminder.Tests.ps1            8,4s   26 tests   <- COUNT 2026-08-06 (+4)
 agy-anomaly-dispatch-reminder.Tests.ps1          12,7s   22 tests   <- COUNT 2026-08-06 (+4)
@@ -751,7 +753,7 @@ agy-ledger-lib.Tests.ps1                        105,0s   34 tests   <- SLOW. RUN
                                                                       agy-shield-lib sibling - every row builds a
                                                                       throwaway git repo with TWO commits and
                                                                       spawns bash, so ~7-20s per row.
-agy-test-audit-reminder.Tests.ps1                50,8s   35 tests   <- SLOW, re-measured 2026-08-06 (+4); 29 -> 35 2026-10-06 (Branch 20: +6 debounce rows), time not re-measured
+agy-test-audit-reminder.Tests.ps1                50,8s   36 tests   <- SLOW, re-measured 2026-08-06 (+4); 29 -> 35 2026-10-06 (Branch 20: +6 debounce rows), time not re-measured; 35 -> 36 2026-10-06 (Branch 20 test-audit R2 FPA1: no-jq closed-gate row), time not re-measured
 assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as of 2026-08-25; was FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file

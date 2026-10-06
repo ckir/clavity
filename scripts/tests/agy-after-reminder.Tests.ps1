@@ -113,6 +113,22 @@ Describe 'agy-after-reminder.sh' {
         $r = Invoke-BashHook -HookPath $script:Hook -Payload (New-WritePayload 'src/main.rs') -Env @{ PATH = $script:NoJqPath }
         $r.StdOut | Should -BeNullOrEmpty
     }
+    It 'without jq, warns=<Warns> for <Path> (the same .md boundary the jq path draws)' -ForEach @(
+        # NEAR MISSES inside the artifact directories (agy test-audit R2, DH1 + DH1b). The control above is src/main.rs,
+        # a complete miss; these sit one suffix away. MEASURED 2026-10-06: the unanchored no-jq regex warned on .md.bak
+        # and .mdx while the jq path (`\.md$`) stayed silent, and dropping `\.md` altogether left the suite green.
+        @{ Path = 'docs/superpowers/specs/x.md';     Warns = $true }
+        @{ Path = 'docs/superpowers/plans/y.md';     Warns = $true }
+        @{ Path = 'docs/superpowers/specs/x.txt';    Warns = $false }
+        @{ Path = 'docs/superpowers/specs/x.md.bak'; Warns = $false }
+        @{ Path = 'docs/superpowers/specs/x.mdx';    Warns = $false }
+    ) {
+        $noJq = Invoke-BashHook -HookPath $script:Hook -Payload (New-WritePayload $Path) -Env @{ PATH = $script:NoJqPath }
+        [bool]($noJq.StdOut -match 'guard inactive: missing jq') | Should -Be $Warns
+        # The jq path is the oracle: the degraded path warns exactly where the real one would fire.
+        $withJq = Invoke-BashHook -HookPath $script:Hook -Payload (New-WritePayload $Path)
+        [bool]($withJq.StdOut -match 'AGY-AFTER') | Should -Be $Warns
+    }
     It 'ships as pure ASCII' {
         ($([IO.File]::ReadAllBytes($script:Hook)) | Where-Object { $_ -gt 127 }).Count | Should -Be 0
     }

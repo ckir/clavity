@@ -380,6 +380,19 @@ Describe 'agy-test-audit-reminder.sh' {
             $out.StdOut | Should -Match 'guard inactive: missing jq'
         } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
     }
+    It 'no-jq: is SILENT when the gate is closed (no capstone marker, no .no-agy), and fires once the marker exists' {
+        # The header promises "never a false alarm" without jq. Every other silent no-jq row reaches silence through
+        # .no-agy, which exits BEFORE the gate (agy test-audit R2, FPA1/AB1: forcing the degraded gate open left the
+        # whole suite green). Same repo, same payload: only the marker differs, so the silence is the gate's answer.
+        $r = New-FiredRepo
+        try {
+            $closed = Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $r.Dir)) -Env @{ PATH = $script:NoJqPath }
+            $closed.StdOut | Should -BeNullOrEmpty -Because 'no capstone marker means the gate is closed, and the degraded path must say nothing'
+            Set-Marker $r.Dir 'agy-capstone' $r.Head
+            $open = Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $r.Dir)) -Env @{ PATH = $script:NoJqPath }
+            $open.StdOut | Should -Match 'guard inactive: missing jq' -Because 'the control: this fixture DOES reach the warning once the gate opens'
+        } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
     It 'carries the COST clause when it fires' {
         $r = New-FiredRepo
         try {

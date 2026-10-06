@@ -49,8 +49,9 @@ if [ -z "$_have_jq" ]; then
   fi
   if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then exit 0; fi
   # grep -Eq, line by line, in the shell: `[[ =~ ]]` is POSIX ERE like grep -E, and the per-line loop keeps
-  # grep's rule that a match never spans a newline.
-  _re='"(file_path|path)"[[:space:]]*:[[:space:]]*"[^"]*docs[\\/]+superpowers[\\/]+(specs|plans)[\\/]+[^"]*\.md'
+  # grep's rule that a match never spans a newline. The value must END in .md - the closing quote is the anchor -
+  # or x.md.bak and x.mdx would warn where the jq path (`\.md$`) stays silent (agy test-audit R2, DH1b).
+  _re='"(file_path|path)"[[:space:]]*:[[:space:]]*"[^"]*docs[\\/]+superpowers[\\/]+(specs|plans)[\\/]+[^"]*\.md"'
   while IFS= read -r _l; do
     if [[ $_l =~ $_re ]]; then
       printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[AGY-DISCIPLINES] guard inactive: missing jq - the AGY-AFTER panel reminder will not fire on spec/plan writes"}}'
