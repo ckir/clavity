@@ -203,6 +203,8 @@ function Invoke-JobCountedBash {
         $psi.ArgumentList.Add('-c'); $psi.ArgumentList.Add($boot)
         $psi.UseShellExecute = $false
         $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
+        # Hooks write UTF-8; without this the redirect decodes with the console code page (agy panel R4).
+        $psi.StandardOutputEncoding = [Text.UTF8Encoding]::new($false); $psi.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
         $psi.WorkingDirectory = $WorkingDirectory
         foreach ($k in $Env.Keys) {
             if ($null -eq $Env[$k]) { [void]$psi.Environment.Remove($k) } else { $psi.Environment[$k] = [string]$Env[$k] }
@@ -1145,3 +1147,12 @@ what each axis costs, which axes can share one git call.
 - **Spec coverage:** S1 (count gate + scaling row, proven red by mutants) = Tasks 1, 2, 10; S2 (consult-recovery regex + builtins, keep "+N more") = Task 4; S3 (debounce + fork cuts) = Tasks 5, 6; S4 = Task 11; S5 (Branch 19 test-audit first) = done before this branch. Owner rulings O1-O3: ceiling everywhere (rows for all nine; census row for all 22 registered hooks (measured: the census regex over the 4 registries yields 22 names)), consult path pinned (Task 2 pins, Task 12 section 70), split (debt row, section 69).
 - **Gaps left open, with where they close:** Q1 is the owner's (approve with the plan). The four unmeasured test-audit paths are measured in Task 5 Step 7, with a STOP if any is over. Task 5's debounce row bodies are specified by assertion, not pasted: they reuse that suite's own FIRES fixture, whose helper name must be read from the file, not invented here. Task 7's Q1 row copies the suite's existing corrupt-file assertion, for the same reason. The pinned consult limits come from a prototype fixture of the same shape (plain temp repo); if a pinned row fails in Task 2 Step 4 before any hook changes, the pin is wrong, not the hook: re-measure and STOP to report.
 - **Verified at writing:** `Invoke-Pester -FullNameFilter` does NOT match `-ForEach` rows by their expanded `<Hook>` names (measured: a filter on a hook name ran 0 tests). Hence the `HSB_HOOK` discovery filter plus `-Tag` (measured: `HSB_HOOK=agy-after-reminder.sh` + `-TagFilter row` ran exactly that row and excluded the debt row). A 0-test run is a FAILURE.
+
+## Stand-downs (AGY-AFTER panel, 2026-10-04..06; 4 rounds: Opus solo + agy x4; GREEN at round 4)
+
+- `DISCARDED-BELOW-FLOOR`: the harness's boot spin-wait (`while [ ! -e ... ]; do :; done`) burns a core - unreachable as a cost because `Invoke-JobCountedBash` creates the release file on the line right after `[ClavityJobCount]::Assign(...)` (Task 1 Step 3), so each spin lasts milliseconds (agy R4).
+- `UNVERIFIED-ACCEPTED`: Chocolatey's `jq.exe` on `windows-latest` is a shim that adds one process per call - not measurable on this box; the owner accepted the risk with ruling O6-C (real jq first on CI's PATH, verified on the first CI run, local-only rows as the fallback).
+- `UNVERIFIED-ACCEPTED`: whether `/compact` keeps the `session_id` - left unmeasured because ruling O6-B (PreCompact re-arms the debounce) is correct either way.
+- `DEFERRED-TO-ANOMALIES: docs/superpowers/plans/2026-10-04-sweep-branch-20-hook-spawn-budget/04-test-audit-reminder.patch * 2026-10-05 * unverified` - debounce state files are never cleaned up.
+- `REJECTED` (recorded so they are not re-raised): the census crashing on a missing `.claude/settings.json` (it is tracked: `git ls-files .claude/settings.json`); the harness PATH export putting jq back for the no-jq rows (measured: with PATH `<Git>\usr\bin` plus the export, `command -v jq` finds nothing and git resolves to `/mingw64/bin/git` - Git for Windows ships no jq).
+- **For the owner at approval** (a challenge to an owner-settled decision, so not resolved by the driver): agy R3 argued that a debt row which is ALWAYS red locally trains its reader to ignore red. Mitigation already in the plan: Task 10 Step 3 checks WHICH row fails ("exactly one failure: the debt row"), and the row's message names every debt entry.
