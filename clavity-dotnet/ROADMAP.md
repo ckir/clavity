@@ -3775,6 +3775,72 @@ behind by what reads as a check. Restored at the time with `git restore --staged
 **Fix direction:** ruff-format `telemetry.py` once on `main` (one commit, no logic change), so the gate is a no-op
 on a clean tree. Optionally add a `ruff format --check` over the bridge to CI so the drift cannot recur.
 
+### §68 — agy's copy of the plugin is registered ONCE and never refreshed, so plugin upgrades do not reach agy — ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-04 in agy's log while testing the owner's ECONNRESET hypothesis), not yet planned**
+
+**Measured 2026-10-04:** `clavity-dotnet-setup.sh:44-45` registers the plugin with agy (`agy plugin uninstall` +
+`agy plugin install "$ROOT"`) only while the stamp `$CLAUDE_PLUGIN_DATA/.agy-registered` is absent, and
+`CLAUDE_PLUGIN_DATA` survives plugin upgrades. The stamp here was written 2026-09-23 14:25 (local), so every release
+since - including v21's `86664e31`, which quoted the `agy-capstone` / `agy-test-audit` descriptions because unquoted
+they are invalid YAML - never reached agy's copy at `~/.gemini/config/plugins/clavity`. agy's log for session
+`f2e7ce54` (started 2026-10-04 08:01 local) shows `Failed to parse skill file ... agy-capstone\SKILL.md: ... yaml:
+line 2: mapping values are not allowed` 43x, and the same for `agy-test-audit`: agy ran without both skills. Something
+rewrote agy's copy at 13:19 local the same day (the quoted text is there now, and agy's next session logged 0 parse
+errors), but nothing in this hook did, so the next upgrade goes stale the same way.
+
+**Fix direction:** key the stamp to the plugin version (write the version into it; re-register when it differs), so
+each upgrade re-registers once. Pin it with a row in the setup hook's suite: a stamp from an older version must
+trigger `agy plugin install`, a stamp from the current version must not.
+
+### §69 — Branch 21: the eight census-found hooks over the 16-process ceiling — ▶ **PROMOTED 2026-10-04 (owner split of Branch 20), not yet planned**
+
+The Branch 20 census (`.clavity/scratch/hook-perf/b20-protos/scratch-b20/census-other-hooks.md`) measured 44 paths over
+the ceiling in `agy-inbox-snapshot` (up to 67 with 20 baks: one `rm` per surplus bak), `agy-discipline-reaching` (36 on a
+`!`-negated shield), `agy-anomaly-reminder` (23 whenever an entry is untriaged: a grep|awk|grep|sort|head chain),
+`agy-verify-reminder` (22-24 whenever agy is on PATH), `docs-audit-reminder` (22 on any generated view: tr + 3 printf|grep),
+`assertion-strength-reminder` (17-21), `fetch-clavity-ls` (17 in steady state, 20-35 elsewhere) and `migrate-inbox` (17
+on recovery). Each is a named entry of `$B21Debt` in `scripts/tests/hook-spawn-budget.Rows.ps1`; the suite's debt row is
+RED until the list is empty. Done = every entry replaced by a passing budget row.
+
+### §70 — the consult guard's consult path costs ~115 processes a side — ▶ **PROMOTED 2026-10-04 (owner ruling 3), not yet planned**
+
+`agy_guard_quad` + the gitignored-path census run on every real consult, pre and post (measured 2026-10-04 after Branch
+20: pre 114-120, post 117-129 total). Branch 20 pinned it (`$ConsultPin`) so it cannot grow. Needs its own design consult:
+what each axis costs, which axes can share one git call.
+
+**Also measured in Branch 20 Task 11 (2026-10-06):** with every SessionStart hook started together and 1031
+seams, `agy-consult-recovery.sh` took 6.2 / 6.0 s although it starts only 8 processes beyond boot - the time is
+bash's own per-seam loop (glob + keyword match + `-nt` per file), which a process budget cannot see. Its timeout
+was raised 10 -> 30 s for now; bounding that loop (or pruning concluded seams) is the real fix.
+
+### §71 — `agy_ask` hides its own operator instructions behind the MCP SDK's generic error — ▶ **PROMOTED 2026-10-06 from the anomalies conveyor (observed 2026-10-04, Branch 20 plan panel), not yet planned**
+
+`RunAsync` (`src/Clavity.Mcp/McpTools.cs`) catches only `AgyModalHangException`, `AgyConversationPendingException`
+and exceptions `ChannelDown.IsChannelDown` accepts. `AgyModelUnavailableException` (thrown at `AgyView.cs` for a
+deprecated or unavailable model; its message says how to escape) counts as channel-down ONLY when it wraps a
+channel-down cause (`ChannelDown.cs`), so in every other case it - and any other exception - escapes, and the SDK
+returns only "An error occurred invoking agy_ask". Observed twice (2026-10-04 22:22:26Z and 22:31:41Z, failed
+after 0 s) right after the owner switched agy's model with `/model`; which exception it was is unverified because
+the text was lost. Done = the model-unavailable case returns a typed status carrying its hint, any other exception
+returns a typed error with its message, and a test pins each.
+
+### §72 — the test-audit reminder's per-session debounce files are never cleaned — ▶ **PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 plan panel), low debt, not yet planned**
+
+`agy-test-audit-reminder.sh` (Branch 20) keeps `${TMPDIR:-/tmp}/claude-agy-test-audit-reminder.<session_id>` (one
+HEAD sha, ~41 B). The only delete is the PreCompact re-arm in `agy-anomaly-capture-reminder.sh`, for that one
+session, so every session that ends without a compaction leaves its file behind (verified by reading both hooks;
+not yet observable on an install, which still runs the pre-Branch-20 plugin). Nothing degrades today. Cleanup
+inside the firing hook would spend processes on its worst path (15 of 16), so the cheap home is a sweep in an
+existing SessionStart hook that removes such files older than N days. Fits Branch 21's hook work.
+
+### §73 — `agy-curate-nudge` age nudge never fires on macOS (GNU-only `date -d`) — ▶ **PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 capstone round 2), Branch 21, not yet planned**
+
+`agy-autotrain/hooks/agy-curate-nudge.sh` computes the oldest pending entry's epoch with `date -d "$oldest" +%s`.
+BSD/macOS `date` has no `-d` date parse, so `ots` is empty and the age condition is skipped silently (the count
+nudge is unaffected). Present at main `4f0cb6a7`. The code was read; the BSD behaviour is a known platform fact,
+not measured here (no macOS box). A pure-bash days-from-civil computation on the `YYYY-MM-DD` string fixes it
+AND removes one `date` process from every SessionStart that reaches the age check - which is why it rides with
+Branch 21 (section 69).
+
 ---
 
 ## Non-goals / accepted limitations

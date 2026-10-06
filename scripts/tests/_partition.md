@@ -543,7 +543,7 @@ abort-drain.Tests.ps1                            72,9s   13 tests   <- SLOW, re-
                                                                       the old figure simply decayed. This is
                                                                       the same failure as agy-discipline-
                                                                       reaching's below, in the other half.
-agy-consult-guard.Tests.ps1                     134,4s   44 tests   <- SLOW, moved 2026-08-02; re-measured
+agy-consult-guard.Tests.ps1                     134,4s   59 tests   <- SLOW, moved 2026-08-02; re-measured; 44 -> 46 2026-10-06 (Branch 20: +2 case-insensitive anchor rows), time not re-measured; 46 -> 47 2026-10-06 (Branch 20 capstone R1: +1 bash 3.2 fallback row), time not re-measured; 47 -> 59 2026-10-06 (Branch 20 capstone R3+R4: +12 missing-jq classification rows), time not re-measured
                                                                       2026-08-06 (+2 tests: the cross-driver
                                                                       byte-identity check now covers lib.sh
                                                                       too, and the deliberate .no-agy
@@ -559,9 +559,11 @@ agy-consult-guard.Tests.ps1                     134,4s   44 tests   <- SLOW, mov
                                                                       time is not.
 accept-drain.Tests.ps1                           42,4s   10 tests   <- SLOW, re-measured 2026-08-06
 advance-release-channel.Tests.ps1                68,3s  10 tests   <- SLOW, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled; +2 rows at the test audit, time NOT re-measured)
-agy-after-reminder.Tests.ps1                      9,7s   14 tests   <- COUNT 2026-08-06 (+4: root-walk
+agy-after-reminder.Tests.ps1                      9,7s   19 tests   <- COUNT 2026-08-06 (+4: root-walk
                                                                       silence + control, jq and no-jq).
                                                                       TIME is the 2026-08-05 solo figure.
+                                                                      14 -> 19 2026-10-06 (Branch 20 test-audit R2
+                                                                      DH1/DH1b: +5 no-jq .md boundary rows).
 agy-anomaly-reminder.Tests.ps1                   26,8s   37 tests   <- SLOW, re-measured 2026-08-06 (+4)
 agy-anomaly-capture-reminder.Tests.ps1            8,4s   26 tests   <- COUNT 2026-08-06 (+4)
 agy-anomaly-dispatch-reminder.Tests.ps1          12,7s   22 tests   <- COUNT 2026-08-06 (+4)
@@ -693,8 +695,8 @@ agy-autotrain-migrate-inbox.Tests.ps1            16,0s    9 tests   <- SLOW, NEW
 agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new 2026-08-24. 6,4s WARM on an
                                                                       idle CPU; 11,1s cold. It will not be the
                                                                       cold-start absorber in this half
-agy-consult-recovery.Tests.ps1                  280,0s   38 tests   <- SLOW, ADDED 2026-09-13 (section 15 consult-recovery). Time is spawn-latency-dominated (~6s/hook: this box AV-scans each bash/git/date) and MEASURED ONLY UNDER CONTENTION - NOT a clean idle figure; re-measure idle before trusting it. Count 30->37 by the section-15 AGY-TEST-AUDIT (this row lagged at 29 from the suite's initial state; corrected 2026-09-14). Slow-half by design: cannot fit the fast cap at this per-call cost.
-agy-liveness-check.Tests.ps1                     56,4s   40 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-consult-recovery.Tests.ps1                  280,0s   41 tests   <- SLOW, ADDED 2026-09-13 (section 15 consult-recovery). Time is spawn-latency-dominated (~6s/hook: this box AV-scans each bash/git/date) and MEASURED ONLY UNDER CONTENTION - NOT a clean idle figure; re-measure idle before trusting it. Count 30->37 by the section-15 AGY-TEST-AUDIT (this row lagged at 29 from the suite's initial state; corrected 2026-09-14). Slow-half by design: cannot fit the fast cap at this per-call cost.; 38 -> 40 2026-10-06 (Branch 20: +2 keyword-classifier rows), time not re-measured; 40 -> 41 2026-10-06 (Branch 20 capstone R1: +1 loud bash < 4.3 row), time not re-measured
+agy-liveness-check.Tests.ps1                     56,4s   41 tests   <- SLOW, re-measured 2026-08-06 (+4); 40 -> 41 2026-10-06 (Branch 20: +1 multi-document settings row), time not re-measured
   33 -> 38 on 2026-09-30 (sweep Branch 2): the .clavity/ wiring check - two REPORTS rows and three near-miss
   rows. Runtime NOT re-measured.
   32 -> 33 on 2026-09-12 (anomaly triage): one row proving the hook stays SILENT on stderr when PATH holds
@@ -751,12 +753,12 @@ agy-ledger-lib.Tests.ps1                        105,0s   34 tests   <- SLOW. RUN
                                                                       agy-shield-lib sibling - every row builds a
                                                                       throwaway git repo with TWO commits and
                                                                       spawns bash, so ~7-20s per row.
-agy-test-audit-reminder.Tests.ps1                50,8s   29 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-test-audit-reminder.Tests.ps1                50,8s   36 tests   <- SLOW, re-measured 2026-08-06 (+4); 29 -> 35 2026-10-06 (Branch 20: +6 debounce rows), time not re-measured; 35 -> 36 2026-10-06 (Branch 20 test-audit R2 FPA1: no-jq closed-gate row), time not re-measured
 assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as of 2026-08-25; was FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file
                                                                       already warns above.
-BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
+BashHookHelpers.Tests.ps1                         1,7s   15 tests   <- FAST, re-measured 2026-08-05; +4 Job Object counter rows 2026-10-05 (Branch 20), time not re-measured; 12 -> 13 2026-10-06 (Branch 20 test-audit MG2: background-work counter row), time not re-measured; 13 -> 14 2026-10-06 (Branch 20 capstone R6 HB1: fsmonitor row), time not re-measured; 14 -> 15 2026-10-06 (Branch 20 capstone R7: caller GIT_CONFIG row), time not re-measured
 check-agy-discipline-skills.Tests.ps1            43,2s  112 tests   <- FAST, re-measured 2026-09-13 (+2, section-15 panel-marker rows; was 110)
   94 -> 107 on 2026-09-12 (AGY-TEST-AUDIT section 30 round 1): the transport/marker row now plants every
   skill the rules admit (3 -> 9), the checker-invocation row both directions (1 -> 2), an in-process
@@ -1096,6 +1098,7 @@ generate-cheatsheet-literals.Tests.ps1           41,6s   18 tests   <- SLOW, NEW
 generate-scoped-manifest.Tests.ps1                2,1s    2 tests   <- FAST, re-measured 2026-08-05
 marketplace-manifest.Tests.ps1                    4,6s  10 tests   <- FAST, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled)
 pairing-doc.Tests.ps1                            22,2s   9 tests   <- SLOW, NEW 2026-10-03 (Branch 18, ROADMAP sections 60+62; warm run, cold first run 63,5s; box load uncontrolled)
+hook-spawn-budget.Tests.ps1                     226,5s  109 tests   <- SLOW, NEW 2026-10-06 (Branch 20 process budget; 1 row RED locally until Branch 21 - owner ruling; one run, box load uncontrolled; 55 -> 56 with the PreCompact re-arm row, Task 5; after Tasks 3-9 only the debt row is red, 168,6s); 56 -> 109 2026-10-06 (Branch 20 capstone R1: +53 bash 3.2 equivalence rows), time not re-measured
 plugin-hooks-registration.Tests.ps1               0,6s   37 tests   <- FAST, re-measured 2026-09-13 (+2 2026-10-01: section 57 test-audit-reminder PostToolUse matcher row; +2 since; +1 for the section-15 consult-recovery registration row; was
                                                                       0,5s / 18 tests; +4 for the recorder's
                                                                       SessionStart registration, which this

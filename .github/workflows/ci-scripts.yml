@@ -287,6 +287,15 @@ jobs:
           ast-grep --version
           if ($LASTEXITCODE -ne 0) { throw "ast-grep install failed: ast-grep is not on PATH" }
 
+      - name: Put the real jq first on PATH (Branch 20 process budget)
+        shell: pwsh
+        run: |
+          # Chocolatey's bin\jq.exe is a shim that starts lib\...\jq.exe as a CHILD, so every jq call costs one
+          # extra process in scripts/tests/hook-spawn-budget.Tests.ps1. Prepend the real binary's directory.
+          $real = Get-ChildItem 'C:\ProgramData\chocolatey\lib' -Recurse -Filter jq.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($real) { $real.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8; "real jq: $($real.FullName)" }
+          else { '::warning title=hook budget::no Chocolatey jq under C:\ProgramData\chocolatey\lib - PATH unchanged; if a hook-spawn-budget row fails on CI only, a jq shim (one extra process per call) is the first suspect' }
+
       - name: Install Pester v6
         shell: pwsh
         run: Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop

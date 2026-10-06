@@ -38,9 +38,23 @@
 # Fail-open: any error -> exit 0. Suppressed by .no-agy (workspace or global) like every other reminder.
 # Byte-identical across both driver plugins (kept honest by scripts/check-seed-artifacts-synced.sh).
 set +e
-input=$(cat)
+# stdin: read -N needs bash >= 4.1; older bash (macOS /bin/bash 3.2) keeps the pre-Branch-20 read.
+if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 401)); then input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c; else input=$(cat); fi
 
 event="${1:-PreCompact}"
+# Branch 20 (owner ruling 2026-10-05, agreed with agy): a compaction summarizes away the AGY-TEST-AUDIT
+# reminder, and its once-per-(session, HEAD) debounce (agy-test-audit-reminder.sh, _set_state) would keep it
+# silent at this HEAD for the rest of the session. Re-arm it by deleting this session's debounce file. The
+# session-id sanitising is _set_state's, character for character, so both sides name the same file.
+# Builtins plus one rm, PreCompact only, before any early exit.
+if [ "$event" = "PreCompact" ]; then
+  _rs=''
+  [[ $input =~ \"session_id\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && _rs=${BASH_REMATCH[1]}
+  _ok='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-'
+  _rs=${_rs//[^$_ok]/_}; [ -n "$_rs" ] || _rs=default
+  _rf="${TMPDIR:-/tmp}/claude-agy-test-audit-reminder.$_rs"
+  [ -e "$_rf" ] && rm -f -- "$_rf" 2>/dev/null
+fi
 
 # TWO messages, ONE contract stamp. The stamp is what scripts/tests/agy-anomaly-contract-stamp.Tests.ps1
 # pins and what scripts/discipline-reaching-report.ps1 counts, so it must appear in BOTH or the recorder

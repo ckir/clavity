@@ -398,9 +398,9 @@ agy_guard_category() {
   # attempt. The MCP path above is immune to all of this: it matches on tool NAME and returns before ever
   # reaching this regex.
   local anchor='(^|[;&|]|&&|\|\|)[[:space:]]*([[:graph:]]*[/\\])?clavity(\.exe)?[[:space:]]+'
-  printf '%s' "$c" | grep -Eq "${anchor}ask([[:space:]]|$)"         && { echo sync;     return; }
-  printf '%s' "$c" | grep -Eq "${anchor}send([[:space:]]|$)"        && { echo open;     return; }
-  printf '%s' "$c" | grep -Eq "${anchor}await-reply([[:space:]]|$)" && { echo terminal; return; }
+  printf '%s' "$c" | grep -Eiq "${anchor}ask([[:space:]]|$)"         && { echo sync;     return; }
+  printf '%s' "$c" | grep -Eiq "${anchor}send([[:space:]]|$)"        && { echo open;     return; }
+  printf '%s' "$c" | grep -Eiq "${anchor}await-reply([[:space:]]|$)" && { echo terminal; return; }
   echo none
 }
 

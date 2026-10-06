@@ -16,8 +16,12 @@ OBS="${HOME_DIR}/.clavity/agy-observations.md"
 SNOOZE="${HOME_DIR}/.clavity/.agy-curate-snooze"
 
 # Opt-out: a .no-agy marker in cwd or ~/.claude silences everything (mirror agy-learn-reminder.sh).
-input="$(cat 2>/dev/null)"
-cwd="$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)"
+# PROCESS BUDGET (<=16 per run on Windows, ~200 ms each): `read` is a builtin (`$(cat)` costs two
+# processes); `read -d ''` returns non-zero at EOF but still fills $input; a trailing newline is kept,
+# harmless since $input only feeds jq. Here-string, not `printf | jq`, saves the pipeline's extra process.
+# stdin: read -N needs bash >= 4.1; older bash (macOS /bin/bash 3.2) keeps the pre-Branch-20 read.
+if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 401)); then input=; while IFS= read -r -N 1048576 _c 2>/dev/null; do input+=$_c; done; input+=$_c; else input=$(cat 2>/dev/null); fi
+cwd="$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null)"
 [ -f "${cwd}/.no-agy" ] && exit 0
 # BOTH roots are checked on purpose, and the pair is load-bearing. The inbox path above resolves via
 # ${USERPROFILE:-$HOME}, so a parent process that exports USERPROFILE WITHOUT HOME reads the inbox
@@ -31,7 +35,7 @@ cwd="$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)"
 
 # Snooze: if the marker exists and is younger than 7 days, stay silent.
 if [ -f "$SNOOZE" ]; then
-  now="$(date +%s 2>/dev/null)"; mt="$(date -r "$SNOOZE" +%s 2>/dev/null)"
+  if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 402)); then printf -v now '%(%s)T' -1 2>/dev/null; else now=$(date +%s); fi; mt="$(date -r "$SNOOZE" +%s 2>/dev/null)"
   if [ -n "$now" ] && [ -n "$mt" ] && [ "$((now - mt))" -lt 604800 ]; then exit 0; fi
 fi
 
@@ -62,14 +66,19 @@ fi
 # and `[ \t]` is narrower than `\s`. Interval expressions are not portable across every awk this hook may
 # meet, so the wider form stays - and seven hashes is not a markdown heading anyway, which is the reason
 # the divergence is acceptable and not the reason it does not exist.
-count="$(awk '/^##[ \t]+Pending[ \t]*$/{p=1;next} /^#+[ \t]/{p=0} p && /^- \[/{c++} END{print c+0}' "$OBS" 2>/dev/null)"
-oldest="$(awk 'function flush(){ v=(stamp!=""?stamp:cur); if(v!=""){ if(m==""||v<m) m=v }; cur=""; stamp="" } /^##[ \t]+Pending[ \t]*$/{p=1;next} /^#+[ \t]/{ flush(); p=0 } p && /^- \[/ { flush(); inrec=1 } p && (/^[ \t]*$/ || /^[ \t]*<!--/) { flush(); inrec=0 } p && inrec { s=$0; while(match(s,/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)){ pre=substr(s,1,RSTART-1); d=substr(s,RSTART,10); s=substr(s,RSTART+10); sub(/[ \t]+$/,"",pre); if(s ~ /^[^0-9A-Za-z]*agy([ \t]|$)/ && pre !~ /[0-9A-Za-z]$/) stamp=d; cur=d } } END{ flush(); print m }' "$OBS" 2>/dev/null)"
-[ -z "$count" ] && exit 0
+# ONE awk computes both values (process budget: it was two awks, two processes each). The count rule is the
+# old first program verbatim, folded into the bullet-open rule (`c++`) of the old second program; both
+# programs had identical open/close rules, so the merged scan sees the same region. Output is
+# "<count>|<oldest>" (a date is digits and '-', so '|' is unambiguous; `$(...)` would strip a trailing
+# newline, which is why the separator is not a newline).
+scan="$(awk 'function flush(){ v=(stamp!=""?stamp:cur); if(v!=""){ if(m==""||v<m) m=v }; cur=""; stamp="" } /^##[ \t]+Pending[ \t]*$/{p=1;next} /^#+[ \t]/{ flush(); p=0 } p && /^- \[/ { c++; flush(); inrec=1 } p && (/^[ \t]*$/ || /^[ \t]*<!--/) { flush(); inrec=0 } p && inrec { s=$0; while(match(s,/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)){ pre=substr(s,1,RSTART-1); d=substr(s,RSTART,10); s=substr(s,RSTART+10); sub(/[ \t]+$/,"",pre); if(s ~ /^[^0-9A-Za-z]*agy([ \t]|$)/ && pre !~ /[0-9A-Za-z]$/) stamp=d; cur=d } } END{ flush(); print c+0 "|" m }' "$OBS" 2>/dev/null)"
+count=${scan%%|*}; oldest=${scan#*|}
+[ -z "$scan" ] && exit 0
 
 # Age gate (spec section 5.C-A: nudge on "N entries / an age threshold"): is the oldest pending entry too old?
 age_stale=0
 if [ -n "$oldest" ]; then
-  now="$(date +%s 2>/dev/null)"; ots="$(date -d "$oldest" +%s 2>/dev/null)"
+  if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 402)); then printf -v now '%(%s)T' -1 2>/dev/null; else now=$(date +%s); fi; ots="$(date -d "$oldest" +%s 2>/dev/null)"
   if [ -n "$now" ] && [ -n "$ots" ] && [ "$(( (now - ots) / 86400 ))" -ge "$MAX_AGE_DAYS" ]; then age_stale=1; fi
 fi
 
@@ -84,5 +93,17 @@ else
   msg="agy-curate nudge: the observations inbox has ${count} pending entries (threshold ${THRESHOLD}). Consider running the agy-curate skill to drain it. (Snooze for 7 days: touch \"${SNOOZE}\".)"
 fi
 
-jq -nc --arg m "$msg" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}' 2>/dev/null
+# PROCESS BUDGET: emitting the JSON in-shell saves a jq process on every nudge path. Byte-identical to
+# `jq -nc` ONLY while $msg is printable ASCII (jq escapes only `\`, `"` and control characters, and passes
+# the rest through), so anything outside space..tilde (a non-ASCII or control char in the USERPROFILE path,
+# a DEL) falls back to jq. The `command -v` guard keeps the old "no jq -> print nothing" behaviour.
+command -v jq >/dev/null 2>&1 || exit 0
+LC_ALL=C   # byte-wise range below; last statement before exit, so nothing else is affected (no subshell: a fork costs a process)
+if [[ $msg == *[^\ -~]* ]]; then
+  jq -nc --arg m "$msg" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}' 2>/dev/null
+else
+  esc=${msg//\\/\\\\}; esc=${esc//\"/\\\"}
+  eol=$'\n'
+  printf '%s%s' "{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"$esc\"}}" "$eol"
+fi
 exit 0

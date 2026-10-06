@@ -7,20 +7,76 @@
 #   term. -> compare+consume the .async baseline (best-effort); stale => warn inconclusive
 #   open  -> no-op (baseline set in Pre; nothing has run yet)
 set +e
-input=$(cat 2>/dev/null)
-command -v jq >/dev/null 2>&1 || exit 0
+# Process budget (every process costs ~200 ms on Windows): read stdin with the builtin, and bail out
+# on the RAW JSON text before sourcing the lib or starting jq. A consult is either the MCP tool
+# (tool_name ends in agy_ask) or a command naming `clavity` then ask|send|await-reply. In the JSON
+# text the separator between the words is whitespace or a JSON escape (\n \t \r \f \u000b); this
+# regex is a SUPERSET of agy_guard_category's command-position match (it drops the anchor and the
+# trailing-boundary test), so a prefilter miss can never be a consult.
+# (read -N, looped to EOF: `read -d ''` on a pipe is one syscall per byte and measured ~6x slower
+# than $(cat) on a 100 KB payload; -N reads in chunks.)
+# stdin: read -N needs bash >= 4.1; older bash (macOS /bin/bash 3.2) keeps the pre-Branch-20 read.
+if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 401)); then input=; while IFS= read -r -N 1048576 chunk 2>/dev/null; do input+=$chunk; done; input+=$chunk; else input=$(cat 2>/dev/null); fi
+shopt -s nocasematch   # Windows runs CLAVITY / Clavity.EXE as clavity (Branch 20 panel R1)
+if [[ $input != *agy_ask* ]]; then
+  re='clavity(\.exe)?([[:space:]]|\\[ntrf]|\\u[0-9a-fA-F]{4})+(ask|send|await-reply)'
+  [[ $input =~ $re ]] || exit 0
+fi
+# Without jq neither half can snapshot or diff. Pre stays silent by design; Post must SAY so, because a
+# silent Post reads as "verified clean" (capstone R3, SH1). Fixed literal built with printf: no jq to escape it.
+# But only for a call that IS a sync/terminal consult: the prefilter above is a superset, and warning on a grep
+# or a commit message that merely names the words is a cries-wolf (capstone R4, MT1). Nothing can decode the
+# JSON here, so classify the RAW text with bash's own regex (no process):
+#   re_mcp - the top-level "tool_name" value ends in agy_ask. A command's TEXT cannot fake it: inside a JSON
+#            string its quotes are escaped as \", so `"tool_name"` followed by `"` never occurs there.
+#   re_cli - the lib's command-position anchor (agy-consult-guard-lib.sh, agy_guard_category) applied to the
+#            raw "command" value: its start, or after ; & | or an escaped newline (the two characters \n);
+#            optional path prefix; clavity[.exe]; then ask or await-reply ended by whitespace, an escape or
+#            the closing quote. send is left out: Post never checks an open call, even with jq.
+if ! command -v jq >/dev/null 2>&1; then
+  re_mcp='"tool_name"[[:space:]]*:[[:space:]]*"[^"\\]*agy_ask"'
+  re_cli='"command"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*([;&|]|\\n))?([[:space:]]|\\[tr])*([^"[:space:]]*[/\\])?clavity(\.exe)?([[:space:]]|\\[ntr])+(ask|await-reply)([[:space:]]|\\[ntr]|")'
+  if [[ $input =~ $re_mcp ]] || [[ $input =~ $re_cli ]]; then
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[agy-consult-guard] guard inactive: missing jq - this consult was NOT checked for version-control changes; run git status and git log yourself, and install jq"}}'
+  fi
+  exit 0
+fi
 
 # shellcheck source=agy-consult-guard-lib.sh
-. "$(dirname "$0")/agy-consult-guard-lib.sh" 2>/dev/null || exit 0
+d=${0%[/\\]*}; [ "$d" = "$0" ] && d=.; [ -z "$d" ] && d=/
+. "$d/agy-consult-guard-lib.sh" 2>/dev/null || exit 0
 
 emit(){ jq -nc --arg m "$1" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'; }
 
-tool=$(printf '%s' "$input" | jq -r '.tool_name // ""'          2>/dev/null)
-cmd=$( printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
-cwd=$( printf '%s' "$input" | jq -r '.cwd // "."'               2>/dev/null)
-sid=$( printf '%s' "$input" | jq -r '.session_id // "default"'  2>/dev/null)
+# ONE jq call for all four fields, NUL-terminated and read with the builtin. Each field keeps the
+# value the old per-field `$(jq -r ...)` produced: `?` makes a non-object tool_input yield "" for
+# the command only (as the failing per-field call did), and trailing newlines are stripped per
+# field below, as command substitution did.
+{ IFS= read -r -d '' tool; IFS= read -r -d '' cmd; IFS= read -r -d '' cwd; IFS= read -r -d '' sid; } < <(
+  jq -j '(.tool_name // ""), "\u0000", (.tool_input.command? // ""), "\u0000", (.cwd // "."), "\u0000", (.session_id // "default"), "\u0000"' <<<"$input" 2>/dev/null)
+tool=${tool%"${tool##*[!$'\n']}"}; cmd=${cmd%"${cmd##*[!$'\n']}"}
+cwd=${cwd%"${cwd##*[!$'\n']}"};   sid=${sid%"${sid##*[!$'\n']}"}
 [ -z "$sid" ] && sid=default
-sid=$(printf '%s' "$sid" | tr -c 'A-Za-z0-9_-' '_')
+# tr -c 'A-Za-z0-9_-' '_' is byte-wise; the C locale makes the expansion byte-wise too.
+_o=${LC_ALL-}; _s=${LC_ALL+x}; LC_ALL=C
+sid=${sid//[^A-Za-z0-9_-]/_}
+if [ -n "$_s" ]; then LC_ALL=$_o; else unset LC_ALL; fi
+
+# Second prefilter, on the DECODED command: agy_guard_category costs 10 processes (a subshell plus
+# three printf|grep pipelines). Skip it unless the command could match its anchor - same anchor as
+# the lib (line start, a newline, or ; & |, optional path prefix, clavity[.exe], whitespace) followed
+# by ask|send|await-reply, minus the trailing-boundary test, so it is a superset of every grep there.
+if [[ $tool != *agy_ask ]]; then
+  _nl=$'\n'
+  pfx="(^|[;&|${_nl}])[[:space:]]*([[:graph:]]*[/\\\\])?clavity(\\.exe)?[[:space:]]+"
+  re="${pfx}(ask|send|await-reply)"
+  [[ $cmd =~ $re ]] || exit 0
+  # POST is a no-op for an open (send) call. If the send superset matches and the ask|await-reply
+  # supersets do NOT, agy_guard_category cannot return sync/terminal, so skip its 10 processes.
+  # Any command that could be sync/terminal still reaches the lib.
+  re="${pfx}send"; re2="${pfx}(ask|await-reply)"
+  if [[ $cmd =~ $re ]] && ! [[ $cmd =~ $re2 ]]; then exit 0; fi
+fi
 
 cat=$(agy_guard_category "$tool" "$cmd")
 case "$cat" in

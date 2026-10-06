@@ -327,6 +327,19 @@ Describe 'agy-liveness-check.sh' {
             $r.StdOut   | Should -Match 'agy-liveness-check'
         } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
     }
+    It 'reports a settings file holding TWO JSON documents as unreadable (Branch 20, owner ruling Q1)' {
+        # `jq -e .` and `jq -s` accept a document STREAM, so this file passed silently before Branch 20, while
+        # Claude Code itself rejects it. One `try fromjson` per file now reports it like any corrupt file.
+        $cfg = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-cfg-" + [Guid]::NewGuid().ToString('N'))
+        $h = New-CleanHome
+        try {
+            New-Item -ItemType Directory -Path $cfg -Force | Out-Null
+            '{"a":1} {"b":2}' | Set-Content (Join-Path $cfg 'settings.json') -Encoding ascii
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h }
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'settings unreadable'
+        } finally { Remove-Item $cfg, $h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 
     It 'stays silent when the settings file has no hooks node at all' {
         $cfg = New-ConfigFixture $true; $h = New-CleanHome

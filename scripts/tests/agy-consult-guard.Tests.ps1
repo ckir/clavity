@@ -123,6 +123,63 @@ Describe 'agy-consult-guard' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'WARNS when the consult CLI is invoked in another letter case (<Cmd>)' -ForEach @(
+        @{ Cmd = 'CLAVITY ask "review this"' }
+        @{ Cmd = 'Clavity.EXE ask "review this"' }
+    ) {
+        # Branch 20 panel R1, MEASURED: Git Bash on Windows runs CLAVITY / Clavity.EXE as clavity, so a
+        # case-sensitive anchor left these consults unguarded.
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'Bash' $Cmd $r
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            Push-Location $r; Set-Content 'e.txt' 'five' -Encoding ascii; git add e.txt; git commit -qm peer; Pop-Location
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'WARNS on the bash 3.2 code path too (CLAVITY_HOOK_BASH3 forces the pre-Branch-20 stdin read)' {
+        # Capstone R1: on macOS /bin/bash 3.2 `read -N` does not exist; the guard must fall back, not go blind.
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'Bash' 'clavity ask "review this"' $r
+            Invoke-BashHook -HookPath $script:Pre -Payload $p -Env @{ CLAVITY_HOOK_BASH3 = '1' } | Out-Null
+            Push-Location $r; Set-Content 'e.txt' 'five' -Encoding ascii; git add e.txt; git commit -qm peer; Pop-Location
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p -Env @{ CLAVITY_HOOK_BASH3 = '1' }).StdOut
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'without jq, warns=<Warns> for <Tool>: <Cmd>' -ForEach @(
+        # Capstone R3 (SH1): without jq neither half can snapshot or diff, and a silent Post reads as
+        # "verified clean" - the one thing the header says it must never do.
+        @{ Tool = 'mcp__plugin_clavity_clavity-ls__agy_ask'; Cmd = '';                              Warns = $true }
+        @{ Tool = 'Bash';       Cmd = 'clavity ask "review this"';                                  Warns = $true }
+        @{ Tool = 'Bash';       Cmd = 'clavity await-reply';                                        Warns = $true }
+        @{ Tool = 'PowerShell'; Cmd = 'C:\bin\Clavity.exe ask "x"';                                 Warns = $true }
+        @{ Tool = 'Bash';       Cmd = "cd repo && clavity ask `"x`"";                               Warns = $true }
+        @{ Tool = 'Bash';       Cmd = "echo start`nclavity ask x";                                  Warns = $true }
+        # Capstone R4 (MT1): the prefilter is a superset, and these are NOT consults. Warning on them is a
+        # cries-wolf that teaches the driver to ignore the real warning.
+        @{ Tool = 'Bash';       Cmd = 'clavity send "x"';                                           Warns = $false }
+        @{ Tool = 'Bash';       Cmd = 'grep -rn agy_ask src';                                       Warns = $false }
+        @{ Tool = 'Bash';       Cmd = 'git commit -m "fix clavity ask parsing"';                    Warns = $false }
+        @{ Tool = 'Bash';       Cmd = 'echo {"tool_name":"x_agy_ask"}';                             Warns = $false }
+        @{ Tool = 'Bash';       Cmd = 'clavity asking';                                             Warns = $false }
+        @{ Tool = 'Bash';       Cmd = 'git status';                                                 Warns = $false }
+    ) {
+        $noJq = Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin'   # bash, no jq
+        $p = Payload $Tool $Cmd '.'
+        (Invoke-BashHook -HookPath $script:Pre -Payload $p -Env @{ PATH = $noJq }).StdOut | Should -BeNullOrEmpty -Because 'Pre is silent by design; Post is the half that reports'
+        $out = (Invoke-BashHook -HookPath $script:Post -Payload $p -Env @{ PATH = $noJq }).StdOut
+        if ($Warns) {
+            $out | Should -Match 'guard inactive: missing jq'
+            ($out | ConvertFrom-Json).hookSpecificOutput.hookEventName | Should -BeExactly 'PostToolUse'
+        } else {
+            $out | Should -BeNullOrEmpty -Because 'the warning is for a consult the guard could not check, not for a call that only mentions the words'
+        }
+    }
     It 'WARNS when the consult CLI is invoked by an absolute path' {
         # Capstone round 1: MEASURED silent before the anchor allowed a path prefix.
         $r = New-GuardRepo
