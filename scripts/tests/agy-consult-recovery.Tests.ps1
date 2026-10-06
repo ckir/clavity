@@ -80,9 +80,11 @@ Describe 'agy-consult-recovery candidate model' {
     (Run $r) | Should -Match 'workflow position: agy-capstone r5'
     Remove-Item -Recurse -Force $r
   }
-  It 'treats agy-capstone-stage2.md as OFF-convention (unrecognised, not resolved)' {
+  It 'classifies agy-capstone-stage2.md by its keyword: agy-capstone with an unknown round (r?)' {
+    # Branch 20 (owner-approved S2): real seam names rarely follow agy-<token>-rN, so a whole-word keyword
+    # now picks the token and a name with no -rN word renders its round as r?.
     $r = New-Repo; Seam $r 'agy-capstone-stage2.md'
-    (Run $r) | Should -Match 'unrecognised'
+    (Run $r) | Should -CMatch 'workflow position: agy-capstone r\?'
     Remove-Item -Recurse -Force $r
   }
   It 'recovers a human casing error: AGY-Capstone-r5-x.md is on-convention via lowercasing' {
@@ -167,8 +169,24 @@ Describe 'agy-consult-recovery output vocabulary' {
   }
   It 'rank 1 is never displaced by rank 2: a live on-convention seam survives 3 newer off-convention typos' {
     $r = New-Repo; Seam $r 'agy-capstone-r5-live.md'; Start-Sleep -Milliseconds 1100
-    1..3 | ForEach-Object { Seam $r "capstone-typo$_.md" }
+    1..3 | ForEach-Object { Seam $r "loose-typo$_.md" }
     (Run $r) | Should -Match 'agy-capstone-r5-live'
+    Remove-Item -Recurse -Force $r
+  }
+  It 'classifies by whole-word keyword with precedence test-audit > capstone > panel|review > first' {
+    $r = New-Repo
+    Seam $r 'capstone-testaudit-fold-r3.md'; Seam $r 'python-gate-plan-review-r2.md'; Seam $r 's65-agy-first.md'
+    $out = Run $r
+    $out | Should -CMatch 'workflow position: agy-test-audit r3'
+    $out | Should -CMatch 'workflow position: agy-panel r2'
+    $out | Should -CMatch 'workflow position: agy-first r\?'
+    Remove-Item -Recurse -Force $r
+  }
+  It 'does not match a keyword inside a longer word (capstoned, firstly, panels)' {
+    $r = New-Repo; Seam $r 'capstoned-r3.md'; Seam $r 'my-firstly-r3.md'; Seam $r 'a-panels-r1.md'
+    $out = Run $r
+    $out | Should -Not -Match 'workflow position:'
+    $out | Should -Match 'unrecognised'
     Remove-Item -Recurse -Force $r
   }
 }
