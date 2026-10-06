@@ -116,4 +116,38 @@ Describe 'BashHookHelpers (harness validation)' {
         $r = Invoke-BashHook -HookPath $probe -Payload '{}'
         $r.Stdout | Should -BeExactly '[]'
     }
+
+    Context 'Measure-BashHookProcesses (Job Object process counter)' {
+        BeforeAll {
+            $script:countDir = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-count-" + [Guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $script:countDir -Force | Out-Null
+            $script:builtinsOnly = Join-Path $script:countDir 'builtins.sh'
+            $script:oneExternal  = Join-Path $script:countDir 'external.sh'
+            $script:echoEnv      = Join-Path $script:countDir 'echoenv.sh'
+            Set-Content -LiteralPath $script:builtinsOnly -Value "x=1; [ -n `"`$x`" ] && y=2" -Encoding ascii
+            Set-Content -LiteralPath $script:oneExternal  -Value '/usr/bin/true' -Encoding ascii
+            Set-Content -LiteralPath $script:echoEnv      -Value 'printf %s "$SPD_COUNT_PROBE"' -Encoding ascii
+            $script:whichGit     = Join-Path $script:countDir 'whichgit.sh'
+            Set-Content -LiteralPath $script:whichGit     -Value 'command -v git' -Encoding ascii
+        }
+        AfterAll { Remove-Item -LiteralPath $script:countDir -Recurse -Force -ErrorAction SilentlyContinue }
+
+        It 'counts NOTHING beyond bash boot for a builtins-only script' {
+            (Measure-BashHookProcesses -HookPath $script:builtinsOnly).Spawned | Should -Be 0
+        }
+        It 'counts exactly the two processes one external command costs (the failing control: it must SEE a child)' {
+            # A counter that cannot return a non-zero answer certifies every hook. This row is what proves it can.
+            (Measure-BashHookProcesses -HookPath $script:oneExternal).Spawned | Should -Be 2
+        }
+        It 'passes -Env to the hook WITHOUT changing this process environment' {
+            $r = Measure-BashHookProcesses -HookPath $script:echoEnv -Env @{ SPD_COUNT_PROBE = 'seen' }
+            $r.StdOut | Should -BeExactly 'seen'
+            [Environment]::GetEnvironmentVariable('SPD_COUNT_PROBE') | Should -BeNullOrEmpty
+        }
+        It 'resolves the real git a hook gets under Git''s launcher, even from a bare PATH and no MSYSTEM' {
+            # agy panel R3: without the launcher's PATH setup a hook found no git and degraded silently.
+            $r = Measure-BashHookProcesses -HookPath $script:whichGit -Env @{ MSYSTEM = $null; PATH = 'C:\Windows\System32' }
+            $r.StdOut | Should -BeExactly '/mingw64/bin/git'
+        }
+    }
 }

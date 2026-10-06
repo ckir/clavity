@@ -756,7 +756,7 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as o
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file
                                                                       already warns above.
-BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
+BashHookHelpers.Tests.ps1                         1,7s   12 tests   <- FAST, re-measured 2026-08-05; +4 Job Object counter rows 2026-10-05 (Branch 20), time not re-measured
 check-agy-discipline-skills.Tests.ps1            43,2s  112 tests   <- FAST, re-measured 2026-09-13 (+2, section-15 panel-marker rows; was 110)
   94 -> 107 on 2026-09-12 (AGY-TEST-AUDIT section 30 round 1): the transport/marker row now plants every
   skill the rules admit (3 -> 9), the checker-invocation row both directions (1 -> 2), an in-process
