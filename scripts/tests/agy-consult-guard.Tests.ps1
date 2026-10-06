@@ -123,6 +123,22 @@ Describe 'agy-consult-guard' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'WARNS when the consult CLI is invoked in another letter case (<Cmd>)' -ForEach @(
+        @{ Cmd = 'CLAVITY ask "review this"' }
+        @{ Cmd = 'Clavity.EXE ask "review this"' }
+    ) {
+        # Branch 20 panel R1, MEASURED: Git Bash on Windows runs CLAVITY / Clavity.EXE as clavity, so a
+        # case-sensitive anchor left these consults unguarded.
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'Bash' $Cmd $r
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            Push-Location $r; Set-Content 'e.txt' 'five' -Encoding ascii; git add e.txt; git commit -qm peer; Pop-Location
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'WARNS when the consult CLI is invoked by an absolute path' {
         # Capstone round 1: MEASURED silent before the anchor allowed a path prefix.
         $r = New-GuardRepo

@@ -6,9 +6,10 @@
 $script:HookCeiling = 13
 
 # OWNER RULING 2026-10-04 (3): the consult guard's real-consult path is out of scope for Branch 20 (ROADMAP
-# section 70). Pinned at the count measured BEFORE this branch (total minus the 3 boot processes) on a plain
-# temp repo, so it can only shrink. Measured: pre MCP 137 / ask 140 / send 143, post MCP 140 / ask 143 / await 152.
-$script:ConsultPin = @{ PreMcp = 134; PreAsk = 137; PreSend = 140; PostMcp = 137; PostAsk = 140; PostAwait = 149 }
+# section 70). Pinned at the count measured after Task 3 (2026-10-06, Measure-BashHookProcesses, two runs
+# identical) on a plain temp repo - no slack, because the count is deterministic: the path can no longer grow
+# back the ~23 processes Branch 20 removed. Before Branch 20: pre 134 / 137 / 140, post 137 / 140 / 149.
+$script:ConsultPin = @{ PreMcp = 111; PreAsk = 114; PreSend = 117; PostMcp = 114; PostAsk = 117; PostAwait = 126 }
 
 # BRANCH 21 DEBT (owner ruling O3): census-measured paths of the eight hooks Branch 21 fixes, totals INCLUDING
 # the 3 boot processes. The suite's debt row stays RED while this list is non-empty. Branch 21 removes each
