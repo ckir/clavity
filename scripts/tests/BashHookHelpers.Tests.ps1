@@ -152,6 +152,24 @@ Describe 'BashHookHelpers (harness validation)' {
             $now | Should -BeGreaterOrEqual 6 -Because 'sleep plus two trues cost at least two processes each; a lower foreground count means the oracle itself is broken'
             (Measure-BashHookProcesses -HookPath $script:lateTwo).Spawned | Should -Be $now
         }
+        It 'counts a git call the same with core.fsmonitor on, without waiting on git''s daemon' {
+            # Capstone R6 HB1: with fsmonitor on, `git status` started git's daemon inside the job and the background
+            # drain waited 30 s and threw (MEASURED). The fsmonitor=false run is the oracle: same repo, same hook.
+            $repo = Join-Path $script:countDir ('fsm-' + [Guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $repo | Out-Null
+            git -C $repo init -q; git -C $repo config user.email t@t; git -C $repo config user.name t
+            Set-Content -LiteralPath (Join-Path $repo 'a.txt') -Value 'a' -Encoding ascii
+            git -C $repo add a.txt; git -C $repo commit -qm a
+            $st = Join-Path $script:countDir 'gitstatus.sh'
+            Set-Content -LiteralPath $st -Value 'git status --porcelain >/dev/null' -Encoding ascii
+            git -C $repo config core.fsmonitor false
+            $off = (Measure-BashHookProcesses -HookPath $st -WorkingDirectory $repo).Spawned
+            $off | Should -BeGreaterThan 0 -Because 'the oracle must see the git call, or equality below proves nothing'
+            git -C $repo config core.fsmonitor true
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            (Measure-BashHookProcesses -HookPath $st -WorkingDirectory $repo).Spawned | Should -Be $off
+            $sw.Elapsed.TotalSeconds | Should -BeLessThan 25 -Because 'the run must not sit out the 30 s drain bound on a daemon'
+        }
         It 'passes -Env to the hook WITHOUT changing this process environment' {
             $r = Measure-BashHookProcesses -HookPath $script:echoEnv -Env @{ SPD_COUNT_PROBE = 'seen' }
             $r.StdOut | Should -BeExactly 'seen'
