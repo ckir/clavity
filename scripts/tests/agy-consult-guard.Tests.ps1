@@ -150,6 +150,26 @@ Describe 'agy-consult-guard' {
             $out | Should -Match 'VERSION CONTROL CHANGED'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'says the guard is inactive, not silent, when jq is missing (<Tool>)' -ForEach @(
+        @{ Tool = 'mcp__plugin_clavity_clavity-ls__agy_ask'; Cmd = '' }
+        @{ Tool = 'Bash'; Cmd = 'clavity ask "review this"' }
+    ) {
+        # Capstone R3 (SH1): without jq neither half can snapshot or diff, and a silent Post reads as
+        # "verified clean" - the one thing the header says it must never do. Git usr/bin has bash but no jq.
+        $noJq = Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin'
+        $p = Payload $Tool $Cmd '.'
+        (Invoke-BashHook -HookPath $script:Pre -Payload $p -Env @{ PATH = $noJq }).StdOut | Should -BeNullOrEmpty -Because 'Pre is silent by design; Post is the half that reports'
+        $out = (Invoke-BashHook -HookPath $script:Post -Payload $p -Env @{ PATH = $noJq }).StdOut
+        $out | Should -Match 'guard inactive: missing jq'
+        ($out | ConvertFrom-Json).hookSpecificOutput.hookEventName | Should -BeExactly 'PostToolUse'
+    }
+
+    It 'stays silent without jq when the call is not a consult' {
+        $noJq = Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin'
+        $out = (Invoke-BashHook -HookPath $script:Post -Payload (Payload 'Bash' 'git status' '.') -Env @{ PATH = $noJq }).StdOut
+        $out | Should -BeNullOrEmpty -Because 'the warning is for a consult the guard could not check, not for every Bash call'
+    }
     It 'WARNS when the consult CLI is invoked by an absolute path' {
         # Capstone round 1: MEASURED silent before the anchor allowed a path prefix.
         $r = New-GuardRepo

@@ -543,7 +543,7 @@ abort-drain.Tests.ps1                            72,9s   13 tests   <- SLOW, re-
                                                                       the old figure simply decayed. This is
                                                                       the same failure as agy-discipline-
                                                                       reaching's below, in the other half.
-agy-consult-guard.Tests.ps1                     134,4s   47 tests   <- SLOW, moved 2026-08-02; re-measured; 44 -> 46 2026-10-06 (Branch 20: +2 case-insensitive anchor rows), time not re-measured; 46 -> 47 2026-10-06 (Branch 20 capstone R1: +1 bash 3.2 fallback row), time not re-measured
+agy-consult-guard.Tests.ps1                     134,4s   50 tests   <- SLOW, moved 2026-08-02; re-measured; 44 -> 46 2026-10-06 (Branch 20: +2 case-insensitive anchor rows), time not re-measured; 46 -> 47 2026-10-06 (Branch 20 capstone R1: +1 bash 3.2 fallback row), time not re-measured; 47 -> 50 2026-10-06 (Branch 20 capstone R3: +3 missing-jq rows), time not re-measured
                                                                       2026-08-06 (+2 tests: the cross-driver
                                                                       byte-identity check now covers lib.sh
                                                                       too, and the deliberate .no-agy

@@ -22,7 +22,13 @@ if [[ $input != *agy_ask* ]]; then
   re='clavity(\.exe)?([[:space:]]|\\[ntrf]|\\u[0-9a-fA-F]{4})+(ask|send|await-reply)'
   [[ $input =~ $re ]] || exit 0
 fi
-command -v jq >/dev/null 2>&1 || exit 0
+# Without jq neither half can snapshot or diff. Pre stays silent by design; Post must SAY so, because a
+# silent Post reads as "verified clean" (capstone R3, SH1). Fixed literal built with printf: no jq to escape it.
+if ! command -v jq >/dev/null 2>&1; then
+  printf '%s
+' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[agy-consult-guard] guard inactive: missing jq - this consult was NOT checked for version-control changes; run git status and git log yourself, and install jq"}}'
+  exit 0
+fi
 
 # shellcheck source=agy-consult-guard-lib.sh
 d=${0%[/\\]*}; [ "$d" = "$0" ] && d=.; [ -z "$d" ] && d=/
