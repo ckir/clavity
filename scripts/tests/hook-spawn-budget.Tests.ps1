@@ -52,7 +52,19 @@ Describe 'hook spawn budget' {
         try {
             $payload = & $Setup $fx
             $r = Measure-BashHookProcesses -HookPath (Join-Path $script:RepoRoot $Hook) -Payload $payload -Env $fx.Env -Arguments $HookArgs -WorkingDirectory $fx.Repo
-            if ($Expect) { $r.StdOut | Should -Match ([regex]::Escape($Expect)) -Because 'the row must reach the path it names, or its count proves nothing' }
+            if ($Expect) {
+                $r.StdOut | Should -Match ([regex]::Escape($Expect)) -Because 'the row must reach the path it names, or its count proves nothing'
+                # The ENVELOPE, not only the text inside it (agy test-audit PP1, MEASURED 2026-10-06: a hand-built emit
+                # with a closing brace dropped kept every row green). The harness parses stdout as one JSON object and
+                # drops what does not parse, so a substring match certifies output nobody ever receives.
+                $j = try { $r.StdOut | ConvertFrom-Json -ErrorAction Stop } catch { $null }
+                $j | Should -Not -BeNullOrEmpty -Because "$Hook printed output that is not one JSON object: $($r.StdOut)"
+                $text = if ($j.hookSpecificOutput) {
+                    $j.hookSpecificOutput.hookEventName | Should -BeIn @('PreToolUse', 'PostToolUse', 'SessionStart', 'UserPromptSubmit', 'PreCompact') -Because 'hookSpecificOutput needs a known hookEventName or the harness rejects it'
+                    $j.hookSpecificOutput.additionalContext
+                } else { $j.systemMessage }
+                $text | Should -Match ([regex]::Escape($Expect)) -Because 'the message must survive JSON decoding, not only appear in the raw bytes'
+            }
             if ($Silent) { $r.StdOut | Should -BeNullOrEmpty -Because 'this path is silent; output means the fixture reached a different path' }
             if ($Verify) { & $Verify $fx }
             $r.Spawned | Should -BeLessOrEqual $Max -Because "$Hook on '$Name' started $($r.Spawned) processes beyond the $($r.Boot)-process boot"

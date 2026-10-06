@@ -153,7 +153,9 @@ public static class ClavityJobCount {
         return j;
     }
     public static void Assign(IntPtr j, IntPtr p) { if (!AssignProcessToJobObject(j, p)) throw new Exception("AssignProcessToJobObject " + Marshal.GetLastWin32Error()); }
-    public static uint Total(IntPtr j) { BASIC b; if (!QueryInformationJobObject(j, 1, out b, Marshal.SizeOf(typeof(BASIC)), IntPtr.Zero)) throw new Exception("QueryInformationJobObject " + Marshal.GetLastWin32Error()); return b.TotalProcesses; }
+    static BASIC Query(IntPtr j) { BASIC b; if (!QueryInformationJobObject(j, 1, out b, Marshal.SizeOf(typeof(BASIC)), IntPtr.Zero)) throw new Exception("QueryInformationJobObject " + Marshal.GetLastWin32Error()); return b; }
+    public static uint Total(IntPtr j) { return Query(j).TotalProcesses; }
+    public static uint Active(IntPtr j) { return Query(j).ActiveProcesses; }
     public static void Close(IntPtr j) { CloseHandle(j); }
 }
 '@
@@ -207,6 +209,14 @@ function Invoke-JobCountedBash {
             # A background child that inherited stdout/stderr would hold the pipes open after bash exits; bound
             # the reads so such a hook fails this run instead of hanging the suite.
             if (-not $out.Wait(10000) -or -not $err.Wait(10000)) { throw "Invoke-JobCountedBash: '$ScriptPath' exited but a child still holds its output open" }
+            # And one that let go of the pipes keeps spawning after bash exits: reading the count now would miss
+            # everything it starts later (agy test-audit MG2, MEASURED 2026-10-06: 2 counted for ~8 started). Wait
+            # for the job to drain, bounded, so a hook that leaves work running fails this run instead.
+            $drain = [Diagnostics.Stopwatch]::StartNew()
+            while ([ClavityJobCount]::Active($job) -gt 0) {
+                if ($drain.ElapsedMilliseconds -gt 30000) { throw "Invoke-JobCountedBash: '$ScriptPath' exited but its background work was still running 30 s later" }
+                Start-Sleep -Milliseconds 50
+            }
             [pscustomobject]@{ Total = [int][ClavityJobCount]::Total($job); ExitCode = $p.ExitCode; StdOut = $out.Result; StdErr = $err.Result }
         } finally { [ClavityJobCount]::Close($job) }
     } finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }

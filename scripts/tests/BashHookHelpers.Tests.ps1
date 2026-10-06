@@ -129,6 +129,11 @@ Describe 'BashHookHelpers (harness validation)' {
             Set-Content -LiteralPath $script:echoEnv      -Value 'printf %s "$SPD_COUNT_PROBE"' -Encoding ascii
             $script:whichGit     = Join-Path $script:countDir 'whichgit.sh'
             Set-Content -LiteralPath $script:whichGit     -Value 'command -v git' -Encoding ascii
+            # Two externals started by a DETACHED background subshell after a sleep, so they start after bash exits.
+            $script:lateTwo      = Join-Path $script:countDir 'late.sh'
+            Set-Content -LiteralPath $script:lateTwo      -Value '( /usr/bin/sleep 1; /usr/bin/true; /usr/bin/true ) >/dev/null 2>&1 </dev/null &' -Encoding ascii
+            $script:nowTwo       = Join-Path $script:countDir 'now.sh'
+            Set-Content -LiteralPath $script:nowTwo       -Value '( /usr/bin/sleep 1; /usr/bin/true; /usr/bin/true ) >/dev/null 2>&1 </dev/null' -Encoding ascii
         }
         AfterAll { Remove-Item -LiteralPath $script:countDir -Recurse -Force -ErrorAction SilentlyContinue }
 
@@ -138,6 +143,14 @@ Describe 'BashHookHelpers (harness validation)' {
         It 'counts exactly the two processes one external command costs (the failing control: it must SEE a child)' {
             # A counter that cannot return a non-zero answer certifies every hook. This row is what proves it can.
             (Measure-BashHookProcesses -HookPath $script:oneExternal).Spawned | Should -Be 2
+        }
+        It 'counts what a detached background subshell starts AFTER bash exits, the same as in the foreground' {
+            # agy test-audit MG2: the count used to be read the moment bash exited, so work a hook pushed into the
+            # background was invisible (MEASURED: 2 counted for ~8 started). The foreground run is the oracle: the
+            # same subshell, the same three externals, waited for.
+            $now = (Measure-BashHookProcesses -HookPath $script:nowTwo).Spawned
+            $now | Should -BeGreaterOrEqual 6 -Because 'sleep plus two trues cost at least two processes each; a lower foreground count means the oracle itself is broken'
+            (Measure-BashHookProcesses -HookPath $script:lateTwo).Spawned | Should -Be $now
         }
         It 'passes -Env to the hook WITHOUT changing this process environment' {
             $r = Measure-BashHookProcesses -HookPath $script:echoEnv -Env @{ SPD_COUNT_PROBE = 'seen' }
