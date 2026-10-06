@@ -190,8 +190,10 @@ function Invoke-JobCountedBash {
         # core.fsmonitor OFF for the hook's git calls (capstone R6 HB1, owner ruling 2026-10-06, agreed with agy): with
         # it on, `git status` starts git's fsmonitor daemon INSIDE the job and the drain below waited 30 s and threw
         # (MEASURED). A real user pays that daemon once per repo, not once per hook call, so it is not the hook's cost.
-        # Env config outranks system/global/local config, and this reaches the hook's process only.
-        $boot = "while [ ! -e $(& $sq $go) ]; do :; done; export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0=false; export MSYSTEM=MINGW64 PATH=/mingw64/bin:/usr/bin:`$PATH; exec `"`$BASH`" $(& $sq ($ScriptPath -replace '\\', '/')) $argStr < $(& $sq ($payloadFile -replace '\\', '/'))"
+        # Env config outranks system/global/local config, and this reaches the hook's process only. APPENDED after any
+        # GIT_CONFIG_* the caller passed through -Env, never over it (capstone R7, owner ruling): the last entry wins, so
+        # fsmonitor stays off, and the caller's own entries still reach the hook. Builtins only - no process.
+        $boot = "while [ ! -e $(& $sq $go) ]; do :; done; _gcn=`${GIT_CONFIG_COUNT:-0}; export `"GIT_CONFIG_KEY_`$_gcn=core.fsmonitor`" `"GIT_CONFIG_VALUE_`$_gcn=false`" GIT_CONFIG_COUNT=`$((_gcn + 1)); export MSYSTEM=MINGW64 PATH=/mingw64/bin:/usr/bin:`$PATH; exec `"`$BASH`" $(& $sq ($ScriptPath -replace '\\', '/')) $argStr < $(& $sq ($payloadFile -replace '\\', '/'))"
         $psi = [Diagnostics.ProcessStartInfo]::new($Bash)
         $psi.ArgumentList.Add('-c'); $psi.ArgumentList.Add($boot)
         $psi.UseShellExecute = $false

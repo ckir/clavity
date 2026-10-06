@@ -170,6 +170,13 @@ Describe 'BashHookHelpers (harness validation)' {
             (Measure-BashHookProcesses -HookPath $st -WorkingDirectory $repo).Spawned | Should -Be $off
             $sw.Elapsed.TotalSeconds | Should -BeLessThan 25 -Because 'the run must not sit out the 30 s drain bound on a daemon'
         }
+        It 'keeps a caller''s own GIT_CONFIG_* entries and still turns fsmonitor off' {
+            # Capstone R7: the fsmonitor pin once OVERWROTE GIT_CONFIG_COUNT, silently dropping config a row passed via -Env.
+            $cfg = Join-Path $script:countDir 'gitcfg.sh'
+            Set-Content -LiteralPath $cfg -Value 'printf "%s|%s" "$(git config --get clavity.probe)" "$(git config --get core.fsmonitor)"' -Encoding ascii
+            $r = Measure-BashHookProcesses -HookPath $cfg -Env @{ GIT_CONFIG_COUNT = '2'; GIT_CONFIG_KEY_0 = 'clavity.probe'; GIT_CONFIG_VALUE_0 = 'seen'; GIT_CONFIG_KEY_1 = 'core.fsmonitor'; GIT_CONFIG_VALUE_1 = 'true' }
+            $r.StdOut | Should -BeExactly 'seen|false' -Because 'the caller''s entry must reach the hook, and the harness pin must still win over a caller''s fsmonitor=true'
+        }
         It 'passes -Env to the hook WITHOUT changing this process environment' {
             $r = Measure-BashHookProcesses -HookPath $script:echoEnv -Env @{ SPD_COUNT_PROBE = 'seen' }
             $r.StdOut | Should -BeExactly 'seen'
