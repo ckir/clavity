@@ -177,6 +177,18 @@ Describe 'agy-test-audit-reminder.sh' {
         if (-not $m.Success) { throw 'cannot parse CODE_RE out of the hook - this fixture is inspecting nothing' }
         $script:CodeExtRe = '(?i)' + $m.Groups[1].Value
         $script:CostClause = 'COST: this discipline re-reads the whole session context every round, so running it in a long session burns several times the tokens - and subscription quota - of running it fresh. If this session carries substantial history, do not run it inline: tell the user it runs about 5x leaner after /compact or in a fresh session, and follow their answer. This changes WHERE the review runs, never WHETHER.'
+        # Branch 20 debounce: the hook keeps per-(session, HEAD) state under TMPDIR. Every row here runs with
+        # session_id 'default', so give the suite its own TMPDIR and clear the state before each row.
+        $script:savedTmpdir = [Environment]::GetEnvironmentVariable('TMPDIR')
+        $script:suiteTmp = Join-Path ([IO.Path]::GetTempPath()) ('tar-tmp-' + [Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $script:suiteTmp | Out-Null
+        $env:TMPDIR = ($script:suiteTmp -replace '\\', '/')
+    }
+    BeforeEach { Get-ChildItem -LiteralPath $script:suiteTmp -Filter 'claude-agy-test-audit-reminder.*' -ErrorAction SilentlyContinue | Remove-Item -Force }
+    AfterAll {
+        # [NullString]::Value DELETES the variable; $null would leave it present-and-empty (see BashHookHelpers.ps1).
+        if ($null -eq $script:savedTmpdir) { [Environment]::SetEnvironmentVariable('TMPDIR', [NullString]::Value) } else { $env:TMPDIR = $script:savedTmpdir }
+        Remove-Item -LiteralPath $script:suiteTmp -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     It 'FIRES the audit nudge when capstone.head==HEAD, no audit marker, code changed' {
@@ -528,5 +540,87 @@ Describe 'agy-test-audit-reminder.sh' {
     It 'is byte-identical to the clavity-classic mirror' {
         $classic = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'clavity-classic/plugin/hooks/agy-test-audit-reminder.sh'
         (Get-FileHash $script:Hook).Hash | Should -Be (Get-FileHash $classic).Hash
+    }
+}
+
+Describe 'agy-test-audit-reminder debounce (once per session and HEAD; Branch 20, owner ruling O4)' {
+    BeforeAll {
+        . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
+        $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        $script:Hook = Join-Path $repoRoot 'clavity-dotnet/plugin/hooks/agy-test-audit-reminder.sh'
+        $script:Capture = Join-Path $repoRoot 'clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh'
+        $script:DTmp = Join-Path ([IO.Path]::GetTempPath()) ('tar-dbn-' + [Guid]::NewGuid().ToString('N'))
+        $script:DHome = Join-Path ([IO.Path]::GetTempPath()) ('tar-dbh-' + [Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $script:DTmp, (Join-Path $script:DHome '.claude') -Force | Out-Null
+        function New-DebounceRepo {
+            # The FIRES shape the suite's New-FiredRepo builds: one executable commit at HEAD, capstone marker on it.
+            $dir = New-TempRepo
+            New-Item -ItemType Directory -Path (Join-Path $dir 'src'), (Join-Path $dir '.clavity/agy-marks') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $dir 'src/thing.cs') -Value 'x' -Encoding ascii
+            & git -C $dir add -- src/thing.cs
+            & git -C $dir -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= commit -qm work
+            Set-Content -LiteralPath (Join-Path $dir '.clavity/agy-marks/agy-capstone.head') -Value (& git -C $dir rev-parse HEAD).Trim() -NoNewline
+            $dir
+        }
+        function Invoke-Debounced { param([string]$Dir, [string]$Sid, [string]$Tmp = $script:DTmp)
+            $p = @{ tool_name = 'Bash'; tool_input = @{ command = 'ls' }; cwd = ($Dir -replace '\\', '/'); session_id = $Sid } | ConvertTo-Json -Compress
+            Invoke-BashHook -HookPath $script:Hook -Payload $p -Env @{ TMPDIR = ($Tmp -replace '\\', '/'); HOME = ($script:DHome -replace '\\', '/') }
+        }
+    }
+    AfterAll { Remove-Item -LiteralPath $script:DTmp, $script:DHome -Recurse -Force -ErrorAction SilentlyContinue }
+    BeforeEach { Get-ChildItem -LiteralPath $script:DTmp -Force | Remove-Item -Recurse -Force }
+
+    It 'fires on the first call and is silent on the second at the same HEAD and session' {
+        $d = New-DebounceRepo
+        try {
+            (Invoke-Debounced $d 's1').StdOut | Should -Match 'AGY-TEST-AUDIT auto-fire'
+            (Invoke-Debounced $d 's1').StdOut | Should -BeNullOrEmpty
+        } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'fires again for another session at the same HEAD' {
+        $d = New-DebounceRepo
+        try {
+            (Invoke-Debounced $d 's1').StdOut | Should -Match 'AGY-TEST-AUDIT auto-fire'
+            (Invoke-Debounced $d 's2').StdOut | Should -Match 'AGY-TEST-AUDIT auto-fire'
+        } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'fires again after HEAD moves, in the same session' {
+        $d = New-DebounceRepo
+        try {
+            (Invoke-Debounced $d 's1').StdOut | Should -Match 'AGY-TEST-AUDIT auto-fire'
+            (Invoke-Debounced $d 's1').StdOut | Should -BeNullOrEmpty
+            Set-Content -LiteralPath (Join-Path $d 'src/other.cs') -Value 'y' -Encoding ascii
+            & git -C $d add -- src/other.cs
+            & git -C $d -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= commit -qm more
+            Set-Content -LiteralPath (Join-Path $d '.clavity/agy-marks/agy-capstone.head') -Value (& git -C $d rev-parse HEAD).Trim() -NoNewline
+            (Invoke-Debounced $d 's1').StdOut | Should -Match 'AGY-TEST-AUDIT auto-fire'
+        } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'still fires on every call when its state cannot be written (TMPDIR is a file)' {
+        $d = New-DebounceRepo
+        $f = Join-Path $script:DTmp 'not-a-dir'; Set-Content -LiteralPath $f -Value 'x'
+        try {
+            (Invoke-Debounced $d 's1' $f).StdOut | Should -Match 'AGY-TEST-AUDIT auto-fire'
+            (Invoke-Debounced $d 's1' $f).StdOut | Should -Match 'AGY-TEST-AUDIT auto-fire' -Because 'a debounce that cannot record must fail toward reminding, never toward silence'
+        } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'keeps its state under TMPDIR only - the repo is untouched' {
+        $d = New-DebounceRepo
+        try {
+            $before = (& git -C $d status --porcelain --ignored) -join "`n"
+            $null = Invoke-Debounced $d 's1'
+            ((& git -C $d status --porcelain --ignored) -join "`n") | Should -BeExactly $before
+            Test-Path -LiteralPath (Join-Path $script:DTmp 'claude-agy-test-audit-reminder.s1') | Should -BeTrue
+        } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'fires again after a compaction in the same session (PreCompact re-arms it)' {
+        $d = New-DebounceRepo
+        try {
+            (Invoke-Debounced $d 's1').StdOut | Should -Match 'AGY-TEST-AUDIT auto-fire'
+            (Invoke-Debounced $d 's1').StdOut | Should -BeNullOrEmpty
+            $pc = @{ cwd = ($d -replace '\\', '/'); session_id = 's1'; hook_event_name = 'PreCompact'; trigger = 'manual' } | ConvertTo-Json -Compress
+            $null = Invoke-BashHook -HookPath $script:Capture -Payload $pc -Arguments @('PreCompact') -Env @{ TMPDIR = ($script:DTmp -replace '\\', '/'); HOME = ($script:DHome -replace '\\', '/') }
+            (Invoke-Debounced $d 's1').StdOut | Should -Match 'AGY-TEST-AUDIT auto-fire' -Because 'a compaction summarized the reminder away, so it must come back once'
+        } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
