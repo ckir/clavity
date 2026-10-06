@@ -3791,6 +3791,27 @@ errors), but nothing in this hook did, so the next upgrade goes stale the same w
 each upgrade re-registers once. Pin it with a row in the setup hook's suite: a stamp from an older version must
 trigger `agy plugin install`, a stamp from the current version must not.
 
+### §69 — Branch 21: the eight census-found hooks over the 16-process ceiling — ▶ **PROMOTED 2026-10-04 (owner split of Branch 20), not yet planned**
+
+The Branch 20 census (`.clavity/scratch/hook-perf/b20-protos/scratch-b20/census-other-hooks.md`) measured 44 paths over
+the ceiling in `agy-inbox-snapshot` (up to 67 with 20 baks: one `rm` per surplus bak), `agy-discipline-reaching` (36 on a
+`!`-negated shield), `agy-anomaly-reminder` (23 whenever an entry is untriaged: a grep|awk|grep|sort|head chain),
+`agy-verify-reminder` (22-24 whenever agy is on PATH), `docs-audit-reminder` (22 on any generated view: tr + 3 printf|grep),
+`assertion-strength-reminder` (17-21), `fetch-clavity-ls` (17 in steady state, 20-35 elsewhere) and `migrate-inbox` (17
+on recovery). Each is a named entry of `$B21Debt` in `scripts/tests/hook-spawn-budget.Rows.ps1`; the suite's debt row is
+RED until the list is empty. Done = every entry replaced by a passing budget row.
+
+### §70 — the consult guard's consult path costs ~115 processes a side — ▶ **PROMOTED 2026-10-04 (owner ruling 3), not yet planned**
+
+`agy_guard_quad` + the gitignored-path census run on every real consult, pre and post (measured 2026-10-04 after Branch
+20: pre 114-120, post 117-129 total). Branch 20 pinned it (`$ConsultPin`) so it cannot grow. Needs its own design consult:
+what each axis costs, which axes can share one git call.
+
+**Also measured in Branch 20 Task 11 (2026-10-06):** with every SessionStart hook started together and 1031
+seams, `agy-consult-recovery.sh` took 6.2 / 6.0 s although it starts only 8 processes beyond boot - the time is
+bash's own per-seam loop (glob + keyword match + `-nt` per file), which a process budget cannot see. Its timeout
+was raised 10 -> 30 s for now; bounding that loop (or pruning concluded seams) is the real fix.
+
 ---
 
 ## Non-goals / accepted limitations
