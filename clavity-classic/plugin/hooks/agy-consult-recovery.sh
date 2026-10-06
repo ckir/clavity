@@ -80,7 +80,7 @@ shopt -u nocaseglob 2>/dev/null
 # whose job is recovery. A lib that loads but does not define the builder counts as missing, otherwise the
 # marker path collapses to $root/ and hides every seam (capstone Branch 2 round 1).
 # `${0%[/\\]*}` rather than `$(dirname "$0")` (a fork). BACKSLASH counts as a separator, as msys dirname treats
-# it: a Windows caller (the Pester suites, a backslash CLAUDE_PLUGIN_ROOT) hands bash `C:\x\hooks\h.sh`
+# it: a Windows caller (the Pester suites, a backslash CLAUDE_PLUGIN_ROOT) hands bash a drive-letter path whose separators are all backslashes
 # (MEASURED: `${0%/*}` returns it UNCHANGED, the lib is then not found and every seam reads as open).
 # A separator-less $0 means the current directory, as dirname says.
 _hd=${0%[/\\]*}; [ "$_hd" = "$0" ] && _hd=.
