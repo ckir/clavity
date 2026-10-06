@@ -3812,6 +3812,35 @@ seams, `agy-consult-recovery.sh` took 6.2 / 6.0 s although it starts only 8 proc
 bash's own per-seam loop (glob + keyword match + `-nt` per file), which a process budget cannot see. Its timeout
 was raised 10 -> 30 s for now; bounding that loop (or pruning concluded seams) is the real fix.
 
+### §71 — `agy_ask` hides its own operator instructions behind the MCP SDK's generic error — ▶ **PROMOTED 2026-10-06 from the anomalies conveyor (observed 2026-10-04, Branch 20 plan panel), not yet planned**
+
+`RunAsync` (`src/Clavity.Mcp/McpTools.cs`) catches only `AgyModalHangException`, `AgyConversationPendingException`
+and exceptions `ChannelDown.IsChannelDown` accepts. `AgyModelUnavailableException` (thrown at `AgyView.cs` for a
+deprecated or unavailable model; its message says how to escape) counts as channel-down ONLY when it wraps a
+channel-down cause (`ChannelDown.cs`), so in every other case it - and any other exception - escapes, and the SDK
+returns only "An error occurred invoking agy_ask". Observed twice (2026-10-04 22:22:26Z and 22:31:41Z, failed
+after 0 s) right after the owner switched agy's model with `/model`; which exception it was is unverified because
+the text was lost. Done = the model-unavailable case returns a typed status carrying its hint, any other exception
+returns a typed error with its message, and a test pins each.
+
+### §72 — the test-audit reminder's per-session debounce files are never cleaned — ▶ **PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 plan panel), low debt, not yet planned**
+
+`agy-test-audit-reminder.sh` (Branch 20) keeps `${TMPDIR:-/tmp}/claude-agy-test-audit-reminder.<session_id>` (one
+HEAD sha, ~41 B). The only delete is the PreCompact re-arm in `agy-anomaly-capture-reminder.sh`, for that one
+session, so every session that ends without a compaction leaves its file behind (verified by reading both hooks;
+not yet observable on an install, which still runs the pre-Branch-20 plugin). Nothing degrades today. Cleanup
+inside the firing hook would spend processes on its worst path (15 of 16), so the cheap home is a sweep in an
+existing SessionStart hook that removes such files older than N days. Fits Branch 21's hook work.
+
+### §73 — `agy-curate-nudge` age nudge never fires on macOS (GNU-only `date -d`) — ▶ **PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 capstone round 2), Branch 21, not yet planned**
+
+`agy-autotrain/hooks/agy-curate-nudge.sh` computes the oldest pending entry's epoch with `date -d "$oldest" +%s`.
+BSD/macOS `date` has no `-d` date parse, so `ots` is empty and the age condition is skipped silently (the count
+nudge is unaffected). Present at main `4f0cb6a7`. The code was read; the BSD behaviour is a known platform fact,
+not measured here (no macOS box). A pure-bash days-from-civil computation on the `YYYY-MM-DD` string fixes it
+AND removes one `date` process from every SessionStart that reaches the age check - which is why it rides with
+Branch 21 (section 69).
+
 ---
 
 ## Non-goals / accepted limitations
