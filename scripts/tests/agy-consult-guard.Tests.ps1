@@ -151,24 +151,34 @@ Describe 'agy-consult-guard' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'says the guard is inactive, not silent, when jq is missing (<Tool>)' -ForEach @(
-        @{ Tool = 'mcp__plugin_clavity_clavity-ls__agy_ask'; Cmd = '' }
-        @{ Tool = 'Bash'; Cmd = 'clavity ask "review this"' }
-    ) {
+    It 'without jq, warns=<Warns> for <Tool>: <Cmd>' -ForEach @(
         # Capstone R3 (SH1): without jq neither half can snapshot or diff, and a silent Post reads as
-        # "verified clean" - the one thing the header says it must never do. Git usr/bin has bash but no jq.
-        $noJq = Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin'
+        # "verified clean" - the one thing the header says it must never do.
+        @{ Tool = 'mcp__plugin_clavity_clavity-ls__agy_ask'; Cmd = '';                              Warns = $true }
+        @{ Tool = 'Bash';       Cmd = 'clavity ask "review this"';                                  Warns = $true }
+        @{ Tool = 'Bash';       Cmd = 'clavity await-reply';                                        Warns = $true }
+        @{ Tool = 'PowerShell'; Cmd = 'C:\bin\Clavity.exe ask "x"';                                 Warns = $true }
+        @{ Tool = 'Bash';       Cmd = "cd repo && clavity ask `"x`"";                               Warns = $true }
+        @{ Tool = 'Bash';       Cmd = "echo start`nclavity ask x";                                  Warns = $true }
+        # Capstone R4 (MT1): the prefilter is a superset, and these are NOT consults. Warning on them is a
+        # cries-wolf that teaches the driver to ignore the real warning.
+        @{ Tool = 'Bash';       Cmd = 'clavity send "x"';                                           Warns = $false }
+        @{ Tool = 'Bash';       Cmd = 'grep -rn agy_ask src';                                       Warns = $false }
+        @{ Tool = 'Bash';       Cmd = 'git commit -m "fix clavity ask parsing"';                    Warns = $false }
+        @{ Tool = 'Bash';       Cmd = 'echo {"tool_name":"x_agy_ask"}';                             Warns = $false }
+        @{ Tool = 'Bash';       Cmd = 'clavity asking';                                             Warns = $false }
+        @{ Tool = 'Bash';       Cmd = 'git status';                                                 Warns = $false }
+    ) {
+        $noJq = Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin'   # bash, no jq
         $p = Payload $Tool $Cmd '.'
         (Invoke-BashHook -HookPath $script:Pre -Payload $p -Env @{ PATH = $noJq }).StdOut | Should -BeNullOrEmpty -Because 'Pre is silent by design; Post is the half that reports'
         $out = (Invoke-BashHook -HookPath $script:Post -Payload $p -Env @{ PATH = $noJq }).StdOut
-        $out | Should -Match 'guard inactive: missing jq'
-        ($out | ConvertFrom-Json).hookSpecificOutput.hookEventName | Should -BeExactly 'PostToolUse'
-    }
-
-    It 'stays silent without jq when the call is not a consult' {
-        $noJq = Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin'
-        $out = (Invoke-BashHook -HookPath $script:Post -Payload (Payload 'Bash' 'git status' '.') -Env @{ PATH = $noJq }).StdOut
-        $out | Should -BeNullOrEmpty -Because 'the warning is for a consult the guard could not check, not for every Bash call'
+        if ($Warns) {
+            $out | Should -Match 'guard inactive: missing jq'
+            ($out | ConvertFrom-Json).hookSpecificOutput.hookEventName | Should -BeExactly 'PostToolUse'
+        } else {
+            $out | Should -BeNullOrEmpty -Because 'the warning is for a consult the guard could not check, not for a call that only mentions the words'
+        }
     }
     It 'WARNS when the consult CLI is invoked by an absolute path' {
         # Capstone round 1: MEASURED silent before the anchor allowed a path prefix.

@@ -24,9 +24,21 @@ if [[ $input != *agy_ask* ]]; then
 fi
 # Without jq neither half can snapshot or diff. Pre stays silent by design; Post must SAY so, because a
 # silent Post reads as "verified clean" (capstone R3, SH1). Fixed literal built with printf: no jq to escape it.
+# But only for a call that IS a sync/terminal consult: the prefilter above is a superset, and warning on a grep
+# or a commit message that merely names the words is a cries-wolf (capstone R4, MT1). Nothing can decode the
+# JSON here, so classify the RAW text with bash's own regex (no process):
+#   re_mcp - the top-level "tool_name" value ends in agy_ask. A command's TEXT cannot fake it: inside a JSON
+#            string its quotes are escaped as \", so `"tool_name"` followed by `"` never occurs there.
+#   re_cli - the lib's command-position anchor (agy-consult-guard-lib.sh, agy_guard_category) applied to the
+#            raw "command" value: its start, or after ; & | or an escaped newline (the two characters \n);
+#            optional path prefix; clavity[.exe]; then ask or await-reply ended by whitespace, an escape or
+#            the closing quote. send is left out: Post never checks an open call, even with jq.
 if ! command -v jq >/dev/null 2>&1; then
-  printf '%s
-' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[agy-consult-guard] guard inactive: missing jq - this consult was NOT checked for version-control changes; run git status and git log yourself, and install jq"}}'
+  re_mcp='"tool_name"[[:space:]]*:[[:space:]]*"[^"\\]*agy_ask"'
+  re_cli='"command"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*([;&|]|\\n))?([[:space:]]|\\[tr])*([^"[:space:]]*[/\\])?clavity(\.exe)?([[:space:]]|\\[ntr])+(ask|await-reply)([[:space:]]|\\[ntr]|")'
+  if [[ $input =~ $re_mcp ]] || [[ $input =~ $re_cli ]]; then
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[agy-consult-guard] guard inactive: missing jq - this consult was NOT checked for version-control changes; run git status and git log yourself, and install jq"}}'
+  fi
   exit 0
 fi
 
