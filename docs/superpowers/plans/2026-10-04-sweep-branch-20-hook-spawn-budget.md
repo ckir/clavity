@@ -84,6 +84,8 @@ Driver rulings, each measured (`.clavity/scratch/hook-perf/b20-protos/FINDINGS.m
             Set-Content -LiteralPath $script:builtinsOnly -Value "x=1; [ -n `"`$x`" ] && y=2" -Encoding ascii
             Set-Content -LiteralPath $script:oneExternal  -Value '/usr/bin/true' -Encoding ascii
             Set-Content -LiteralPath $script:echoEnv      -Value 'printf %s "$SPD_COUNT_PROBE"' -Encoding ascii
+            $script:whichGit     = Join-Path $script:countDir 'whichgit.sh'
+            Set-Content -LiteralPath $script:whichGit     -Value 'command -v git' -Encoding ascii
         }
         AfterAll { Remove-Item -LiteralPath $script:countDir -Recurse -Force -ErrorAction SilentlyContinue }
 
@@ -99,13 +101,18 @@ Driver rulings, each measured (`.clavity/scratch/hook-perf/b20-protos/FINDINGS.m
             $r.StdOut | Should -BeExactly 'seen'
             [Environment]::GetEnvironmentVariable('SPD_COUNT_PROBE') | Should -BeNullOrEmpty
         }
+        It 'resolves the real git a hook gets under Git''s launcher, even from a bare PATH and no MSYSTEM' {
+            # agy panel R3: without the launcher's PATH setup a hook found no git and degraded silently.
+            $r = Measure-BashHookProcesses -HookPath $script:whichGit -Env @{ MSYSTEM = $null; PATH = 'C:\Windows\System32' }
+            $r.StdOut | Should -BeExactly '/mingw64/bin/git'
+        }
     }
 ```
 
 - [ ] **Step 2: Run the rows; they must fail.**
 
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/BashHookHelpers.Tests.ps1 -Output Detailed -CI"`
-Expected: 3 failures, each `The term 'Measure-BashHookProcesses' is not recognized`; the 8 existing rows pass.
+Expected: 4 failures, each `The term 'Measure-BashHookProcesses' is not recognized`; the 8 existing rows pass.
 
 - [ ] **Step 3: Implement the harness.** Append to `scripts/tests/BashHookHelpers.ps1`:
 
@@ -187,7 +194,11 @@ function Invoke-JobCountedBash {
         $go = (Join-Path $tmp 'go') -replace '\\', '/'
         $argStr = ($Arguments | ForEach-Object { & $sq $_ }) -join ' '
         # `exec "$BASH"`, never `exec bash`: a PATH lookup can land on C:\Windows\System32\bash.exe (WSL).
-        $boot = "while [ ! -e $(& $sq $go) ]; do :; done; exec `"`$BASH`" $(& $sq ($ScriptPath -replace '\\', '/')) $argStr < $(& $sq ($payloadFile -replace '\\', '/'))"
+        # PATH and MSYSTEM AS GIT'S LAUNCHER SETS THEM. Started directly, usr\bin\bash.exe does not put /mingw64/bin
+        # on PATH: MEASURED 2026-10-05 (agy panel R3) in a clean environment it resolved NO git at all, so every git
+        # call in a hook would fail and the hook degrade silently - a count of nothing. The launcher (how hooks
+        # really run) puts /mingw64/bin:/usr/bin first; so does this.
+        $boot = "while [ ! -e $(& $sq $go) ]; do :; done; export MSYSTEM=MINGW64 PATH=/mingw64/bin:/usr/bin:`$PATH; exec `"`$BASH`" $(& $sq ($ScriptPath -replace '\\', '/')) $argStr < $(& $sq ($payloadFile -replace '\\', '/'))"
         $psi = [Diagnostics.ProcessStartInfo]::new($Bash)
         $psi.ArgumentList.Add('-c'); $psi.ArgumentList.Add($boot)
         $psi.UseShellExecute = $false
@@ -245,9 +256,9 @@ function Measure-BashHookProcesses {
 - [ ] **Step 4: Run the rows; they must pass.**
 
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/BashHookHelpers.Tests.ps1 -Output Detailed -CI"`
-Expected: `Tests Passed: 11, Failed: 0`.
+Expected: `Tests Passed: 12, Failed: 0`.
 
-- [ ] **Step 5: Update the partition count** for `BashHookHelpers.Tests.ps1` from `8 tests` to `11 tests` in `scripts/tests/_partition.md` (its row starts `BashHookHelpers.Tests.ps1`; append `; +3 Job Object counter rows 2026-10-04 (Branch 20)` to its note, time not re-measured).
+- [ ] **Step 5: Update the partition count** for `BashHookHelpers.Tests.ps1` from `8 tests` to `12 tests` in `scripts/tests/_partition.md` (its row starts `BashHookHelpers.Tests.ps1`; append `; +4 Job Object counter rows 2026-10-04 (Branch 20)` to its note, time not re-measured).
 
 - [ ] **Step 6: Commit.**
 
@@ -574,7 +585,11 @@ $script:Rows = @(
 # Narrow to ONE hook for a task's red/green runs: set HSB_HOOK to the hook's file name and run with
 # -TagFilter row. MEASURED 2026-10-04: Invoke-Pester -FullNameFilter does NOT see the expanded '<Hook>' row
 # names (a filter on the hook name ran 0 tests), so the narrowing happens here, at discovery.
-if ($env:HSB_HOOK) { $script:Rows = @($script:Rows | Where-Object { (Split-Path -Leaf $_.Hook) -eq $env:HSB_HOOK }) }
+if ($env:HSB_HOOK) {
+    $script:Rows = @($script:Rows | Where-Object { (Split-Path -Leaf $_.Hook) -eq $env:HSB_HOOK })
+    # A mistyped name selects nothing, and a 0-test run exits 0 under -CI (agy panel R3): fail discovery instead.
+    if ($script:Rows.Count -eq 0) { throw "HSB_HOOK='$($env:HSB_HOOK)' matches no budget row - check the hook file name" }
+}
 ```
 
 - [ ] **Step 2: Create `scripts/tests/hook-spawn-budget.Tests.ps1`** with exactly this content:
@@ -1052,7 +1067,7 @@ cwd=${cwd%"${cwd##*[!$'\n']}"}
           # extra process in scripts/tests/hook-spawn-budget.Tests.ps1. Prepend the real binary's directory.
           $real = Get-ChildItem 'C:\ProgramData\chocolatey\lib' -Recurse -Filter jq.exe -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($real) { $real.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8; "real jq: $($real.FullName)" }
-          else { 'no Chocolatey jq under lib - PATH unchanged' }
+          else { '::warning title=hook budget::no Chocolatey jq under C:\ProgramData\chocolatey\lib - PATH unchanged; if a hook-spawn-budget row fails on CI only, a jq shim (one extra process per call) is the first suspect' }
 ```
 
   Commit it with Task 12. **First-CI-run check (owner pushes):** in that run's log, the step prints `real jq: ...` and the budget suite has no failed `row` test. If a `row` test fails on CI only, apply the fallback: in `hook-spawn-budget.Tests.ps1`, at the start of the `-ForEach $Rows` `It` body, add `if ($env:GITHUB_ACTIONS) { Set-ItResult -Skipped -Because 'process budgets are measured on the owner''s machine; CI jq differs' }` and record the CI difference in ROADMAP section 69.
@@ -1061,8 +1076,40 @@ cwd=${cwd%"${cwd##*[!$'\n']}"}
 
 Timing discipline (`~/.claude/CLAUDE.md`): the orchestrator runs this, never a subagent; launch backgrounded and make NO tool call until it completes; first verify no other test or measurement process is running; two runs, quote the range; name the uncontrolled background load.
 
-- [ ] **Step 1:** write a scratch script (session scratchpad) that, in a fresh fixture repo with `.clavity/seams` holding 1031 empty seams (this repo's count) and a temp HOME, starts ALL dotnet SessionStart hooks of `clavity-dotnet/plugin/hooks/hooks.json` at once (as Claude Code does) with a startup payload and records each hook's wall-clock to exit.
-- [ ] **Step 2:** run it twice, idle.
+- [ ] **Step 1:** save this as `sessionstart-timing.ps1` in the session scratchpad. It starts EVERY dotnet SessionStart hook at once, as Claude Code does, through Git's launcher (the production bash). The fixture is a temp repo with 1031 seams (this repo's count) and a temp HOME and TMPDIR, and the script prints each hook's wall-clock to exit:
+
+```powershell
+. (Join-Path 'C:\Users\user\Development\Rust\clavity\scripts\tests' 'BashHookHelpers.ps1')
+$root = 'C:\Users\user\Development\Rust\clavity'
+$bash = Get-GitBashOrThrow                                   # Git's launcher: how Claude Code runs hooks
+$fx = Join-Path ([IO.Path]::GetTempPath()) ('sst-' + [Guid]::NewGuid().ToString('N'))
+$repo = Join-Path $fx 'repo'; $homeDir = Join-Path $fx 'home'; $tmp = Join-Path $fx 'tmp'
+New-Item -ItemType Directory -Force -Path (Join-Path $repo '.clavity\seams'), (Join-Path $homeDir '.claude'), (Join-Path $homeDir '.clavity'), $tmp | Out-Null
+& git -C $repo init -q -b main; & git -C $repo -c user.email=t@t -c user.name=t -c commit.gpgsign=false -c core.hooksPath= commit --allow-empty -qm init
+Set-Content -LiteralPath (Join-Path $repo '.clavity\.gitignore') -Value '*'
+1..1031 | ForEach-Object { [IO.File]::WriteAllText((Join-Path $repo ".clavity\seams\agy-capstone-r$_-x.md"), 'x') }
+$payload = Join-Path $fx 'payload.json'
+[IO.File]::WriteAllText($payload, (@{ cwd = ($repo -replace '\\', '/'); session_id = 'sst'; hook_event_name = 'SessionStart'; source = 'startup' } | ConvertTo-Json -Compress))
+$hooks = (Get-Content -Raw "$root\clavity-dotnet\plugin\hooks\hooks.json" | ConvertFrom-Json).hooks.SessionStart |
+    ForEach-Object { $_.hooks } | ForEach-Object { [regex]::Match($_.command, 'hooks/([A-Za-z0-9._-]+\.sh)').Groups[1].Value } | Sort-Object -Unique
+$env:HOME = ($homeDir -replace '\\', '/'); $env:USERPROFILE = $homeDir; $env:TMPDIR = ($tmp -replace '\\', '/')
+$env:CLAUDE_PROJECT_DIR = $repo; $env:CLAUDE_CONFIG_DIR = Join-Path $homeDir '.claude'; $env:CLAUDE_PLUGIN_DATA = ''; $env:CLAUDE_PLUGIN_ROOT = ''
+$sw = [Diagnostics.Stopwatch]::StartNew()
+$procs = foreach ($h in $hooks) {
+    $psi = [Diagnostics.ProcessStartInfo]::new($bash)
+    $psi.ArgumentList.Add("$root\clavity-dotnet\plugin\hooks\$h" -replace '\\', '/')
+    $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
+    $p = [Diagnostics.Process]::Start($psi)
+    $p.StandardInput.Write([IO.File]::ReadAllText($payload)); $p.StandardInput.Close()
+    [void]$p.StandardOutput.ReadToEndAsync(); [void]$p.StandardError.ReadToEndAsync()
+    [pscustomobject]@{ Hook = $h; P = $p }
+}
+foreach ($x in $procs) { $x.P.WaitForExit(); '{0,-36} {1,7:N1} s' -f $x.Hook, $x.P.ExitTime.Subtract($x.P.StartTime).TotalSeconds }
+'all done after {0:N1} s' -f $sw.Elapsed.TotalSeconds
+Remove-Item -LiteralPath $fx -Recurse -Force -ErrorAction SilentlyContinue
+```
+
+- [ ] **Step 2:** run it twice with `pwsh -NoProfile -File <scratchpad>/sessionstart-timing.ps1`, backgrounded, making no other tool call until it completes. First verify that no other test or measurement process is running (`Get-Process pwsh, bash`). Quote the range of the two runs per hook and name the uncontrolled background load.
 - [ ] **Step 3: Decision rule:** if `agy-discipline-reaching.sh` and `agy-consult-recovery.sh` both finish under 5 s (half their 10 s timeout) in both runs, leave `hooks.json` unchanged and record the figures in the commit message of Task 12. Otherwise raise both `"timeout": 10` to `"timeout": 30` in `clavity-dotnet/plugin/hooks/hooks.json` (lines 58-59) and `clavity-classic/plugin/hooks/hooks.json` (lines 57-58), and run `plugin-hooks-registration.Tests.ps1` again.
 
 ### Task 12: ROADMAP sections 69 and 70, partition, handoff
