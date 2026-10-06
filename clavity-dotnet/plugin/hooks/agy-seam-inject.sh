@@ -21,7 +21,10 @@
 # Fail-open: any error -> exit 0 (never blocks the tool). Suppressed by .no-agy (cwd or
 # ~/.claude). Without jq it degrades LOUD on a seam match (never a silent no-op).
 set +e
-input=$(cat)
+# PROCESS BUDGET (Branch 20, hook spawn budget: at most 16 processes per run, bash's own 3 included): every process costs ~200ms on Windows, so this hook starts few. `read`
+# is a builtin where `$(cat)` is a subshell plus an external (2 processes). Trailing newlines survive, which
+# nothing below can see. No `2>/dev/null` is needed: `read` writes nothing to stderr.
+input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c
 
 # --- jq guard (spec Decision 4). jq is required to parse stdin + emit structured JSON.
 # Without it, fall back to a FIELD-BOUNDED grep on the skill value (never a bare substring,
@@ -60,17 +63,26 @@ if ! command -v jq >/dev/null 2>&1; then
     done
   fi
   if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then exit 0; fi
-  if printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*finishing-a-development-branch' \
-     || printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*brainstorm' \
-     || printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*subagent-driven-development' \
-     || printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*executing-plans'; then
+  # One alternation, matched LINE BY LINE with the `[[ =~ ]]` builtin: four `printf | grep` pipelines cost
+  # 3 processes each (12 on the common non-seam skill), and a per-line match is what grep did.
+  _seamre='"skill"[[:space:]]*:[[:space:]]*"[^"]*(finishing-a-development-branch|brainstorm|subagent-driven-development|executing-plans)'
+  _hit=0
+  while IFS= read -r _line; do
+    [[ $_line =~ $_seamre ]] && { _hit=1; break; }
+  done <<<"$input"
+  if [ "$_hit" = 1 ]; then
     printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"[AGY-DISCIPLINES] guard inactive: missing jq - no seam directive will auto-fire (disciplines AND anomaly-capture)"}}'
   fi
   exit 0
 fi
 
-skill=$(printf '%s' "$input" | jq -r '.tool_input.skill // ""' 2>/dev/null)
-cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
+# ONE jq call for both fields, NUL-separated, read by builtins: exact for any string, and no fallback path
+# that calls jq again (the prototype's fallback measured 17). -j writes no newline, so the Windows jq's CRLF
+# never reaches a value. `$(...)` used to strip trailing newlines; the two expansions below keep that.
+skill=; cwd=
+{ IFS= read -r -d '' skill; IFS= read -r -d '' cwd; } < <(jq -j '(.tool_input.skill // ""), "\u0000", (.cwd // "."), "\u0000"' <<<"$input" 2>/dev/null)
+skill=${skill%"${skill##*[!$'\n']}"}
+cwd=${cwd%"${cwd##*[!$'\n']}"}
 
 # THE NORMALIZATION FORM MUST MATCH THE EXTRACTION SOURCE. jq -r DECODES the JSON escaping, so cwd holds
 # SINGLE backslashes here and the pattern is one escaped backslash; the degraded branch above reads the RAW
@@ -135,11 +147,20 @@ head=$(git -C "$cwd_path" rev-parse HEAD 2>/dev/null)
 # be loaded the debounce cannot run, so fall through and inject - the safe direction, as for an
 # unresolvable HEAD below.
 _rel=''
-. "$(dirname "$0" 2>/dev/null)/agy-marker-lib.sh" 2>/dev/null && agy_marker_rel _rel "$discipline"
+# dirname by parameter expansion: `$(dirname)` is 2 processes. Both separators count, because the host (and the
+# Pester suites) can start this as `bash 'C:\x\h.sh'`, which msys dirname splits on `\`. "no separator" is `.`
+# and a root-level script is `/`, exactly what dirname answers.
+_hd=${0%[/\\]*}
+if [ "$_hd" = "$0" ]; then _hd=.; elif [ -z "$_hd" ]; then _hd=/; fi
+. "$_hd/agy-marker-lib.sh" 2>/dev/null && agy_marker_rel _rel "$discipline"
 marker=''
 [ -n "$_rel" ] && marker="$cwd_path/$_rel"
 if [ -n "$head" ] && [ -n "$marker" ] && [ -f "$marker" ]; then
-  _m=$(cat "$marker" 2>/dev/null)
+  # The WHOLE file, trailing newlines stripped - what `$(cat)` yielded, minus its 2 processes. The stderr
+  # redirect comes BEFORE the file redirect so an unreadable marker is silent, as the `cat` form was.
+  _m=''
+  { IFS= read -r -d '' _m; } 2>/dev/null < "$marker"
+  while [[ $_m == *$'\n' ]]; do _m=${_m%$'\n'}; done
   [ "$_m" = "$head" ] && exit 0
   # THE LEDGER-ROW CASE (capstone Branch 2 round 1, owner ruling 2026-09-30). The capstone and test-audit
   # skills write the REVIEWED sha and must commit their ledger row first, so HEAD is past the marker by
@@ -156,9 +177,15 @@ if [ -n "$head" ] && [ -n "$marker" ] && [ -f "$marker" ]; then
         # --no-renames: a rename lists only its NEW path, so moving src/x.sh onto a ledger path would read
         # as a ledger-only change. diff.relative=false: that user setting, from a subdirectory cwd, drops
         # every path outside the cwd, docs/ included. Both measured in capstone Branch 2 round 2.
+        # The "every path is a ledger" test is a per-line `[[ =~ ]]` loop: `printf | grep -Evq` was 3 processes.
         _post=$(git -C "$cwd_path" -c core.quotePath=false -c diff.relative=false diff --no-renames --name-only "$_m" "$head" 2>/dev/null) &&
-          [ -n "$_post" ] &&
-          ! printf '%s\n' "$_post" | grep -Evq '^docs/agy-[a-z0-9-]+-ledger\.md$' &&
+          [ -n "$_post" ] && {
+            _ledgers=1
+            while IFS= read -r _line; do
+              [[ $_line =~ ^docs/agy-[a-z0-9-]+-ledger\.md$ ]] || { _ledgers=0; break; }
+            done <<<"$_post"
+            [ "$_ledgers" = 1 ]
+          } &&
           exit 0
       fi
       ;;

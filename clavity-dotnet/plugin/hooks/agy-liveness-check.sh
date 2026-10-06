@@ -43,13 +43,14 @@
 # `trap ... ERR` -- it would swallow the settings-parse path and drop the advisory. The ONLY silent outcome is (1).
 # Byte-identical across both driver plugins (kept honest by the seed-sync gate).
 set +e
-# 2>/dev/null, because `cat` is EXTERNAL and this hook's contract is that it never writes to stderr
-# (ROADMAP section 31, the cries-wolf class). MEASURED 2026-09-12 with an empty PATH: this line leaked
-# `cat: command not found` - 83 bytes of stderr on an otherwise clean exit 0 - which Claude Code renders
-# as a red hook error naming a hook that did its job. The same shape as the `dirname` sites in
-# agy-mark.sh, fixed there the same way. An empty PATH breaks everything else here too; the point is that
-# the hook stays SILENT about it rather than crying wolf.
-input=$(cat 2>/dev/null)
+# PROCESS BUDGET (Branch 20, hook spawn budget: at most 16 processes per run, bash's own 3 included). `read`
+# is a builtin, so this line starts NO process, where `input=$(cat 2>/dev/null)` started 2. That also retires
+# the reason for the old `2>/dev/null`: ROADMAP section 31 (the cries-wolf class) requires this hook never to
+# write to stderr, and MEASURED 2026-09-12 with an empty PATH the external `cat` leaked `cat: command not
+# found` - 83 bytes of stderr on an otherwise clean exit 0, rendered by Claude Code as a red hook error. A
+# builtin cannot be missing from PATH, so the leak is gone by construction. Trailing newlines survive here
+# (the `$(cat)` form stripped them); nothing below can see them.
+input=; while IFS= read -r -N 1048576 _c; do input+=$_c; done; input+=$_c
 
 # --- jq guard. jq is needed to merge settings. Without it, honor the kill-switch (global + the session's
 # REAL workspace, recovered from the raw payload) then emit ONE loud dep warning (never silent; we cannot
@@ -126,7 +127,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
+cwd=$(jq -r '.cwd // "."' <<<"$input" 2>/dev/null)
 
 # THE NORMALIZATION FORM MUST MATCH THE EXTRACTION SOURCE. jq -r DECODES the JSON escaping, so cwd holds
 # SINGLE backslashes here and the pattern is one escaped backslash; the degraded branch below reads the RAW
@@ -186,72 +187,124 @@ done
 # independently: an unreadable one is named and the sweep CONTINUES, so a typo in a project file cannot mask
 # a real duplicate in the user file. A settings file with no .hooks node is normal (fresh install) and silent.
 ownership_note=""
-shipped_json="$(dirname "$0" 2>/dev/null)/hooks.json"
-# Tokenizing happens INSIDE jq, which is already parsing the file. A printf|grep|tr|sort pipeline costs
-# four extra processes, and this hook runs on every SessionStart: measured on Windows, bash itself is
-# ~455ms and each additional fork ~126ms, so the pipeline form cost ~440ms EVERY time it ran -- once for
-# this list plus once per settings file. Doing it in jq removes those forks entirely. Safe to word-split
-# the result below: jq has already reduced it to names matching [a-z0-9._-]+\.sh, which cannot contain a
-# glob character.
-if ! shipped_names=$(jq -r '[.hooks[][].hooks[].command // empty | ascii_downcase | scan("[a-z0-9._-]+\\.sh")] | unique | join(" ")' "$shipped_json" 2>/dev/null); then
-  ownership_note="[AGY-DISCIPLINES] shipped-hook list unreadable ($shipped_json) - cannot check hook ownership"
-else
-  for f in "${present[@]}"; do
-    # TWO distinct failures, deliberately NOT merged into one message. A file that will not parse and a
-    # file that parses but whose .hooks shape we no longer recognise are different problems with different
-    # fixes, and collapsing them re-creates exactly what constraint 3 forbids: an empty result that is
-    # indistinguishable from a query that no longer matches anything.
-    if ! jq -e . "$f" >/dev/null 2>&1; then
-      ownership_note="${ownership_note}[AGY-DISCIPLINES] settings unreadable ($f) - ownership not checked for it"$'\n'
-      continue
-    fi
-    # ONE jq call yields the two shape counters AND the tokenized hook names, on ONE line, so `read`
-    # splits it unambiguously with no fork. Emitting them as two LINES looked tidier but is a trap: when
-    # the names are empty jq's second line is empty, command substitution strips the trailing newline,
-    # and "${var#*$'\n'}" then finds no newline and returns the WHOLE string -- silently assigning the
-    # counters to the names variable. It happened to stay harmless only because a shipped name can never
-    # be a bare integer. One line plus `read -r a b rest` has no such edge.
-    # The THIRD field counts commands that run from .clavity/ (peer-scratch backlog item, replacing its
-    # "Option 3"): that directory is the agy peer's sanctioned write area, so a hook wired from it executes
-    # whatever the peer may have written. Backslashes are folded to `/` first so a Windows path matches, and
-    # the character before `.clavity` must not continue a name, and neither may the character after it, so
-    # `my.clavity/`, `.clavity-old/` and `.clavity.bak/` do not count while a bare `cd .clavity` does.
-    if ! personal_raw=$(jq -r '(.hooks // {}) as $h
+# dirname by parameter expansion: `$(dirname)` is 2 processes. Both separators count, because the host (and the
+# Pester suites) can start this as `bash 'C:\x\h.sh'`, which msys dirname splits on `\`. "no separator" is `.`
+# and a root-level script is `/`, exactly what dirname answers.
+_hd=${0%[/\\]*}
+if [ "$_hd" = "$0" ]; then _hd=.; elif [ -z "$_hd" ]; then _hd=/; fi
+shipped_json="$_hd/hooks.json"
+
+# ONE jq call reads hooks.json AND every settings file (PROCESS BUDGET, Branch 20). The old shape started one
+# jq for the shipped list, TWO per settings file (`jq -e .` then the shape query) and one `jq -s` for the
+# liveness merge: 2 + 4n + 2 processes, 34 in total with three settings files. Tokenizing still happens
+# INSIDE jq (a printf|grep|tr|sort pipeline would cost four more forks, ~126ms each on Windows).
+#
+# The files go in as RAW TEXT (`--rawfile`) and are parsed with `try fromjson` PER FILE. That is what lets a
+# corrupt file be reported and the sweep CONTINUE, as before: handed to jq as ordinary inputs, one bad file
+# aborts the whole run. A path jq cannot read is passed as the invalid text `{`, so it is "unreadable" and
+# poisons the liveness merge exactly as `jq -s` did. Output, one line each, in this order:
+#   1. `1 <shipped names>` or `0`    (0 = hooks.json unreadable)
+#   2. `1` / `0`                     (superpowers live; the old `jq -s` merge, verbatim, errors -> 0)
+#   3. one line per settings file, in sweep order:
+#        `U`                         unreadable (invalid JSON, empty, or `null`/`false` - what `jq -e .` rejected)
+#        `S`                         parses, but .hooks is not the shape this check reads
+#        `<entries> <cmds> <wired> <names>`   the old shape query's line, verbatim
+# jq's Windows build ends lines with CRLF; no emitted token can hold a CR, so every CR is dropped.
+_jqargs=(); _i=0
+for f in "${present[@]}"; do
+  if [ -r "$f" ]; then _jqargs+=(--rawfile "f$_i" "$f"); else _jqargs+=(--arg "f$_i" '{'); fi
+  _i=$((_i + 1))
+done
+[ -r "$shipped_json" ] && _jqargs+=(--rawfile sh "$shipped_json")
+if ! _res=$(jq -nr "${_jqargs[@]}" --argjson cnt "$_i" '
+    $ARGS.named as $n
+    | [range(0; $cnt) | $n["f\(.)"]
+       | if test("^[ \t\r\n]*$") then {empty: true} else (try {ok: fromjson} catch {bad: true}) end] as $p
+    | (if $n.sh == null then null
+       elif ($n.sh | test("^[ \t\r\n]*$")) then ""
+       else (try ($n.sh | fromjson | [.hooks[][].hooks[].command // empty | ascii_downcase | scan("[a-z0-9._-]+\\.sh")] | unique | join(" ")) catch null)
+       end) as $ship
+    | (if $cnt == 0 or any($p[]; has("bad")) then false
+       else (try ([$p[] | select(has("ok")) | .ok] | map(.enabledPlugins // {}) | reduce .[] as $m ({}; . * $m)
+                  | to_entries | any(.[]; (.key | startswith("superpowers@")) and .value)) catch false)
+       end) as $live
+    | (if $ship == null then "0" else "1 \($ship)" end),
+      (if $live then "1" else "0" end),
+      ($p[] | if has("empty") or has("bad") or .ok == null or .ok == false then "U"
+              else (try (.ok | (.hooks // {}) as $h
                                | [$h[][].hooks[]]              as $entries
                                | [$entries[].command // empty] as $cmds
                                | [$cmds[] | gsub("\\\\"; "/") | ascii_downcase | select(test("(^|[^a-z0-9._-])\\.clavity([^a-z0-9._-]|$)"))] as $wired
-                               | "\($entries | length) \($cmds | length) \($wired | length) \([$cmds[] | ascii_downcase | scan("[a-z0-9._-]+\\.sh")] | unique | join(" "))"' "$f" 2>/dev/null); then
-      ownership_note="${ownership_note}[AGY-DISCIPLINES] schema unrecognised ($f) - .hooks is present but not the shape this check reads; ownership NOT verified for it"$'\n'
-      continue
-    fi
-    read -r entry_count cmd_count wired_count personal <<<"$personal_raw"
-    # Hook entries EXIST but not one carries a 'command' field -> the host renamed the key under us.
-    # Staying silent here would be indistinguishable from "no collisions found", which is precisely the
-    # fail-open the hooks.json guard above exists to prevent. A shape we no longer read is reported, not
-    # treated as an empty result. (Some entries lacking 'command' is normal and stays silent; ALL of
-    # them lacking it, with entries present, is not.)
-    if [ "${entry_count:-0}" -gt 0 ] && [ "${cmd_count:-0}" -eq 0 ]; then
-      ownership_note="${ownership_note}[AGY-DISCIPLINES] schema unrecognised ($f) - hook entries are present but none carries a 'command' field; ownership NOT verified for it"$'\n'
-      continue
-    fi
-    if [ "${wired_count:-0}" -gt 0 ]; then
-      ownership_note="${ownership_note}[AGY-DISCIPLINES] $wired_count hook command(s) in $f run from .clavity/ - that directory is the agy peer's sanctioned write area, so a hook wired from it runs whatever the peer may have written; move the script out of .clavity/ or remove the registration, then restart or /clear this session"$'\n'
-    fi
-    # Compare script-name TOKENS, not substrings of the joined command blob. Substring matching both
-    # OVER-fires (a longer name that merely CONTAINS a shipped name -- which is exactly the rename-and-trim
-    # escape hatch the README prescribes, so it punished the documented fix) and UNDER-fires (a name
-    # differing only in case, which on Windows/macOS is the SAME file the host will happily double-fire).
-    # Space-pad both sides so a match is a WHOLE token, and fold case so a case-insensitive filesystem
-    # cannot hide a collision. "$shipped" is quoted: unquoted it word-splits AND glob-expands against
-    # the session's cwd, so a glob character in our own hooks.json could pull in unrelated local .sh files.
-    personal_names=" $personal "
-    for name in $shipped_names; do
-      case "$personal_names" in
-        *" $name "*) ownership_note="${ownership_note}[AGY-DISCIPLINES] $name is shipped by this plugin AND registered in $f - remove that registration, then restart or /clear this session"$'\n' ;;
-      esac
-    done
-  done
+                               | "\($entries | length) \($cmds | length) \($wired | length) \([$cmds[] | ascii_downcase | scan("[a-z0-9._-]+\\.sh")] | unique | join(" "))") catch "S")
+              end)' 2>/dev/null); then
+  _res=''
 fi
+_res=${_res//$'\r'/}
+
+live=0
+# The sweep below reads the jq output through ONE redirected group, so `read` consumes its lines in order.
+{
+  IFS= read -r _shipline
+  IFS= read -r _liveline
+  [ "$_liveline" = 1 ] && live=1
+  # An unreadable hooks.json is reported, never treated as "no shipped hooks" (that would fail the check open).
+  # Each settings file is read independently: an unreadable one is named and the sweep CONTINUES, so a typo in a
+  # project file cannot mask a real duplicate in the user file. A settings file with no .hooks node is normal
+  # (fresh install) and silent.
+  case $_shipline in
+    '1 '*) shipped_names=${_shipline#1 } ;;
+    *)     shipped_names=''; ownership_note="[AGY-DISCIPLINES] shipped-hook list unreadable ($shipped_json) - cannot check hook ownership" ;;
+  esac
+  if [ -z "$ownership_note" ]; then
+    for f in "${present[@]}"; do
+      IFS= read -r _fline
+      # TWO distinct failures, deliberately NOT merged into one message. A file that will not parse and a
+      # file that parses but whose .hooks shape we no longer recognise are different problems with different
+      # fixes, and collapsing them re-creates exactly what constraint 3 forbids: an empty result that is
+      # indistinguishable from a query that no longer matches anything.
+      if [ "$_fline" = U ]; then
+        ownership_note="${ownership_note}[AGY-DISCIPLINES] settings unreadable ($f) - ownership not checked for it"$'\n'
+        continue
+      fi
+      if [ "$_fline" = S ]; then
+        ownership_note="${ownership_note}[AGY-DISCIPLINES] schema unrecognised ($f) - .hooks is present but not the shape this check reads; ownership NOT verified for it"$'\n'
+        continue
+      fi
+      # The line carries the two shape counters AND the tokenized hook names, so `read -r a b c rest` splits it
+      # with no fork. The THIRD field counts commands that run from .clavity/ (peer-scratch backlog item): that
+      # directory is the agy peer's sanctioned write area, so a hook wired from it executes whatever the peer
+      # may have written. Backslashes are folded to `/` first so a Windows path matches, and the character
+      # before `.clavity` must not continue a name, and neither may the character after it, so `my.clavity/`,
+      # `.clavity-old/` and `.clavity.bak/` do not count while a bare `cd .clavity` does.
+      read -r entry_count cmd_count wired_count personal <<<"$_fline"
+      # Hook entries EXIST but not one carries a 'command' field -> the host renamed the key under us.
+      # Staying silent here would be indistinguishable from "no collisions found", which is precisely the
+      # fail-open the hooks.json guard above exists to prevent. A shape we no longer read is reported, not
+      # treated as an empty result. (Some entries lacking 'command' is normal and stays silent; ALL of
+      # them lacking it, with entries present, is not.)
+      if [ "${entry_count:-0}" -gt 0 ] && [ "${cmd_count:-0}" -eq 0 ]; then
+        ownership_note="${ownership_note}[AGY-DISCIPLINES] schema unrecognised ($f) - hook entries are present but none carries a 'command' field; ownership NOT verified for it"$'\n'
+        continue
+      fi
+      if [ "${wired_count:-0}" -gt 0 ]; then
+        ownership_note="${ownership_note}[AGY-DISCIPLINES] $wired_count hook command(s) in $f run from .clavity/ - that directory is the agy peer's sanctioned write area, so a hook wired from it runs whatever the peer may have written; move the script out of .clavity/ or remove the registration, then restart or /clear this session"$'\n'
+      fi
+      # Compare script-name TOKENS, not substrings of the joined command blob. Substring matching both
+      # OVER-fires (a longer name that merely CONTAINS a shipped name -- which is exactly the rename-and-trim
+      # escape hatch the README prescribes, so it punished the documented fix) and UNDER-fires (a name
+      # differing only in case, which on Windows/macOS is the SAME file the host will happily double-fire).
+      # Space-pad both sides so a match is a WHOLE token, and fold case so a case-insensitive filesystem
+      # cannot hide a collision. "$shipped" is quoted: unquoted it word-splits AND glob-expands against
+      # the session's cwd, so a glob character in our own hooks.json could pull in unrelated local .sh files.
+      personal_names=" $personal "
+      for name in $shipped_names; do
+        case "$personal_names" in
+          *" $name "*) ownership_note="${ownership_note}[AGY-DISCIPLINES] $name is shipped by this plugin AND registered in $f - remove that registration, then restart or /clear this session"$'\n' ;;
+        esac
+      done
+    done
+  fi
+} <<<"$_res"
 
 # --- .no-agy kill-switch: announce LOUDLY (naming the path) then STOP. NOT a silent early-exit (that
 # reintroduces the silent-kill Decision 3 forbids); NOT a fall-through to the superpowers/jq notices (that
@@ -307,15 +360,6 @@ $ownership_note"
   # shipped hook is a live override, not a preference. So the user-visible argument is the ownership
   # note ALONE, and it is empty (hence no systemMessage key at all) whenever there is no override.
   _emit "$ownership_note" "$_m"
-fi
-
-live=0
-if [ "${#present[@]}" -gt 0 ]; then
-  if result=$(jq -s 'map(.enabledPlugins // {}) | reduce .[] as $m ({}; . * $m)
-                     | to_entries | any(.[]; (.key | startswith("superpowers@")) and .value)' \
-              "${present[@]}" 2>/dev/null) && [ "$result" = "true" ]; then
-    live=1
-  fi
 fi
 
 if [ "$live" = "1" ]; then
