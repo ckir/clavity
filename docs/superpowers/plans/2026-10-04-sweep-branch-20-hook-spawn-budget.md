@@ -1099,14 +1099,15 @@ $env:CLAUDE_PROJECT_DIR = $repo; $env:CLAUDE_CONFIG_DIR = Join-Path $homeDir '.c
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $procs = foreach ($h in $hooks) {
     $psi = [Diagnostics.ProcessStartInfo]::new($bash)
-    $psi.ArgumentList.Add("$root\clavity-dotnet\plugin\hooks\$h" -replace '\\', '/')
+    $psi.ArgumentList.Add(("$root\clavity-dotnet\plugin\hooks\$h" -replace '\\', '/'))   # inner parens: a bare comma would split the call into 2 args
     $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
     $p = [Diagnostics.Process]::Start($psi)
     $p.StandardInput.Write([IO.File]::ReadAllText($payload)); $p.StandardInput.Close()
-    [void]$p.StandardOutput.ReadToEndAsync(); [void]$p.StandardError.ReadToEndAsync()
-    [pscustomobject]@{ Hook = $h; P = $p }
+    $o = $p.StandardOutput.ReadToEndAsync(); [void]$p.StandardError.ReadToEndAsync()
+    [pscustomobject]@{ Hook = $h; P = $p; O = $o }
 }
-foreach ($x in $procs) { $x.P.WaitForExit(); '{0,-36} {1,7:N1} s' -f $x.Hook, $x.P.ExitTime.Subtract($x.P.StartTime).TotalSeconds }
+# stdout bytes prove each hook RAN (a run that printed 0 everywhere measured nothing - it happened once).
+foreach ($x in $procs) { $x.P.WaitForExit(); '{0,-36} {1,7:N1} s  stdout={2} B' -f $x.Hook, $x.P.ExitTime.Subtract($x.P.StartTime).TotalSeconds, $x.O.Result.Length }
 'all done after {0:N1} s' -f $sw.Elapsed.TotalSeconds
 Remove-Item -LiteralPath $fx -Recurse -Force -ErrorAction SilentlyContinue
 ```
