@@ -259,8 +259,15 @@ fi
 
 # FIFO prune, ONE rm for every surplus slot (fork 1A): after the cp there are ${#baks[@]}+1 slots;
 # keep the newest $KEEP. 16 per-file rm processes (32 spawns) could never fit the 16-process ceiling.
+# NEVER the file just written (panel R2, State Corruptor): two snapshots in the SAME second share a name, so
+# the cp above overwrote a slot that is already in the pre-copy list - and with KEEP=1 the surplus slice starts
+# at index 0, which would delete the fresh snapshot. The old `ls -1t | tail` re-listed AFTER the copy and kept it.
 if [ "${#baks[@]}" -ge "$KEEP" ]; then
-  rm -f -- "${baks[@]:$((KEEP - 1))}" 2>/dev/null
+  surplus=()
+  for _b in "${baks[@]:$((KEEP - 1))}"; do
+    [ "$_b" = "${OBS}.${stamp}.bak" ] || surplus+=("$_b")
+  done
+  [ "${#surplus[@]}" -gt 0 ] && rm -f -- "${surplus[@]}" 2>/dev/null
 fi
 
 exit 0
@@ -282,6 +289,12 @@ Arithmetic check the executor should re-derive, not trust: 20 old + 1 new = 21, 
         <bak listing>.Count | Should -Be 8
         foreach ($gone in 1..3) { <bak listing> -match ('202601{0:d2}' -f $gone) | Should -BeNullOrEmpty }
     }
+    It 'keeps the fresh snapshot when KEEP=1 and the previous slot has the SAME second-stamp (no self-delete)' {
+        # Fixture: inbox with one pending entry + ONE existing .bak whose NAME is the stamp this run will write
+        # (freeze the clock: run under CLAVITY_HOOK_BASH3=1 with a fake `date` first on PATH printing a fixed
+        # stamp, and name the pre-existing .bak with that stamp; content differs from the inbox). Env
+        # AGY_INBOX_SNAPSHOT_KEEP='1'. Expect: exactly ONE .bak survives and its content EQUALS the inbox.
+    }
     It 'opens the Pending region on a REAL-tab heading ("##<TAB>Pending") and snapshots' {
         # The heading written with an actual TAB between ## and Pending; one pending bullet; expect 1 new .bak.
     }
@@ -301,6 +314,7 @@ Expected: all green (the pre-existing ~32 rows prove behaviour preservation; the
 2. In `re_pending`, the real tab class `[ \t]` → `[ t]` (literal t) ⇒ the real-tab row red AND the `##tPending` row red.
 3. `${baks[@]:$((KEEP - 1))}` → `${baks[@]:$KEEP}` (off-by-one keeps one extra) ⇒ the 20-baks budget row's `-Verify` red (count 6).
 4. Delete the `cmp -s` dedup line ⇒ the dedup budget row's `-Verify` red (count 2).
+5. Drop the `[ "$_b" = "${OBS}.${stamp}.bak" ] ||` exclusion ⇒ the same-second KEEP=1 row (below) red.
 After each: restore, re-run the touched suite green, `git status --short` clean of surprises.
 
 - [ ] **Step 7: Remove the `agy-inbox-snapshot.sh` entry from `$script:B21Debt`** in `hook-spawn-budget.Rows.ps1` (the line `@{ Hook = 'agy-inbox-snapshot.sh'; ... Total = 67 }`). Re-run the Step-2 command: the debt row still fails locally (7 entries left) — that is expected until Task 12; the inbox-snapshot rows are green.
