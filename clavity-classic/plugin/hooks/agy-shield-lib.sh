@@ -48,11 +48,14 @@
 # whatever shell the AGENT's tool runs (dash/sh/zsh are all possible). Sourced under dash, the builtin A2 read below printed
 # `[[: not found` and APPENDED `\n*\n` to a healthy shield on EVERY call (MEASURED 2026-10-07 - the exact unbounded growth the
 # A2 note describes); the pre-Branch-21 text was POSIX sh and was fine. So the bash-only fast path is taken ONLY when
-# BASH_VERSION is set, at zero process cost, and every other shell runs the original greps. Nothing outside that guarded branch
-# may use `[[ ]]`, `$'...'`, `read -d` or arrays.
+# BASH_VERSINFO is set, at zero process cost, and every other shell runs the original greps. Nothing outside that guarded branch
+# may use `[[ ]]`, `$'...'`, `read -d` or arrays. Supported: bash (fast path); dash, sh and zsh (the original greps).
+# THE GATE IS BASH_VERSINFO, NOT BASH_VERSION (capstone phase-1 R2): BASH_VERSION is an ordinary string that a parent can EXPORT, and a
+# dash child would then inherit it and take the bash-only branch. BASH_VERSINFO is an ARRAY, and bash cannot export arrays, so no
+# child can ever inherit it (MEASURED: `$'a'` is NOT a usable test - the dash on this box prints `a` for it).
 _AS_NL='
 '
-if [ -n "${BASH_VERSION:-}" ]; then _AS_CR=$'\r'; else _AS_CR=$(printf '\r'); fi   # a literal CR, for the optional-trailing-CR shield match in A2.
+if [ -n "${BASH_VERSINFO:-}" ]; then _AS_CR=$'\r'; else _AS_CR=$(printf '\r'); fi   # a literal CR, for the optional-trailing-CR shield match in A2.
 
 # Emit one line on stderr, at most once per (key, class). An empty key disables debouncing.
 #
@@ -227,7 +230,7 @@ agy_shield() {
     # EOF while having filled the variable, hence the `|| :` inside the group. Wrapping the content in
     # newlines makes "a LINE equal to *" one substring test, first and last lines included.
     _as_star=0; _as_neg=0
-    if [ -n "${BASH_VERSION:-}" ]; then
+    if [ -n "${BASH_VERSINFO:-}" ]; then
         _as_c=''; _as_readable=0
         if { IFS= read -r -d '' _as_c || :; } 2>/dev/null < "$_as_shield"; then _as_readable=1; fi
         _as_w=$_AS_NL${_as_c}$_AS_NL

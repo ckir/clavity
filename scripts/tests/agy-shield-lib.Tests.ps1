@@ -246,6 +246,18 @@ Describe 'agy-shield-lib.sh' {
             (Get-Shield $r) | Should -BeExactly $Text -Because "[$Name] a shield that already carries * must not be appended to, in ANY shell"
             $res.Err | Should -Not -Match 'not found' -Because 'no bash-only construct may be EXECUTED under a non-bash shell'
         }
+        It 'leaves a healthy shield byte-identical under dash even when BASH_VERSION is EXPORTED into it (capstone R2)' {
+            # A parent bash that exported BASH_VERSION would otherwise send a dash child down the bash-only branch.
+            $r = New-FixtureRepo -Shield "*`n"
+            # The variable is exported INSIDE the dash snippet, not through -Env: a process-level override leaked into the rows after
+            # this one (measured - they ran dash with BASH_VERSION set and failed), and the launching bash re-exports its own value.
+            $body = 'export BASH_VERSION=5.2.0-fake' + "`n" + 'printf "%s" "[${BASH_VERSION:-}]" > "$PWD/shell-probe.txt"' + "`n" + 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' + "`n" + 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+            $res = Invoke-Shield -Root $r -Body $body -Shell $script:Dash
+            # CONTROL: dash really has a non-empty BASH_VERSION, so the guard under test is the capability test and not an empty variable.
+            (Get-Content -Raw -LiteralPath (Join-Path $r 'shell-probe.txt')) | Should -BeExactly '[5.2.0-fake]' -Because 'BASH_VERSION must be set in the dash snippet, or this row tests nothing'
+            (Get-Shield $r) | Should -BeExactly "*`n"
+            $res.Err | Should -Not -Match 'not found'
+        }
         It 'PREPENDS * to a negation-only shield under dash exactly as bash does' {
             $r = New-FixtureRepo -Shield "!local-anomalies.md`n"
             $null = Invoke-Shield -Root $r -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' -Shell $script:Dash

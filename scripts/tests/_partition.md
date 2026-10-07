@@ -727,7 +727,7 @@ agy-seam-inject.Tests.ps1                        39,4s   36 tests   <- SLOW, re-
                                                                       been comment-only). Time had said
                                                                       18,0s and was "count 2026-08-03,
                                                                       time older" - now both are current.
-agy-shield-lib.Tests.ps1                        409,1s   47 tests   <- SLOW, NEW 2026-08-16; 45 -> 47 2026-10-07 (Branch 21 Task 2: the ordering row became two, +1 deferred-prune row; time not re-measured). Fixture-
+agy-shield-lib.Tests.ps1                        409,1s   54 tests   <- SLOW, NEW 2026-08-16; 45 -> 47 2026-10-07 (Branch 21 Task 2: the ordering row became two, +1 deferred-prune row); 47 -> 54 (phase-1 capstone: +7 rows that run the helper under dash); time not re-measured. Fixture-
                                                                       heavy: many git + bash subprocess spawns per
                                                                       row across 17 Its. Measured solo, two
                                                                       consecutive runs immediately back to back:
