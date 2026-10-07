@@ -1307,13 +1307,26 @@ fi
         (Get-Content -LiteralPath $script:Hook -Raw) | Should -Not -Match 'date -d'
     }
     It 'computes the same day number as GNU date -d for five dates including a leap day' {
-        # The equivalence control (law 4: passing AND failing control in one oracle): for each of
-        # 2024-02-29, 2026-01-01, 1999-12-31, 2026-10-07, 2100-01-01, run bash twice -
-        #   a) `date -d <d> +%s` divided by 86400 (GNU reference, UTC via TZ=UTC), and
-        #   b) a snippet sourcing nothing: the _dfc function body pasted from the hook via
-        #      `bash -c '. <(sed -n "/^_dfc()/,/^}/p" <hook>); _dfc <y> <m> <d>; echo $_DFC'`
-        # and assert a == b for every date, plus one DELIBERATE mismatch control (feed b a wrong day
-        # and assert the comparison FAILS) so the oracle can return its failing answer.
+        # The equivalence control (law 4: the oracle must be able to return its failing answer). The _dfc
+        # function is EXTRACTED from the hook (sed range /^_dfc()/,/^}/) so the test exercises the shipped
+        # text, and GNU date on Git Bash is the reference. Panel R2 asked for this loop written out.
+        $bash = Get-GitBashOrThrow
+        $hookFwd = $script:Hook -replace '\\', '/'
+        $probe = {
+            param([string]$Date, [string]$Feed)
+            $y, $m, $d = $Feed -split '-'
+            $script = "set -e; eval `"`$(sed -n '/^_dfc()/,/^}/p' '$hookFwd')`"; _dfc $y $m $d; ref=`$(( `$(TZ=UTC date -d '$Date' +%s) / 86400 )); echo `"`$_DFC `$ref`""
+            $out = (& $bash -c $script).Trim() -split ' '
+            [pscustomobject]@{ Dfc = [int]$out[0]; Gnu = [int]$out[1] }
+        }
+        foreach ($dt in '2024-02-29', '2026-01-01', '1999-12-31', '2026-10-07', '2100-01-01') {
+            $r = & $probe $dt $dt
+            $r.Dfc | Should -Be $r.Gnu -Because "_dfc must agree with GNU date -d on $dt"
+        }
+        # FAILING CONTROL in the same oracle: feed _dfc the NEXT day while GNU reads the real one - the
+        # comparison must come out unequal, or this row could never go red.
+        $bad = & $probe '2026-01-01' '2026-01-02'
+        $bad.Dfc | Should -Not -Be $bad.Gnu -Because 'the oracle must be able to say NO'
     }
     It 'does NOT arm the age gate on an out-of-range date in the PAST (2020-13-45)' {
         # Inbox: one pending entry dated 2020-13-45, count under threshold. Expect: silent (exit 0, no
