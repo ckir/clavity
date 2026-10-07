@@ -49,11 +49,19 @@ of the thing it was reviewing.
 **What the driver reports back.** `[13b] TRUNCATED REPLY` - the mandated terminal token is missing or not
 at the end. `[13b] ECHO MISSING` - the peer did not quote that line. `[13b] ECHO WEAK` - no line in the
 artifact could prove anything, so the check was SKIPPED, not failed. `[13b] NO ECHO` - you named no
-artifact. `[13b] UNCHECKED` - you named no known discipline; shown once per session.
+artifact. `[13b] UNCHECKED` - you named no known discipline; shown once per session. `[13b] ANSWER CUT` -
+`Answer` holds only the first 16000 characters; the notice names the file with the rest. `[13b] RESCUED FROM
+PEER FILE` - the chat reply failed the checks, the peer's own reply file passed them, and `Answer` is its text.
 
-**A flagged reply is INCOMPLETE, not empty.** Never read one as "no findings". Recover it with `agy_look`
-against the peer's own trajectory - not from any local file - or re-ask AT MOST ONCE, then halt and ask
-your human. An unbounded "re-ask until it passes" reproduces the same mismatch and burns a budget.
+**A flagged reply is INCOMPLETE, not empty.** Never read one as "no findings". Recover it in ONE order - the
+same order every flagged notice states with its concrete paths: (1) on clavity-dotnet, read the `ReplyFile`
+the result names, its LAST 200 lines first - the verdict, the echo and the json sit at the tail of a file
+that can reach 1 MiB (a failed capture leaves it null, and the notice says so); (2) read the peer's own reply
+file if one was requested - clavity-dotnet requests it itself when you name a discipline and reports it as
+`PeerFile`; on clavity-classic, ask for it by hand in your brief (a `.clavity/scratch/<topic>/` file holding
+the whole reply verbatim); (3) re-ask AT MOST ONCE; (4) halt and ask your human. `agy_look` caps every step
+at 1000 characters, so it recovers a SHORT reply only. An unbounded "re-ask until it passes" reproduces the
+same mismatch and burns a budget.
 
 **Demand this in your payload too**, alongside the echo:
 
