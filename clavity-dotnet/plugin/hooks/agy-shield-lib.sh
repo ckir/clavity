@@ -44,7 +44,7 @@
 # `nosession`, so the gate latches once and that key never sweeps again. Both are documented at their own
 # sites; the asymmetry is deliberate and owner-ruled, not an oversight. See the sweep-gate comment.
 
-_AS_CR=$(printf '\r')   # a literal CR, for the optional-trailing-CR shield match in A2.
+_AS_CR=$'\r'   # a literal CR, for the optional-trailing-CR shield match in A2 (ANSI-C quoting: no subshell).
 
 # Emit one line on stderr, at most once per (key, class). An empty key disables debouncing.
 #
@@ -71,7 +71,7 @@ _AS_CR=$(printf '\r')   # a literal CR, for the optional-trailing-CR shield matc
 # repositories therefore got ONE fault report in total.
 #
 # ENCODING THE ROOT PATH INTO THE FILENAME WAS CONSIDERED AND REJECTED, and the reasons are recorded so
-# it is not re-proposed: this file is POSIX sh (no ${var//a/b}), so replacing separators needs a
+# it is not re-proposed: this file was written as POSIX sh (no ${var//a/b}; since Branch 21 it is sourced by BASH hooks only and uses bash builtins where they save a process), so replacing separators needs a
 # character loop; the replacement collides - /a/b and /a_b both sanitise to the same name, which is the
 # very reason the basename option was rejected; and a sanitised absolute path can approach the 255-byte
 # filename limit. Storing the marker IN the directory it describes needs no encoding, cannot collide, and
@@ -85,13 +85,14 @@ _AS_CR=$(printf '\r')   # a literal CR, for the optional-trailing-CR shield matc
 # divergence it ended was a real defect: the notice path once walked a fallback while the A2 sweep gate
 # assumed "${TMPDIR:-/tmp}" was present, so on a host where that did not exist the notice worked and the
 # sweep failed silently on rows whose whole contract is that they are silent.
+# Returns its answer in the GLOBAL _asm_dir, not on stdout (Branch 21): a caller no longer pays a $( )
+# subshell for it. There is no `local` in this file, so _asm_dir is one more file-scoped global.
 _agy_shield_markerdir() {
     _asm_root=${1:-}
     _asm_dir=''
     if [ -n "$_asm_root" ] && [ -d "$_asm_root/.clavity" ] && [ -w "$_asm_root/.clavity" ]; then
         _asm_dir="$_asm_root/.clavity"
     fi
-    printf '%s' "$_asm_dir"
 }
 
 _agy_shield_say() {
@@ -108,7 +109,7 @@ _agy_shield_say() {
         return 0
     fi
 
-    _ass_dir=$(_agy_shield_markerdir "$_ass_root")
+    _agy_shield_markerdir "$_ass_root"; _ass_dir=$_asm_dir
     if [ -z "$_ass_dir" ]; then
         # No writable marker location: emit rather than swallow. A data-leak notice must never be
         # lost because the debounce store is unavailable.
@@ -125,7 +126,25 @@ _agy_shield_say() {
     # The siblings prune '.clavity-anomaly-*' and '.clavity-assert-*'; reusing either prefix would
     # delete another hook's markers on our schedule, and a broader glob would delete them all.
     # -mtime +30, NOT +7: the markers of a session that is still OPEN are as old as that session.
-    find "$_ass_dir" -maxdepth 1 -name '.clavity-shield-*' -mtime +30 -delete 2>/dev/null
+    # GATED BY A BUILTIN GLOB (Branch 21, owner reserve 2D): the prune pays its 2 processes only when a
+    # candidate exists BESIDES the marker this call just created and the sweep marker this same RUN just
+    # latched (_as_swept_now / _as_sweep are the sweep gate's globals; unset on the validation paths that
+    # reach here before agy_shield's sweep block, when the [ ] tests are simply false). An unmatched glob
+    # stays a literal string and [ -e ] rejects it - no nullglob needed.
+    _ass_stale=0
+    # The sweep find (when it ran in THIS call) already covered '.clavity-shield-*' with the same -mtime:
+    # a second prune is pure cost (panel R1). _as_swept_ran is set by the sweep block below.
+    [ "${_as_swept_ran:-0}" = 1 ] && _ass_stale=-1
+    # The call that PREPENDED does not prune either (owner-approved 2026-10-07, the same rule as the sweep latch
+    # below): the prepend is the one run per repository that is already near the process ceiling, and a prune is
+    # housekeeping. It is DEFERRED, not lost - the next call latches the sweep, whose find covers the same markers.
+    [ "${_as_prepended:-0}" = 1 ] && _ass_stale=-1
+    [ "$_ass_stale" -eq 0 ] && for _ass_f in "$_ass_dir"/.clavity-shield-*; do
+        [ "$_ass_f" = "$_ass_marker" ] && continue
+        [ "${_as_swept_now:-}" = 1 ] && [ "$_ass_f" = "${_as_sweep:-}" ] && continue
+        [ -e "$_ass_f" ] && { _ass_stale=1; break; }
+    done
+    [ "$_ass_stale" -eq 1 ] && find "$_ass_dir" -maxdepth 1 -name '.clavity-shield-*' -mtime +30 -delete 2>/dev/null
     printf 'agy-shield: %s\n' "$_ass_msg" >&2
     return 0
 }
@@ -134,6 +153,9 @@ agy_shield() {
     _as_root=$1
     _as_rel=$2
     _as_key=$3
+    # Per-call globals this branch added (file-scoped: no `local` here, and agy-mark.sh calls agy_shield more than
+    # once in one shell). A stale _as_prepended=1 would wrongly skip THIS call's sweep latch (panel R1).
+    _as_prepended=0; _as_swept_now=0; _as_swept_ran=0
 
     # ---------------------------------------------------------------- A0: validate the inputs.
     # A validation failure is a FAULT for output purposes: LOUD, NEVER debounced, and it names the
@@ -190,9 +212,18 @@ agy_shield() {
     # repeat), and MEASURED here it matches correctly - `grep -qx '*'` returns 0 on a file whose only
     # line is `*` and 1 otherwise. `-F` is taken anyway because correctness-by-construction beats
     # correctness-by-a-rule-the-reader-has-to-know. This is a clarity change, NOT a defect fix.
-    if grep -qFx '*' "$_as_shield" 2>/dev/null || grep -qFx "*$_AS_CR" "$_as_shield" 2>/dev/null; then
+    # ONE builtin read replaces the three grep probes (Branch 21, fork 2A). The grouped redirect keeps
+    # the three-state contract the greps carried: open FAILS (missing or ACL-unreadable - the [ -r ]
+    # builtin lies about Windows ACLs, so the OPEN is the oracle) -> _as_readable=0, and both tests
+    # below fall through to the same branches a grep exit of 2 took. read -d '' returns non-zero at
+    # EOF while having filled the variable, hence the `|| :` inside the group. Wrapping the content in
+    # newlines makes "a LINE equal to *" one substring test, first and last lines included.
+    _as_c=''; _as_readable=0
+    if { IFS= read -r -d '' _as_c || :; } 2>/dev/null < "$_as_shield"; then _as_readable=1; fi
+    _as_w=$'\n'${_as_c}$'\n'
+    if [ "$_as_readable" -eq 1 ] && { [[ $_as_w == *$'\n*\n'* ]] || [[ $_as_w == *$'\n*'"$_AS_CR"$'\n'* ]]; }; then
         :                                       # a bare * is present: append nothing.
-    elif [ -f "$_as_shield" ] && grep -q '^!' "$_as_shield" 2>/dev/null; then
+    elif [ -f "$_as_shield" ] && [ "$_as_readable" -eq 1 ] && [[ $_as_w == *$'\n!'* ]]; then
         # PREPEND. .gitignore is LAST-MATCH-WINS, so appending * to a file that begins with a
         # negation INVERTS that negation - measured: check-ignore flips 1 -> 0, the file silently
         # becomes ignored, and the B3 report below is never reached. Prepending satisfies BOTH
@@ -361,14 +392,19 @@ agy_shield() {
     #   bash -c ': 2>/dev/null > /nonexistent/m'   -> silent
     # The suppression that was written here never worked; the leaked diagnostic was the ONLY signal
     # this gate had, which is why the failure below is now reported deliberately instead.
-    _as_swdir=$(_agy_shield_markerdir "$_as_root")
+    _agy_shield_markerdir "$_as_root"; _as_swdir=$_asm_dir
     if [ -z "$_as_swdir" ]; then
         printf 'agy-shield: sweep gate disabled - "%s" is not a writable directory. Stale .gitignore.tmp.* files will accumulate.\n' "$_as_root/.clavity" >&2
     else
         _as_sweep="$_as_swdir/.clavity-shield-swept-${_as_key:-nosession}"
         if [ -f "$_as_sweep" ]; then
             :   # already swept for this key - the gate doing its job, and NOT a failure to report.
+        elif [ "${_as_prepended:-0}" = 1 ]; then
+            :   # OWNER CHOICE (i), panel R1: the call that paid section 41's prepend (6 processes) does NOT
+                # latch the sweep. It is housekeeping; the next call under this key - or the next session's
+                # key - latches and sweeps. This is what holds the first-negation run to 15.
         elif : 2>/dev/null > "$_as_sweep"; then
+            _as_swept_now=1
             # BOTH PREFIXES, and the shield-marker half is not tidiness. The only other prune of
             # '.clavity-shield-*' sits inside _agy_shield_say, on the branch that CREATES a marker - and on
             # a HEALTHY repository _agy_shield_say is never called at all, because Stage B returns at its
@@ -384,7 +420,17 @@ agy_shield() {
             # the life of the checkout.
             # NOT a wider glob: the siblings own '.clavity-anomaly-*' and '.clavity-assert-*', and eating
             # those would prune another hook's markers on this hook's schedule.
-            find "$_as_dir" -maxdepth 1 \( -name '.gitignore.tmp.*' -o -name '.clavity-shield-*' \) -mtime +30 -delete 2>/dev/null
+            #
+            # GATED BY A BUILTIN GLOB (Branch 21, reserve 2D): on a healthy repository the only matches
+            # are the marker files this very run created, and the find's 2 processes would push the
+            # recurring !-negation path to 19 of 16 (measured arithmetic in the plan). Skip it unless a
+            # candidate OTHER than this run's own sweep marker exists; a stale-temp repo pays +2 once.
+            _as_stale=0
+            for _as_f in "$_as_dir"/.gitignore.tmp.* "$_as_dir"/.clavity-shield-*; do
+                [ "$_as_f" = "$_as_sweep" ] && continue
+                [ -e "$_as_f" ] && { _as_stale=1; break; }
+            done
+            [ "$_as_stale" -eq 1 ] && { find "$_as_dir" -maxdepth 1 \( -name '.gitignore.tmp.*' -o -name '.clavity-shield-*' \) -mtime +30 -delete 2>/dev/null; _as_swept_ran=1; }
         else
             # Fail CLOSED on cost (no marker, no sweep) but never fail SILENT. Without this the gate
             # simply stops sweeping and nothing says so, and stale temps accumulate unbounded - the
@@ -394,16 +440,31 @@ agy_shield() {
     fi
 
     # ---------------------------------------------------------------- Stage B: verify the EFFECT.
-    # B1: not inside a work tree. check-ignore returns 128 there, indistinguishable from a genuine
-    # error, so the effect check cannot run. Stage A has already guaranteed the text. Isolate this
-    # exactly as scripts/check-core-integrity.ps1:39-46 does for the same ambiguity. SILENT.
-    git -C "$_as_root" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
-
+    # check-ignore FIRST (Branch 21, owner fork 2B): on every healthy call it answers alone, and the
+    # rev-parse probe runs ONLY when it could not (rc neither 0 nor 1) - to tell "not a work tree"
+    # (NORMAL, SILENT - B1) from a real git failure inside one (B4). MEASURED 2026-10-07: outside a
+    # repo check-ignore exits 128 with `fatal:` on stderr - already suppressed by the 2>/dev/null this
+    # line has carried all along - and inside one it exits 0 (ignored) or 1 (not). No path's ANSWER
+    # changes; the only delta is one fewer git process on every rc-0/rc-1 call.
     git -C "$_as_root" check-ignore -q -- "$_as_rel" 2>/dev/null
     _as_ci=$?
 
     if [ "$_as_ci" -eq 0 ]; then
         return 0                                # B2: ignored. Done. SILENT.
+    fi
+
+    if [ "$_as_ci" -ne 1 ]; then
+        # B1: not inside a work tree. check-ignore returns 128 there, indistinguishable from a genuine
+        # error, so the effect check cannot run. Stage A has already guaranteed the text. Isolate this
+        # exactly as scripts/check-core-integrity.ps1:39-46 does for the same ambiguity. SILENT.
+        git -C "$_as_root" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+        # B4: a real git error INSIDE a work tree. Stage A has already done what it can, which is the
+        # safe direction for a data-leak guard. Say so and stop. Through this function's front door A0
+        # rejects every cheap way of producing a 128, so this branch is reachable only by genuine
+        # repository corruption - it has NO honest oracle and deliberately has no test row.
+        _agy_shield_say environment "$_as_key" \
+            "git check-ignore failed (exit $_as_ci) inside a work tree; the shield text was asserted but its effect could not be verified for $_as_rel" "$_as_root"
+        return 0
     fi
 
     if [ "$_as_ci" -eq 1 ]; then
@@ -426,7 +487,8 @@ agy_shield() {
             # REPORT; do NOT silently rewrite - auto-deleting a line a human deliberately wrote is a
             # destructive footgun, and a missing shield is trivially restorable where a destroyed intent is
             # not. That reasoning is unchanged; only the claim about how this branch is reached was wrong.
-            _as_why=$(git -C "$_as_root" check-ignore -v -- "$_as_rel" 2>/dev/null | head -n 1)
+            _as_why=$(git -C "$_as_root" check-ignore -v -- "$_as_rel" 2>/dev/null)
+            _as_why=${_as_why%%$'\n'*}          # first line, builtin - no head process
             if [ -n "$_as_why" ]; then
                 # THE PROSE MUST NOT NAME THE FILE - capstone round 2, and this is the SECOND time the same
                 # mistake has been folded out of this one message. The first version blamed a negation line
@@ -447,12 +509,5 @@ agy_shield() {
         fi
         return 0
     fi
-
-    # B4: a real git error INSIDE a work tree. Stage A has already done what it can, which is the
-    # safe direction for a data-leak guard. Say so and stop. Through this function's front door A0
-    # rejects every cheap way of producing a 128, so this branch is reachable only by genuine
-    # repository corruption - it has NO honest oracle and deliberately has no test row.
-    _agy_shield_say environment "$_as_key" \
-        "git check-ignore failed (exit $_as_ci) inside a work tree; the shield text was asserted but its effect could not be verified for $_as_rel" "$_as_root"
     return 0
 }

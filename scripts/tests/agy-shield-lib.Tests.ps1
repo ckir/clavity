@@ -675,61 +675,41 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
         # cross-repository collision this step removed - see 'reports the SAME fault in a SECOND repository
         # under the SAME key (roadmap 17a)'.
 
-        It 'the sweep runs AFTER Stage A2, so the shield is in place before the marker lands' {
-            # THIS ROW REPLACES ACCEPTED-BOUNDARY ENTRY M, WHICH WAS WRONG. The entry claimed the ordering
-            # could not be pinned, and the reasoning that produced it is worth stating because it is
-            # seductive: the two orders ARE end-state identical - sweep-first writes marker then shield,
-            # sweep-after writes shield then marker, and afterwards both leave the same files, all ignored.
-            # That much is true, and a row asserting anything about the state AFTER the call really is
-            # vacuous; one was written, proved vacuous by a mutant, and deleted. The error was concluding
-            # from that that NOTHING can observe the ordering. The hazard is a WINDOW, so the observation
-            # has to happen INSIDE the window rather than after it.
-            #
-            # HOW. The helper is SOURCED, and it calls `find` unqualified. A shell FUNCTION named `find`,
-            # defined in the body before the source, therefore intercepts the sweep at the exact moment it
-            # runs and can record the state of the world at that instant. It records whether the shield
-            # text exists yet, then delegates to the real `find` via `command`, so the helper's own
-            # behaviour is unchanged.
-            #
-            # WHY IT READS THE SHIELD'S CONTENT AND NOT THE CALL ORDER, which is the whole point. The
-            # obvious version records that `grep` (Stage A2) ran before `find` (the sweep) - and that is a
-            # PROXY for the property, the defect shape this repository has now hit five times. The line
-            # that actually WRITES the shield is a `printf` builtin with a redirect: no subprocess, nothing
-            # a PATH shim could intercept. Move ONLY that line below the sweep and a grep-before-find
-            # assertion stays GREEN while the property is broken. Reading the shield at sweep time observes
-            # the property itself, and reds on exactly that mutation too.
-            #
-            # TWO OBSERVATION POINTS, AND THE SECOND ONE EXISTS BECAUSE THE FIRST WAS DEFEATED. The row
-            # originally watched only `find`, and capstone round 2 broke it: hoist the gate (the marker
-            # existence check AND the `: >` that creates it) above Stage A2 while leaving the `find` below,
-            # and the marker lands in an unshielded directory - the exact hazard - while `find` still runs
-            # after A2 and observes the shield PRESENT. MEASURED: that mutant left this row GREEN.
-            # The second checkpoint closes it. `grep` is the FIRST subprocess Stage A2 runs, and every one
-            # of its `grep` calls happens BEFORE the `printf` that writes the shield, so "has the marker
-            # been created yet?" asked at grep time is a direct question about ordering. Under correct code
-            # the answer is always ABSENT; under the round-2 mutant the first grep already sees it PRESENT.
-            # Both shims delegate with `command` so the helper's behaviour is unchanged, and the find shim
-            # uses `command grep` so it cannot recurse into the grep shim.
-            #
-            # MUTATION-PROVEN AGAINST THREE MUTANTS, anchors checked both ways and each mutant re-parsed.
-            # BOTH checkpoints are load-bearing - do not delete either as redundant, because they catch
-            # DIFFERENT regressions and the first mapping I wrote for them was wrong until I ran mutant 3:
-            #   1. whole sweep block relocated above A2      -> caught at GREP time (marker already there)
-            #   2. gate hoisted above A2, find left below    -> caught at GREP time (this is the round-2
-            #                                                   mutant, and it defeated the find-time
-            #                                                   checkpoint on its own - that is why the
-            #                                                   grep checkpoint exists)
-            #   3. only the shield WRITE deferred below the  -> caught at FIND time, and ONLY there: the
-            #      sweep, gate and find left in place           marker is created after A2 begins, so the
-            #                                                   grep checkpoint sees nothing wrong
-            $r = New-FixtureRepo -NoClavityDir
+        # BRANCH 21 REWORK of the ordering row. It used to watch two points: every `grep` of Stage A2 and the
+        # sweep's `find`. Stage A2 now reads the shield with ONE builtin `read` (no grep process to shim), and the
+        # sweep's `find` runs only when a stale candidate exists (a builtin glob gate), so a fresh fixture never
+        # reaches it. The HAZARD is unchanged - the sweep marker landing in a directory whose shield is not yet in
+        # place - so the observation points moved, and each is still a direct question about the property:
+        #   ROW 1 (marker-at-mktemp): `mktemp` is the first external process of the A2 prepend branch, which a
+        #     shield holding only a negation takes. Asked at that instant "does the swept marker exist yet?" the
+        #     answer must be ABSENT. It catches the sweep gate (or the whole sweep block) being hoisted above A2.
+        #   ROW 2 (shield-at-find): with a stale temp planted the gate PASSES and `find` runs; asked at that instant
+        #     "is the shield text in place?" the answer must be PRESENT. It catches the shield WRITE being deferred
+        #     below the sweep and the sweep block being relocated above A2.
+        # Both shims delegate with `command`, so the helper's behaviour is unchanged. The preconditions come FIRST:
+        # a file that is absent would make the assertion about its contents vacuous.
+        It 'the sweep marker does not exist yet when Stage A2 prepends (shield first, marker after)' {
+            $r = New-FixtureRepo -Shield "!local-anomalies.md`n"
             $body = @(
-                'grep() {',
+                'mktemp() {',
                 '  _m=$(command ls "$PWD"/.clavity/.clavity-shield-swept-* 2>/dev/null | command head -1)',
-                '  if [ -n "$_m" ]; then echo PRESENT >> "$PWD/marker-at-grep.txt"',
-                '  else echo ABSENT >> "$PWD/marker-at-grep.txt"; fi',
-                '  command grep "$@"',
+                '  if [ -n "$_m" ]; then echo PRESENT >> "$PWD/marker-at-mktemp.txt"',
+                '  else echo ABSENT >> "$PWD/marker-at-mktemp.txt"; fi',
+                '  command mktemp "$@"',
                 '}',
+                'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+            ) -join "`n"
+            $null = Invoke-Shield -Root $r -Body $body
+            $atMktemp = Join-Path $r 'marker-at-mktemp.txt'
+            (Test-Path -LiteralPath $atMktemp) | Should -BeTrue -Because 'the negation shield must take the prepend branch (mktemp), or this checkpoint observes nothing'
+            @(Get-Content -LiteralPath $atMktemp) | Should -Not -Contain 'PRESENT' -Because 'the sweep marker must not exist yet when Stage A2 begins; if it does, it was written into a directory that is not yet shielded'
+        }
+
+        It 'the sweep find runs only after the shield text is in place (a stale temp opens the gate)' {
+            # No shield file, but .clavity/ exists and carries a planted stale temp: the glob gate PASSES, so `find` runs.
+            $r = New-FixtureRepo
+            [IO.File]::WriteAllText((Join-Path $r '.clavity/.gitignore.tmp.OLDOLD'), "stale`n")
+            $body = @(
                 'find() {',
                 '  if command grep -qFx ''*'' "$PWD/.clavity/.gitignore" 2>/dev/null; then echo PRESENT > "$PWD/sweep-order.txt"',
                 '  else echo ABSENT > "$PWD/sweep-order.txt"; fi',
@@ -739,16 +719,24 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             ) -join "`n"
             $null = Invoke-Shield -Root $r -Body $body
             $observed = Join-Path $r 'sweep-order.txt'
-            $atGrep = Join-Path $r 'marker-at-grep.txt'
-            # THE GREP CHECKPOINT. Its own precondition first, for the same reason as below: if Stage A2
-            # stopped calling grep entirely this file would be absent and the -NotContain would be vacuous.
-            (Test-Path -LiteralPath $atGrep) | Should -BeTrue -Because 'Stage A2 must call grep, or this checkpoint observes nothing'
-            @(Get-Content -LiteralPath $atGrep) | Should -Not -Contain 'PRESENT' -Because 'the sweep marker must not exist yet when Stage A2 begins; if it does, it was written into a directory that is not yet shielded'
-            # ASSERT THE PRECONDITION FIRST. Without this the row passes vacuously against any change that
-            # stops the sweep running at all: the file would simply be absent, and an assertion about its
-            # contents would never run. A control that cannot state its own precondition is not a control.
-            (Test-Path -LiteralPath $observed) | Should -BeTrue -Because 'the sweep must actually run, or this row asserts nothing at all'
-            (Get-Content -Raw -LiteralPath $observed).Trim() | Should -Be 'PRESENT' -Because 'Stage A2 must shield .clavity/ BEFORE the sweep writes its marker into it, or a concurrent `git add -A` in that window stages this helper''s own bookkeeping'
+            (Test-Path -LiteralPath $observed) | Should -BeTrue -Because 'the planted stale temp must open the gate so the sweep find runs, or this row asserts nothing at all'
+            (Get-Content -Raw -LiteralPath $observed).Trim() | Should -Be 'PRESENT' -Because 'Stage A2 must shield .clavity/ BEFORE the sweep runs, or a concurrent `git add -A` in that window stages this helper''s files'
+        }
+
+        It 'the prepending call defers the say-prune, and the NEXT call deletes the aged marker (not lost)' {
+            # Branch 21 (owner-approved, agreed with agy): the one call that prepends skips the say-prune find, because it is
+            # the run already nearest the process ceiling. DEFERRED, not lost: the next call latches the sweep and its find
+            # covers the same '.clavity-shield-*' markers. Pinned from BOTH sides - survives the prepend, gone after the next.
+            $r = New-FixtureRepo -Shield "!local-anomalies.md`n"
+            $old = Join-Path $r '.clavity/.clavity-shield-persistent-oldkey'
+            [IO.File]::WriteAllText($old, '')
+            (Get-Item -LiteralPath $old).LastWriteTimeUtc = [datetime]::UtcNow.AddDays(-40)
+            $call = 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+            $null = Invoke-Shield -Root $r -Body $call
+            (Get-Shield $r) | Should -Match '(?m)^\*\r?$' -Because 'the first call must have PREPENDED, or this row does not measure the prepending call'
+            (Test-Path -LiteralPath $old) | Should -BeTrue -Because 'the prepending call must not prune (deferred, to hold the run near the process ceiling)'
+            $null = Invoke-Shield -Root $r -Body $call
+            (Test-Path -LiteralPath $old) | Should -BeFalse -Because 'the next call latches the sweep and its find deletes the aged marker - deferred, not lost'
         }
 
         It 'a failed shield write OUTSIDE a git repository is reported, not swallowed' {

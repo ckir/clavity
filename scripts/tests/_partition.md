@@ -727,7 +727,7 @@ agy-seam-inject.Tests.ps1                        39,4s   36 tests   <- SLOW, re-
                                                                       been comment-only). Time had said
                                                                       18,0s and was "count 2026-08-03,
                                                                       time older" - now both are current.
-agy-shield-lib.Tests.ps1                        409,1s   45 tests   <- SLOW, NEW 2026-08-16. Fixture-
+agy-shield-lib.Tests.ps1                        409,1s   47 tests   <- SLOW, NEW 2026-08-16; 45 -> 47 2026-10-07 (Branch 21 Task 2: the ordering row became two, +1 deferred-prune row; time not re-measured). Fixture-
                                                                       heavy: many git + bash subprocess spawns per
                                                                       row across 17 Its. Measured solo, two
                                                                       consecutive runs immediately back to back:
@@ -1098,7 +1098,7 @@ generate-cheatsheet-literals.Tests.ps1           41,6s   18 tests   <- SLOW, NEW
 generate-scoped-manifest.Tests.ps1                2,1s    2 tests   <- FAST, re-measured 2026-08-05
 marketplace-manifest.Tests.ps1                    4,6s  10 tests   <- FAST, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled)
 pairing-doc.Tests.ps1                            22,2s   9 tests   <- SLOW, NEW 2026-10-03 (Branch 18, ROADMAP sections 60+62; warm run, cold first run 63,5s; box load uncontrolled)
-hook-spawn-budget.Tests.ps1                     226,5s  121 tests   <- SLOW; 109 -> 121 2026-10-07 (Branch 21 Task 1: +6 inbox-snapshot rows x row/compat variants; 120 pass, 1 red = the debt row, 7 entries left), NEW 2026-10-06 (Branch 20 process budget; 1 row RED locally until Branch 21 - owner ruling; one run, box load uncontrolled; 55 -> 56 with the PreCompact re-arm row, Task 5; after Tasks 3-9 only the debt row is red, 168,6s); 56 -> 109 2026-10-06 (Branch 20 capstone R1: +53 bash 3.2 equivalence rows), time not re-measured
+hook-spawn-budget.Tests.ps1                     226,5s  139 tests   <- SLOW; 109 -> 121 2026-10-07 (Branch 21 Task 1: +6 inbox-snapshot rows x row/compat variants); 121 -> 139 2026-10-07 (Task 2: +9 discipline-reaching rows x row/compat variants; 138 pass, 1 red = the debt row, 6 entries left), NEW 2026-10-06 (Branch 20 process budget; 1 row RED locally until Branch 21 - owner ruling; one run, box load uncontrolled; 55 -> 56 with the PreCompact re-arm row, Task 5; after Tasks 3-9 only the debt row is red, 168,6s); 56 -> 109 2026-10-06 (Branch 20 capstone R1: +53 bash 3.2 equivalence rows), time not re-measured
 plugin-hooks-registration.Tests.ps1               0,6s   37 tests   <- FAST, re-measured 2026-09-13 (+2 2026-10-01: section 57 test-audit-reminder PostToolUse matcher row; +2 since; +1 for the section-15 consult-recovery registration row; was
                                                                       0,5s / 18 tests; +4 for the recorder's
                                                                       SessionStart registration, which this

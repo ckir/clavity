@@ -15,7 +15,6 @@ $script:ConsultPin = @{ PreMcp = 111; PreAsk = 114; PreSend = 117; PostMcp = 114
 # the 3 boot processes. The suite's debt row stays RED while this list is non-empty. Branch 21 removes each
 # entry in the same commit that adds a passing budget row for that path.
 $script:B21Debt = @(
-    @{ Hook = 'agy-discipline-reaching.sh';     Path = 'shield .gitignore carries a ! negation';                    Total = 36 }
     @{ Hook = 'agy-anomaly-reminder.sh';        Path = 'one untriaged entry';                                       Total = 23 }
     @{ Hook = 'agy-verify-reminder.sh';         Path = 'agy on PATH, assertion rows stale';                         Total = 24 }
     @{ Hook = 'docs-audit-reminder.sh';         Path = 'generated findings view with open findings';                Total = 22 }
@@ -121,6 +120,17 @@ function Add-FxInbox {
     $obs
 }
 function Get-FxBaks { param($Fx) @(Get-ChildItem -LiteralPath (Join-Path $Fx.Home '.clavity') -Filter 'agy-observations.md.*.bak' -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object Name) }
+
+function Set-FxShield {
+    # $Text = $null -> .clavity exists with NO .gitignore; otherwise the shield holds exactly $Text.
+    # New-HookFixture ALREADY writes .clavity/.gitignore = '*' (panel R1, measured): the $null case must
+    # DELETE it, or the "shield MISSING" row silently measures the healthy path instead.
+    param($Fx, $Text)
+    $d = Join-Path $Fx.Repo '.clavity'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+    $g = Join-Path $d '.gitignore'
+    if ($null -eq $Text) { Remove-Item -LiteralPath $g -Force -ErrorAction SilentlyContinue }
+    else { [IO.File]::WriteAllText($g, $Text) }
+}
 
 $D = 'clavity-dotnet/plugin/hooks'; $C = 'clavity-classic/plugin/hooks'; $A = 'agy-autotrain/hooks'; $L = '.claude/hooks'
 $mcp = 'mcp__plugin_clavity_clavity-ls__agy_ask'
@@ -314,6 +324,56 @@ $script:Rows = @(
     New-BudgetRow "$D/agy-anomaly-reminder.sh" 'startup, nothing captured' { param($fx) New-SessionStartPayload $fx } -Silent
     New-BudgetRow "$D/agy-anomaly-model-notice.sh" 'startup' { param($fx) New-SessionStartPayload $fx } -Silent
     New-BudgetRow "$D/agy-discipline-reaching.sh" 'startup, shield intact' { param($fx) New-SessionStartPayload $fx } -Silent
+    # --- agy-discipline-reaching.sh + the shared agy-shield-lib.sh: the Branch 21 census paths ---
+    # TIGHT ON PURPOSE (Max 2 = the single check-ignore): the two glob gates are what keep the sweep find and the
+    # say-prune find from running on a healthy repository, and each find costs 2 - at the shared ceiling of 13 an
+    # ungated find would still pass, so a regression to ungated finds is invisible. Measured 2 on 2026-10-07.
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'normal FIRST session (shield ok, sweep latch, row written)' -Max 2 {
+        param($fx) Set-FxShield $fx "*`n"; New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Join-Path $fx.Repo '.clavity/discipline-reaching.jsonl') | Should -Exist }
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'shield file MISSING -> created with *' {
+        param($fx) Set-FxShield $fx $null; New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Get-Content -LiteralPath (Join-Path $fx.Repo '.clavity/.gitignore') -Raw) | Should -Match '\*' }
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'shield lacks * -> appended' {
+        param($fx) Set-FxShield $fx "foo.txt`n"; New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) @(Get-Content -LiteralPath (Join-Path $fx.Repo '.clavity/.gitignore')) -contains '*' | Should -BeTrue }
+    # THE ONE NAMED EXEMPTION of Branch 21 (owner ruling 2026-10-07, agreed with agy): the first run that meets a
+    # `!` negation PREPENDS `*` (mktemp + cat + mv, section 41, deliberately untouched) and measures 14 beyond boot,
+    # one over the 13 allowed. It happens once per shield file per repository; every later run takes the recurring
+    # path below (7 or 9). The plan predicted 12 - its arithmetic was wrong. Max is 14 EXACTLY: a regression on
+    # this path fails here, it is not hidden by the exemption.
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'shield has a ! negation -> PREPEND, first session (one-time exemption, Max 14)' -Max 14 {
+        param($fx) Set-FxShield $fx "!discipline-reaching.jsonl`n"; New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) $s = @(Get-Content -LiteralPath (Join-Path $fx.Repo '.clavity/.gitignore'))
+        $s[0] | Should -BeExactly '*'; $s[1] | Should -BeExactly '!discipline-reaching.jsonl' }
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'shield already * + ! negation, REPEAT session (swept marker present)' {
+        param($fx) Set-FxShield $fx "*`n!discipline-reaching.jsonl`n"
+        New-Item -ItemType File -Path (Join-Path $fx.Repo '.clavity/.clavity-shield-swept-s1') | Out-Null
+        New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Get-Content -LiteralPath (Join-Path $fx.Repo '.clavity/.gitignore'))[0] | Should -BeExactly '*' }
+    # Max 4 = check-ignore + ls-files; tight for the same reason (the say-prune find must stay gated). Measured 4.
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'jsonl TRACKED by git -> persistent message, marker written' -Max 4 {
+        param($fx) Set-FxShield $fx "*`n"
+        [IO.File]::WriteAllText((Join-Path $fx.Repo '.clavity/discipline-reaching.jsonl'), "{}`n")
+        Invoke-FxGit $fx add --force .clavity/discipline-reaching.jsonl   # NOT -f: PowerShell binds it to -Fx
+        New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Join-Path $fx.Repo '.clavity/.clavity-shield-persistent-s1') | Should -Exist }
+    # LONG-LIVED REPO variants (panel R1): a real repository carries OTHER sessions' markers, so the glob
+    # gates PASS and both finds run - the cheapest-fixture rows above cannot see that cost.
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'long-lived repo: the FIRST-prepend run with old markers present (one-time exemption, Max 14)' -Max 14 {
+        param($fx) Set-FxShield $fx "!discipline-reaching.jsonl`n"
+        foreach ($k in 'old1', 'old2') { New-Item -ItemType File -Path (Join-Path $fx.Repo ".clavity/.clavity-shield-swept-$k") | Out-Null }
+        New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Get-Content -LiteralPath (Join-Path $fx.Repo '.clavity/.gitignore'))[0] | Should -BeExactly '*' }
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'long-lived repo: a NEW session on the recurring ! negation path (old markers present)' {
+        param($fx) Set-FxShield $fx "*`n!discipline-reaching.jsonl`n"
+        foreach ($k in 'old1', 'old2') { New-Item -ItemType File -Path (Join-Path $fx.Repo ".clavity/.clavity-shield-swept-$k") | Out-Null }
+        New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Join-Path $fx.Repo '.clavity/.clavity-shield-swept-s1') | Should -Exist }
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'long-lived repo: a NEW session, healthy shield (old markers present)' {
+        param($fx) foreach ($k in 'old1', 'old2') { New-Item -ItemType File -Path (Join-Path $fx.Repo ".clavity/.clavity-shield-swept-$k") | Out-Null }
+        New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Join-Path $fx.Repo '.clavity/.clavity-shield-swept-s1') | Should -Exist }
     New-BudgetRow "$D/agy-anomaly-capture-reminder.sh" 'PreCompact' { param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'PreCompact'; trigger = 'manual' } } -Expect 'AGY-ANOMALIES/1 check BEFORE COMPACTION'
     New-BudgetRow "$D/agy-anomaly-capture-reminder.sh" 'PreCompact re-arming a test-audit debounce' {
         param($fx)
