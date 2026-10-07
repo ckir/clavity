@@ -1563,6 +1563,14 @@ predicted, no pre-existing test went red, `just seed-sync-check` and `just check
 the Task 9 script's whole-file ASCII assert (failed on an existing em dash) and hard-coded root, the stale
 "nothing is written to disk" comment (Task 7 Step 6), and the Task 10 grep scope.
 
+## Execution notes (2026-10-07, inline)
+
+Tasks 1-10 ran as written, with these deviations - the plan text above is NOT edited, so the shipped state is what these say:
+
+- **T1:** the conversation id for the metadata call is the key of `GetAllCascadeTrajectories`, not the `CascadeId` that `agy_status` prints (they differ). `AgyView` already used the right one; only the probe needed fixing.
+- **T9:** after the comprehension check (a fresh agent given the OLD paragraph refused the local file - the owner's defect; given the NEW one, it halted on a classic reply with no files instead of making the single re-ask) the paragraph gained `- and if you have none yet, make your single re-ask the one that asks for it` before step (3). Commit `e4e6c55d`.
+- **T10:** `check-roadmap-claims.ps1` went red at HEAD because the skill edits grew four SKILL.md files by 8 lines each; the four line-count claims in ROADMAP section 14 were updated. The `:N` evidence pointers in that table were already wrong before this branch (the gate checks counts only) - recorded as an anomaly, not fixed here.
+
 ## Self-review (done at authoring)
 
 - **Spec coverage:** C-echo -> T2; C-capture -> T4 + T7; C-check -> T3 + T7 + T8 (ANSWER CUT); C-request -> T5 + T7; C-peer-read -> T5 + T7 (nonce, 1 MiB, bounded Answer, tool-ended reported, `CheckedSource`); C-order -> T6 + T8 + T9; C-doc -> T2; D-root -> T1 + T5 + T7; D-name -> T4/T5 (`<cascade-id>-<first-step-index>` + nonce); D-shield -> T5; D-prune -> T4 (capture, every attempt) + T7 (peer dir, whenever requested); D-classic -> T9 (shared text, transport untouched); T4b note amended -> T7 Step 5.
