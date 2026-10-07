@@ -2383,4 +2383,26 @@ public class AgyAskIntegrationTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    [Fact]
+    public async Task A_rescued_Answer_cut_never_splits_a_surrogate_pair()
+    {
+        var dir = TempDir();
+        try
+        {
+            var ws = ShieldedWorkspace(dir);
+            const string emoji = "\U0001F600";
+            var body = new string('y', BoundedView.AskMaxStepChars - 1) + emoji + "\n\n" + GoodReport;
+            var (r, _) = await AskOnce("Noted.", dir, f =>
+            {
+                f.WorkspaceUris = new[] { new Uri(ws).AbsoluteUri };
+                f.OnSend = PeerWrites(body);
+            });
+            Assert.Equal("peer-file", r.CheckedSource);
+            Assert.True(r.AnswerTruncated);
+            Assert.False(char.IsHighSurrogate(r.Answer![^1]));
+            Assert.Equal(BoundedView.AskMaxStepChars - 1, r.Answer.Length);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

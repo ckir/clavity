@@ -155,4 +155,15 @@ public class AskReplyProjectionTests
         Assert.Contains("\"PeerFile\":\"p.md\"", set);
         Assert.Contains("\"PeerFileStatus\":\"s\"", set);
     }
+
+    [Fact]
+    public void An_Answer_cut_never_splits_a_surrogate_pair()
+    {
+        const string emoji = "\U0001F600";
+        var text = new string('a', BoundedView.AskMaxStepChars - 1) + emoji + new string('z', 10);
+        var r = Project(Asst(text));
+        Assert.True(r.AnswerTruncated);
+        Assert.Equal(BoundedView.AskMaxStepChars - 1, r.Answer!.Length);          // backed off one char, not split
+        Assert.False(char.IsHighSurrogate(r.Answer[^1]));
+    }
 }

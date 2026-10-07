@@ -111,7 +111,7 @@ public static class BoundedView
         var answerTruncated = false;
         if (answer is not null && answer.Length > AskMaxStepChars)
         {
-            answer = answer[..AskMaxStepChars];
+            answer = TextCut.Prefix(answer, AskMaxStepChars);
             answerTruncated = true;
         }
 

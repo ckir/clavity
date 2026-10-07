@@ -73,4 +73,33 @@ public class ReplyCaptureTests : IDisposable
         Assert.Equal(new[] { "f3.md", "f4.md", "keep.txt" },
                      Directory.GetFiles(_dir).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal).ToArray());
     }
+
+    private static bool HasLoneSurrogate(string s)
+    {
+        for (var i = 0; i < s.Length; i++)
+        {
+            if (char.IsHighSurrogate(s[i]) && !(i + 1 < s.Length && char.IsLowSurrogate(s[i + 1]))) return true;
+            if (char.IsLowSurrogate(s[i]) && !(i > 0 && char.IsHighSurrogate(s[i - 1]))) return true;
+        }
+        return false;
+    }
+
+    [Fact]
+    public void An_emoji_straddling_the_head_cut_or_the_tail_cut_is_never_split()
+    {
+        // Capstone R1 BS1. Put a surrogate pair exactly across BOTH cut points: its high half is the last char the
+        // head would keep, and its low half is the first char the tail would keep.
+        const string emoji = "\U0001F600";
+        var header = "----- agy step 0 -----\n".Length;
+        var pre = new string('h', ReplyCapture.HeadChars - 1 - header);
+        var mid = new string('m', 200_000);
+        var text = pre + emoji + mid + emoji + new string('t', ReplyCapture.TailChars - 2);
+
+        var rendered = ReplyCapture.Render(0, new[] { Asst(text) });
+
+        Assert.Contains("characters omitted", rendered);
+        Assert.False(HasLoneSurrogate(rendered), "the cut left half of an emoji");
+        Assert.True(HasLoneSurrogate(text.Substring(0, ReplyCapture.HeadChars - header)),
+                    "control: a raw cut of this very text DOES split the pair, so the row can fail");
+    }
 }

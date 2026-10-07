@@ -52,8 +52,10 @@ public static class ReplyCapture
         }
         var all = sb.ToString();
         if (all.Length <= MaxChars) return all;
-        var omitted = all.Length - HeadChars - TailChars;
-        return string.Concat(all.AsSpan(0, HeadChars), $"\n----- cut: {omitted} characters omitted -----\n", all.AsSpan(all.Length - TailChars));
+        var head = TextCut.Prefix(all, HeadChars);
+        var tailStart = TextCut.SuffixStart(all, all.Length - TailChars);
+        var omitted = tailStart - head.Length;
+        return string.Concat(head, $"\n----- cut: {omitted} characters omitted -----\n", all.AsSpan(tailStart));
     }
 
     /// <summary>Delete all but the newest <paramref name="keep"/> <c>*.md</c> files. Best-effort: never throws.</summary>

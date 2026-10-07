@@ -328,7 +328,7 @@ public sealed class AgyView
         var cut = body.Length > BoundedView.AskMaxStepChars;
         return chat with
         {
-            Answer = cut ? body[..BoundedView.AskMaxStepChars] : body,
+            Answer = TextCut.Prefix(body, BoundedView.AskMaxStepChars),
             AnswerTruncated = cut,
             TerminalTokenMissing = false,
             EchoMissing = false,
