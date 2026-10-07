@@ -57,7 +57,7 @@ the result names, its LAST 200 lines first - the verdict, the echo and the json 
 that can reach 1 MiB (a failed capture leaves it null, and the notice says so); (2) read the peer's own reply
 file if one was requested - clavity-dotnet requests it itself when you name a discipline and reports it as
 `PeerFile`; on clavity-classic, ask for it by hand in your brief (a `.clavity/scratch/<topic>/` file holding
-the whole reply verbatim); (3) re-ask AT MOST ONCE; (4) halt and ask your human. `agy_look` caps every step
+the whole reply verbatim - and if you have none yet, make your single re-ask the one that asks for it); (3) re-ask AT MOST ONCE; (4) halt and ask your human. `agy_look` caps every step
 at 1000 characters, so it recovers a SHORT reply only. An unbounded "re-ask until it passes" reproduces the
 same mismatch and burns a budget.
 
