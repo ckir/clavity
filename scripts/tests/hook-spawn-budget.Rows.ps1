@@ -15,7 +15,6 @@ $script:ConsultPin = @{ PreMcp = 111; PreAsk = 114; PreSend = 117; PostMcp = 114
 # the 3 boot processes. The suite's debt row stays RED while this list is non-empty. Branch 21 removes each
 # entry in the same commit that adds a passing budget row for that path.
 $script:B21Debt = @(
-    @{ Hook = 'agy-anomaly-reminder.sh';        Path = 'one untriaged entry';                                       Total = 23 }
     @{ Hook = 'agy-verify-reminder.sh';         Path = 'agy on PATH, assertion rows stale';                         Total = 24 }
     @{ Hook = 'docs-audit-reminder.sh';         Path = 'generated findings view with open findings';                Total = 22 }
     @{ Hook = 'assertion-strength-reminder.sh'; Path = 'TMPDIR unusable, HOME/.clavity-tmp fallback';               Total = 21 }
@@ -322,6 +321,23 @@ $script:Rows = @(
     New-BudgetRow "$D/agy-anomaly-dispatch-reminder.sh" 'Agent dispatch' { param($fx) New-ToolPayload $fx 'Agent' @{ prompt = 'x' } } -Expect 'AGY-ANOMALIES/1 relay'
     New-BudgetRow "$D/assertion-strength-reminder.sh" 'non-test Edit' { param($fx) New-ToolPayload $fx 'Edit' @{ file_path = "$($fx.RepoFwd)/src/a.cs" } } -Silent
     New-BudgetRow "$D/agy-anomaly-reminder.sh" 'startup, nothing captured' { param($fx) New-SessionStartPayload $fx } -Silent
+    # --- agy-anomaly-reminder.sh: the Branch 21 census paths (the hook EMITS, so -Expect works under the PP1 JSON check) ---
+    # TIGHT ON PURPOSE (Max 2 = the one jq that builds the envelope): every other step is a builtin, and at the shared
+    # ceiling of 13 a reintroduced grep or awk would still pass. Measured 2 on 2026-10-07 (it was 20 before Branch 21).
+    New-BudgetRow "$D/agy-anomaly-reminder.sh" '3 untriaged with dates -> EMIT the oldest' -Max 2 {
+        param($fx)
+        $d = Join-Path $fx.Repo '.clavity'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+        @('# Untriaged anomalies (local, never committed)', '',
+          '- [defect] a * src/a.rs:1 * 2026-09-01 * task=x',
+          '- [tool] b * n/a * 2026-08-15 * task=y',
+          '- [process] c * n/a * 2026-09-20 * task=z') | Set-Content -LiteralPath (Join-Path $d 'local-anomalies.md')
+        New-SessionStartPayload $fx } -Expect '3 untriaged (oldest 2026-08-15)'
+    New-BudgetRow "$D/agy-anomaly-reminder.sh" '50 untriaged (scaling: the count loop is builtin)' -Max 2 {
+        param($fx)
+        $d = Join-Path $fx.Repo '.clavity'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+        $lines = @('# Untriaged anomalies (local, never committed)', '') + (1..50 | ForEach-Object { "- [defect] n$_ * n/a * 2026-09-0$(1 + ($_ % 8)) * task=t" })
+        $lines | Set-Content -LiteralPath (Join-Path $d 'local-anomalies.md')
+        New-SessionStartPayload $fx } -Expect '50 untriaged'
     New-BudgetRow "$D/agy-anomaly-model-notice.sh" 'startup' { param($fx) New-SessionStartPayload $fx } -Silent
     New-BudgetRow "$D/agy-discipline-reaching.sh" 'startup, shield intact' { param($fx) New-SessionStartPayload $fx } -Silent
     # --- agy-discipline-reaching.sh + the shared agy-shield-lib.sh: the Branch 21 census paths ---

@@ -564,7 +564,7 @@ agy-after-reminder.Tests.ps1                      9,7s   19 tests   <- COUNT 202
                                                                       TIME is the 2026-08-05 solo figure.
                                                                       14 -> 19 2026-10-06 (Branch 20 test-audit R2
                                                                       DH1/DH1b: +5 no-jq .md boundary rows).
-agy-anomaly-reminder.Tests.ps1                   26,8s   37 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-anomaly-reminder.Tests.ps1                   26,8s   39 tests   <- SLOW, re-measured 2026-08-06 (+4); 37 -> 39 2026-10-07 (Branch 21 Task 4: the jq-fallback cwd row + the oldest-date field row), time not re-measured
 agy-anomaly-capture-reminder.Tests.ps1            8,4s   26 tests   <- COUNT 2026-08-06 (+4)
 agy-anomaly-dispatch-reminder.Tests.ps1          12,7s   22 tests   <- COUNT 2026-08-06 (+4)
 agy-anomaly-model-notice.Tests.ps1               16,7s   11 tests   <- COUNT 2026-08-06 (+2)
@@ -1098,7 +1098,7 @@ generate-cheatsheet-literals.Tests.ps1           41,6s   18 tests   <- SLOW, NEW
 generate-scoped-manifest.Tests.ps1                2,1s    2 tests   <- FAST, re-measured 2026-08-05
 marketplace-manifest.Tests.ps1                    4,6s  10 tests   <- FAST, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled)
 pairing-doc.Tests.ps1                            22,2s   9 tests   <- SLOW, NEW 2026-10-03 (Branch 18, ROADMAP sections 60+62; warm run, cold first run 63,5s; box load uncontrolled)
-hook-spawn-budget.Tests.ps1                     226,5s  139 tests   <- SLOW; 109 -> 121 2026-10-07 (Branch 21 Task 1: +6 inbox-snapshot rows x row/compat variants); 121 -> 139 2026-10-07 (Task 2: +9 discipline-reaching rows x row/compat variants; 138 pass, 1 red = the debt row, 6 entries left), NEW 2026-10-06 (Branch 20 process budget; 1 row RED locally until Branch 21 - owner ruling; one run, box load uncontrolled; 55 -> 56 with the PreCompact re-arm row, Task 5; after Tasks 3-9 only the debt row is red, 168,6s); 56 -> 109 2026-10-06 (Branch 20 capstone R1: +53 bash 3.2 equivalence rows), time not re-measured
+hook-spawn-budget.Tests.ps1                     226,5s  143 tests   <- SLOW; 109 -> 121 2026-10-07 (Branch 21 Task 1: +6 inbox-snapshot rows x row/compat variants); 121 -> 139 2026-10-07 (Task 2: +9 discipline-reaching rows x row/compat variants); 139 -> 143 (Task 4: +2 anomaly-reminder rows x row/compat; 142 pass, 1 red = the debt row, 5 entries left), NEW 2026-10-06 (Branch 20 process budget; 1 row RED locally until Branch 21 - owner ruling; one run, box load uncontrolled; 55 -> 56 with the PreCompact re-arm row, Task 5; after Tasks 3-9 only the debt row is red, 168,6s); 56 -> 109 2026-10-06 (Branch 20 capstone R1: +53 bash 3.2 equivalence rows), time not re-measured
 plugin-hooks-registration.Tests.ps1               0,6s   37 tests   <- FAST, re-measured 2026-09-13 (+2 2026-10-01: section 57 test-audit-reminder PostToolUse matcher row; +2 since; +1 for the section-15 consult-recovery registration row; was
                                                                       0,5s / 18 tests; +4 for the recorder's
                                                                       SessionStart registration, which this
