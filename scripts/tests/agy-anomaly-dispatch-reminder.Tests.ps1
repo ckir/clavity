@@ -253,6 +253,20 @@ Describe 'agy-anomaly-dispatch-reminder.sh' {
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # ROADMAP section 59. FAILING CONTROL, measured 2026-10-08 with this launcher against the unfixed hook: line 36 writes
+    # "cat: command not found" to stderr. A PreToolUse hook that writes stderr is rendered as a failing hook on every dispatch.
+    It 'writes NOTHING to stderr under an EMPTY PATH, and still delivers its envelope (section 59)' {
+        $h = New-CleanHome
+        try {
+            $r = Invoke-BashHookEmptyPath -HookPath $script:Hook -Payload '{}' -HomeDir $h
+            $r.StdErr   | Should -BeNullOrEmpty -Because 'no external command may run on this path; the builtin read is silent'
+            $r.ExitCode | Should -Be 0
+            $j = $r.StdOut | ConvertFrom-Json
+            $j.hookSpecificOutput.hookEventName | Should -BeExactly 'PreToolUse'
+            $j.hookSpecificOutput.additionalContext | Should -Match 'AGY-ANOMALIES/1 relay' -Because 'with nothing on PATH jq is missing, and the jq-absent branch must STILL deliver the envelope'
+        } finally { Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'leaves agy-seam-inject.sh untouched' {
         # Acceptance criterion 10. Gap (b) is closed by an ISOLATED hook; modifying the seam injector was
         # explicitly rejected, because its case keys on $skill, which an Agent payload does not carry.

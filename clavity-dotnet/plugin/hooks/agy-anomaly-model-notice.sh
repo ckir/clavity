@@ -16,7 +16,8 @@
 #
 # Fail-open: any error -> exit 0. Suppressed by .no-agy (workspace or global).
 set +e
-input=$(cat)
+# BUILTIN, not $(cat): no fork, and nothing on stderr under an empty PATH (ROADMAP section 59; same idiom as agy-anomaly-reminder.sh).
+IFS= read -r -d '' input
 
 if ! command -v jq >/dev/null 2>&1; then
   exit 0

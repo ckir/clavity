@@ -194,6 +194,18 @@ Describe 'agy-anomaly-model-notice.sh' {
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # ROADMAP section 59. FAILING CONTROL, measured 2026-10-08 with this launcher against the unfixed hook: line 19 writes
+    # "cat: command not found" to stderr before the jq check ever runs.
+    It 'writes NOTHING to stderr under an EMPTY PATH, and stays silent (section 59)' {
+        $h = New-CleanHome
+        try {
+            $r = Invoke-BashHookEmptyPath -HookPath $script:Hook -Payload '{"cwd":"."}' -HomeDir $h
+            $r.StdErr   | Should -BeNullOrEmpty -Because 'the jq-absent path must not leak the read of stdin'
+            $r.StdOut   | Should -BeNullOrEmpty -Because 'without jq this half has nothing to say; the owner half reports'
+            $r.ExitCode | Should -Be 0
+        } finally { Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'exits 0 when jq is absent' {
         $h = New-CleanHome
         try {

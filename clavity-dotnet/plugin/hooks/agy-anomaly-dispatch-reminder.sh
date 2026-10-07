@@ -33,7 +33,8 @@
 #
 # Suppressed by .no-agy (workspace or global). Byte-identical across both driver plugins.
 set +e
-input=$(cat)
+# BUILTIN, not $(cat): no fork, and nothing on stderr under an empty PATH (ROADMAP section 59; same idiom as agy-anomaly-reminder.sh).
+IFS= read -r -d '' input
 
 # ONE definition, used by BOTH emission paths, so the jq-absent fallback can never drift. Both halves of
 # the obligation are present deliberately: an earlier draft carried only the return-side relay, which is

@@ -566,8 +566,8 @@ agy-after-reminder.Tests.ps1                      9,7s   19 tests   <- COUNT 202
                                                                       DH1/DH1b: +5 no-jq .md boundary rows).
 agy-anomaly-reminder.Tests.ps1                   26,8s   39 tests   <- SLOW, re-measured 2026-08-06 (+4); 37 -> 39 2026-10-07 (Branch 21 Task 4: the jq-fallback cwd row + the oldest-date field row), time not re-measured
 agy-anomaly-capture-reminder.Tests.ps1            8,4s   26 tests   <- COUNT 2026-08-06 (+4)
-agy-anomaly-dispatch-reminder.Tests.ps1          12,7s   22 tests   <- COUNT 2026-08-06 (+4)
-agy-anomaly-model-notice.Tests.ps1               16,7s   11 tests   <- COUNT 2026-08-06 (+2)
+agy-anomaly-dispatch-reminder.Tests.ps1          12,7s   23 tests   <- 22 -> 23 2026-10-08 (Branch 21 Task 10: +1 empty-PATH stderr row, s59); COUNT 2026-08-06 (+4)
+agy-anomaly-model-notice.Tests.ps1               16,7s   12 tests   <- 11 -> 12 2026-10-08 (Branch 21 Task 10: +1 empty-PATH stderr row, s59); COUNT 2026-08-06 (+2)
 agy-drive-session-reset.Tests.ps1                   ?    6 tests   <- FAST, NEW 2026-08-06. NO SOLO TIME
                                                                       YET: its only sweep was the contended
                                                                       one (42,0s there, inflated ~1,55x by
