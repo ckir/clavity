@@ -22,6 +22,9 @@ Describe 'docs-audit-reminder.sh' {
             $r.StdErr | Should -BeNullOrEmpty -Because 'a SessionStart hook that writes stderr is rendered as a failing hook'
             return $r
         }
+
+        # Writes the view byte-exact: Set-Content appends its own newline, which would hide a missing-final-newline case.
+        function Write-View { param([string]$Dir, [string]$Text) [IO.File]::WriteAllText((Join-Path $Dir 'docs/docs-audit-findings.md'), $Text, [Text.UTF8Encoding]::new($false)) }
     }
 
     It 'is silent when the view does not exist' {
@@ -88,5 +91,47 @@ Describe 'docs-audit-reminder.sh' {
         $r.ExitCode | Should -Be 0
         $j = $r.StdOut | ConvertFrom-Json
         $j.systemMessage | Should -Match ([regex]::Escape('not a recognisable generated view'))
+    }
+
+    # --- BRANCH 21 (Task 7): the counting moved from tr + three greps to ONE builtin pass. The plan said the suite already
+    # covered CRLF; it did not (no row wrote a CR). These rows are the preservation proof for the mechanism that changed. ---
+
+    It 'counts a CRLF view exactly as it counts an LF one (the header and every "(no findings)" line end in CR)' {
+        $dash = $script:Dash
+        $lines = @($script:Header, '', "## A.md $dash FINDINGS", '', '- one', '- two', '', "## B.md $dash CLEAN", '', '- (no findings)')
+        $d = New-Workspace -Lines $null
+        Write-View $d (($lines -join "`r`n") + "`r`n")
+        $j = (Invoke-Hook $d).StdOut | ConvertFrom-Json
+        $j.systemMessage | Should -Match ([regex]::Escape('2 open finding(s)')) -Because 'a CR on "- (no findings)" must not stop it being recognised as the empty marker'
+        # The all-clean CRLF view is the sharper half: if the CR defeated the empty marker, this would NAG with 1 open finding.
+        $e = New-Workspace -Lines $null
+        Write-View $e ((@($script:Header, '', "## A.md $dash CLEAN", '', '- (no findings)') -join "`r`n") + "`r`n")
+        (Invoke-Hook $e).StdOut | Should -BeNullOrEmpty -Because 'a CRLF save of a clean view must stay silent'
+    }
+
+    It 'counts the LAST line when the file has no trailing newline' {
+        $d = New-Workspace -Lines $null
+        Write-View $d ($script:Header + "`n`n## A.md $($script:Dash) FINDINGS`n`n- one`n- the last, unterminated")
+        ((Invoke-Hook $d).StdOut | ConvertFrom-Json).systemMessage | Should -Match ([regex]::Escape('2 open finding(s)'))
+    }
+
+    It 'counts only "- " bullets: near-misses (a dash with no space, a rule, an indented dash) are not findings' {
+        $d = New-Workspace -Lines @($script:Header, '', "## A.md $($script:Dash) FINDINGS", '', '- real', '-no-space', '--- a rule', '  - indented', '* star', '(no findings)')
+        ((Invoke-Hook $d).StdOut | ConvertFrom-Json).systemMessage | Should -Match ([regex]::Escape('1 open finding(s)'))
+    }
+
+    It 'reports an UNREADABLE view as unrecognisable rather than passing it silently' {
+        # The failed-open case: an ACL-denied view must NOT read as "no findings". Probed from the bash process the hook
+        # runs in (see agy-anomaly-reminder.Tests.ps1), and skipped on a host that does not enforce the deny.
+        $d = New-Workspace -Lines @($script:Header, '', "## A.md $($script:Dash) FINDINGS", '', '- one')
+        $f = Join-Path $d 'docs/docs-audit-findings.md'
+        try {
+            & icacls $f /deny "$($env:USERNAME):(R)" 2>&1 | Out-Null
+            & (Get-GitBashOrThrow) -lc "cat '$($f -replace '\\','/')' > /dev/null 2>&1"
+            if ($LASTEXITCODE -eq 0) { Set-ItResult -Skipped -Because 'this host does not enforce the read deny against the hook process'; return }
+            $r = Invoke-Hook $d
+            $r.ExitCode | Should -Be 0
+            (($r.StdOut | ConvertFrom-Json).systemMessage) | Should -Match ([regex]::Escape('not a recognisable generated view'))
+        } finally { & icacls $f /remove:d "$($env:USERNAME)" 2>&1 | Out-Null }
     }
 }

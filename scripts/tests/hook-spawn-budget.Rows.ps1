@@ -15,7 +15,6 @@ $script:ConsultPin = @{ PreMcp = 111; PreAsk = 114; PreSend = 117; PostMcp = 114
 # the 3 boot processes. The suite's debt row stays RED while this list is non-empty. Branch 21 removes each
 # entry in the same commit that adds a passing budget row for that path.
 $script:B21Debt = @(
-    @{ Hook = 'docs-audit-reminder.sh';         Path = 'generated findings view with open findings';                Total = 22 }
     @{ Hook = 'fetch-clavity-ls.sh';            Path = 'binary installed, stamp matches (steady state)';            Total = 17 }
     @{ Hook = 'migrate-inbox.sh';               Path = 'recover an interrupted migration';                          Total = 17 }
 )
@@ -458,6 +457,20 @@ $script:Rows = @(
         $fx.Env.PATH = ((Join-Path $fx.Root 'fakebin') + ';' + $env:PATH)
         New-SessionStartPayload $fx } -Max 8 -Silent
     New-BudgetRow "$L/docs-audit-reminder.sh" 'no findings view' { param($fx) New-SessionStartPayload $fx } -Silent
+    # --- docs-audit-reminder.sh: the Branch 21 census paths. PINNED AT 0 (measured 2026-10-07): the whole hook is builtins now,
+    # so ANY process is a regression the shared ceiling of 13 could not see. Before: both rows 19. ---
+    New-BudgetRow "$L/docs-audit-reminder.sh" 'generated view, 3 open findings -> EMIT' {
+        param($fx)
+        $d = Join-Path $fx.Repo 'docs'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+        @('# docs audit findings (GENERATED 2026-10-07)', '', '## a.md', '- f1', '- f2', '- f3') | Set-Content -LiteralPath (Join-Path $d 'docs-audit-findings.md')
+        $fx.Env.CLAUDE_PROJECT_DIR = $fx.RepoFwd
+        New-SessionStartPayload $fx } -Max 0 -Expect '3 open finding'
+    New-BudgetRow "$L/docs-audit-reminder.sh" 'generated view, (no findings) only -> silent' {
+        param($fx)
+        $d = Join-Path $fx.Repo 'docs'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+        @('# docs audit findings (GENERATED 2026-10-07)', '', '## a.md', '- (no findings)') | Set-Content -LiteralPath (Join-Path $d 'docs-audit-findings.md')
+        $fx.Env.CLAUDE_PROJECT_DIR = $fx.RepoFwd
+        New-SessionStartPayload $fx } -Max 0 -Silent
 )
 
 # Narrow to ONE hook for a task's red/green runs: set HSB_HOOK to the hook's file name and run with
