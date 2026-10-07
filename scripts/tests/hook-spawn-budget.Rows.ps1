@@ -15,7 +15,6 @@ $script:ConsultPin = @{ PreMcp = 111; PreAsk = 114; PreSend = 117; PostMcp = 114
 # the 3 boot processes. The suite's debt row stays RED while this list is non-empty. Branch 21 removes each
 # entry in the same commit that adds a passing budget row for that path.
 $script:B21Debt = @(
-    @{ Hook = 'agy-verify-reminder.sh';         Path = 'agy on PATH, assertion rows stale';                         Total = 24 }
     @{ Hook = 'docs-audit-reminder.sh';         Path = 'generated findings view with open findings';                Total = 22 }
     @{ Hook = 'fetch-clavity-ls.sh';            Path = 'binary installed, stamp matches (steady state)';            Total = 17 }
     @{ Hook = 'migrate-inbox.sh';               Path = 'recover an interrupted migration';                          Total = 17 }
@@ -438,7 +437,26 @@ $script:Rows = @(
     New-BudgetRow "$A/migrate-inbox.sh" 'nothing to migrate' { param($fx) New-SessionStartPayload $fx } -Silent
     New-BudgetRow "$A/agy-learn-reminder.sh" 'SessionStart' { param($fx) New-SessionStartPayload $fx } -HookArgs @('SessionStart') -Expect 'agy-autotrain is active'
     New-BudgetRow "$A/agy-learn-reminder.sh" 'PreCompact' { param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'PreCompact'; trigger = 'manual' } } -HookArgs @('PreCompact') -Expect 'agy-LEARN check BEFORE COMPACTION'
-    New-BudgetRow "$L/agy-verify-reminder.sh" 'not the clavity repo' { param($fx) New-SessionStartPayload $fx } -Silent
+    New-BudgetRow "$L/agy-verify-reminder.sh" 'not the clavity repo' { param($fx) New-SessionStartPayload $fx } -Max 0 -Silent
+    # --- agy-verify-reminder.sh: the Branch 21 census paths, PINNED at the measured counts (2026-10-07; before: stale 21,
+    # current 19, not-the-repo 7). A FAKE agy keeps the count deterministic - the real agy's
+    # child-process count floats with its version. New-HookFixture's Env carries NO PATH key (measured, panel R1), so
+    # these rows PREPEND to the session's $env:PATH: prepending to $fx.Env.PATH would hand the hook a PATH holding only
+    # the fake directory and silently drop jq and every real tool. ---
+    New-BudgetRow "$L/agy-verify-reminder.sh" 'stale rows -> EMIT (fake agy on PATH)' {
+        param($fx)
+        $v = Join-Path $fx.Repo 'agy-autotrain/verify'; New-Item -ItemType Directory -Force -Path $v, (Join-Path $fx.Root 'fakebin') | Out-Null
+        @('| id | dotnet | classic |', '|----|--------|---------|', '| A1 | PASS 1.0.0 | N/A |') | Set-Content -LiteralPath (Join-Path $v 'assertions.md')
+        [IO.File]::WriteAllText((Join-Path $fx.Root 'fakebin/agy'), "#!/bin/sh`necho agy 9.9.9`n")
+        $fx.Env.PATH = ((Join-Path $fx.Root 'fakebin') + ';' + $env:PATH)
+        New-SessionStartPayload $fx } -Max 10 -Expect 'VERIFY-HARNESS reminder'
+    New-BudgetRow "$L/agy-verify-reminder.sh" 'all rows current -> silent (fake agy on PATH)' {
+        param($fx)
+        $v = Join-Path $fx.Repo 'agy-autotrain/verify'; New-Item -ItemType Directory -Force -Path $v, (Join-Path $fx.Root 'fakebin') | Out-Null
+        @('| id | dotnet | classic |', '|----|--------|---------|', '| A1 | PASS 9.9.9 | N/A |') | Set-Content -LiteralPath (Join-Path $v 'assertions.md')
+        [IO.File]::WriteAllText((Join-Path $fx.Root 'fakebin/agy'), "#!/bin/sh`necho agy 9.9.9`n")
+        $fx.Env.PATH = ((Join-Path $fx.Root 'fakebin') + ';' + $env:PATH)
+        New-SessionStartPayload $fx } -Max 8 -Silent
     New-BudgetRow "$L/docs-audit-reminder.sh" 'no findings view' { param($fx) New-SessionStartPayload $fx } -Silent
 )
 
