@@ -1285,6 +1285,21 @@ and add after `Evaluate13b`'s closing `}`:
     }
 ```
 
+In the same doc comment (above `Evaluate13b`, `AgyView.cs:245-246`), replace
+
+```csharp
+    /// Both are pure string comparisons over a reply this method already has. There is deliberately no
+    /// third, statistical signal and nothing is written to disk: the byte-count heuristic and the reply
+```
+
+with
+
+```csharp
+    /// Both are pure string comparisons over a reply this method already has. There is deliberately no
+    /// third, statistical signal, and THIS method writes nothing to disk (the ROADMAP section 74 reply capture
+    /// is a separate, recovery-only copy that no check reads): the byte-count heuristic and the reply
+```
+
 - [ ] **Step 7: Implement - production wiring.** In `Program.cs`, replace
 
 ```csharp
@@ -1478,8 +1493,9 @@ Also update the comment above it (lines 84-89) - append one line before `if`: `/
 - [ ] **Step 2: Apply with a FILE script** (`<scratchpad>/b22-skills.py`; never a bare `python -`), asserting exactly one match per file:
 
 ```python
-import pathlib
-ROOT = pathlib.Path(r'C:/Users/user/Development/Rust/clavity')
+import pathlib, sys
+ROOT = pathlib.Path(sys.argv[1])   # the repo root (or worktree) to edit - never hard-coded
+assert (ROOT / '.git').exists(), ROOT
 OLD_RECOVER = (
     '**A flagged reply is INCOMPLETE, not empty.** Never read one as "no findings". Recover it with `agy_look`\n'
     "against the peer's own trajectory - not from any local file - or re-ask AT MOST ONCE, then halt and ask\n"
@@ -1499,19 +1515,22 @@ NEW_LIST = (
     'artifact. `[13b] UNCHECKED` - you named no known discipline; shown once per session. `[13b] ANSWER CUT` -\n'
     '`Answer` holds only the first 16000 characters; the notice names the file with the rest. `[13b] RESCUED FROM\n'
     "PEER FILE` - the chat reply failed the checks, the peer's own reply file passed them, and `Answer` is its text.\n")
+# Only the NEW text must be ASCII: adversarial-panel-review/SKILL.md already carries em dashes (dry-run, measured).
+assert (NEW_RECOVER + NEW_LIST).isascii()
+staged = {}
 for plugin in ('clavity-dotnet', 'clavity-classic'):
     for skill in ('agy-first', 'agy-capstone', 'agy-test-audit', 'adversarial-panel-review'):
         p = ROOT / plugin / 'plugin' / 'skills' / skill / 'SKILL.md'
         s = p.read_text(encoding='utf-8')
         assert s.count(OLD_RECOVER) == 1, (p, 'recover')
         assert s.count(OLD_LIST) == 1, (p, 'list')
-        s = s.replace(OLD_RECOVER, NEW_RECOVER).replace(OLD_LIST, NEW_LIST)
-        assert s.isascii(), p
-        p.write_bytes(s.encode('utf-8'))
-print('ok 8')
+        staged[p] = s.replace(OLD_RECOVER, NEW_RECOVER).replace(OLD_LIST, NEW_LIST)
+for p, s in staged.items():   # write nothing until all 8 files passed every assert - no half-applied state
+    p.write_bytes(s.encode('utf-8'))
+print('ok', len(staged))
 ```
 
-Expected: `ok 8`. Then `git diff --stat` shows exactly 8 files, and `cmp` of each dotnet/classic pair exits 0.
+Run: `python <scratchpad>/b22-skills.py C:/Users/user/Development/Rust/clavity` (the repo root you are executing in). Expected: `ok 8`. Then `git diff --stat` shows exactly 8 files, and `cmp` of each dotnet/classic pair exits 0.
 
 - [ ] **Step 3: Gates.** From the repo root:
   - `just seed-sync-check` -> exits 0.
@@ -1526,7 +1545,7 @@ Expected: `ok 8`. Then `git diff --stat` shows exactly 8 files, and `cmp` of eac
 
 - [ ] **Step 1: ROADMAP section 74.** Update its header status to `✅ BUILT on Branch 22 (<first sha>..<last sha>), not yet released` and add one line per contract naming its commit. Run `pwsh -NoProfile -File scripts/check-roadmap-claims.ps1` -> exits 0 (it re-measures cited line numbers; fix any citation it reports by re-measuring, never by deleting the citation).
 
-- [ ] **Step 2: Grep for the old wording, whole repo, case-insensitive** (law 3): `rg -n -i "Recover with agy_look|not from any local file|recover it with .agy_look" --glob '!.clavity/**' --glob '!docs/superpowers/**' --glob '!**/ROADMAP.md'` -> no hits.
+- [ ] **Step 2: Grep for the old wording, whole repo, case-insensitive** (law 3): `rg -n -i "Recover with agy_look|not from any local file|recover it with .agy_look" clavity-dotnet/plugin clavity-classic/plugin clavity-dotnet/src` -> no hits. (Scoped to SHIPPED text: `AgyAskIntegrationTests.cs` asserts the old wording is ABSENT, and `docs/agy-capstone-ledger.md` is history - both match by design.)
 
 - [ ] **Step 3: Full suites.** `cd clavity-dotnet && dotnet build && dotnet test tests/Clavity.Ls.Tests && dotnet test tests/Clavity.Integration.Tests` -> **409** and **114** passed. `cd ../clavity-classic && cargo test --all --features test-fakes` -> green (no classic code changed; this proves it). `just seed-sync-check`.
 
@@ -1535,6 +1554,14 @@ Expected: `ok 8`. Then `git diff --stat` shows exactly 8 files, and `cmp` of eac
 - [ ] **Step 5: Hand-off** - AGY-CAPSTONE over `000c55e6..HEAD` code commits (spec/plan commits excluded), then AGY-TEST-AUDIT, then merge `--no-ff` to local `main`; the OWNER pushes. Live verification of the installed behaviour needs a release (`main` no longer reaches installs) - say so in the hand-off rather than claiming it.
 
 ---
+
+## Dry-run (plan panel R1, 2026-10-07)
+
+Tasks 2-9 were applied LITERALLY in a throwaway worktree by a subagent: every "replace" block matched exactly once,
+every predicted count held (Ls 389/393/398/404/409, Integration 109/114), every predicted failing step failed as
+predicted, no pre-existing test went red, `just seed-sync-check` and `just check-agy-skills` exit 0. Folded from it:
+the Task 9 script's whole-file ASCII assert (failed on an existing em dash) and hard-coded root, the stale
+"nothing is written to disk" comment (Task 7 Step 6), and the Task 10 grep scope.
 
 ## Self-review (done at authoring)
 
