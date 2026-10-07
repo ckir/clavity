@@ -72,9 +72,11 @@ itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested on
   (panel R1, AB1/MG1). The result says which source passed: `checkedSource: chat | peer-file` (panel R1: `capture` was dropped - the checks never run on the full capture, whose
   last line in the measured failure is the same bare acknowledgement that failed the chat check).
 - **C-order (D1 wording).** Every flagged notice and all four skills (both plugins) name ONE recovery order: (1) read
-  `replyFile` (always present); (2) read the peer file if it was requested; (3) re-ask AT MOST ONCE; (4) halt and ask
+  `replyFile` WHEN THE RESULT NAMES ONE (the skills are static text and cannot promise it: a failed capture leaves it
+  `null` - panel R2, FA1); (2) read the peer file if it was requested; (3) re-ask AT MOST ONCE; (4) halt and ask
   the human. `agy_look` is named only as a SHORT-reply tool with its 1000-character step cap stated. ECHO MISSING
-  gains the same steps.
+  gains the same steps. When NO file is available (capture failed AND no peer file), the notice says so and names the
+  two steps left - `agy_look` for a short reply, then the single re-ask - so it never ends on a dead end (panel R2, BA2).
 - **C-doc.** `SemanticEcho.cs` header comment corrected (the class reads the artifact itself now).
 
 ## 4. Proposed defaults for the remaining sub-choices (agy's recommendation unless stated)
@@ -87,8 +89,10 @@ itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested on
   touched file; mtime is not trusted).
 - **D-shield (F3).** Refuse-and-degrade: request the peer file ONLY when `<root>/.clavity/.gitignore` already holds a
   bare `*` line; otherwise do not append the block and say so in the result. The server never writes the shield.
-- **D-prune (F6).** On each capture write, keep the newest 50 files in `agy-replies/` per location (count, not age:
-  agy - long sessions defeat an age rule). The peer-file directory is pruned the same way by the server, best-effort.
+- **D-prune (F6).** Keep the newest 50 files per location (count, not age: agy - long sessions defeat an age rule),
+  each location pruned on ITS OWN event - the capture directory after every capture write ATTEMPT, the peer-file
+  directory whenever a peer file was requested - so a capture that keeps failing cannot let peer files grow without
+  bound (panel R2, RV1). Pruning is best-effort and never fails the ask.
 - **D-classic (F7).** Classic gets the WORDING half only - its four skills name the recovery order with the peer file
   as a step the driver requests by hand (classic's transport carries no `discipline`).
 
@@ -103,3 +107,7 @@ The bash shield's semantics (section 41 stays deferred); Branch 21's hooks; `agy
   (`clavity-dotnet/ROADMAP.md`, "Non-goals / accepted limitations": "Same-user trust boundary").
 - `DISCARDED-BELOW-FLOOR` (R1 agy, SC1): peer text that happens to equal the capture's cut-marker line is cosmetic only -
   no check ever parses the capture file (C-check runs on the chat trailing run; C-peer-read on the peer file).
+- `REJECTED` (R2 agy, BA1): "reporting a rescued tool-ended turn complete crashes the session because the driver must
+  supply a tool result" - agy runs its own tools; the driver only ever sends `SendUserCascadeMessageAsync` and waits for
+  idle (`AgyView.cs` `AskAsync`), and today's own recovery for that exact turn is a re-ask. agy withdrew it after
+  reading both files.
