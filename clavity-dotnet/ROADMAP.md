@@ -3864,6 +3864,8 @@ unescaped match; escape set backslash + one of: backtick, `*`, `_`, `>`, backsla
 
 ---
 
+- **T1 measured 2026-10-07 (agy language server 1.3.1, Windows):** `GetConversationMetadata` for the live conversation reports ONE workspace, `file:///C:/Users/user/Development/Rust/clavity` (`Uri.LocalPath` = `C:\Users\user\Development\Rust\clavity`), and a RELATIVE write by agy (`.clavity/scratch/b22-t1/where.md`) landed under that folder - D-root holds. The conversation id the metadata call needs is the key of `GetAllCascadeTrajectories`, NOT the `CascadeId` that `agy_status` prints (they differ: `269f29bc...` vs `d7db9a5e...`). The several-workspace tie-break stays "no peer file" (not reproducible here); the Linux URI form is UNMEASURED (CI is windows-latest only).
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
