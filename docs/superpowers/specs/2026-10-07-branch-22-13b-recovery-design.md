@@ -63,7 +63,8 @@ itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested on
   (`AgyView.cs:210-213`): the appended block is peer-facing completion protocol, never driver guidance; the note is
   amended to say so. Ordinary asks (no discipline) are unchanged.
 - **C-peer-read.** If the chat text (C-check) FAILS a check and the peer file exists with the matching nonce on its
-  first line, is within the cap, and passes, the reply is reported complete AND the result's `Answer` is the PEER
+  first line, is at most 1 MiB (the same cap as C-capture; a larger peer file is NOT read - the result says so and
+  the chat verdict stands; panel R3, LI1), and passes, the reply is reported complete AND the result's `Answer` is the PEER
   FILE's text (agy F4: the text that passed is the text the driver receives - never check one text and surface
   another). When the chat answer was null because the turn ENDED ON A TOOL STEP, the rescue still reports complete (a
   nonce-correct file that passes the token and echo checks IS a complete report by the discipline's own test) but the
@@ -93,8 +94,13 @@ itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested on
   each location pruned on ITS OWN event - the capture directory after every capture write ATTEMPT, the peer-file
   directory whenever a peer file was requested - so a capture that keeps failing cannot let peer files grow without
   bound (panel R2, RV1). Pruning is best-effort and never fails the ask.
-- **D-classic (F7).** Classic gets the WORDING half only - its four skills name the recovery order with the peer file
-  as a step the driver requests by hand (classic's transport carries no `discipline`).
+- **D-classic (F7).** Classic's TRANSPORT is unchanged (it carries no `discipline`), but its four skills are NOT
+  reworded separately: `scripts/check-seed-artifacts-synced.sh` byte-diffs every file under `skills/` between the two
+  plugins and exempts only the four transport twins (`driving`, `responder`, `ls-driving`, `ls-pairing`) - a
+  classic-only wording turns that gate red (panel R3, AA1, measured). So the four discipline skills keep ONE shared
+  text, as they already do for the `discipline`/`artifactPath` parameters ("On clavity-classic neither parameter
+  exists"): the recovery paragraph names the dotnet `replyFile` step AND says that on classic the driver requests the
+  peer file by hand in its brief.
 
 ## 5. Out of scope
 
