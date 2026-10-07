@@ -3801,6 +3801,20 @@ the ceiling in `agy-inbox-snapshot` (up to 67 with 20 baks: one `rm` per surplus
 on recovery). Each is a named entry of `$B21Debt` in `scripts/tests/hook-spawn-budget.Rows.ps1`; the suite's debt row is
 RED until the list is empty. Done = every entry replaced by a passing budget row.
 
+**SCOPE, owner ruling 2026-10-07** (AGY-FIRST seam `.clavity/seams/b21-agy-first-scope.md`; agy first wanted section 59
+limited to Branch 21's own hooks and a hard split into two branches, and conceded both on the driver's counter-turn).
+Branch 21 = this section's eight hooks, PLUS section 72 (stale debounce-file sweep), section 73 (curate nudge `date -d`),
+section 64 (fetch-clavity-ls `mktemp -d` failure test), section 59 in full (builtin stdin read in
+`assertion-strength-reminder.sh` AND the two non-Branch-21 hooks `agy-anomaly-dispatch-reminder.sh` and
+`agy-anomaly-model-notice.sh`, the only three still writing stderr under an empty PATH, measured 2026-10-07), and three
+defects the Branch 21 spawn inventory found on 2026-10-07 (each verified): `agy-inbox-snapshot.sh` -
+`AGY_INBOX_SNAPSHOT_KEEP=08` passes the digit check, then `$((KEEP + 1))` aborts ("value too great for base"); the same
+hook's Pending-heading check reads `[ \t]` two ways (grep -E matches `##tPending`, the awk does not);
+`agy-discipline-reaching.sh` and `assertion-strength-reminder.sh` call `printf %(fmt)T` (bash 4.2+) with no version gate.
+Left out: sections 56, 70, 34. **One branch, SEQUENCED:** phase 1 = the two hooks with design forks
+(`agy-inbox-snapshot` pruning; `agy-discipline-reaching` via the shared `agy-shield-lib.sh`, which every `agy_shield`
+caller uses) with their own capstone round; phase 2 = the six fork-free hooks and the folds.
+
 ### §70 — the consult guard's consult path costs ~115 processes a side — ▶ **PROMOTED 2026-10-04 (owner ruling 3), not yet planned**
 
 `agy_guard_quad` + the gitignored-path census run on every real consult, pre and post (measured 2026-10-04 after Branch
