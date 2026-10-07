@@ -9,13 +9,10 @@ namespace Clavity.Ls;
 /// <summary>Did the peer reach the END of the artifact it was told to read? The brief requires it to quote,
 /// verbatim and near its verdict, the last substantive line of that artifact.
 ///
-/// WHO READS THE FILE: NOT THIS CLASS, AND NOT THE LANGUAGE SERVER. An earlier version of this comment
-/// said "the driver computes the same line from the same file and compares", which is false and would
-/// mislead the next reader into looking for file IO that does not exist here. The CALLING AGENT applies
-/// the rule to the artifact and passes the resulting line in as <paramref name="expectedEcho"/>; this
-/// class only compares two strings. That is a deliberate boundary - the language server never learns
-/// which file a consult is about - but it also means the expectation is only as honest as the caller.
-/// (Capstone R5, The Second Reader.)
+/// WHO READS THE FILE: THIS CLASS, through <see cref="ExpectedFrom"/>. The caller names the artifact
+/// (agy_ask's artifactPath); the driver reads it, derives the line, and compares. The first design had
+/// the calling agent compute the line, and this comment said "the language server never learns which
+/// file a consult is about" - no longer true; ExpectedFrom says why the driver took the expectation over.
 ///
 /// This is the strongest of 13b's three signals because it catches BOTH failure modes with one check. A
 /// peer that stopped mid-thought never reached the end and cannot produce the line. A peer that emitted a
@@ -183,6 +180,7 @@ public static class SemanticEcho
 
         var needle = Normalise(expectedEcho);
         if (needle.Length == 0) return true;
+        var bareNeedle = Normalise(Unescape(expectedEcho));
 
         var tail = answer.Split('\n')
                          .Select(Normalise)
@@ -190,7 +188,35 @@ public static class SemanticEcho
                          .Reverse()
                          .Take(TailLines);
 
-        return tail.Any(line => line.Contains(needle, StringComparison.Ordinal));
+        // ROADMAP section 74, C-echo: a peer quoting a line with inner backticks often ESCAPES them (\`), and
+        // Normalise only trims the ENDS of a line. Three honest forms are accepted: the raw line contains the
+        // needle; the line with markdown escapes removed contains it; or both sides, unescaped, match.
+        return tail.Any(line =>
+        {
+            if (line.Contains(needle, StringComparison.Ordinal)) return true;
+            var bare = Normalise(Unescape(line));
+            return bare.Contains(needle, StringComparison.Ordinal)
+                || (bareNeedle.Length > 0 && bare.Contains(bareNeedle, StringComparison.Ordinal));
+        });
+    }
+
+    /// <summary>The markdown escapes a peer adds when quoting: a backslash before one of these characters.</summary>
+    private const string EscapableChars = "`*_>\\";
+
+    private static string Unescape(string s)
+    {
+        if (s.IndexOf('\\') < 0) return s;
+        var sb = new StringBuilder(s.Length);
+        for (var i = 0; i < s.Length; i++)
+        {
+            if (s[i] == '\\' && i + 1 < s.Length && EscapableChars.IndexOf(s[i + 1]) >= 0)
+            {
+                sb.Append(s[i + 1]);
+                i++;
+            }
+            else sb.Append(s[i]);
+        }
+        return sb.ToString();
     }
 
     /// <summary>Strip the decoration a complying peer legitimately adds - backticks, blockquote markers,

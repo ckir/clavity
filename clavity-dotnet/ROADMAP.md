@@ -1239,10 +1239,10 @@ documents, recurring one section later. Re-measure against the REPO file, never 
 
 | skill | mandates seats? | evidence |
 |---|---|---|
-| `agy-first/SKILL.md` (234 lines) | **NO** | `:54-56` — "Default persona: bold inventive systems-designer; override when a sharper lens fits (security-auditor, perf-skeptic, API-contract-pedant)". Singular, and the three alternatives are ad-hoc, not palette seats. |
-| `agy-test-audit/SKILL.md` (476 lines) | **NO** | `:216` is the ONLY lens language in the file: "Optional per-run mitigation: rotate the audit's lens". Optional, and singular. **The fix is NOT confined to `:216`:** that line sits in the "Stated limitation - false negatives" section at the foot of the file, so replacing it alone would bury a framing instruction in a footer. The seat instruction belongs where the consult is framed - **insert at `:59`, immediately after the `## The audit round` heading and before its numbered item 1** - and `:216-217` is then reworded to point at it. |
-| `agy-capstone/SKILL.md` (534 lines) | **YES — not defective** | `:89` reads, literally and in ASCII: `- **Seats (defect-class lenses).** Seat the proven adversarial-panel-review personas - Axiom Breaker`. `:92` seats those whose trigger the diff meets; `:103` rotates seats across rounds. **Quoted verbatim so it can be grepped:** an earlier version of this row rendered that line with an em-dash and an ellipsis, neither of which the file contains - it is ASCII-gated - so the "quote" matched nothing. |
-| `adversarial-panel-review/SKILL.md` (438 lines) | **YES** | the palette, selection rule, and anti-gaming guard live here. |
+| `agy-first/SKILL.md` (242 lines) | **NO** | `:54-56` — "Default persona: bold inventive systems-designer; override when a sharper lens fits (security-auditor, perf-skeptic, API-contract-pedant)". Singular, and the three alternatives are ad-hoc, not palette seats. |
+| `agy-test-audit/SKILL.md` (484 lines) | **NO** | `:216` is the ONLY lens language in the file: "Optional per-run mitigation: rotate the audit's lens". Optional, and singular. **The fix is NOT confined to `:216`:** that line sits in the "Stated limitation - false negatives" section at the foot of the file, so replacing it alone would bury a framing instruction in a footer. The seat instruction belongs where the consult is framed - **insert at `:59`, immediately after the `## The audit round` heading and before its numbered item 1** - and `:216-217` is then reworded to point at it. |
+| `agy-capstone/SKILL.md` (542 lines) | **YES — not defective** | `:89` reads, literally and in ASCII: `- **Seats (defect-class lenses).** Seat the proven adversarial-panel-review personas - Axiom Breaker`. `:92` seats those whose trigger the diff meets; `:103` rotates seats across rounds. **Quoted verbatim so it can be grepped:** an earlier version of this row rendered that line with an em-dash and an ellipsis, neither of which the file contains - it is ASCII-gated - so the "quote" matched nothing. |
+| `adversarial-panel-review/SKILL.md` (446 lines) | **YES** | the palette, selection rule, and anti-gaming guard live here. |
 
 **Blast radius: 4 files** — `agy-first` and `agy-test-audit` in `clavity-dotnet/plugin/skills/` and
 `clavity-classic/plugin/skills/`. Byte-identical pair, so both variants change together and
@@ -3841,7 +3841,38 @@ not measured here (no macOS box). A pure-bash days-from-civil computation on the
 AND removes one `date` process from every SessionStart that reaches the age check - which is why it rides with
 Branch 21 (section 69).
 
----
+### §74 — Branch 22: a flagged `[13b]` reply has no named recovery, and an escaped echo is flagged falsely — ▶ **PROMOTED 2026-10-07 from the anomalies conveyor (owner-found during the Branch 21 plan panel), owner-ruled scope FULL, built BEFORE Branch 21 phase 1** · ✅ **BUILT on Branch 22 (`072667fd`..`e4e6c55d`), capstone + test-audit pending, NOT released - installs come from the release branch**
+
+**Defect 1 (owner-found).** `clavity-dotnet/src/Clavity.Mcp/McpTools.cs` (the `[13b]` notice blocks): TRUNCATED REPLY says
+only "Recover with agy_look or re-ask"; ECHO MISSING names no recovery at all; the four discipline skills (both plugins)
+carry the same agy_look-or-re-ask paragraph. `agy_look` truncates each step near 1000 characters, so it cannot recover a long
+report. The recovery that worked in practice - the peer ALSO writing its whole reply to a prepared, shielded
+`.clavity/scratch/` file - is named nowhere at the moment of failure.
+
+**Defect 2 (driver-found, reproduced with a control).** `clavity-dotnet/src/Clavity.Ls/SemanticEcho.cs` `IsSatisfied`:
+`Normalise` trims decoration only at the line ENDS, so a peer that escapes the inner backticks of a quoted line (backslash
+before each backtick) never matches - a false ECHO MISSING on an honest echo.
+
+**Owner rulings 2026-10-07 (after AGY-FIRST, seam `.clavity/seams/b21-13b-fold.md`):** a separate small branch off `main`
+(not folded into Branch 21), merged before Branch 21 phase 1 so that branch's capstones run on the fixed checks; scope FULL:
+(a) the notices and the four skills in both plugins name the same recovery order - read the reply file, then re-ask at most
+once; (b) `agy_ask` with a `discipline` appends the reply-file instruction itself and prepares + shields the scratch path; (c)
+`clavity-ls` reads that file to run the `[13b]` checks, so chat truncation no longer decides them. Defect 2's rule, agreed
+after one counter-turn and driver-tested on seven cases (four honest echoes accepted, a different line, a truncated prefix and
+a one-word change all rejected): SATISFIED if the raw tail line contains the needle, OR the reply-unescaped line does, OR both
+unescaped match; escape set backslash + one of: backtick, `*`, `_`, `>`, backslash.
+
+**Built (Branch 22, spec `docs/superpowers/specs/2026-10-07-branch-22-13b-recovery-design.md`, plan `docs/superpowers/plans/2026-10-07-sweep-branch-22-13b-recovery.md`):**
+C-echo + the `SemanticEcho` header `1214c71d` - the untruncated trailing run + the six new `AskReply` fields `0e5c7706` -
+`ReplyCapture` (server copy of every reply, 1 MiB head+tail cap, 50 kept) `c0b0c46a` - `PeerReplyFile` (agy-workspace root,
+`*` shield gate, nonce request block, 1 MiB bounded read) `a70edff6` - `RecoveryNotice` (one order, one sentence <= 400
+characters) `0071a7f0` - the wiring in `AgyView.AskAsync` + `Program.cs` `bc5cf588` - the notices (TRUNCATED / ECHO MISSING /
+ANSWER CUT / RESCUED) `45d89fd8` - the four skills in both plugins `3013e8a2`, `e4e6c55d`. Counts: Ls 382 -> 409, Integration
+96 -> 114. A fresh-agent comprehension check of the skill paragraph (old wording vs new): the OLD text sent the agent to
+`agy_look` and refused the local file - the owner's defect, reproduced; the NEW text fixed it, and found a classic gap (halt
+instead of one re-ask) that `e4e6c55d` closed. **Capstone folds:** R1 BS1 - a cut by character count split a surrogate pair - `f503d07b` (`TextCut`); R2 FA1-FA4 - four more raw cuts, one in new code - `c310227f`; R2 CA1 - owner-ruled `ea1fdb5f`: a healthy discipline reply carries no `ReplyFile` / `PeerFile` / `PeerFileStatus` (+255 characters per ask became +23; an ordinary ask keeps `ReplyFile`, +98); `2e3c6a2b` drops a guard the shape consult found redundant. Counts after the folds: Ls 418, Integration 120. NOT verified live: the installed server (needs a release), and the Linux URI form.
+
+- **T1 measured 2026-10-07 (agy language server 1.3.1, Windows):** `GetConversationMetadata` for the live conversation reports ONE workspace, `file:///C:/Users/user/Development/Rust/clavity` (`Uri.LocalPath` = `C:\Users\user\Development\Rust\clavity`), and a RELATIVE write by agy (`.clavity/scratch/b22-t1/where.md`) landed under that folder - D-root holds. The conversation id the metadata call needs is the key of `GetAllCascadeTrajectories`, NOT the `CascadeId` that `agy_status` prints (they differ: `269f29bc...` vs `d7db9a5e...`). The several-workspace tie-break stays "no peer file" (not reproducible here); the Linux URI form is UNMEASURED (CI is windows-latest only).
 
 ## Non-goals / accepted limitations
 

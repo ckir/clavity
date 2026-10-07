@@ -32,6 +32,8 @@ if (args.Contains("--mcp"))
         EndpointPath = AgyEnvironment.ResolveEndpointPath(
             Environment.GetEnvironmentVariable(AgyEnvironment.EndpointPathVar),
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
+        ReplyCaptureDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".clavity", "agy-replies"),
     };
 
     var ghOverride = Environment.GetEnvironmentVariable(GoldenHeader.PathVar);

@@ -87,13 +87,20 @@ public class McpTools
         // These are if/else-if, not independent blocks. A truncated reply is usually also a small one,
         // and emitting several would make the deterministic verdicts compete with the heuristic for the
         // reader's attention. The deterministic ones win, strongest first.
-        if (reply13b is { TerminalTokenMissing: true })
+        // Branch 22 adds two arms to the same chain - RESCUED first (it replaces the verdicts it cleared), ANSWER CUT last.
+        if (reply13b is { CheckedSource: "peer-file" } rescued)
+        {
+            // ROADMAP section 74, C-peer-read: complete, but never silently - say which file passed.
+            blocks.Add(new TextContentBlock { Text = RecoveryNotice.Rescued(rescued) });
+        }
+        else if (reply13b is { TerminalTokenMissing: true })
         {
             blocks.Add(new TextContentBlock
             {
-                Text = "[13b] TRUNCATED REPLY: the terminal token this discipline requires is missing or "
-                     + "not at the end. Treat this consult as INCOMPLETE - do not fold findings from it. "
-                     + "Recover with agy_look or re-ask; never read it as 'no findings'."
+                Text = "[13b] TRUNCATED REPLY: the terminal token this discipline requires is missing or not at the end"
+                     + (reply13b.TurnEndedOnToolStep ? " (the turn ended on a tool step, so Answer is empty)" : "")
+                     + ". Treat this consult as INCOMPLETE - never as 'no findings' - and fold nothing from it until it is recovered. "
+                     + RecoveryNotice.Sentence(reply13b)
             });
         }
         else if (reply13b is { EchoMissing: true })
@@ -102,8 +109,14 @@ public class McpTools
             {
                 Text = "[13b] ECHO MISSING: the peer did not quote the artifact's last line near its "
                      + "verdict, so it did not reach the end of what it was asked to read - or did not "
-                     + "read it. Treat this consult as INCOMPLETE and do not fold findings from it."
+                     + "read it. Treat this consult as INCOMPLETE and do not fold findings from it. "
+                     + RecoveryNotice.Sentence(reply13b)
             });
+        }
+        else if (reply13b is { AnswerTruncated: true })
+        {
+            // C-check: a passing verdict must not hide that Answer is cut (spec panel R1).
+            blocks.Add(new TextContentBlock { Text = RecoveryNotice.AnswerCut(reply13b) });
         }
         // AN ECHO TARGET THAT CANNOT DISCRIMINATE IS NOT A CHECK. Independent of the verdicts above,
         // because it is a fact about the ASK, not about the reply - the same category as UNCHECKED.

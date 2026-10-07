@@ -130,4 +130,18 @@ public class BoundedViewTests
         Assert.Equal("second", v.Steps[1].Text);
         Assert.False(v.Truncated);
     }
+
+    [Fact]
+    public void An_agy_look_step_cut_never_splits_a_surrogate_pair()
+    {
+        // Capstone R2 FA2: Summarize caps each step at MaxStepTextChars and appends an ellipsis.
+        var traj = new CascadeTrajectory { CascadeId = "c" };
+        traj.Steps.Add(new CascadeStep
+        {
+            Kind = 14,
+            UserInput = new CascadeUserInput { Text = new string('a', BoundedView.MaxStepTextChars - 1) + "\U0001F600" + "zzz" },
+        });
+        var view = BoundedView.Summarize(traj);
+        Assert.Equal(new string('a', BoundedView.MaxStepTextChars - 1) + "\u2026", view.Steps[0].Text);
+    }
 }

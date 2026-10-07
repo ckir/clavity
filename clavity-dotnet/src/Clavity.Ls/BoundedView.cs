@@ -56,7 +56,7 @@ public static class BoundedView
                 : step.AssistantOutput is { } ao && ao.Text.Length > 0 ? ao.Text
                 : null;
             if (text is not null && text.Length > maxStepChars)
-                text = string.Concat(text.AsSpan(0, maxStepChars), "…");
+                text = string.Concat(TextCut.Prefix(text, maxStepChars), "…");
 
             // A step with no prose costs 0 chars, so `used + cost > budgetChars` can NEVER fire for it and
             // the char budget alone cannot bound a tool-heavy cascade. ProjectAskReply already caps the
@@ -103,29 +103,15 @@ public static class BoundedView
     public static AskReply ProjectAskReply(string cascadeId, IReadOnlyList<CascadeStep> delta)
     {
         // 1. Find the LAST contiguous assistant run, skipping any trailing non-assistant (tool) steps.
-        //    end = index of the last assistant step; runStart = first index of its contiguous run.
-        int end = delta.Count - 1;
-        while (end >= 0 && delta[end].Kind != StepKind.AssistantKind) end--;
-        int runStart = end + 1; // no assistant step ⇒ runStart(0) > end(-1) ⇒ empty run
-        var trailing = new List<string>();
-        for (var i = end; i >= 0; i--)
-        {
-            if (delta[i].Kind != StepKind.AssistantKind) break;
-            runStart = i;
-            var t = delta[i].AssistantOutput?.Text;
-            if (string.IsNullOrEmpty(t)) continue; // skip an empty-text assistant step; don't end the run on it
-            trailing.Add(t);
-        }
-        trailing.Reverse();
+        var (runStart, end, trailing, runIsTrailing) = FindTrailingRun(delta);
 
         // Answer = the run ONLY when it is TRAILING (the delta ends on assistant prose). A trailing tool step
         // yields a null Answer BY DESIGN — see the class summary and AskReplyProjectionTests ("failure not hidden").
-        bool runIsTrailing = end == delta.Count - 1 && trailing.Count > 0;
         string? answer = runIsTrailing ? string.Join("\n", trailing) : null;
         var answerTruncated = false;
         if (answer is not null && answer.Length > AskMaxStepChars)
         {
-            answer = answer[..AskMaxStepChars];
+            answer = TextCut.Prefix(answer, AskMaxStepChars);
             answerTruncated = true;
         }
 
@@ -143,7 +129,7 @@ public static class BoundedView
             if (t is null) return null;
             int cap = rescueRun && idx >= runStart && idx <= end && s.Kind == StepKind.AssistantKind
                 ? AskMaxStepChars : ActivitySummaryChars;
-            return t.Length > cap ? t[..cap] : t;
+            return TextCut.Prefix(t, cap);
         }
         var all = delta.Select((s, idx) => new ActivityItem(s.Kind, StepKind.Label(s.Kind), Summary(idx, s))).ToList();
 
@@ -162,5 +148,36 @@ public static class BoundedView
         var activity = all.Skip(start).ToList();
 
         return new AskReply(cascadeId, answer, activity, answerTruncated, activityTruncated);
+    }
+
+    /// <summary>The UNTRUNCATED trailing assistant run that <see cref="ProjectAskReply"/> cuts Answer from (null
+    /// when the delta does not end on assistant prose), and whether the delta ended on a TOOL step. The [13b]
+    /// checks run on this text, not on the 16 000-character head copy, so a long but complete reply keeps its
+    /// terminal token (ROADMAP section 74, C-check).</summary>
+    public static (string? Text, bool EndedOnToolStep) TrailingAnswer(IReadOnlyList<CascadeStep> delta)
+    {
+        var (_, _, trailing, isTrailing) = FindTrailingRun(delta);
+        var endedOnTool = delta.Count > 0 && StepKind.Class(delta[^1].Kind) == "tool";
+        return (isTrailing ? string.Join("\n", trailing) : null, endedOnTool);
+    }
+
+    /// <summary>end = index of the last assistant step; runStart = first index of its contiguous run; Trailing = the
+    /// run's non-empty texts in order; IsTrailing = the delta ENDS on that run.</summary>
+    private static (int RunStart, int End, List<string> Trailing, bool IsTrailing) FindTrailingRun(IReadOnlyList<CascadeStep> delta)
+    {
+        int end = delta.Count - 1;
+        while (end >= 0 && delta[end].Kind != StepKind.AssistantKind) end--;
+        int runStart = end + 1; // no assistant step ⇒ runStart(0) > end(-1) ⇒ empty run
+        var trailing = new List<string>();
+        for (var i = end; i >= 0; i--)
+        {
+            if (delta[i].Kind != StepKind.AssistantKind) break;
+            runStart = i;
+            var t = delta[i].AssistantOutput?.Text;
+            if (string.IsNullOrEmpty(t)) continue; // skip an empty-text assistant step; don't end the run on it
+            trailing.Add(t);
+        }
+        trailing.Reverse();
+        return (runStart, end, trailing, end == delta.Count - 1 && trailing.Count > 0);
     }
 }

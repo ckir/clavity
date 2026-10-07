@@ -260,4 +260,37 @@ public class SemanticEchoTests : IDisposable
         // would fail every reply. Degrade to no-expectation rather than to always-fail.
         Assert.True(SemanticEcho.IsSatisfied("anything\n\n[VERDICT: ALIGNED]\n", "   "));
     }
+
+    // ROADMAP section 74, C-echo. The needle is an artifact line with inner backticks; a peer that quotes it
+    // honestly in any of four forms passes, and three dishonest forms still fail.
+    private const string Backticked = "C-doc. `SemanticEcho.cs` header comment corrected";
+
+    [Fact]
+    public void Echo_quoted_raw_is_satisfied() =>
+        Assert.True(SemanticEcho.IsSatisfied("x\n" + Backticked + "\n[VERDICT: ALIGNED]", Backticked));
+
+    [Fact]
+    public void Echo_with_escaped_inner_backticks_is_satisfied() =>
+        Assert.True(SemanticEcho.IsSatisfied("x\nC-doc. \\`SemanticEcho.cs\\` header comment corrected\n[VERDICT: ALIGNED]", Backticked));
+
+    [Fact]
+    public void Echo_in_a_blockquote_is_satisfied() =>
+        Assert.True(SemanticEcho.IsSatisfied("x\n> " + Backticked + "\n[VERDICT: ALIGNED]", Backticked));
+
+    [Fact]
+    public void Escapes_in_the_ARTIFACT_line_match_an_unescaped_quote() =>
+        Assert.True(SemanticEcho.IsSatisfied("x\na *literal* star in the spec line\n[VERDICT: ALIGNED]",
+                                             "a \\*literal\\* star in the spec line"));
+
+    [Fact]
+    public void A_different_line_still_fails() =>
+        Assert.False(SemanticEcho.IsSatisfied("x\nsome other line entirely here\n[VERDICT: ALIGNED]", Backticked));
+
+    [Fact]
+    public void A_truncated_prefix_still_fails() =>
+        Assert.False(SemanticEcho.IsSatisfied("x\nC-doc. \\`SemanticEcho.cs\\` header\n[VERDICT: ALIGNED]", Backticked));
+
+    [Fact]
+    public void A_one_word_change_still_fails_even_escaped() =>
+        Assert.False(SemanticEcho.IsSatisfied("x\nC-doc. \\`SemanticEcho.cs\\` footer comment corrected\n[VERDICT: ALIGNED]", Backticked));
 }
