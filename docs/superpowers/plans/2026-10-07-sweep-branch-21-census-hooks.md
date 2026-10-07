@@ -403,7 +403,7 @@ of the say-prune's), giving **17** - still one over, on ONE run per repository (
 negation in a repo that already has markers; afterwards the shield carries the prepended `*` and the recurring
 negation path costs 11). Merging `ls-files` + `check-ignore -v` into one `check-ignore -v --no-index` was MEASURED
 and REJECTED: it reports a TRACKED file that also has a negation as "negation rule" (rc 0, `!` pattern), losing
-the tracked remedy today's `ls-files` split gives. The remaining choices go to the owner at plan approval:
+the tracked remedy today's `ls-files` split gives. **OWNER RULED 2026-10-07 at plan approval: choice (i).** The choices that were put:
 (i) on the call that paid the prepend, do NOT latch the sweep gate - the sweep is housekeeping and the next
 session's key latches it -> **15**; (ii) accept 17 on that one run as a named exemption row (`-Max 14`);
 (iii) touch section 41's prepend (already ruled out). This row is written against choice (i); Step 2(e) carries it.
@@ -1353,7 +1353,7 @@ fi
 - [ ] **Step 3: Repo gates, sequentially:** `bash scripts/check-seed-artifacts-synced.sh` (0) · `pwsh -NoProfile -c "Invoke-Pester scripts/tests/plugin-hooks-payload.Tests.ps1, scripts/tests/plugin-hooks-registration.Tests.ps1 -Output Detailed -CI"` (ASCII + byte-identical pairs + registration; expected all green) · `pwsh -NoProfile -File scripts/check-injected-context.ps1` (the emitted messages did not change text, only their plumbing — expected OK) · `pwsh -NoProfile -File scripts/check-control-bytes.ps1` if present per pre-push config (expected OK).
 - [ ] **Step 4: ROADMAP updates** (`clavity-dotnet/ROADMAP.md`):
   - §69: append a SHIPPED note with the measured before→after table (from Step 1) and the two fixture-helper homes (`Add-FxInbox`, `Set-FxShield` in the Rows file).
-  - §72: header → shipped; body notes the home CHANGE - OWNER DECISION REQUIRED BEFORE TASK 5 (panel R1: the ROADMAP names "a sweep in an existing SessionStart hook"; this plan proposes the zero-cost `assertion-strength-reminder.sh` create-path `find` instead, and no ruling accepts that yet): the sweep rides `assertion-strength-reminder.sh`'s create-path `find` (zero added processes), not a SessionStart hook as first sketched.
+  - §72: header → shipped; body notes the home CHANGE - OWNER RULED 2026-10-07 at plan approval: the zero-cost `assertion-strength-reminder.sh` create-path `find` replaces the ROADMAP's "a sweep in an existing SessionStart hook": the sweep rides `assertion-strength-reminder.sh`'s create-path `find` (zero added processes), not a SessionStart hook as first sketched.
   - §73: header → shipped; note the UTC-day-boundary divergence and the captured `date -r` sibling anomaly.
   - §64: header → shipped (the mktemp-failure row + its mutant).
   - §59: header → shipped; body already names the three remaining hooks — note all three now read stdin with the builtin and the empty-PATH stderr rows pin it (and that Branch 20 had silently fixed the other four).
