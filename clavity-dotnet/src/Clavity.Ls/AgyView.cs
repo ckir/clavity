@@ -550,7 +550,7 @@ public sealed class AgyView
         string? summary = last is null ? null
             : (last.UserInput is { } u && u.Text.Length > 0 ? u.Text
                : last.AssistantOutput is { } a && a.Text.Length > 0 ? a.Text : null);
-        if (summary is { Length: > 500 } s) summary = TextCut.Prefix(s, 500);
+        if (summary is not null) summary = TextCut.Prefix(summary, 500);
         return new TimeoutDiagnostic(total, newAgy, lastKind, StepKind.Class(lastKind), summary);
     }
 
