@@ -166,4 +166,12 @@ public class AskReplyProjectionTests
         Assert.Equal(BoundedView.AskMaxStepChars - 1, r.Answer!.Length);          // backed off one char, not split
         Assert.False(char.IsHighSurrogate(r.Answer[^1]));
     }
+
+    [Fact]
+    public void An_Activity_summary_cut_never_splits_a_surrogate_pair()
+    {
+        // Capstone R2 FA1: the 200-character Activity summary of an earlier step.
+        var r = Project(User(new string('a', BoundedView.ActivitySummaryChars - 1) + "\U0001F600" + "zzz"), Asst("done"));
+        Assert.Equal(new string('a', BoundedView.ActivitySummaryChars - 1), r.Activity[0].Summary);
+    }
 }

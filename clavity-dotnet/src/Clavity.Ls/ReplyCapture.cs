@@ -81,5 +81,5 @@ public static class ReplyCapture
 
     public static string OneLine(Exception ex) => Clip($"{ex.GetType().Name}: {ex.Message}".ReplaceLineEndings(" "));
 
-    public static string Clip(string s, int max = 200) => s.Length <= max ? s : s[..max];
+    public static string Clip(string s, int max = 200) => TextCut.Prefix(s, max);
 }

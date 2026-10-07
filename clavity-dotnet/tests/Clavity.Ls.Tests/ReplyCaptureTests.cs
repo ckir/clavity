@@ -102,4 +102,15 @@ public class ReplyCaptureTests : IDisposable
         Assert.True(HasLoneSurrogate(text.Substring(0, ReplyCapture.HeadChars - header)),
                     "control: a raw cut of this very text DOES split the pair, so the row can fail");
     }
+
+    [Fact]
+    public void Clip_never_splits_a_surrogate_pair()
+    {
+        // Capstone R2 FA4: Clip shortens error text that ends up in the result JSON.
+        var s = new string('a', 199) + "\U0001F600" + "zzz";
+        var c = ReplyCapture.Clip(s, 200);
+        Assert.Equal(199, c.Length);
+        Assert.Equal(new string('a', 199), c);
+        Assert.Equal("short", ReplyCapture.Clip("short", 200));
+    }
 }

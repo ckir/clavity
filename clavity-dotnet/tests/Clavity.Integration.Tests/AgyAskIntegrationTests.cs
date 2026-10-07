@@ -2405,4 +2405,31 @@ public class AgyAskIntegrationTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    [Fact]
+    public async Task A_timeout_diagnostic_summary_cut_never_splits_a_surrogate_pair()
+    {
+        // Capstone R2 FA3: BuildTimeoutDiagnostic keeps the last step's first 500 characters. A Kind-5 step with user
+        // text is not a turn end, so the second window (server times out, no progress) throws Stall with the diagnostic.
+        var longStep = new CascadeStep
+        {
+            Kind = 5,
+            UserInput = new CascadeUserInput { Text = new string('p', 499) + "\U0001F600" + new string('q', 20) },
+        };
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, AppendAfter: longStep),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, ServerTimesOut: true),
+        };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, IdleStallWindow = TimeSpan.FromMilliseconds(300) });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("stall me"));
+            Assert.Equal(new string('p', 499), ex.Diagnostic!.LastStepSummary);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

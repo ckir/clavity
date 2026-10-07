@@ -56,7 +56,7 @@ public static class BoundedView
                 : step.AssistantOutput is { } ao && ao.Text.Length > 0 ? ao.Text
                 : null;
             if (text is not null && text.Length > maxStepChars)
-                text = string.Concat(text.AsSpan(0, maxStepChars), "…");
+                text = string.Concat(TextCut.Prefix(text, maxStepChars), "…");
 
             // A step with no prose costs 0 chars, so `used + cost > budgetChars` can NEVER fire for it and
             // the char budget alone cannot bound a tool-heavy cascade. ProjectAskReply already caps the
@@ -129,7 +129,7 @@ public static class BoundedView
             if (t is null) return null;
             int cap = rescueRun && idx >= runStart && idx <= end && s.Kind == StepKind.AssistantKind
                 ? AskMaxStepChars : ActivitySummaryChars;
-            return t.Length > cap ? t[..cap] : t;
+            return TextCut.Prefix(t, cap);
         }
         var all = delta.Select((s, idx) => new ActivityItem(s.Kind, StepKind.Label(s.Kind), Summary(idx, s))).ToList();
 
