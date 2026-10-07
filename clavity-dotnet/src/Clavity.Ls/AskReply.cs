@@ -22,12 +22,15 @@ public sealed record AskReply(
     // reply is delivered anyway instead of a possible_modal that strands it (live 2026-09-17). NOT a 13b verdict:
     // it is a fact about the peer's state, so agy_status keeps saying "working" until those tasks end.
     bool PeerStillBusy = false,
-    // ROADMAP section 74 (Branch 22). Omitted from the JSON while unset, so an ordinary reply costs the driver no
-    // extra context. ReplyFile: the server's capture of every assistant step of this ask (C-capture), null when the
-    // capture is off or failed - then CaptureError says why. CheckedSource: "chat" or "peer-file" - which text passed
-    // or failed the [13b] checks; null when no discipline was named. TurnEndedOnToolStep: the delta ended on a tool
-    // step, so Answer is null by design. PeerFile: the reply file the peer was asked to write (C-request).
+    // ROADMAP section 74 (Branch 22). Every field below is omitted from the JSON while unset, and the driver's context
+    // is what that protects. ReplyFile: the server's capture of every assistant step of this ask (C-capture), null when
+    // the capture is off or failed - then CaptureError says why. CheckedSource: "chat" or "peer-file" - which text
+    // passed or failed the [13b] checks; null when no discipline was named. TurnEndedOnToolStep: the delta ended on a
+    // tool step, so Answer is null by design. PeerFile: the reply file the peer was asked to write (C-request).
     // PeerFileStatus: why no peer file was requested, or why the requested one was not used.
+    // COST (measured, real paths): an ORDINARY ask carries ReplyFile, +98 characters - no check runs there, so nothing
+    // else could flag a displaced report. A HEALTHY discipline ask drops ReplyFile, PeerFile and PeerFileStatus
+    // (AgyView.DropFilePointersWhenHealthy, owner ruling, capstone R2 CA1) and costs +23. A flagged ask keeps them all.
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ReplyFile = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CaptureError = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CheckedSource = null,
