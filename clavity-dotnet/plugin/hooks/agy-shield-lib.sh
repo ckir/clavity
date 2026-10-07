@@ -44,7 +44,15 @@
 # `nosession`, so the gate latches once and that key never sweeps again. Both are documented at their own
 # sites; the asymmetry is deliberate and owner-ruled, not an oversight. See the sweep-gate comment.
 
-_AS_CR=$'\r'   # a literal CR, for the optional-trailing-CR shield match in A2 (ANSI-C quoting: no subshell).
+# PORTABLE CONSTANTS. This file is sourced by hooks that are bash, but also by the open-issues skill's snippet, which runs in
+# whatever shell the AGENT's tool runs (dash/sh/zsh are all possible). Sourced under dash, the builtin A2 read below printed
+# `[[: not found` and APPENDED `\n*\n` to a healthy shield on EVERY call (MEASURED 2026-10-07 - the exact unbounded growth the
+# A2 note describes); the pre-Branch-21 text was POSIX sh and was fine. So the bash-only fast path is taken ONLY when
+# BASH_VERSION is set, at zero process cost, and every other shell runs the original greps. Nothing outside that guarded branch
+# may use `[[ ]]`, `$'...'`, `read -d` or arrays.
+_AS_NL='
+'
+if [ -n "${BASH_VERSION:-}" ]; then _AS_CR=$'\r'; else _AS_CR=$(printf '\r'); fi   # a literal CR, for the optional-trailing-CR shield match in A2.
 
 # Emit one line on stderr, at most once per (key, class). An empty key disables debouncing.
 #
@@ -218,12 +226,28 @@ agy_shield() {
     # below fall through to the same branches a grep exit of 2 took. read -d '' returns non-zero at
     # EOF while having filled the variable, hence the `|| :` inside the group. Wrapping the content in
     # newlines makes "a LINE equal to *" one substring test, first and last lines included.
-    _as_c=''; _as_readable=0
-    if { IFS= read -r -d '' _as_c || :; } 2>/dev/null < "$_as_shield"; then _as_readable=1; fi
-    _as_w=$'\n'${_as_c}$'\n'
-    if [ "$_as_readable" -eq 1 ] && { [[ $_as_w == *$'\n*\n'* ]] || [[ $_as_w == *$'\n*'"$_AS_CR"$'\n'* ]]; }; then
+    _as_star=0; _as_neg=0
+    if [ -n "${BASH_VERSION:-}" ]; then
+        _as_c=''; _as_readable=0
+        if { IFS= read -r -d '' _as_c || :; } 2>/dev/null < "$_as_shield"; then _as_readable=1; fi
+        _as_w=$_AS_NL${_as_c}$_AS_NL
+        if [ "$_as_readable" -eq 1 ]; then
+            # `case`, not [[ ]]: the patterns are quoted so the * inside them is literal.
+            case $_as_w in
+                *"$_AS_NL*$_AS_NL"* | *"$_AS_NL*$_AS_CR$_AS_NL"*) _as_star=1 ;;
+            esac
+            case $_as_w in
+                *"$_AS_NL!"*) _as_neg=1 ;;
+            esac
+        fi
+    else
+        # Any other shell: the original three probes, byte for byte in effect (see PORTABLE CONSTANTS above).
+        if grep -qFx '*' "$_as_shield" 2>/dev/null || grep -qFx "*$_AS_CR" "$_as_shield" 2>/dev/null; then _as_star=1; fi
+        if grep -q '^!' "$_as_shield" 2>/dev/null; then _as_neg=1; fi
+    fi
+    if [ "$_as_star" -eq 1 ]; then
         :                                       # a bare * is present: append nothing.
-    elif [ -f "$_as_shield" ] && [ "$_as_readable" -eq 1 ] && [[ $_as_w == *$'\n!'* ]]; then
+    elif [ -f "$_as_shield" ] && [ "$_as_neg" -eq 1 ]; then
         # PREPEND. .gitignore is LAST-MATCH-WINS, so appending * to a file that begins with a
         # negation INVERTS that negation - measured: check-ignore flips 1 -> 0, the file silently
         # becomes ignored, and the B3 report below is never reached. Prepending satisfies BOTH
@@ -488,7 +512,7 @@ agy_shield() {
             # destructive footgun, and a missing shield is trivially restorable where a destroyed intent is
             # not. That reasoning is unchanged; only the claim about how this branch is reached was wrong.
             _as_why=$(git -C "$_as_root" check-ignore -v -- "$_as_rel" 2>/dev/null)
-            _as_why=${_as_why%%$'\n'*}          # first line, builtin - no head process
+            _as_why=${_as_why%%"$_AS_NL"*}          # first line, builtin - no head process
             if [ -n "$_as_why" ]; then
                 # THE PROSE MUST NOT NAME THE FILE - capstone round 2, and this is the SECOND time the same
                 # mistake has been folded out of this one message. The first version blamed a negation line

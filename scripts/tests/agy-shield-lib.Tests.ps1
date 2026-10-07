@@ -63,7 +63,8 @@ Describe 'agy-shield-lib.sh' {
             param(
                 [string]$Root,          # fixture repo root (bash-style path)
                 [string]$Body,          # sh to run after sourcing
-                [hashtable]$Env = @{}
+                [hashtable]$Env = @{},
+                [string]$Shell = ''     # '' = Git Bash; 'dash' = run the snippet under dash, launched THROUGH Git Bash (the portability rows)
             )
             $libSh = ($script:Lib -replace '\\', '/')
             # DEBOUNCE ISOLATION. Since roadmap 17a the marker lives in each repository's own .clavity/
@@ -94,7 +95,13 @@ Describe 'agy-shield-lib.sh' {
             $prev = @{}
             foreach ($k in $Env.Keys) { $prev[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $Env[$k]) }
             try {
-                $p = Start-Process -FilePath $script:Bash -ArgumentList @($sf) -WorkingDirectory $Root `
+                # dash is launched THROUGH Git Bash by a one-line launcher FILE: Start-Process does not quote the elements of an
+                # -ArgumentList array, so an inline `-c 'exec dash ...'` is split on its spaces and dash never runs (measured - the first
+                # version of the rows below passed VACUOUSLY because of exactly that).
+                $launcher = "$sf.run.sh"
+                if ($Shell -eq 'dash') { [IO.File]::WriteAllText($launcher, "exec dash `"`$(cygpath -u `"`$1`")`"`n") }
+                $argList = if ($Shell -eq 'dash') { @($launcher, $sf) } else { @($sf) }
+                $p = Start-Process -FilePath $script:Bash -ArgumentList $argList -WorkingDirectory $Root `
                         -RedirectStandardOutput $outF -RedirectStandardError $errF -NoNewWindow -Wait -PassThru
                 [pscustomobject]@{
                     ExitCode = $p.ExitCode
@@ -104,7 +111,7 @@ Describe 'agy-shield-lib.sh' {
             }
             finally {
                 foreach ($k in $Env.Keys) { [Environment]::SetEnvironmentVariable($k, $prev[$k]) }
-                Remove-Item -LiteralPath $sf, $outF, $errF -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath $sf, $outF, $errF, "$sf.run.sh" -Force -ErrorAction SilentlyContinue
             }
         }
 
@@ -210,6 +217,45 @@ Describe 'agy-shield-lib.sh' {
             1..3 | ForEach-Object { Invoke-Shield -Root $r -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' | Out-Null }
             $stars = ([regex]::Matches((Get-Shield $r), '(?m)^\*$')).Count
             $stars | Should -Be 1
+        }
+    }
+
+    # BRANCH 21 capstone R1 (driver-measured): the open-issues skill SOURCES this file from whatever shell the agent's tool runs.
+    # Under dash the bash-only A2 read printed `[[: not found` and appended `\n*\n` to a healthy shield on EVERY call. The fast path is
+    # now taken only when BASH_VERSION is set; every other shell runs the original greps. These rows run the helper under dash and
+    # assert BYTES, so the unbounded-growth failure cannot come back unseen.
+    Context 'sourced under a NON-bash shell (dash) - the open-issues snippet runs in the agent''s shell' {
+        BeforeAll {
+            # PRECONDITION, asserted: if dash is missing every row below would run bash and assert nothing.
+            $script:DashProbe = & $script:Bash -c 'command -v dash >/dev/null 2>&1 && echo yes'
+            $script:DashProbe | Should -Be 'yes' -Because 'dash must exist in the Git for Windows MSYS tree, or these rows would silently test nothing'
+            $script:Dash = 'dash'
+        }
+        It 'leaves a healthy shield BYTE-IDENTICAL over three calls, silently' -ForEach @(
+            @{ Name = 'LF star';        Text = "*`n" }
+            @{ Name = 'CRLF star';      Text = "*`r`n" }
+            @{ Name = 'star + negation'; Text = "*`n!local-anomalies.md`n" }
+            @{ Name = 'no trailing newline'; Text = '*' }
+        ) {
+            $r = New-FixtureRepo -Shield $Text
+            $body = 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' + "`n" + 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' + "`n" + 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+            $res = Invoke-Shield -Root $r -Body ('printf "%s" "[${BASH_VERSION:-}]" > "$PWD/shell-probe.txt"' + "`n" + $body) -Shell $script:Dash
+            # CONTROL, asserted first: the snippet really ran under a shell WITHOUT BASH_VERSION. Without it an unlaunched dash leaves the
+            # shield untouched and every assertion below passes for the wrong reason.
+            (Get-Content -Raw -LiteralPath (Join-Path $r 'shell-probe.txt')) | Should -BeExactly '[]' -Because 'the rows must run under dash, not bash'
+            (Get-Shield $r) | Should -BeExactly $Text -Because "[$Name] a shield that already carries * must not be appended to, in ANY shell"
+            $res.Err | Should -Not -Match 'not found' -Because 'no bash-only construct may be EXECUTED under a non-bash shell'
+        }
+        It 'PREPENDS * to a negation-only shield under dash exactly as bash does' {
+            $r = New-FixtureRepo -Shield "!local-anomalies.md`n"
+            $null = Invoke-Shield -Root $r -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' -Shell $script:Dash
+            (Get-Shield $r) | Should -BeExactly "*`n!local-anomalies.md`n"
+        }
+        It 'APPENDS * to a shield that lacks it under dash (once, then stable)' {
+            $r = New-FixtureRepo -Shield "foo.txt`n"
+            $body = 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' + "`n" + 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+            $null = Invoke-Shield -Root $r -Body $body -Shell $script:Dash
+            (Get-Shield $r) | Should -BeExactly "foo.txt`n`n*`n"
         }
     }
 
