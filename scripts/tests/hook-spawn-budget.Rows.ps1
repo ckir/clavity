@@ -12,11 +12,11 @@ $script:HookCeiling = 13
 $script:ConsultPin = @{ PreMcp = 111; PreAsk = 114; PreSend = 117; PostMcp = 114; PostAsk = 117; PostAwait = 126 }
 
 # BRANCH 21 DEBT (owner ruling O3): census-measured paths of the eight hooks Branch 21 fixes, totals INCLUDING
-# the 3 boot processes. The suite's debt row stays RED while this list is non-empty. Branch 21 removes each
-# entry in the same commit that adds a passing budget row for that path.
-$script:B21Debt = @(
-    @{ Hook = 'migrate-inbox.sh';               Path = 'recover an interrupted migration';                          Total = 17 }
-)
+# the 3 boot processes. The suite's debt row stays RED while this list is non-empty. Branch 21 removed each
+# entry in the same commit that added a passing budget row for that path; the LAST one went with Task 9
+# (2026-10-08), so the list is EMPTY and the debt row is green. It is kept, empty, so the row stays a live gate:
+# a future hook that cannot meet the ceiling is recorded here, visibly, rather than skipped.
+$script:B21Debt = @()
 
 function New-HookFixture {
     # A throwaway repo, home and TMPDIR. -NoGit: the repo dir is a plain folder. -NoClavity: no .clavity/
@@ -462,7 +462,20 @@ $script:Rows = @(
     New-BudgetRow "$A/agy-inbox-snapshot.sh" 'non-curate prompt (hot path, silent)' {
         param($fx) [void](Add-FxInbox $fx); ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'UserPromptSubmit'; prompt = 'hello' } } -Silent -Verify {
         param($fx) (Get-FxBaks $fx).Count | Should -Be 0 }
-    New-BudgetRow "$A/migrate-inbox.sh" 'nothing to migrate' { param($fx) New-SessionStartPayload $fx } -Silent
+    New-BudgetRow "$A/migrate-inbox.sh" 'nothing to migrate' { param($fx) New-SessionStartPayload $fx } -Max 0 -Silent
+    # --- migrate-inbox.sh: the Branch 21 census path, PINNED at the measured count (2026-10-08; before: recover 14, nothing-to-migrate 1). The hook prints its "migrated" line to STDERR, so
+    # stdout is empty and -Silent + -Verify is the honest shape: the Verify proves the move really happened. ---
+    New-BudgetRow "$A/migrate-inbox.sh" 'RECOVER an interrupted migration (sidecar back, then complete)' {
+        param($fx)
+        $old = Join-Path $fx.Root 'lad/Programs/agy-autotrain/plugins/agy-autotrain/knowledge'
+        New-Item -ItemType Directory -Force -Path $old | Out-Null
+        [IO.File]::WriteAllText((Join-Path $old 'agy-observations.md.migrated-14g'), "- [h] rescued`n")
+        $fx.Env.LOCALAPPDATA = (Join-Path $fx.Root 'lad')
+        New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx)
+        $new = Join-Path $fx.Home '.clavity/agy-observations.md'
+        $new | Should -Exist
+        (Get-Content -LiteralPath $new -Raw) | Should -Match 'rescued' } -Max 6
     New-BudgetRow "$A/agy-learn-reminder.sh" 'SessionStart' { param($fx) New-SessionStartPayload $fx } -HookArgs @('SessionStart') -Expect 'agy-autotrain is active'
     New-BudgetRow "$A/agy-learn-reminder.sh" 'PreCompact' { param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'PreCompact'; trigger = 'manual' } } -HookArgs @('PreCompact') -Expect 'agy-LEARN check BEFORE COMPACTION'
     New-BudgetRow "$L/agy-verify-reminder.sh" 'not the clavity repo' { param($fx) New-SessionStartPayload $fx } -Max 0 -Silent

@@ -30,15 +30,21 @@ _home="${USERPROFILE:-$HOME}"
 NEWDIR="$_home/.clavity"
 NEW="$NEWDIR/agy-observations.md"
 
-# Byte size of a path: 0 if absent, -1 if it exists but the size cannot be read, else the count. A failed
-# read MUST NOT look like an empty file - the .iss learned this the hard way (a discarded FileSize Boolean
-# let a failed read pass as "empty" and overwrite a live inbox).
+# Three-state size probe, builtins only (Branch 21): sets the global _SZ to 0 (absent, or present and empty), -1 (exists
+# but is not a regular file, or cannot be OPENED) or 1 (non-empty). A failed read MUST NOT look like an empty file - the
+# .iss learned this the hard way (a discarded FileSize Boolean let a failed read pass as "empty" and overwrite a live
+# inbox) - so the probe is an actual OPEN: the -r builtin does not consult Windows ACLs. No caller ever used the byte
+# count itself (they test = 0, = -1 and -gt 0), so the `wc` process it cost bought nothing.
+# THE OPEN IS NOT NEGATED, on purpose. MEASURED 2026-10-07 on an ACL-denied file: `if ! { :; } < "$1"` reports "passed"
+# (the `!` swallows the failed redirect) while the plain `if { :; } < "$1"` reports the failure; see agy-anomaly-reminder.sh.
 _size() {
-  [ -e "$1" ] || { echo 0; return; }
-  local n
-  n=$(wc -c < "$1" 2>/dev/null) || { echo -1; return; }
-  n="${n//[[:space:]]/}"
-  if [ -n "$n" ]; then echo "$n"; else echo -1; fi
+  if [ ! -e "$1" ]; then _SZ=0; return; fi
+  if [ ! -f "$1" ]; then _SZ=-1; return; fi
+  if { :; } 2>/dev/null < "$1"; then
+    if [ -s "$1" ]; then _SZ=1; else _SZ=0; fi
+  else
+    _SZ=-1
+  fi
 }
 
 # Report a failure without blocking (the .iss used a SuppressibleMsgBox; a hook's channel is stderr).
@@ -48,8 +54,8 @@ _problem() {
 
 if [ ! -f "$OLD" ]; then
   # INTERRUPTED-MIGRATION RECOVERY (the source is gone): decide from the sidecar + destination.
-  destsize=$(_size "$NEW")
-  if [ ! -e "$ASIDE" ]; then asidesize=0; else asidesize=$(_size "$ASIDE"); fi
+  _size "$NEW"; destsize=$_SZ
+  _size "$ASIDE"; asidesize=$_SZ
   # Nothing to recover - and this exit comes FIRST, as in the .iss: an absent/empty sidecar means there is
   # nothing to move; a non-empty destination means a migration plainly finished.
   if [ "$asidesize" = "0" ]; then exit 0; fi
@@ -67,7 +73,8 @@ if [ ! -f "$OLD" ]; then
 fi
 
 # --- Main migration (OLD exists) ---
-if ! mkdir -p "$NEWDIR" 2>/dev/null; then
+# Branch 21: skip the process when the folder already exists - the common case.
+if [ ! -d "$NEWDIR" ] && ! mkdir -p "$NEWDIR" 2>/dev/null; then
   _problem "The folder $NEWDIR could not be created."
   exit 0
 fi
@@ -86,7 +93,7 @@ if ! mv "$OLD" "$ASIDE" 2>/dev/null; then
   exit 0
 fi
 
-destsize=$(_size "$NEW")
+_size "$NEW"; destsize=$_SZ
 if [ "$destsize" = "-1" ]; then
   # Size unreadable => do NOT risk clobbering a live inbox; roll the claim back.
   mv "$ASIDE" "$OLD" 2>/dev/null
