@@ -43,14 +43,15 @@ itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested on
   `*`, `_`, `>`, backslash. Driver-tested on 7 cases (accepts the 4 honest forms; rejects a different line, a
   truncated prefix, a one-word change).
 - **C-capture (server side, every ask).** After the wait (`AgyView.AskAsync`, after `WaitForIdleWithProgressAsync`),
-  the server writes the FULL text of every assistant step in this ask's delta - untruncated, in order, separated by a
-  fixed marker line - to `<user-profile>/.clavity/agy-replies/<cascade-id>-<first-step-index>.md`, under a size cap
-  (PROPOSED: 1 MiB; over it, the head and the tail are kept with an explicit cut marker between them, so the verdict
-  at the end survives). The user-profile `.clavity` is already this server's data directory (`SessionPaths.cs:12`) and
+  the server writes the FULL text of every assistant step in this ask's delta - untruncated, in order, each step preceded by the
+  line `----- agy step <index> -----` (index = the step's position in the trajectory) - to `<user-profile>/.clavity/agy-replies/<cascade-id>-<first-step-index>.md`, under a size cap
+  (PROPOSED: 1 MiB; over it, the first 768 KiB and the last 128 KiB are kept with the line
+  `----- cut: <n> characters omitted -----` between them, so the verdict at the end survives). The user-profile `.clavity` is already this server's data directory (`SessionPaths.cs:12`) and
   is not inside any repository, so no shield is involved. The result JSON gains `replyFile` (absolute path) and every
   `[13b]` notice names it.
 - **C-check (D3).** The `[13b]` checks run on the UNTRUNCATED trailing assistant run (the same run `Answer` is cut
-  from), not on the 16 000-char head copy - so a long but complete reply keeps its terminal token. A trailing TOOL step
+  from), not on the 16 000-char head copy - so a long but complete reply keeps its terminal token. When `AnswerTruncated` is true the result says so and points at
+  `replyFile` EVEN IF every check passed (panel R1: a passing verdict must not hide that `Answer` is cut). A trailing TOOL step
   still yields `Answer = null` (the "failure not hidden" design in `AskReplyProjectionTests` is kept); the notice then
   points at `replyFile`, which holds the text.
 - **C-request (peer side, discipline named).** The outgoing message gains a short appended block asking the peer to
@@ -58,10 +59,11 @@ itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested on
   with a server-generated nonce as the file's FIRST line. This is a RECORDED EXCEPTION to the T4b "raw ask only" note
   (`AgyView.cs:210-213`): the appended block is peer-facing completion protocol, never driver guidance; the note is
   amended to say so. Ordinary asks (no discipline) are unchanged.
-- **C-peer-read.** If the server-captured text FAILS a check and the peer file exists with the matching nonce on its
+- **C-peer-read.** If the chat text (C-check) FAILS a check and the peer file exists with the matching nonce on its
   first line, is within the cap, and passes, the reply is reported complete AND the result's `Answer` is the PEER
   FILE's text (agy F4: the text that passed is the text the driver receives - never check one text and surface
-  another). The result says which source passed: `checkedSource: chat | capture | peer-file`.
+  another). The result says which source passed: `checkedSource: chat | peer-file` (panel R1: `capture` was dropped - the checks never run on the full capture, whose
+  last line in the measured failure is the same bare acknowledgement that failed the chat check).
 - **C-order (D1 wording).** Every flagged notice and all four skills (both plugins) name ONE recovery order: (1) read
   `replyFile` (always present); (2) read the peer file if it was requested; (3) re-ask AT MOST ONCE; (4) halt and ask
   the human. `agy_look` is named only as a SHORT-reply tool with its 1000-character step cap stated. ECHO MISSING
@@ -86,3 +88,9 @@ itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested on
 ## 5. Out of scope
 
 The bash shield's semantics (section 41 stays deferred); Branch 21's hooks; `agy_look`'s caps.
+
+## 6. Stand-downs (AGY-AFTER panel)
+
+- `DISCARDED-BELOW-FLOOR` (R1 solo, Boundary Smuggler): a symlink planted at the peer-file path makes the server read and
+  surface another local file - same-user only, inside the accepted same-user trust boundary
+  (`clavity-dotnet/ROADMAP.md`, "Non-goals / accepted limitations": "Same-user trust boundary").
