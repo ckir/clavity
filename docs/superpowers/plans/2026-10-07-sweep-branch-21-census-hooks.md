@@ -1368,6 +1368,24 @@ fi
 2. **AGY-TEST-AUDIT** (hook-nudged after capstone GREEN; ~5x leaner after /compact — tell the owner and follow their answer).
 3. **finishing-a-development-branch** — the owner owns every push; on push, watch the `ci-scripts` jq step and the (now green) debt row.
 
+## Stand-downs (AGY-AFTER panel, rounds 1-3, 2026-10-07)
+
+Durable record per the panel discipline (`DISCARDED-BELOW-FLOOR` items with their guard; `REJECTED` kept for audit).
+- `REJECTED` (R1, agy t7-missing-exit): Task 7 drops `exit 0` after `emit` - `emit()` ends in `exit 0`
+  (`.claude/hooks/docs-audit-reminder.sh:13-16`) and the plan leaves it untouched.
+- `REJECTED` (R1, solo): one `git check-ignore -v --no-index` replacing `ls-files` + `check-ignore -v` - measured: it
+  reports a TRACKED file that also has a negation as "negation rule", losing the tracked remedy.
+- `DISCARDED-BELOW-FLOOR` (R3 rv-1): Task 1's builtin `while read` over the inbox grows with the inbox - bounded because
+  the inbox is drained when it reaches the curate nudge's threshold (`agy-autotrain/hooks/agy-curate-nudge.sh:6`,
+  default 8 entries), and the loop costs no process per line.
+- `DISCARDED-BELOW-FLOOR` (R3 rv-2): Task 1's `baks` array is built from `ls` - bounded by the ring size the same run
+  prunes back to (`agy-autotrain/hooks/agy-inbox-snapshot.sh:8`, KEEP default 5).
+- `DISCARDED-BELOW-FLOOR` (R3 rv-3): Task 2's glob over `.clavity/` - it passes only when candidates exist, and the
+  `find` it then runs deletes the stale ones (`clavity-dotnet/plugin/hooks/agy-shield-lib.sh:387`, `-mtime +30 -delete`).
+- R3 note: the first round-3 reply described content the plan does not contain (`@json`; a file
+  `b21-t2-sweep-process-hooks.md` - both measured absent) and was not accepted; the re-ask passed a quote battery (5/6
+  exact, 1 adjacent off-by-one, past-EOF control correct) and every line it cited verified.
+
 ## Self-audit (the writing-plans exhaustiveness pass, run 2026-10-07)
 
 - **Spec coverage:** §69's eight hooks → Tasks 1, 2, 4, 5, 6, 7, 8, 9 (one each; every measured-over path has a budget row). §72 → Task 5(e). §73 → Task 11. §64 → Task 8 Step 4. §59 → Task 5(a)(b) + Task 10. Inventory defect 1 (KEEP=08) → Task 1(a); defect 2 (`[ \t]`) → Task 1(d); defect 3 (`%()T` ungated) → Task 2 Step 3(b) + Task 5(c). Phase split + phase-1 capstone → Task 3. Criterion (every census path ≤ 16) → per-task budget rows + Task 12 Step 1. Debt-list emptying per-commit → each task's final step; Task 9 removes the last entry.
