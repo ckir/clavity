@@ -2288,4 +2288,99 @@ public class AgyAskIntegrationTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    private static async Task<(List<string> Texts, JsonElement Json)> AgyAskOnce(string replyText, string dir,
+        Action<FakeAskLs>? arrange = null, string? captureDir = null, string? discipline = "agy-capstone")
+    {
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", replyText, TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        arrange?.Invoke(fake);
+        await using var app = await StartFakeAsync(fake);
+        var agyDir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, ReplyCaptureDir = captureDir });
+            var result = await McpTools.AgyAsk(view, "review it", new CollectingProgress<ProgressNotificationValue>(),
+                discipline: discipline, artifactPath: WriteArtifact(dir, "notes\nthe last line of the artifact\n"));
+            var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            return (texts, JsonDocument.Parse(texts[0]).RootElement.Clone());
+        }
+        finally { Directory.Delete(agyDir, true); }
+    }
+
+    [Fact]
+    public async Task TRUNCATED_names_the_capture_file_and_the_order()
+    {
+        var dir = TempDir();
+        try
+        {
+            var (texts, json) = await AgyAskOnce("a review with no token", dir, captureDir: Path.Combine(dir, "cap"));
+            var block = Assert.Single(texts, t => t.Contains("[13b]"));
+            Assert.StartsWith("[13b] TRUNCATED REPLY", block);
+            Assert.Contains($"(1) read the last 200 lines of {json.GetProperty("ReplyFile").GetString()}", block);
+            Assert.Contains("re-ask at most once", block);
+            Assert.DoesNotContain("Recover with agy_look or re-ask", block);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task ECHO_MISSING_names_the_order_too()
+    {
+        var dir = TempDir();
+        try
+        {
+            var (texts, _) = await AgyAskOnce("Review complete.\n\n[VERDICT: ALIGNED]", dir, captureDir: Path.Combine(dir, "cap"));
+            var block = Assert.Single(texts, t => t.Contains("[13b]"));
+            Assert.StartsWith("[13b] ECHO MISSING", block);
+            Assert.Contains("Recover in this order: (1) read the last 200 lines of ", block);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task With_no_file_at_all_the_notice_names_agy_look_for_a_short_reply_only()
+    {
+        var dir = TempDir();
+        try
+        {
+            var (texts, _) = await AgyAskOnce("a review with no token", dir);
+            Assert.Contains(texts, t => t.StartsWith("[13b] TRUNCATED REPLY") && t.Contains("agy_look, for a SHORT reply only"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_passing_but_cut_Answer_gets_the_ANSWER_CUT_pointer()
+    {
+        var dir = TempDir();
+        try
+        {
+            var text = new string('x', BoundedView.AskMaxStepChars + 500) + "\n\n" + GoodReport;
+            var (texts, json) = await AgyAskOnce(text, dir, captureDir: Path.Combine(dir, "cap"));
+            var block = Assert.Single(texts, t => t.Contains("[13b]"));
+            Assert.StartsWith("[13b] ANSWER CUT", block);
+            Assert.Contains(json.GetProperty("ReplyFile").GetString()!, block);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_rescue_is_announced_not_silent()
+    {
+        var dir = TempDir();
+        try
+        {
+            var ws = ShieldedWorkspace(dir);
+            var (texts, json) = await AgyAskOnce("Noted.", dir, f =>
+            {
+                f.WorkspaceUris = new[] { new Uri(ws).AbsoluteUri };
+                f.OnSend = PeerWrites(GoodReport);
+            });
+            var block = Assert.Single(texts, t => t.Contains("[13b]"));
+            Assert.StartsWith("[13b] RESCUED FROM PEER FILE", block);
+            Assert.Equal("peer-file", json.GetProperty("CheckedSource").GetString());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }
