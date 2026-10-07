@@ -330,9 +330,13 @@ git commit -m "perf(hooks): agy-inbox-snapshot under the 16-process ceiling (for
 ```powershell
 function Set-FxShield {
     # $Text = $null -> .clavity exists with NO .gitignore; otherwise the shield holds exactly $Text.
+    # New-HookFixture ALREADY writes .clavity/.gitignore = '*' (panel R1, measured): the $null case must
+    # DELETE it, or the "shield MISSING" row silently measures the healthy path instead.
     param($Fx, $Text)
     $d = Join-Path $Fx.Repo '.clavity'; New-Item -ItemType Directory -Force -Path $d | Out-Null
-    if ($null -ne $Text) { [IO.File]::WriteAllText((Join-Path $d '.gitignore'), $Text) }
+    $g = Join-Path $d '.gitignore'
+    if ($null -eq $Text) { Remove-Item -LiteralPath $g -Force -ErrorAction SilentlyContinue }
+    else { [IO.File]::WriteAllText($g, $Text) }
 }
 ```
 
@@ -361,10 +365,34 @@ and these rows (the hook needs a git repo — the default fixture IS one — plu
     New-BudgetRow "$D/agy-discipline-reaching.sh" 'jsonl TRACKED by git -> persistent message, marker written' {
         param($fx) Set-FxShield $fx "*`n"
         [IO.File]::WriteAllText((Join-Path $fx.Repo '.clavity/discipline-reaching.jsonl'), "{}`n")
-        Invoke-FxGit $fx @('add', '-f', '.clavity/discipline-reaching.jsonl')
+        Invoke-FxGit $fx add -f .clavity/discipline-reaching.jsonl
         New-SessionStartPayload $fx } -Silent -Verify {
         param($fx) (Join-Path $fx.Repo '.clavity/.clavity-shield-persistent-s1') | Should -Exist }
+    # LONG-LIVED REPO variants (panel R1): a real repository carries OTHER sessions' markers, so the glob
+    # gates PASS and both finds run - the cheapest-fixture rows above cannot see that cost.
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'long-lived repo: a NEW session on a ! negation (old markers present)' {
+        param($fx) Set-FxShield $fx "!discipline-reaching.jsonl`n"
+        foreach ($k in 'old1', 'old2') { New-Item -ItemType File -Path (Join-Path $fx.Repo ".clavity/.clavity-shield-swept-$k") | Out-Null }
+        New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Get-Content -LiteralPath (Join-Path $fx.Repo '.clavity/.gitignore'))[0] | Should -BeExactly '*' }
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'long-lived repo: a NEW session, healthy shield (old markers present)' {
+        param($fx) foreach ($k in 'old1', 'old2') { New-Item -ItemType File -Path (Join-Path $fx.Repo ".clavity/.clavity-shield-swept-$k") | Out-Null }
+        New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Join-Path $fx.Repo '.clavity/.clavity-shield-swept-s1') | Should -Exist }
 ```
+
+**The long-lived negation row is OVER the ceiling as drafted, and that needs an owner ruling (panel R1).**
+Measured arithmetic at `6a6224ce`: boot 3 + prepend 6 (`mktemp`/`cat`/`mv`, section 41) + `check-ignore -q` 2 +
+sweep `find` 2 + `ls-files` 2 + `check-ignore -v` 2 + say-prune `find` 2 = **19**. Fold (c) below already removes
+the say-prune `find` whenever the sweep `find` ran IN THE SAME CALL (the sweep's `-name` group is a strict superset
+of the say-prune's), giving **17** - still one over, on ONE run per repository (the run that first meets a
+negation in a repo that already has markers; afterwards the shield carries the prepended `*` and the recurring
+negation path costs 11). Merging `ls-files` + `check-ignore -v` into one `check-ignore -v --no-index` was MEASURED
+and REJECTED: it reports a TRACKED file that also has a negation as "negation rule" (rc 0, `!` pattern), losing
+the tracked remedy today's `ls-files` split gives. The remaining choices go to the owner at plan approval:
+(i) on the call that paid the prepend, do NOT latch the sweep gate - the sweep is housekeeping and the next
+session's key latches it -> **15**; (ii) accept 17 on that one run as a named exemption row (`-Max 14`);
+(iii) touch section 41's prepend (already ruled out). This row is written against choice (i); Step 2(e) carries it.
 
 Run with `HSB_HOOK='agy-discipline-reaching.sh'`. Expected: the negation rows and the tracked row FAIL on count (census 36/34/20 vs 16), the rest pass — the failing control.
 
@@ -395,7 +423,10 @@ Caller at line 111: `_ass_dir=$(_agy_shield_markerdir "$_ass_root")` → `_agy_s
     # reach here before agy_shield's sweep block, when the [ ] tests are simply false). An unmatched glob
     # stays a literal string and [ -e ] rejects it - no nullglob needed.
     _ass_stale=0
-    for _ass_f in "$_ass_dir"/.clavity-shield-*; do
+    # The sweep find (when it ran in THIS call) already covered '.clavity-shield-*' with the same -mtime:
+    # a second prune is pure cost (panel R1). _as_swept_ran is set by the sweep block below.
+    [ "${_as_swept_ran:-0}" = 1 ] && _ass_stale=-1
+    [ "$_ass_stale" -eq 0 ] && for _ass_f in "$_ass_dir"/.clavity-shield-*; do
         [ "$_ass_f" = "$_ass_marker" ] && continue
         [ "${_as_swept_now:-}" = 1 ] && [ "$_ass_f" = "${_as_sweep:-}" ] && continue
         [ -e "$_ass_f" ] && { _ass_stale=1; break; }
@@ -430,6 +461,17 @@ with:
 
 Everything inside the two branches — including the whole `mktemp`/`cat`/`mv` prepend at 217–231 and both append branches — stays byte-identical (§41: the prepend is owner-deferred; a failing control must exist before anyone touches it).
 
+(e0) At the top of `agy_shield` (after `_as_key=$3`, line 136), RESET the per-call globals this branch adds - they
+are file-scoped (no `local` in this file) and `agy_shield` can run more than once in one shell (`agy-mark.sh`), so a
+stale `_as_prepended=1` from an earlier call would wrongly skip this call's sweep latch (panel R1):
+
+```bash
+    _as_prepended=0; _as_swept_now=0; _as_swept_ran=0
+```
+
+(The prepend branch at 217–231 already assigns `_as_prepended=0` then `1` on success; the reset only covers the calls
+that never enter that branch.)
+
 (e) The sweep block (lines 364–394): adopt the globals + glob gate. Replace the block from `_as_swdir=$(...)` through the gated `find` with:
 
 ```bash
@@ -439,8 +481,13 @@ Everything inside the two branches — including the whole `mktemp`/`cat`/`mv` p
         printf 'agy-shield: sweep gate disabled - "%s" is not a writable directory. Stale .gitignore.tmp.* files will accumulate.\n' "$_as_root/.clavity" >&2
     else
         _as_sweep="$_as_swdir/.clavity-shield-swept-${_as_key:-nosession}"
+        _as_swept_ran=0
         if [ -f "$_as_sweep" ]; then
             :   # already swept for this key - the gate doing its job, and NOT a failure to report.
+        elif [ "${_as_prepended:-0}" = 1 ]; then
+            :   # OWNER CHOICE (i), panel R1: the call that paid section 41's prepend (6 processes) does NOT
+                # latch the sweep. It is housekeeping; the next call under this key - or the next session's
+                # key - latches and sweeps. This is what holds the first-negation run to 15.
         elif : 2>/dev/null > "$_as_sweep"; then
             _as_swept_now=1
             # (comment block 372–386 kept verbatim)
@@ -453,7 +500,7 @@ Everything inside the two branches — including the whole `mktemp`/`cat`/`mv` p
                 [ "$_as_f" = "$_as_sweep" ] && continue
                 [ -e "$_as_f" ] && { _as_stale=1; break; }
             done
-            [ "$_as_stale" -eq 1 ] && find "$_as_dir" -maxdepth 1 \( -name '.gitignore.tmp.*' -o -name '.clavity-shield-*' \) -mtime +30 -delete 2>/dev/null
+            [ "$_as_stale" -eq 1 ] && { find "$_as_dir" -maxdepth 1 \( -name '.gitignore.tmp.*' -o -name '.clavity-shield-*' \) -mtime +30 -delete 2>/dev/null; _as_swept_ran=1; }
         else
             printf 'agy-shield: sweep gate could not latch at "%s" - stale .gitignore.tmp.* files will accumulate.\n' "$_as_sweep" >&2
         fi
@@ -485,7 +532,9 @@ Everything inside the two branches — including the whole `mktemp`/`cat`/`mv` p
         return 0
     fi
 
-    # B3 (rc == 1): the block at 409–449 stays byte-identical EXCEPT the -v probe loses its `head`:
+    # B3 (rc == 1): the block at 409–449 - INCLUDING its `if [ "$_as_ci" -eq 1 ]; then ... return 0; fi`
+    # wrapper, now always true at this point and kept so the diff stays minimal - is byte-identical EXCEPT the
+    # -v probe loses its `head`. The old B4 tail at 451–457 is DELETED (it moved into the rc != 1 arm above):
 ```
 
 and inside B3, line 429: `_as_why=$(git -C "$_as_root" check-ignore -v -- "$_as_rel" 2>/dev/null | head -n 1)` →
@@ -521,7 +570,7 @@ else
 fi
 ```
 
-- [ ] **Step 4: Budget rows green.** Re-run the Step-1 command (`HSB_HOOK='agy-discipline-reaching.sh'`). Expected: Failed: 0 (compat rows included — the bash3 path's only divergence is the `date` fallback, whose 2 extra processes still fit: 15 + 2 = 17 is NOT paid because the fallback replaces nothing on the negation path's count path… verify by the run, and if the compat negation row exceeds Max, raise ONLY that row's `-Max` to 15 with a comment naming the `date` fallback as the cause — the compat row asserts equal OUTPUT, the count ceiling stays 13 beyond boot for the primary row).
+- [ ] **Step 4: Budget rows green.** Re-run the Step-1 command (`HSB_HOOK='agy-discipline-reaching.sh'`). Expected: Failed: 0, compat rows included. (The compat `It` asserts byte-identical OUTPUT plus `-Verify` on both paths and never asserts `Spawned`, so the bash3 `date` fallback's 2 extra processes cannot fail it - panel R1 read `hook-spawn-budget.Tests.ps1`; no contingency is needed.)
 
 - [ ] **Step 5: Shield-lib behaviour rows** in `scripts/tests/agy-shield-lib.Tests.ps1` (open the file; use its `New-FixtureRepo` + existing invoke pattern — the suite drives `agy_shield` through its own shim; add rows with that shim):
 
@@ -798,12 +847,17 @@ Mutants: (1) revert the find glob to the single `-name '.clavity-assert-*'` ⇒ 
 - [ ] **Step 1: Rewrite the three spawn sites.**
 
 (a) Line 17: `input=$(cat 2>/dev/null)` → `IFS= read -r -d '' input`.
-(b) Lines 20–21 (jq cwd) → raw regex (a SessionStart payload; no user-content fields — same safety argument as Task 4, and this hook treats an undecodable cwd as not-this-repo silence, so no jq fallback is needed; the `command -v jq` guard at line 18 STAYS — the emit path still uses jq):
+(b) Lines 20–21 (jq cwd) → raw regex WITH Task 4's jq fallback (a SessionStart payload carries no user-content fields, so the raw match is safe - but a repo path with a non-ASCII character arrives as `\uXXXX`, which only jq decodes; raw-only would turn this hook SILENT for such a repo where today it works - panel R1, Axiom Breaker). The `command -v jq` guard at line 18 STAYS - the fallback and the emit path both use jq:
 
 ```bash
 cwd=''
 [[ $input =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && cwd=${BASH_REMATCH[1]}
-cwd=${cwd//\\\\//}
+_vr_probe=${cwd//\\\\/}
+if [[ $_vr_probe == *\\* ]]; then
+  cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)   # an escape raw cannot decode
+else
+  cwd=${cwd//\\\\//}
+fi
 [ -z "$cwd" ] && exit 0
 ```
 
@@ -888,18 +942,18 @@ Describe 'agy-verify-reminder.sh' {
         $v = Join-Path $fx.Repo 'agy-autotrain/verify'; New-Item -ItemType Directory -Force -Path $v, (Join-Path $fx.Root 'fakebin') | Out-Null
         @('| id | dotnet | classic |', '|----|--------|---------|', '| A1 | PASS 1.0.0 | N/A |') | Set-Content -LiteralPath (Join-Path $v 'assertions.md')
         [IO.File]::WriteAllText((Join-Path $fx.Root 'fakebin/agy'), "#!/bin/sh`necho agy 9.9.9`n")
-        $fx.Env.PATH = ((Join-Path $fx.Root 'fakebin') + ';' + $fx.Env.PATH)
+        $fx.Env.PATH = ((Join-Path $fx.Root 'fakebin') + ';' + $env:PATH)
         New-SessionStartPayload $fx } -Expect 'VERIFY-HARNESS reminder'
     New-BudgetRow "$L/agy-verify-reminder.sh" 'all rows current -> silent (fake agy on PATH)' {
         param($fx)
         $v = Join-Path $fx.Repo 'agy-autotrain/verify'; New-Item -ItemType Directory -Force -Path $v, (Join-Path $fx.Root 'fakebin') | Out-Null
         @('| id | dotnet | classic |', '|----|--------|---------|', '| A1 | PASS 9.9.9 | N/A |') | Set-Content -LiteralPath (Join-Path $v 'assertions.md')
         [IO.File]::WriteAllText((Join-Path $fx.Root 'fakebin/agy'), "#!/bin/sh`necho agy 9.9.9`n")
-        $fx.Env.PATH = ((Join-Path $fx.Root 'fakebin') + ';' + $fx.Env.PATH)
+        $fx.Env.PATH = ((Join-Path $fx.Root 'fakebin') + ';' + $env:PATH)
         New-SessionStartPayload $fx } -Silent
 ```
 
-(If `$fx.Env.PATH` is not pre-populated by `New-HookFixture`, set it from `$env:PATH` first — open the fixture function and match its shape; STATE-VERIFICATION applies.) Run with `HSB_HOOK='agy-verify-reminder.sh'`; expected green (these rows were never red pre-rewrite — the hook's count was PATH-profile-dependent; the suite rows above are the behaviour floor, the budget rows pin the ceiling from now on).
+(`New-HookFixture`'s `Env` carries NO `PATH` key - measured in panel R1 - so these rows prepend to the session's `$env:PATH`; a row that prepended to `$fx.Env.PATH` would hand the hook a PATH holding only the fake directory, silently dropping jq and every real tool.) Run with `HSB_HOOK='agy-verify-reminder.sh'`; expected green (these rows were never red pre-rewrite — the hook's count was PATH-profile-dependent; the suite rows above are the behaviour floor, the budget rows pin the ceiling from now on).
 
 - [ ] **Step 5: Mutants:** (1) in (c) change `re_ver` to `'([0-9]+\.[0-9]+)'` ⇒ the stale-EMIT suite row red (live `9.9` ≠ cell version shape… the row asserts `(live 9\.9\.9)`); (2) in (b) drop the `${cwd//\\\\//}` collapse ⇒ every suite row red (path never resolves → silent). Restore.
 
@@ -987,7 +1041,7 @@ emit "[DOCS-AUDIT] ${open} open finding(s) and ${unconfirmed} unconfirmed doc(s)
         [IO.File]::WriteAllText((Join-Path $fx.Root 'root/plugin.json'), '{"version":"9.9.9"}')
         $fx.Env.CLAUDE_PLUGIN_DATA = (($fx.Root -replace '\\', '/') + '/data')
         $fx.Env.CLAUDE_PLUGIN_ROOT = (($fx.Root -replace '\\', '/') + '/root')
-        $fx.Env.PATH = ($fb + ';' + $fx.Env.PATH)
+        $fx.Env.PATH = ($fb + ';' + $env:PATH)
         New-SessionStartPayload $fx } -Expect 'release lookup failed'
     New-BudgetRow "$D/fetch-clavity-ls.sh" 'lookup EMPTY (fake curl = true, jq present) -> no-asset note' {
         param($fx)
@@ -996,7 +1050,7 @@ emit "[DOCS-AUDIT] ${open} open finding(s) and ${unconfirmed} unconfirmed doc(s)
         [IO.File]::WriteAllText((Join-Path $fx.Root 'root/plugin.json'), '{"version":"9.9.9"}')
         $fx.Env.CLAUDE_PLUGIN_DATA = (($fx.Root -replace '\\', '/') + '/data')
         $fx.Env.CLAUDE_PLUGIN_ROOT = (($fx.Root -replace '\\', '/') + '/root')
-        $fx.Env.PATH = ($fb + ';' + $fx.Env.PATH)
+        $fx.Env.PATH = ($fb + ';' + $env:PATH)
         New-SessionStartPayload $fx } -Expect 'no release asset named'
 ```
 
@@ -1007,14 +1061,15 @@ with, near the other Rows-file constants: `$script:GitUsrBin = Join-Path (Split-
 (a) Lines 29–34, `_json_str`/`_say` — builtin escaping, result via a global (kills `sed|tr` + the `$( )` subshell on EVERY note path):
 
 ```bash
-# Builtin JSON string escape (Branch 21): backslash first, then double quote, then the only control
-# characters these messages can carry - \n, \r, \t from a weird CLAUDE_PLUGIN_DATA value. The old
-# `sed | tr -d '\000-\037'` stripped the whole C0 range; every message here is fixed ASCII text plus
-# $TARGET, so after the three expansions below no other control character can remain.
+# Builtin JSON string escape (Branch 21): backslash first, then double quote, then DELETE the whole C0
+# range exactly as the old `sed | tr -d '\000-\037'` did (panel R1 measured the bracket-range strip
+# byte-equal to tr on \x01, \t, \n and ESC). The range needs LC_ALL=C, scoped to the function so the
+# rest of the hook keeps its locale. NUL cannot occur in a bash string, so \x01 is the honest floor.
 _json_str() {
+  local LC_ALL=C
   _js=${1//\\/\\\\}
   _js=${_js//\"/\\\"}
-  _js=${_js//$'\n'/ }; _js=${_js//$'\r'/}; _js=${_js//$'\t'/ }
+  _js=${_js//[$'\x01'-$'\x1f']/}
 }
 _say() {
   echo "$1" >&2
@@ -1268,7 +1323,7 @@ fi
 - [ ] **Step 3: Repo gates, sequentially:** `bash scripts/check-seed-artifacts-synced.sh` (0) · `pwsh -NoProfile -c "Invoke-Pester scripts/tests/plugin-hooks-payload.Tests.ps1, scripts/tests/plugin-hooks-registration.Tests.ps1 -Output Detailed -CI"` (ASCII + byte-identical pairs + registration; expected all green) · `pwsh -NoProfile -File scripts/check-injected-context.ps1` (the emitted messages did not change text, only their plumbing — expected OK) · `pwsh -NoProfile -File scripts/check-control-bytes.ps1` if present per pre-push config (expected OK).
 - [ ] **Step 4: ROADMAP updates** (`clavity-dotnet/ROADMAP.md`):
   - §69: append a SHIPPED note with the measured before→after table (from Step 1) and the two fixture-helper homes (`Add-FxInbox`, `Set-FxShield` in the Rows file).
-  - §72: header → shipped; body notes the owner-accepted home CHANGE: the sweep rides `assertion-strength-reminder.sh`'s create-path `find` (zero added processes), not a SessionStart hook as first sketched.
+  - §72: header → shipped; body notes the home CHANGE - OWNER DECISION REQUIRED BEFORE TASK 5 (panel R1: the ROADMAP names "a sweep in an existing SessionStart hook"; this plan proposes the zero-cost `assertion-strength-reminder.sh` create-path `find` instead, and no ruling accepts that yet): the sweep rides `assertion-strength-reminder.sh`'s create-path `find` (zero added processes), not a SessionStart hook as first sketched.
   - §73: header → shipped; note the UTC-day-boundary divergence and the captured `date -r` sibling anomaly.
   - §64: header → shipped (the mktemp-failure row + its mutant).
   - §59: header → shipped; body already names the three remaining hooks — note all three now read stdin with the builtin and the empty-PATH stderr rows pin it (and that Branch 20 had silently fixed the other four).
