@@ -98,6 +98,9 @@ public class AgyAskIntegrationTests
         // Branch 22. The conversation's workspaces (GetConversationMetadata); null => Unimplemented, as on every
         // fake before this branch, which the driver treats as "agy's workspace is unknown".
         public IReadOnlyList<string>? WorkspaceUris { get; set; }
+        // Branch 22 test audit. A metadata failure that is NOT Unimplemented (a transient blip): it must cost the peer
+        // file and nothing else.
+        public StatusCode? MetadataFailure { get; set; }
         // Branch 22. Runs on every send with the sent text - stands in for the peer writing its reply file.
         public Action<string>? OnSend { get; set; }
         // Branch 22. Append a TOOL step after the scripted reply, so the delta ends on a tool step.
@@ -106,6 +109,7 @@ public class AgyAskIntegrationTests
         public override Task<GetConversationMetadataResponse> GetConversationMetadata(
             GetConversationMetadataRequest request, ServerCallContext context)
         {
+            if (MetadataFailure is { } failure) throw new RpcException(new Status(failure, "metadata blip"));
             if (WorkspaceUris is null) throw new RpcException(new Status(StatusCode.Unimplemented, "no metadata"));
             var md = new Clavity.Ls.Proto.Metadata();
             foreach (var u in WorkspaceUris) md.Workspaces.Add(new Workspace { WorkspaceFolderAbsoluteUri = u });
@@ -2205,6 +2209,28 @@ public class AgyAskIntegrationTests
             Assert.Null(r.PeerFile);
             Assert.True(r.TerminalTokenMissing);
             Assert.Contains(why, r.PeerFileStatus);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_transient_metadata_failure_costs_the_peer_file_and_not_the_ask()
+    {
+        var dir = TempDir();
+        try
+        {
+            var ws = ShieldedWorkspace(dir);
+            // A FLAGGED reply keeps the status (it is dropped on a healthy one); the ask must still come back as a reply.
+            var (r, fake) = await AskOnce("Noted.", dir, f =>
+            {
+                f.WorkspaceUris = new[] { new Uri(ws).AbsoluteUri };
+                f.MetadataFailure = StatusCode.Internal;
+            });
+            Assert.Equal("review it", fake.LastSentText);
+            Assert.Null(r.PeerFile);
+            Assert.True(r.TerminalTokenMissing);
+            Assert.Contains("unknown", r.PeerFileStatus);
+            Assert.Contains("metadata blip", r.PeerFileStatus);
         }
         finally { Directory.Delete(dir, true); }
     }

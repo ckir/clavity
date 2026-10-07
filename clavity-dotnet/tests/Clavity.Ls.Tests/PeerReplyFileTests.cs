@@ -83,4 +83,22 @@ public class PeerReplyFileTests : IDisposable
         Assert.Null(big.Body);
         Assert.Contains("cap", big.Status);
     }
+
+    [Fact]
+    public void TryRead_accepts_a_file_of_exactly_MaxBytes_and_refuses_one_byte_more()
+    {
+        // The cap is inclusive: the oversized row above overshoots by the 21-byte nonce prefix and never probes the edge.
+        var f = Path.Combine(_root, "edge.md");
+        const string prefix = "agy-reply-nonce: n1\n\n";
+        File.WriteAllText(f, prefix + new string('x', PeerReplyFile.MaxBytes - prefix.Length));
+        Assert.Equal(PeerReplyFile.MaxBytes, new FileInfo(f).Length);
+        var atCap = PeerReplyFile.TryRead(f, "n1");
+        Assert.Null(atCap.Status);
+        Assert.Equal(PeerReplyFile.MaxBytes - prefix.Length, atCap.Body!.Length);
+        File.WriteAllText(f, prefix + new string('x', PeerReplyFile.MaxBytes - prefix.Length + 1));
+        Assert.Equal(PeerReplyFile.MaxBytes + 1, new FileInfo(f).Length);
+        var over = PeerReplyFile.TryRead(f, "n1");
+        Assert.Null(over.Body);
+        Assert.Contains("cap", over.Status);
+    }
 }
