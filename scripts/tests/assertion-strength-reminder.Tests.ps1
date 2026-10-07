@@ -286,4 +286,95 @@ Describe 'assertion-strength-reminder.sh' {
             $primary  | Should -Be ($verdict -eq 'FIRE')
         }
     }
+
+    # --- BRANCH 21 (Task 5): the census port. ROADMAP sections 59 and 72, and the %()T gate. ---
+    Context 'Branch 21: builtin input, stderr-silent without PATH, test-audit debounce sweep, clock gate' {
+        BeforeAll {
+            # An EMPTY PATH, as section 32b of the anomaly suite does it: Get-GitBashOrThrow returns Git\bin\bash.exe, a
+            # wrapper that puts /usr/bin back on PATH (measured 2026-09-30), so a row through it would find `cat` and
+            # `grep` and stay silent for the wrong reason. Claude Code runs Git\usr\bin\bash.exe, which does not.
+            function Invoke-HookEmptyPath {
+                param([string]$Payload, [string]$HomeDir)
+                $usrBash = Join-Path (Split-Path -Parent (Split-Path -Parent $script:Bash)) 'usr\bin\bash.exe'
+                if (-not (Test-Path -LiteralPath $usrBash)) { throw "needs the non-wrapper Git Bash at $usrBash" }
+                $psi = [Diagnostics.ProcessStartInfo]::new($usrBash)
+                $psi.ArgumentList.Add(($script:Hook -replace '\\', '/'))
+                $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
+                $psi.UseShellExecute = $false
+                $psi.Environment['PATH'] = ''
+                $psi.Environment['HOME'] = $HomeDir
+                $p = [Diagnostics.Process]::Start($psi)
+                $p.StandardInput.Write($Payload); $p.StandardInput.Close()
+                $out = $p.StandardOutput.ReadToEnd(); $err = $p.StandardError.ReadToEnd(); $p.WaitForExit()
+                [pscustomobject]@{ StdOut = $out; StdErr = $err; ExitCode = $p.ExitCode }
+            }
+        }
+
+        # FAILING CONTROL, measured 2026-10-07 with this exact launcher against the unfixed hook: `input=$(cat)`
+        # printed "cat: command not found" and the degraded `printf | grep -Eq` printed "grep: command not found".
+        # BOTH payloads matter: the grep only runs after the kill-switch checks, and a non-test path is the hot one.
+        It 'writes NOTHING to stderr under an EMPTY PATH on <name> (section 59)' -ForEach @(
+            @{ name = 'a test-file payload'; path = 'C:/repo/scripts/tests/a.Tests.ps1'; loud = $true  }
+            @{ name = 'a non-test payload';  path = 'C:/repo/src/a.cs';                  loud = $false }
+        ) {
+            $h = New-IsolatedHome
+            $env:HOME = $h
+            $r = Invoke-HookEmptyPath -Payload (New-Payload -FilePath $path -Cwd 'C:/repo') -HomeDir $h
+            $r.StdErr   | Should -BeNullOrEmpty -Because 'no external command may run on this path; the builtins are silent'
+            $r.ExitCode | Should -Be 0
+            if ($loud) { $r.StdOut | Should -Match 'guard inactive: missing jq' -Because 'the row must reach the degraded emit, or its silence proves nothing' }
+            else       { $r.StdOut | Should -BeNullOrEmpty }
+        }
+
+        # SECTION 72. A DISTRACTOR for every glob arm: the new name group must not widen into deleting a neighbour.
+        It 'sweeps a >30-day-old claude-agy-test-audit-reminder.* debounce on marker creation (section 72) and spares everything else' {
+            $h = New-IsolatedHome
+            $env:HOME = $h
+            $old = (Get-Date).AddDays(-40)
+            $mk = @{
+                'claude-agy-test-audit-reminder.dead'   = $old      # swept: the new arm
+                '.clavity-assert-seen-ancient'          = $old      # swept: the original arm still works under the grouped -o
+                'claude-agy-test-audit-reminder.live'   = (Get-Date)  # spared: fresh (a live session's debounce)
+                'claude-agy-test-audit-reminder'        = $old      # spared: no dot-suffix, so not this glob
+                'unrelated-old-file.txt'                = $old      # spared: not ours at all
+            }
+            foreach ($k in $mk.Keys) {
+                $f = Join-Path $h $k
+                [IO.File]::WriteAllText($f, 'x'); [IO.File]::SetLastWriteTime($f, $mk[$k])
+            }
+            $out = (Invoke-Hook (New-Payload -FilePath 'C:/repo/scripts/tests/a.Tests.ps1' -Cwd 'C:/repo')) -join "`n"
+            $out | Should -Match '\[ASSERTION-STRENGTH\]' -Because 'the row must reach the marker-creation path, the only one that prunes'
+            Test-Path (Join-Path $h 'claude-agy-test-audit-reminder.dead') | Should -BeFalse -Because 'the stale test-audit debounce is the leak section 72 closes'
+            Test-Path (Join-Path $h '.clavity-assert-seen-ancient')         | Should -BeFalse -Because 'widening the glob must not lose the original arm'
+            Test-Path (Join-Path $h 'claude-agy-test-audit-reminder.live')  | Should -BeTrue  -Because 'a fresh debounce belongs to a live session'
+            Test-Path (Join-Path $h 'claude-agy-test-audit-reminder')       | Should -BeTrue  -Because 'the glob requires the dot-suffix'
+            Test-Path (Join-Path $h 'unrelated-old-file.txt')               | Should -BeTrue  -Because 'only our two name groups may be swept'
+        }
+
+        # THE %()T GATE. `printf %(...)T` needs bash >= 4.2; the stock macOS 3.2 leaves the key EMPTY. CLAVITY_HOOK_BASH3
+        # forces the fallback so it can run here. A bare "debounces per day" row cannot see a dropped fallback: with an
+        # empty key the marker is just `.clavity-assert-seen-`, which STILL debounces. So pin the KEY, under a clock
+        # frozen by a BASH_ENV function (a fake `date` on PATH is not found - Git Bash reorders PATH): the key must be the
+        # one `date` produced, which printf %()T (today's real date) cannot produce.
+        It 'takes its per-day key from `date` under CLAVITY_HOOK_BASH3, on the <name> path' -ForEach @(
+            @{ name = 'primary (jq)';     degraded = $false; prefix = '.clavity-assert-seen-' }
+            @{ name = 'degraded (no jq)'; degraded = $true;  prefix = '.clavity-assert-nojq-' }
+        ) {
+            $h = New-IsolatedHome
+            $env:HOME = $h
+            $be = Join-Path $h 'frozen-date.sh'
+            [IO.File]::WriteAllText($be, "date() { echo 20991231; }`n")
+            $env:CLAVITY_HOOK_BASH3 = '1'; $env:BASH_ENV = ($be -replace '\\', '/')
+            try {
+                $p = New-Payload -FilePath 'C:/repo/scripts/tests/a.Tests.ps1' -Cwd 'C:/repo' -Sid ''
+                $run = { param($pl) if ($degraded) { Invoke-HookNoJq $pl } else { Invoke-Hook $pl } }
+                $first  = (@(& $run $p) -join "`n")
+                $second = (@(& $run $p) -join "`n")
+            } finally { Remove-Item Env:CLAVITY_HOOK_BASH3, Env:BASH_ENV -ErrorAction SilentlyContinue }
+            $emitPat = if ($degraded) { 'guard inactive' } else { '\[ASSERTION-STRENGTH\]' }
+            $first | Should -Match $emitPat -Because 'the row must reach the emit'
+            Test-Path (Join-Path $h ($prefix + 'day20991231')) | Should -BeTrue -Because 'the key must come from the frozen `date`, not from printf %()T'
+            $second | Should -Not -Match 'ASSERTION-STRENGTH|guard inactive' -Because 'and the per-day marker must still debounce'
+        }
+    }
 }

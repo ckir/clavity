@@ -17,7 +17,6 @@ $script:ConsultPin = @{ PreMcp = 111; PreAsk = 114; PreSend = 117; PostMcp = 114
 $script:B21Debt = @(
     @{ Hook = 'agy-verify-reminder.sh';         Path = 'agy on PATH, assertion rows stale';                         Total = 24 }
     @{ Hook = 'docs-audit-reminder.sh';         Path = 'generated findings view with open findings';                Total = 22 }
-    @{ Hook = 'assertion-strength-reminder.sh'; Path = 'TMPDIR unusable, HOME/.clavity-tmp fallback';               Total = 21 }
     @{ Hook = 'fetch-clavity-ls.sh';            Path = 'binary installed, stamp matches (steady state)';            Total = 17 }
     @{ Hook = 'migrate-inbox.sh';               Path = 'recover an interrupted migration';                          Total = 17 }
 )
@@ -320,6 +319,19 @@ $script:Rows = @(
     # --- every other registered hook: its default path (Branch 21 adds the worst paths) ---
     New-BudgetRow "$D/agy-anomaly-dispatch-reminder.sh" 'Agent dispatch' { param($fx) New-ToolPayload $fx 'Agent' @{ prompt = 'x' } } -Expect 'AGY-ANOMALIES/1 relay'
     New-BudgetRow "$D/assertion-strength-reminder.sh" 'non-test Edit' { param($fx) New-ToolPayload $fx 'Edit' @{ file_path = "$($fx.RepoFwd)/src/a.cs" } } -Silent
+    # --- assertion-strength-reminder.sh: the Branch 21 census paths ---
+    # PINNED AT THE MEASURED COUNTS (2026-10-07, two runs identical), not at the shared ceiling of 13: the hook is the
+    # hottest one this plugin has (every test-file write), and at 13 a reintroduced `cat`, `grep` or second `jq`
+    # would still be green. Before Branch 21: first touch 14, TMPDIR-unusable 18, non-test 10.
+    New-BudgetRow "$D/assertion-strength-reminder.sh" 'test file, FIRST touch of the session -> marker + prune + emit' {
+        param($fx) New-ToolPayload $fx 'Write' @{ file_path = ($fx.RepoFwd + '/scripts/tests/x.Tests.ps1'); content = 'x' } } -Max 7 -Expect 'ASSERTION-STRENGTH'
+    New-BudgetRow "$D/assertion-strength-reminder.sh" 'TMPDIR unusable -> HOME/.clavity-tmp fallback still emits' {
+        param($fx)
+        [IO.File]::WriteAllText((Join-Path $fx.Root 'blockfile'), 'x')
+        $fx.Env.TMPDIR = (($fx.Root -replace '\\', '/') + '/blockfile/sub')   # parent is a FILE: unusable
+        New-ToolPayload $fx 'Write' @{ file_path = ($fx.RepoFwd + '/scripts/tests/x.Tests.ps1'); content = 'x' } } -Max 11 -Expect 'ASSERTION-STRENGTH'
+    New-BudgetRow "$D/assertion-strength-reminder.sh" 'non-test file (the hottest path, silent)' {
+        param($fx) New-ToolPayload $fx 'Write' @{ file_path = ($fx.RepoFwd + '/src/a.cs'); content = 'x' } } -Max 3 -Silent
     New-BudgetRow "$D/agy-anomaly-reminder.sh" 'startup, nothing captured' { param($fx) New-SessionStartPayload $fx } -Silent
     # --- agy-anomaly-reminder.sh: the Branch 21 census paths (the hook EMITS, so -Expect works under the PP1 JSON check) ---
     # TIGHT ON PURPOSE (Max 2 = the one jq that builds the envelope): every other step is a builtin, and at the shared
