@@ -26,11 +26,20 @@ STAMP="$BIN_DIR/.clavity-ls.version"
 # failed surfaced later as a bare ENOENT from /mcp). So every outcome the user must act on is ALSO printed on
 # STDOUT as the hook JSON Claude Code shows: systemMessage for the user, additionalContext for the model. jq is
 # optional on this path, so escape by hand: backslash first, then double quote, then drop control characters.
-_json_str() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr -d '\000-\037'; }
+# Branch 21: builtin parameter expansion instead of `sed | tr` in a command substitution (4 processes on EVERY note
+# path). The C0 range 0x01-0x1f is deleted exactly as the old `tr -d '\000-\037'` did (tab and newline included, so the
+# output stays ONE line); the range needs LC_ALL=C, scoped to the function so the rest of the hook keeps its locale. NUL
+# cannot occur in a bash string, so 0x01 is the honest floor. The result comes back in the global _js, not on stdout.
+_json_str() {
+  local LC_ALL=C
+  _js=${1//\\/\\\\}
+  _js=${_js//\"/\\\"}
+  _js=${_js//[$'\x01'-$'\x1f']/}
+}
 _say() {
   echo "$1" >&2
-  _m=$(_json_str "$1")
-  printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$_m" "$_m"
+  _json_str "$1"
+  printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$_js" "$_js"
 }
 # Each message is assigned to a msg* variable at the start of its own line: that is the shape the injected-context
 # gate (scripts/check-injected-context.ps1, Get-HookMessages) extracts to hold every hook message to its payload
@@ -41,21 +50,40 @@ _note() {
 }
 
 # Version from the plugin's own manifest (the release asset name embeds it).
+# Branch 21: a builtin read of the first line that carries a "version" key. The regex keeps the old sed's greedy `.*`
+# prefix, so the LAST "version" on that line wins, exactly as before.
 VER=""
-[ -f "$ROOT/plugin.json" ] && VER=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/plugin.json" | head -1)
+if [ -f "$ROOT/plugin.json" ]; then
+  re_ver='.*"version"[[:space:]]*:[[:space:]]*"([^"]*)"'
+  while IFS= read -r _l || [ -n "$_l" ]; do
+    if [[ $_l =~ $re_ver ]]; then VER=${BASH_REMATCH[1]}; break; fi
+  done 2>/dev/null < "$ROOT/plugin.json"
+fi
 [ -n "$VER" ] || { _note "could not read plugin version"; exit 0; }
 
-# Platform -> .NET RID.
-_os=$(uname -s 2>/dev/null); _arch=$(uname -m 2>/dev/null)
-case "$_os" in
-  Linux)   _rid=linux-x64 ;;
-  Darwin)  case "$_arch" in arm64|aarch64) _rid=osx-arm64 ;; *) _rid=osx-x64 ;; esac ;;
-  MINGW*|MSYS*|CYGWIN*|Windows_NT) _rid=win-x64 ;;
-  *) _note "unsupported platform '$_os/$_arch'"; exit 0 ;;
+# Platform -> .NET RID. Branch 21: $OSTYPE/$HOSTTYPE are bash builtins set at startup, so every platform bash actually
+# names costs ZERO processes (it was two uname calls on every session start); the *) arm keeps the original uname probe
+# for anything exotic, byte-for-byte.
+case "${OSTYPE:-}" in
+  linux*)        _rid=linux-x64 ;;
+  darwin*)       case "${HOSTTYPE:-}" in arm64|aarch64) _rid=osx-arm64 ;; *) _rid=osx-x64 ;; esac ;;
+  msys*|cygwin*) _rid=win-x64 ;;
+  *)
+    _os=$(uname -s 2>/dev/null); _arch=$(uname -m 2>/dev/null)
+    case "$_os" in
+      Linux)   _rid=linux-x64 ;;
+      Darwin)  case "$_arch" in arm64|aarch64) _rid=osx-arm64 ;; *) _rid=osx-x64 ;; esac ;;
+      MINGW*|MSYS*|CYGWIN*|Windows_NT) _rid=win-x64 ;;
+      *) _note "unsupported platform '${_os:-$OSTYPE}/${_arch:-$HOSTTYPE}'"; exit 0 ;;
+    esac ;;
 esac
 
 # Idempotent: correct binary already present for this exact version.
-if [ -x "$TARGET" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$VER" ]; then exit 0; fi
+# Branch 21: the stamp is read with the `read` builtin (it is written without a newline, so read returns non-zero but still
+# fills _st; a missing stamp leaves it empty, which is what the old `cat 2>/dev/null` gave). 2>/dev/null precedes the <.
+_st=''
+IFS= read -r _st 2>/dev/null < "$STAMP"
+if [ -x "$TARGET" ] && [ "$_st" = "$VER" ]; then exit 0; fi
 
 for _t in curl tar; do command -v "$_t" >/dev/null 2>&1 || { _note "'$_t' not found (needed to auto-fetch)"; exit 0; }; done
 
@@ -68,8 +96,15 @@ if command -v jq >/dev/null 2>&1; then
   _url=$(printf '%s' "$_json"    | jq -r --arg a "$ASSET"        '[.[].assets[]?|select(.name==$a)|.browser_download_url]|first // empty')
   _shaurl=$(printf '%s' "$_json" | jq -r --arg a "$ASSET.sha256" '[.[].assets[]?|select(.name==$a)|.browser_download_url]|first // empty')
 else
-  _url=$(printf '%s' "$_json"    | grep -o "https://[^\"]*/$ASSET"        | head -1)
-  _shaurl=$(printf '%s' "$_json" | grep -o "https://[^\"]*/$ASSET.sha256" | head -1)
+  # Branch 21: builtin, anchored to the download-url FIELD with the asset's dots escaped and the closing quote required.
+  # The old `grep -o "https://[^\"]*/$ASSET"` matched UNANCHORED, so it also matched the PREFIX of the .sha256 URL - a
+  # release listing the checksum first made it pick the wrong place (measured 2026-10-07 with a fake curl that logs URLs).
+  _re_asset=${ASSET//./\\.}
+  re_url='"browser_download_url"[[:space:]]*:[[:space:]]*"(https://[^"]*/'$_re_asset')"'
+  re_sha='"browser_download_url"[[:space:]]*:[[:space:]]*"(https://[^"]*/'$_re_asset'\.sha256)"'
+  _url=''; _shaurl=''
+  [[ $_json =~ $re_url ]] && _url=${BASH_REMATCH[1]}
+  [[ $_json =~ $re_sha ]] && _shaurl=${BASH_REMATCH[1]}
 fi
 [ -n "$_url" ] || { _note "no release asset named $ASSET on $REPO"; exit 0; }
 

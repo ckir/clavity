@@ -15,7 +15,6 @@ $script:ConsultPin = @{ PreMcp = 111; PreAsk = 114; PreSend = 117; PostMcp = 114
 # the 3 boot processes. The suite's debt row stays RED while this list is non-empty. Branch 21 removes each
 # entry in the same commit that adds a passing budget row for that path.
 $script:B21Debt = @(
-    @{ Hook = 'fetch-clavity-ls.sh';            Path = 'binary installed, stamp matches (steady state)';            Total = 17 }
     @{ Hook = 'migrate-inbox.sh';               Path = 'recover an interrupted migration';                          Total = 17 }
 )
 
@@ -408,6 +407,36 @@ $script:Rows = @(
     } -Expect 'AGY-ANOMALIES/1 check BEFORE COMPACTION'
     New-BudgetRow "$D/agy-anomaly-capture-reminder.sh" 'UserPromptSubmit' { param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'UserPromptSubmit'; prompt = 'hi' } } -HookArgs @('UserPromptSubmit') -Silent
     New-BudgetRow "$D/fetch-clavity-ls.sh" 'not a plugin context' { param($fx) New-SessionStartPayload $fx } -Silent
+    # --- fetch-clavity-ls.sh: the Branch 21 census paths, PINNED at the measured counts (2026-10-07; before: steady state 14,
+    # lookup fails 18, lookup empty 26). The plan called a steady-state row "existing"; only the
+    # not-a-plugin-context row was (measured 2026-10-07), so all three are added here. The fake curl is a SHELL FUNCTION
+    # in a BASH_ENV file, NOT an executable on PATH: the first draft dropped a copy of false.exe in a PREPENDED directory
+    # and the lookup row came back 'no release asset named ...win-x64...' - Git Bash reorders PATH, the REAL curl won, and
+    # the row was hitting the live GitHub API. A function cannot be shadowed. Each lookup row's -Expect is what proves the
+    # fake ran. The function costs no process, so the pinned counts are the hook's own. ---
+    New-BudgetRow "$D/fetch-clavity-ls.sh" 'binary installed, stamp matches (steady state)' {
+        param($fx)
+        $bin = Join-Path $fx.Root 'data/bin'; New-Item -ItemType Directory -Force -Path $bin, (Join-Path $fx.Root 'root') | Out-Null
+        [IO.File]::WriteAllText((Join-Path $fx.Root 'root/plugin.json'), '{"version":"9.9.9"}')
+        [IO.File]::WriteAllText((Join-Path $bin 'clavity-ls.exe'), 'BIN'); [IO.File]::WriteAllText((Join-Path $bin '.clavity-ls.version'), '9.9.9')
+        $fx.Env.CLAUDE_PLUGIN_DATA = (($fx.Root -replace '\\', '/') + '/data'); $fx.Env.CLAUDE_PLUGIN_ROOT = (($fx.Root -replace '\\', '/') + '/root')
+        New-SessionStartPayload $fx } -Max 0 -Silent
+    New-BudgetRow "$D/fetch-clavity-ls.sh" 'release lookup FAILS (fake curl = false) -> manual-install note' {
+        param($fx)
+        New-Item -ItemType Directory -Force -Path (Join-Path $fx.Root 'root') | Out-Null
+        $be = Join-Path $fx.Root 'fake-curl.sh'; [IO.File]::WriteAllText($be, "curl() { return 22; }`n")
+        [IO.File]::WriteAllText((Join-Path $fx.Root 'root/plugin.json'), '{"version":"9.9.9"}')
+        $fx.Env.CLAUDE_PLUGIN_DATA = (($fx.Root -replace '\\', '/') + '/data'); $fx.Env.CLAUDE_PLUGIN_ROOT = (($fx.Root -replace '\\', '/') + '/root')
+        $fx.Env.BASH_ENV = ($be -replace '\\', '/')
+        New-SessionStartPayload $fx } -Max 1 -Expect 'release lookup failed'
+    New-BudgetRow "$D/fetch-clavity-ls.sh" 'lookup EMPTY (fake curl = true, jq present) -> no-asset note' {
+        param($fx)
+        New-Item -ItemType Directory -Force -Path (Join-Path $fx.Root 'root') | Out-Null
+        $be = Join-Path $fx.Root 'fake-curl.sh'; [IO.File]::WriteAllText($be, "curl() { return 0; }`n")
+        [IO.File]::WriteAllText((Join-Path $fx.Root 'root/plugin.json'), '{"version":"9.9.9"}')
+        $fx.Env.CLAUDE_PLUGIN_DATA = (($fx.Root -replace '\\', '/') + '/data'); $fx.Env.CLAUDE_PLUGIN_ROOT = (($fx.Root -replace '\\', '/') + '/root')
+        $fx.Env.BASH_ENV = ($be -replace '\\', '/')
+        New-SessionStartPayload $fx } -Max 9 -Expect 'no release asset named'
     New-BudgetRow "$D/clavity-dotnet-setup.sh" 'not a plugin context' { param($fx) New-SessionStartPayload $fx } -Silent
     New-BudgetRow "$A/agy-inbox-snapshot.sh" 'non-curate skill' { param($fx) New-ToolPayload $fx 'Skill' @{ skill = 'dataviz' } } -Silent
     New-BudgetRow "$A/agy-inbox-snapshot.sh" 'UserPromptSubmit, ordinary prompt' { param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'UserPromptSubmit'; prompt = 'hi' } } -Silent
