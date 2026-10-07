@@ -1274,7 +1274,7 @@ age_stale=0
 re_iso='^([0-9]{4})-([0-9]{2})-([0-9]{2})$'
 if [[ $oldest =~ $re_iso ]]; then
   _mo=$((10#${BASH_REMATCH[2]})); _da=$((10#${BASH_REMATCH[3]}))
-  # Range-validate what `date -d` used to reject: 2026-13-45 must not arm the gate.
+  # Range-validate what `date -d` used to reject: an out-of-range date such as 2020-13-45 must not arm the gate.
   if [ "$_mo" -ge 1 ] && [ "$_mo" -le 12 ] && [ "$_da" -ge 1 ] && [ "$_da" -le 31 ]; then
     if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 402)); then printf -v now '%(%s)T' -1 2>/dev/null; else now=$(date +%s); fi
     _dfc "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
@@ -1301,13 +1301,16 @@ fi
         # and assert a == b for every date, plus one DELIBERATE mismatch control (feed b a wrong day
         # and assert the comparison FAILS) so the oracle can return its failing answer.
     }
-    It 'does NOT arm the age gate on an out-of-range date (2026-13-45)' {
-        # Inbox: one pending entry dated 2026-13-45, count under threshold. Expect: silent (exit 0, no
-        # output) - exactly what date -d's rejection produced.
+    It 'does NOT arm the age gate on an out-of-range date in the PAST (2020-13-45)' {
+        # Inbox: one pending entry dated 2020-13-45, count under threshold. Expect: silent (exit 0, no
+        # output) - exactly what date -d's rejection produced. THE DATE MUST BE IN THE PAST (panel R1,
+        # measured): _dfc reads 2026-13-45 as ~130 days in the FUTURE, so deleting the range check would
+        # leave a future date's row green - a vacuous mutant. 2020-13-45 resolves ~2061 days ago, so the
+        # unguarded hook WOULD arm the gate.
     }
 ```
 
-- [ ] **Step 4: Mutants:** (1) `_doy` formula `+ 2)` → `+ 1)` ⇒ the equivalence row red; (2) delete the month/day range test ⇒ the 2026-13-45 row red. Restore each. Run the suite under `CLAVITY_HOOK_BASH3=1` too (one extra invocation of the 40-day row's command with that env — the suite's compat shape) — the age nudge still fires on the pure-bash path.
+- [ ] **Step 4: Mutants:** (1) `_doy` formula `+ 2)` → `+ 1)` ⇒ the equivalence row red; (2) delete the month/day range test ⇒ the 2020-13-45 row red (its date resolves to the past, so the unguarded hook arms the gate). Restore each. Run the suite under `CLAVITY_HOOK_BASH3=1` too (one extra invocation of the 40-day row's command with that env — the suite's compat shape) — the age nudge still fires on the pure-bash path.
 - [ ] **Step 5: Capture the sibling anomaly, do not fix it:** line 38's `mt="$(date -r "$SNOOZE" +%s)"` is ALSO GNU-only (`date -r` on BSD takes epoch seconds, not a file), so the SNOOZE never silences the nudge on macOS. Out of §73's scope — append one `open-issues` entry to `.clavity/local-anomalies.md` (type `defect`, anchor `agy-autotrain/hooks/agy-curate-nudge.sh:38`, task `Branch 21 Task 11`) for the owner's next triage.
 - [ ] **Step 6: Commit** (hook, suite, `_partition.md`): `fix(hooks): curate-nudge age gate computes days in bash (s73 - macOS date has no -d)`.
 
@@ -1341,6 +1344,6 @@ fi
 ## Self-audit (the writing-plans exhaustiveness pass, run 2026-10-07)
 
 - **Spec coverage:** §69's eight hooks → Tasks 1, 2, 4, 5, 6, 7, 8, 9 (one each; every measured-over path has a budget row). §72 → Task 5(e). §73 → Task 11. §64 → Task 8 Step 4. §59 → Task 5(a)(b) + Task 10. Inventory defect 1 (KEEP=08) → Task 1(a); defect 2 (`[ \t]`) → Task 1(d); defect 3 (`%()T` ungated) → Task 2 Step 3(b) + Task 5(c). Phase split + phase-1 capstone → Task 3. Criterion (every census path ≤ 16) → per-task budget rows + Task 12 Step 1. Debt-list emptying per-commit → each task's final step; Task 9 removes the last entry.
-- **Known deliberate gaps, stated:** (1) Three suite-row blocks (Task 1 Step 5, Task 2 Step 5, Task 4 Step 4, Task 8 Step 4, Task 9 Step 3, Task 10 Step 3, Task 11 Step 3 partially) give COMPLETE assertions but defer fixture-helper NAMES to the suite file being extended — those suites were not fully read at plan time; STATE-VERIFICATION (open the file first, `STATE_MISMATCH` on divergence) is the guard, the same convention Branch 20's plan used. (2) Task 2 Step 4 names a contingency (`-Max` 15 on ONE compat row) that only materialises if the measured bash3 fallback cost exceeds the ceiling — the run decides, not the plan. (3) `agy-curate-nudge`'s `date -r` snooze defect is explicitly captured-not-fixed (Task 11 Step 5).
+- **Known deliberate gaps, stated:** (1) Seven suite-row blocks (Task 1 Step 5, Task 2 Step 5, Task 4 Step 4, Task 8 Step 4, Task 9 Step 3, Task 10 Step 3, Task 11 Step 3 partially) give COMPLETE assertions but defer fixture-helper NAMES to the suite file being extended — those suites were not fully read at plan time; STATE-VERIFICATION (open the file first, `STATE_MISMATCH` on divergence) is the guard, the same convention Branch 20's plan used. (2) Task 2 Step 4 names a contingency (`-Max` 15 on ONE compat row) that only materialises if the measured bash3 fallback cost exceeds the ceiling — the run decides, not the plan. (3) `agy-curate-nudge`'s `date -r` snooze defect is explicitly captured-not-fixed (Task 11 Step 5).
 - **Type/name consistency:** `Add-FxInbox`/`Get-FxBaks`/`Set-FxShield`/`$script:GitUsrBin` are defined once (Tasks 1, 2, 8) and used only after their defining task; `_SZ`, `_DFC`, `_asm_dir`, `_as_swept_now` globals are each defined in the same edit that reads them. `$B21Debt` entry names match the live file's `Hook` keys (verified at `6a6224ce`).
 - **Line-citation discipline:** every `file:line` in this plan was read at `6a6224ce` during planning (2026-10-07); Tasks 4–11 execute after phase 1 commits, which do NOT touch those files' cited regions — if any drift is found at execution, STOP and re-verify rather than adapt.
