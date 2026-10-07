@@ -1,6 +1,6 @@
 # Branch 22 — `[13b]` reply recovery: design spec
 
-**Status:** DRAFT for AGY-FIRST on its open forks, then owner rulings, then a line-level plan.
+**Status:** v2 - AGY-FIRST done (seam `.clavity/seams/b22-agy-first-forks.md`); owner ruled the capture shape "BOTH"; the remaining sub-choices are PROPOSED DEFAULTS below, approved with the spec after the AGY-AFTER panel.
 **ROADMAP:** `clavity-dotnet/ROADMAP.md` section 74. **Branch:** `sweep/branch-22-13b-recovery` (from `main` `500b3428`).
 **Owner rulings already made (2026-10-07):** a separate branch before Branch 21 phase 1; scope FULL — (a) every
 `[13b]` notice and the four discipline skills name the same recovery order; (b) `agy_ask` with a `discipline`
@@ -32,46 +32,57 @@ matching rule is decided (below).
 - The classic driver (Rust, `clavity ask --review-only`) carries neither `discipline` nor `artifactPath`; its
   skills say so and verify the echo by eye.
 
-## 3. Contracts (the decided parts)
+## 3. Contracts
+
+**Owner ruling 2026-10-07 (after AGY-FIRST):** BOTH capture paths. agy's unnamed option - the server captures the reply
+itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested only when a known `discipline` is named.
 
 - **C-echo (D2, decided).** `SemanticEcho.IsSatisfied` is SATISFIED when, within the existing tail window
   (`TailLines = 3`), some line satisfies ANY of: raw line contains the needle; the reply line with markdown escapes
-  removed contains the needle; both sides with escapes removed match. Escape set: a backslash before one of
-  backtick, `*`, `_`, `>`, backslash. Driver-tested on 7 cases (accepts the 4 honest forms; rejects a different
-  line, a truncated prefix, a one-word change).
-- **C-order (D1 wording).** Every flagged notice and all four skills name ONE recovery order: (1) read the reply file
-  named in the result, if one was requested; (2) `agy_look` (short replies only — state its cap); (3) re-ask AT MOST
-  ONCE; (4) halt and ask the human. ECHO MISSING gains the same steps. Notice and skill wording say the same thing.
-- **C-request (D1 enforcement).** When `agy_ask` is called with a KNOWN `discipline`, the outgoing message gains a
-  short appended instruction asking the peer to ALSO write its whole reply verbatim to a named file, and the result
-  JSON names that path. With no discipline (an ordinary question), nothing is appended — today's behaviour.
-- **C-read (D3 + owner's (c)).** After the peer goes idle, if the requested file exists, was written AFTER this ask
-  was sent, and is within a size bound, the `[13b]` checks run on the FILE text; the result says which text was
-  checked. If the file is absent or stale, the checks run on the chat answer exactly as today.
-- **C-doc.** `SemanticEcho.cs` header comment corrected to describe what the class does now.
+  removed contains the needle; both sides with escapes removed match. Escape set: a backslash before one of backtick,
+  `*`, `_`, `>`, backslash. Driver-tested on 7 cases (accepts the 4 honest forms; rejects a different line, a
+  truncated prefix, a one-word change).
+- **C-capture (server side, every ask).** After the wait (`AgyView.AskAsync`, after `WaitForIdleWithProgressAsync`),
+  the server writes the FULL text of every assistant step in this ask's delta - untruncated, in order, separated by a
+  fixed marker line - to `<user-profile>/.clavity/agy-replies/<cascade-id>-<first-step-index>.md`, under a size cap
+  (PROPOSED: 1 MiB; over it, the head and the tail are kept with an explicit cut marker between them, so the verdict
+  at the end survives). The user-profile `.clavity` is already this server's data directory (`SessionPaths.cs:12`) and
+  is not inside any repository, so no shield is involved. The result JSON gains `replyFile` (absolute path) and every
+  `[13b]` notice names it.
+- **C-check (D3).** The `[13b]` checks run on the UNTRUNCATED trailing assistant run (the same run `Answer` is cut
+  from), not on the 16 000-char head copy - so a long but complete reply keeps its terminal token. A trailing TOOL step
+  still yields `Answer = null` (the "failure not hidden" design in `AskReplyProjectionTests` is kept); the notice then
+  points at `replyFile`, which holds the text.
+- **C-request (peer side, discipline named).** The outgoing message gains a short appended block asking the peer to
+  ALSO write its whole reply verbatim to `<root>/.clavity/scratch/agy-replies/<cascade-id>-<first-step-index>.md`,
+  with a server-generated nonce as the file's FIRST line. This is a RECORDED EXCEPTION to the T4b "raw ask only" note
+  (`AgyView.cs:210-213`): the appended block is peer-facing completion protocol, never driver guidance; the note is
+  amended to say so. Ordinary asks (no discipline) are unchanged.
+- **C-peer-read.** If the server-captured text FAILS a check and the peer file exists with the matching nonce on its
+  first line, is within the cap, and passes, the reply is reported complete AND the result's `Answer` is the PEER
+  FILE's text (agy F4: the text that passed is the text the driver receives - never check one text and surface
+  another). The result says which source passed: `checkedSource: chat | capture | peer-file`.
+- **C-order (D1 wording).** Every flagged notice and all four skills (both plugins) name ONE recovery order: (1) read
+  `replyFile` (always present); (2) read the peer file if it was requested; (3) re-ask AT MOST ONCE; (4) halt and ask
+  the human. `agy_look` is named only as a SHORT-reply tool with its 1000-character step cap stated. ECHO MISSING
+  gains the same steps.
+- **C-doc.** `SemanticEcho.cs` header comment corrected (the class reads the artifact itself now).
 
-## 4. Open forks (for AGY-FIRST, then the owner)
+## 4. Proposed defaults for the remaining sub-choices (agy's recommendation unless stated)
 
-- **F1 — the root the reply path is built from.** (a) the server's working directory (today's de-facto base);
-  (b) agy's own workspace from `GetConversationMetadataAsync` (exists in `LsClient.cs:55`, unused); (c) an explicit
-  new `agy_ask` parameter. The peer writes with ITS tool from ITS workspace, so the instruction must carry an
-  ABSOLUTE path either way.
-- **F2 — file naming and staleness.** A unique per-ask name (e.g. `.clavity/scratch/agy-replies/<cascade>-<step>.md`)
-  vs one fixed name per discipline; how "written after this ask" is decided (mtime vs a nonce the peer must write
-  as the file's first line).
-- **F3 — the `.clavity/` shield in C#.** (a) refuse-and-degrade: request a file ONLY when `.clavity/.gitignore`
-  already holds a bare `*` (the bash shield's job), otherwise send the raw ask and say why in the result; (b) port the
-  shield's full semantics to C#; (c) shell out to `agy-mark.sh prepare`.
-- **F4 — precedence when both texts exist.** The file wins for the checks (C-read) — but which text is SURFACED as
-  `Answer` when they differ (file, chat, or both, bounded)?
-- **F5 — the T4b boundary.** Appending protocol text to the raw ask reverses a deliberate design note. Is a short,
-  peer-facing completion protocol consistent with "driver guidance never reaches the wire", or should the instruction
-  ride a different channel?
-- **F6 — cleanup.** Reply files accumulate: prune on each write (age or count), or leave them to the repo's existing
-  scratch hygiene?
-- **F7 — classic.** The classic transport has no `discipline` parameter. Proposed: classic gets the WORDING half
-  only (its skills name the reply file as a step the driver asks for by hand). Confirm or widen.
+- **D-root (F1).** `<root>` for the PEER file = the server's working directory - the same base `ExpectedFrom` already
+  resolves `artifactPath` against, measured to be the repository root on 2026-10-07. agy recommended its own
+  workspace via `GetConversationMetadataAsync` (`LsClient.cs:55`, unused today); the driver's lean differs because a
+  second root concept would let the artifact and the reply resolve against different directories. **Owner to rule.**
+- **D-name (F2).** Unique per ask (`<cascade-id>-<first-step-index>`) + a nonce first line (defeats a stale or
+  touched file; mtime is not trusted).
+- **D-shield (F3).** Refuse-and-degrade: request the peer file ONLY when `<root>/.clavity/.gitignore` already holds a
+  bare `*` line; otherwise do not append the block and say so in the result. The server never writes the shield.
+- **D-prune (F6).** On each capture write, keep the newest 50 files in `agy-replies/` per location (count, not age:
+  agy - long sessions defeat an age rule). The peer-file directory is pruned the same way by the server, best-effort.
+- **D-classic (F7).** Classic gets the WORDING half only - its four skills name the recovery order with the peer file
+  as a step the driver requests by hand (classic's transport carries no `discipline`).
 
 ## 5. Out of scope
 
-The bash shield's semantics (section 41 stays deferred); Branch 21's hooks; any change to `agy_look`'s caps.
+The bash shield's semantics (section 41 stays deferred); Branch 21's hooks; `agy_look`'s caps.
