@@ -15,7 +15,6 @@ $script:ConsultPin = @{ PreMcp = 111; PreAsk = 114; PreSend = 117; PostMcp = 114
 # the 3 boot processes. The suite's debt row stays RED while this list is non-empty. Branch 21 removes each
 # entry in the same commit that adds a passing budget row for that path.
 $script:B21Debt = @(
-    @{ Hook = 'agy-inbox-snapshot.sh';          Path = 'curate skill matched, 20 existing baks (snapshot + prune 16)'; Total = 67 }
     @{ Hook = 'agy-discipline-reaching.sh';     Path = 'shield .gitignore carries a ! negation';                    Total = 36 }
     @{ Hook = 'agy-anomaly-reminder.sh';        Path = 'one untriaged entry';                                       Total = 23 }
     @{ Hook = 'agy-verify-reminder.sh';         Path = 'agy on PATH, assertion rows stale';                         Total = 24 }
@@ -104,6 +103,24 @@ function New-BudgetRow {
     # cannot tell "did its work" from "exited early" (agy panel R1).
     @{ Hook = $Hook; Name = $Name; Setup = $Setup; Fixture = $Fixture; HookArgs = $HookArgs; Max = $Max; Expect = $Expect; Silent = [bool]$Silent; Verify = $Verify }
 }
+
+function Add-FxInbox {
+    # The canonical inbox lives in the FIXTURE home (${USERPROFILE:-$HOME} -> $fx.Home), never the real one.
+    param($Fx, [int]$Baks = 0, [switch]$EmptyPending)
+    $d = Join-Path $Fx.Home '.clavity'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+    $obs = Join-Path $d 'agy-observations.md'
+    $body = "# agy observations inbox (raw, project-agnostic)`n`nprose`n`n## Pending`n`n"
+    if (-not $EmptyPending) { $body += "- [heuristic] (driver/probabilistic) a rule * ``[corpus]`` * 2026-10-01 * agy 1.3.1`n" }
+    [IO.File]::WriteAllText($obs, $body)
+    for ($i = 1; $i -le $Baks; $i++) {
+        $p = '{0}.202601{1:d2}-000000.bak' -f $obs, $i
+        [IO.File]::WriteAllText($p, "old $i")
+        # Distinct ascending mtimes: index 1 is the OLDEST. Ordering is mtime (fork 1C), not name.
+        [IO.File]::SetLastWriteTimeUtc($p, [datetime]::UtcNow.AddMinutes($i - $Baks - 5))
+    }
+    $obs
+}
+function Get-FxBaks { param($Fx) @(Get-ChildItem -LiteralPath (Join-Path $Fx.Home '.clavity') -Filter 'agy-observations.md.*.bak' -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object Name) }
 
 $D = 'clavity-dotnet/plugin/hooks'; $C = 'clavity-classic/plugin/hooks'; $A = 'agy-autotrain/hooks'; $L = '.claude/hooks'
 $mcp = 'mcp__plugin_clavity_clavity-ls__agy_ask'
@@ -308,6 +325,28 @@ $script:Rows = @(
     New-BudgetRow "$D/clavity-dotnet-setup.sh" 'not a plugin context' { param($fx) New-SessionStartPayload $fx } -Silent
     New-BudgetRow "$A/agy-inbox-snapshot.sh" 'non-curate skill' { param($fx) New-ToolPayload $fx 'Skill' @{ skill = 'dataviz' } } -Silent
     New-BudgetRow "$A/agy-inbox-snapshot.sh" 'UserPromptSubmit, ordinary prompt' { param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'UserPromptSubmit'; prompt = 'hi' } } -Silent
+    # --- agy-inbox-snapshot.sh: the Branch 21 census paths (PreToolUse Skill + UserPromptSubmit) ---
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, steady state: 5 baks -> snapshot + prune 1' {
+        param($fx) [void](Add-FxInbox $fx -Baks 5); New-ToolPayload $fx 'Skill' @{ skill = 'agy-autotrain:agy-curate' } } -Silent -Verify {
+        param($fx) (Get-FxBaks $fx).Count | Should -Be 5 }
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, 20 baks -> snapshot + prune 16 in ONE rm' {
+        param($fx) [void](Add-FxInbox $fx -Baks 20); New-ToolPayload $fx 'Skill' @{ skill = 'agy-autotrain:agy-curate' } } -Silent -Verify {
+        param($fx) $left = Get-FxBaks $fx; $left.Count | Should -Be 5
+        # IDENTITY, not count: the survivors are the four NEWEST old slots (17..20) plus the new snapshot.
+        foreach ($n in 17..20) { ($left -match ('202601{0:d2}-000000' -f $n)).Count | Should -Be 1 } }
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate via UserPromptSubmit prompt, no baks -> first snapshot' {
+        param($fx) [void](Add-FxInbox $fx); ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'UserPromptSubmit'; prompt = '/agy-curate' } } -Silent -Verify {
+        param($fx) (Get-FxBaks $fx).Count | Should -Be 1 }
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, newest bak identical -> dedup, no rotate' {
+        param($fx) $obs = Add-FxInbox $fx; Copy-Item -LiteralPath $obs -Destination "$obs.20260101-000000.bak"
+        New-ToolPayload $fx 'Skill' @{ skill = 'agy-autotrain:agy-curate' } } -Silent -Verify {
+        param($fx) (Get-FxBaks $fx).Count | Should -Be 1 }
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, Pending empty -> invariant 2 refuses, silent' {
+        param($fx) [void](Add-FxInbox $fx -EmptyPending); New-ToolPayload $fx 'Skill' @{ skill = 'agy-autotrain:agy-curate' } } -Silent -Verify {
+        param($fx) (Get-FxBaks $fx).Count | Should -Be 0 }
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'non-curate prompt (hot path, silent)' {
+        param($fx) [void](Add-FxInbox $fx); ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'UserPromptSubmit'; prompt = 'hello' } } -Silent -Verify {
+        param($fx) (Get-FxBaks $fx).Count | Should -Be 0 }
     New-BudgetRow "$A/migrate-inbox.sh" 'nothing to migrate' { param($fx) New-SessionStartPayload $fx } -Silent
     New-BudgetRow "$A/agy-learn-reminder.sh" 'SessionStart' { param($fx) New-SessionStartPayload $fx } -HookArgs @('SessionStart') -Expect 'agy-autotrain is active'
     New-BudgetRow "$A/agy-learn-reminder.sh" 'PreCompact' { param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'PreCompact'; trigger = 'manual' } } -HookArgs @('PreCompact') -Expect 'agy-LEARN check BEFORE COMPACTION'

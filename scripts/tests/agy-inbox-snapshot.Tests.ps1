@@ -474,4 +474,69 @@ Describe 'agy-inbox-snapshot' {
             Remove-Item $cwd -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
+
+    # BRANCH 21 (Task 1). KEEP is validated as digits, and "08" IS digits - bash then reads it as OCTAL inside
+    # $((KEEP + 1)), aborts "value too great for base", and the prune never runs. Control measured 2026-10-07
+    # before the fix: the ring kept growing. Assert WHICH slots survive, not how many.
+    It 'prunes with AGY_INBOX_SNAPSHOT_KEEP=08 (base-10, not octal) and keeps the NEWEST 8' {
+        $r = New-PluginRoot $script:Good
+        try {
+            $dir = Join-Path $r 'home/.clavity'
+            foreach ($i in 1..10) {
+                $f = Join-Path $dir ('agy-observations.md.202601{0:d2}-000000.bak' -f $i)
+                Set-Content -LiteralPath $f -Value "old $i" -Encoding ascii
+                (Get-Item -LiteralPath $f).LastWriteTimeUtc = [datetime]::UtcNow.AddMinutes($i - 30)
+            }
+            $res = Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') `
+                -Env (HookEnv $r @{ AGY_INBOX_SNAPSHOT_KEEP = '08' })
+            $res.StdErr | Should -BeNullOrEmpty
+            BakCount $r | Should -Be 8
+            # 10 old + 1 new = 11, KEEP 8 -> the 3 OLDEST die.
+            foreach ($gone in 1..3) {
+                Test-Path -LiteralPath (Join-Path $dir ('agy-observations.md.202601{0:d2}-000000.bak' -f $gone)) | Should -BeFalse
+            }
+            foreach ($kept in 4..10) {
+                Test-Path -LiteralPath (Join-Path $dir ('agy-observations.md.202601{0:d2}-000000.bak' -f $kept)) | Should -BeTrue
+            }
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # Two snapshots in the SAME second share a name: the cp overwrites a slot that is already in the pre-copy
+    # listing, and with KEEP=1 the surplus slice starts at index 0 - the fresh snapshot itself. The old
+    # `ls | tail` re-listed AFTER the copy and so kept it. The clock is frozen with a fake `date` and the
+    # bash-3 code path (which is the one that calls date).
+    It 'keeps the fresh snapshot when KEEP=1 and the previous slot has the SAME second-stamp' {
+        $r = New-PluginRoot $script:Good
+        try {
+            $dir = Join-Path $r 'home/.clavity'
+            # A `date` FUNCTION via BASH_ENV, not a fake binary on PATH: Git Bash re-orders PATH, so a fake
+            # binary is not the one found (measured - the real clock was used and the slot was simply pruned).
+            $benv = Join-Path $r 'frozen-date.sh'
+            [IO.File]::WriteAllText($benv, "date() { echo 20260101-000000; }`n")
+            Set-Content -LiteralPath (Join-Path $dir 'agy-observations.md.20260101-000000.bak') -Value 'stale content' -Encoding ascii
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') `
+                -Env (HookEnv $r @{ AGY_INBOX_SNAPSHOT_KEEP = '1'; CLAVITY_HOOK_BASH3 = '1'; BASH_ENV = ($benv -replace '\\', '/') }) | Out-Null
+            BakCount $r | Should -Be 1
+            (Get-Content -Raw -LiteralPath (Join-Path $dir 'agy-observations.md.20260101-000000.bak')) |
+                Should -Be (Get-Content -Raw -LiteralPath (Join-Path $dir 'agy-observations.md')) -Because 'the surviving slot must be the FRESH copy'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # The Pending heading class. grep's bracket [ \t] matched the literal characters t and \ , while the awk
+    # it gated read a real TAB; the net behaviour was the awk's. One reader now, with the awk's semantics.
+    It 'opens the Pending region on a REAL-tab heading and snapshots' {
+        $r = New-PluginRoot "# agy observations inbox (raw, project-agnostic)`n`n##`tPending`n`n- [assumption] (peer/probabilistic) a rule`n"
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
+            BakCount $r | Should -Be 1
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'does NOT open the region on "##tPending" (the literal t the grep class wrongly matched)' {
+        $r = New-PluginRoot "# agy observations inbox (raw, project-agnostic)`n`n##tPending`n`n- [assumption] (peer/probabilistic) a rule`n"
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
+            BakCount $r | Should -Be 0
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }

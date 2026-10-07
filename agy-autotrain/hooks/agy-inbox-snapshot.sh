@@ -11,6 +11,10 @@ KEEP="${AGY_INBOX_SNAPSHOT_KEEP:-5}"          # how many slots to retain (tunabl
 # them all, including the snapshot taken moments earlier. The knob meant to size the ring would silently
 # destroy it, fail-open and exit 0, exactly the outcome the invariants below exist to prevent.
 case "$KEEP" in ''|*[!0-9]*) KEEP=5 ;; esac
+# Base-10, explicitly: a leading zero ("08") passes the digit check above, and bash then reads it as
+# OCTAL in arithmetic - $((KEEP + 1)) aborts "value too great for base" (measured 2026-10-07), the
+# prune never runs, and the ring grows without bound. 10# makes the knob mean what the operator typed.
+KEEP=$((10#$KEEP))
 [ "$KEEP" -lt 1 ] && KEEP=5
 # ROADMAP 14g: the canonical inbox is USER-LOCAL, beside the golden-header files - NOT in the plugin
 # tree, which exists in N copies with no way to tell which is live. CLAUDE_PLUGIN_ROOT is deliberately
@@ -19,7 +23,10 @@ case "$KEEP" in ''|*[!0-9]*) KEEP=5 ;; esac
 HOME_DIR="${USERPROFILE:-$HOME}"
 OBS="${HOME_DIR}/.clavity/agy-observations.md"
 
-input=$(cat 2>/dev/null)
+# BUILTIN, not $(cat): no fork, and under an empty PATH nothing is written to stderr (the section-59
+# shape; same idiom as agy-anomaly-reminder.sh:37). read -d '' returns non-zero at EOF while still
+# having filled $input - a bare call under set +e.
+IFS= read -r -d '' input
 
 # Opt-out marker. NOT a full mirror of agy-curate-nudge.sh, and the difference is deliberate: that
 # hook also honours a `.no-agy` in the payload's cwd, this one does not read `.cwd` at all. It fires
@@ -49,36 +56,22 @@ input=$(cat 2>/dev/null)
 # permits the key syntactically, but both first-party plugins that register this event do so BARE and
 # inspect the prompt in their own script. Building on the matcher would be an unchecked assumption, and
 # it would fail SILENTLY -- the hook would simply never fire, which is the defect this closes, restored.
+# ONE classifier, no jq and no grep - the raw payload already decides. JSON escaping is what makes the
+# raw match safe (Branch 20, measured): a "skill" or "prompt" KEY smuggled inside a value arrives as
+# \"skill\" - the backslash breaks the match - so only the real top-level/tool_input field can fire.
+# FIELD-BOUNDED and, for the prompt, ANCHORED at the start and bounded at the end - same reasoning as
+# the jq branch this replaces: a prompt that merely discusses the curator must not burn a slot.
 matched=""
-if command -v jq >/dev/null 2>&1; then
-  skill=$(printf '%s' "$input" | jq -r '.tool_input.skill // empty' 2>/dev/null)
-  case "$skill" in *agy-curate) matched=1 ;; esac
-  if [ -z "$matched" ]; then
-    prompt=$(printf '%s' "$input" | jq -r '.prompt // empty' 2>/dev/null)
-    # ANCHORED at the start and bounded at the end. An unanchored match fires on a prompt that merely
-    # discusses the curator, which is not an invocation and must not burn a snapshot slot.
-    case "$prompt" in
-      /agy-autotrain:agy-curate|/agy-autotrain:agy-curate\ *) matched=1 ;;
-      /agy-curate|/agy-curate\ *) matched=1 ;;
-    esac
-  fi
-else
-  # FIELD-BOUNDED, never a bare substring -- same reasoning as the jq path above.
-  if printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*agy-curate"'; then
-    matched=1
-  elif printf '%s' "$input" | grep -Eq '"prompt"[[:space:]]*:[[:space:]]*"/(agy-autotrain:)?agy-curate([[:space:]][^"]*)?"'; then
-    matched=1
-  fi
-fi
+re_skill='"skill"[[:space:]]*:[[:space:]]*"[^"]*agy-curate"'
+re_prompt='"prompt"[[:space:]]*:[[:space:]]*"/(agy-autotrain:)?agy-curate([[:space:]][^"]*)?"'
+if [[ $input =~ $re_skill ]] || [[ $input =~ $re_prompt ]]; then matched=1; fi
 [ -z "$matched" ] && exit 0
 
 [ -f "$OBS" ] || exit 0
 
 # --- Three stateless invariants. Their shared purpose: the ring must never destroy its own history. ---
 
-# 1. STRUCTURAL: header and section must both be present.
-grep -q '^# agy observations inbox' "$OBS" || exit 0
-grep -Eq '^##[ \t]+Pending[ \t]*$' "$OBS" || exit 0
+# 1. STRUCTURAL: header and section must both be present (checked in the one builtin pass below).
 
 # 2. CONTENT: at least one parseable bullet. The class set is assumption|heuristic|anti-pattern, so the
 # character class MUST include the hyphen - [a-z]+ does not match anti-pattern, which was 42 of the 79
@@ -92,23 +85,58 @@ grep -Eq '^##[ \t]+Pending[ \t]*$' "$OBS" || exit 0
 # scanned from the heading to END OF FILE, so a `- [x]` bullet in any later section - the append-only
 # drain log lives down there - read as a pending entry and armed the snapshot for an inbox that had none.
 # Same open and close rules as drain-lib.ps1's canonical reader and as agy-curate-nudge.sh.
-awk '/^##[ \t]+Pending[ \t]*$/{p=1;next} /^#+[ \t]/{p=0} p' "$OBS" | grep -Eq '^- \[[a-z-]+\]' || exit 0
+# One builtin pass for invariants 1 and 2. Open/close rules match the canonical reader (drain-lib.ps1) and
+# agy-curate-nudge.sh: open on '^##[ \t]+Pending[ \t]*$' (REAL tab - grep's bracket [ \t] matched literal
+# 't'/'\' and disagreed with the awk it gated, measured 2026-10-07), close on any '^#+[ \t]' heading. The
+# bullet class keeps the hyphen: anti-pattern must match.
+hdr=0; pend=0; bullet=0; p=0
+re_pending=$'^##[ \t]+Pending[ \t]*$'
+re_close=$'^#+[ \t]'
+re_bullet='^- \[[a-z-]+\]'
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in '# agy observations inbox'*) hdr=1 ;; esac
+  if [[ $line =~ $re_pending ]]; then p=1; pend=1; continue; fi
+  if [[ $line =~ $re_close ]]; then p=0; continue; fi
+  if [ "$p" -eq 1 ] && [[ $line =~ $re_bullet ]]; then bullet=1; fi
+done 2>/dev/null < "$OBS"
+[ "$hdr" -eq 1 ] || exit 0
+[ "$pend" -eq 1 ] || exit 0
+[ "$bullet" -eq 1 ] || exit 0
 
 # 3. DEDUP: never rotate when content is identical to the newest snapshot. Without this an aborted or
 # re-run agy-curate burns a slot each time, so a few retries silently evict the whole history. It also
 # bounds persistent corruption to ONE slot instead of five.
-latest=$(ls -1t "${OBS}".*.bak 2>/dev/null | head -n 1)
-if [ -n "$latest" ] && cmp -s "$OBS" "$latest"; then exit 0; fi
+# ONE listing, BEFORE the copy, serving BOTH consumers (fork 1C, owner-ruled 2026-10-07): its first
+# entry is the dedup comparand, and - because the snapshot written below is strictly newest - the
+# prune's surplus is exactly this OLD list from index KEEP-1 on. mtime order is kept deliberately
+# (1B name-order was rejected: a hand-copied .bak or a moved clock would change which slot dies).
+# bash-3-safe array fill: no mapfile.
+baks=()
+while IFS= read -r _b; do [ -n "$_b" ] && baks+=("$_b"); done < <(ls -1t "${OBS}".*.bak 2>/dev/null)
+if [ "${#baks[@]}" -gt 0 ] && cmp -s "$OBS" "${baks[0]}"; then exit 0; fi
 
-stamp=$(date +%Y%m%d-%H%M%S 2>/dev/null) || exit 0
+if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 402)); then
+  printf -v stamp '%(%Y%m%d-%H%M%S)T' -1 2>/dev/null
+else
+  stamp=$(date +%Y%m%d-%H%M%S 2>/dev/null)
+fi
+[ -n "$stamp" ] || exit 0
 if ! cp "$OBS" "${OBS}.${stamp}.bak" 2>/dev/null; then
   printf '%s\n' "[AGY-INBOX-SNAPSHOT] could not write ${OBS}.${stamp}.bak - the drain will run UNPROTECTED" >&2
   exit 0
 fi
 
-# FIFO prune: keep the newest $KEEP slots.
-ls -1t "${OBS}".*.bak 2>/dev/null | tail -n +$((KEEP + 1)) | while IFS= read -r old; do
-  rm -f "$old" 2>/dev/null
-done
+# FIFO prune, ONE rm for every surplus slot (fork 1A): after the cp there are ${#baks[@]}+1 slots;
+# keep the newest $KEEP. 16 per-file rm processes (32 spawns) could never fit the 16-process ceiling.
+# NEVER the file just written (panel R2, State Corruptor): two snapshots in the SAME second share a name, so
+# the cp above overwrote a slot that is already in the pre-copy list - and with KEEP=1 the surplus slice starts
+# at index 0, which would delete the fresh snapshot. The old `ls -1t | tail` re-listed AFTER the copy and kept it.
+if [ "${#baks[@]}" -ge "$KEEP" ]; then
+  surplus=()
+  for _b in "${baks[@]:$((KEEP - 1))}"; do
+    [ "$_b" = "${OBS}.${stamp}.bak" ] || surplus+=("$_b")
+  done
+  [ "${#surplus[@]}" -gt 0 ] && rm -f -- "${surplus[@]}" 2>/dev/null
+fi
 
 exit 0

@@ -683,7 +683,7 @@ agy-curate-nudge.Tests.ps1                       48,1s   20 tests   <- SLOW as o
   cap - see the note under ## Measured runtimes. Re-measured 2026-08-24 WARM on an
   idle CPU (cold 53,6s) after the test-audit closure added 6 tests. The count row had ALSO been stale
   since before that: it said 11 when the file held 14.
-agy-inbox-snapshot.Tests.ps1                    120,1s   32 tests   <- SLOW, re-measured 2026-08-24 WARM
+agy-inbox-snapshot.Tests.ps1                    120,1s   36 tests   <- SLOW, re-measured 2026-08-24 WARM; 32 -> 36 2026-10-07 (Branch 21 Task 1: KEEP=08, same-second KEEP=1, real-tab and literal-t heading rows), time not re-measured
   (cold 119,5s - this suite is I/O bound, so warm and cold agree). The test-audit closure added 3 It
   blocks; Pester expands them to 31 because two use -ForEach. The old row said 22. Before 2026-08-03 this
   suite was MISSING from this table entirely.
@@ -1098,7 +1098,7 @@ generate-cheatsheet-literals.Tests.ps1           41,6s   18 tests   <- SLOW, NEW
 generate-scoped-manifest.Tests.ps1                2,1s    2 tests   <- FAST, re-measured 2026-08-05
 marketplace-manifest.Tests.ps1                    4,6s  10 tests   <- FAST, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled)
 pairing-doc.Tests.ps1                            22,2s   9 tests   <- SLOW, NEW 2026-10-03 (Branch 18, ROADMAP sections 60+62; warm run, cold first run 63,5s; box load uncontrolled)
-hook-spawn-budget.Tests.ps1                     226,5s  109 tests   <- SLOW, NEW 2026-10-06 (Branch 20 process budget; 1 row RED locally until Branch 21 - owner ruling; one run, box load uncontrolled; 55 -> 56 with the PreCompact re-arm row, Task 5; after Tasks 3-9 only the debt row is red, 168,6s); 56 -> 109 2026-10-06 (Branch 20 capstone R1: +53 bash 3.2 equivalence rows), time not re-measured
+hook-spawn-budget.Tests.ps1                     226,5s  121 tests   <- SLOW; 109 -> 121 2026-10-07 (Branch 21 Task 1: +6 inbox-snapshot rows x row/compat variants; 120 pass, 1 red = the debt row, 7 entries left), NEW 2026-10-06 (Branch 20 process budget; 1 row RED locally until Branch 21 - owner ruling; one run, box load uncontrolled; 55 -> 56 with the PreCompact re-arm row, Task 5; after Tasks 3-9 only the debt row is red, 168,6s); 56 -> 109 2026-10-06 (Branch 20 capstone R1: +53 bash 3.2 equivalence rows), time not re-measured
 plugin-hooks-registration.Tests.ps1               0,6s   37 tests   <- FAST, re-measured 2026-09-13 (+2 2026-10-01: section 57 test-audit-reminder PostToolUse matcher row; +2 since; +1 for the section-15 consult-recovery registration row; was
                                                                       0,5s / 18 tests; +4 for the recorder's
                                                                       SessionStart registration, which this
