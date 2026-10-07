@@ -258,6 +258,7 @@ public sealed class AgyView
                 }, checkText, expectTerminal, expectEcho);
                 if (peerFile is not null && (judged.TerminalTokenMissing || judged.EchoMissing))
                     judged = RescueFromPeerFile(judged, peerFile, peerNonce!, expectTerminal, expectEcho);
+                judged = DropFilePointersWhenHealthy(judged);
                 return judged with { PeerStillBusy = peerStillBusy };
             }
             finally
@@ -297,6 +298,17 @@ public sealed class AgyView
             EchoMissing = echoMissing,
         };
     }
+
+    /// <summary>Owner ruling 2026-10-07 (capstone R2 CA1): a discipline ask whose chat copy passed every check and whose
+    /// Answer was not cut has the whole reply in Answer, so the capture path, the peer-file path and the peer-file status
+    /// would be dead weight in the agent's context (+255 characters, measured). They stay on every flagged, cut or rescued
+    /// reply, and on an ORDINARY ask - no check runs there, so nothing could flag a displaced report and the capture path
+    /// is the only way back to it. CaptureError is kept: a failure signal is never hidden.</summary>
+    private static AskReply DropFilePointersWhenHealthy(AskReply r) =>
+        // CheckedSource is "chat" ONLY on a discipline ask whose chat copy was judged (and "peer-file" only after a rescue).
+        r is { CheckedSource: "chat", TerminalTokenMissing: false, EchoMissing: false, AnswerTruncated: false }
+            ? r with { ReplyFile = null, PeerFile = null, PeerFileStatus = null }
+            : r;
 
     /// <summary>D-root: agy's own workspace from the conversation metadata, then D-shield. Never throws for a
     /// metadata failure - it becomes the status; a CALLER cancel still propagates.</summary>

@@ -2157,9 +2157,11 @@ public class AgyAskIntegrationTests
         {
             var ws = ShieldedWorkspace(dir);
             var (r, fake) = await AskOnce(GoodReport, dir, f => f.WorkspaceUris = new[] { new Uri(ws).AbsoluteUri });
+            var expectedPath = Path.Combine(ws, ".clavity", "scratch", "agy-replies", "conv-1-0.md");
             Assert.StartsWith("review it\n\n---\nREPLY FILE", fake.LastSentText);
-            Assert.Equal(Path.Combine(ws, ".clavity", "scratch", "agy-replies", "conv-1-0.md"), r.PeerFile);
+            Assert.Contains("\n" + expectedPath + "\n", fake.LastSentText);   // the peer WAS asked, at this path
             Assert.Matches("agy-reply-nonce: [0-9a-f]{32}$", fake.LastSentText);
+            Assert.Null(r.PeerFile);          // ...but the healthy result does not carry it (owner ruling, capstone R2 CA1)
             Assert.Null(r.PeerFileStatus);
         }
         finally { Directory.Delete(dir, true); }
@@ -2192,7 +2194,8 @@ public class AgyAskIntegrationTests
         {
             var ws = shape == "no-shield" ? Directory.CreateDirectory(Path.Combine(dir, "bare")).FullName : ShieldedWorkspace(dir);
             var uri = new Uri(ws).AbsoluteUri;
-            var (r, fake) = await AskOnce(GoodReport, dir, f => f.WorkspaceUris = shape switch
+            // A FLAGGED reply ("Noted." has no verdict): the status is dropped on a healthy reply (capstone R2 CA1).
+            var (r, fake) = await AskOnce("Noted.", dir, f => f.WorkspaceUris = shape switch
             {
                 "two-workspaces" => new[] { uri, uri },
                 "no-metadata" => null,
@@ -2200,6 +2203,7 @@ public class AgyAskIntegrationTests
             });
             Assert.Equal("review it", fake.LastSentText);
             Assert.Null(r.PeerFile);
+            Assert.True(r.TerminalTokenMissing);
             Assert.Contains(why, r.PeerFileStatus);
         }
         finally { Directory.Delete(dir, true); }
@@ -2285,6 +2289,7 @@ public class AgyAskIntegrationTests
             Assert.Equal("chat", r.CheckedSource);
             Assert.Equal("Noted.", r.Answer);
             Assert.Contains(why, r.PeerFileStatus);
+            Assert.NotNull(r.PeerFile);       // flagged: the agent is sent to the peer file by name
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -2429,6 +2434,78 @@ public class AgyAskIntegrationTests
             var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, IdleStallWindow = TimeSpan.FromMilliseconds(300) });
             var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("stall me"));
             Assert.Equal(new string('p', 499), ex.Diagnostic!.LastStepSummary);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_healthy_discipline_reply_carries_no_file_pointers()
+    {
+        // Owner ruling 2026-10-07 (capstone R2 CA1): option 3.
+        var dir = TempDir();
+        try
+        {
+            var ws = ShieldedWorkspace(dir);
+            var (r, fake) = await AskOnce(GoodReport, dir, f => f.WorkspaceUris = new[] { new Uri(ws).AbsoluteUri },
+                                          captureDir: Path.Combine(dir, "cap"));
+            Assert.StartsWith("review it\n\n---\nREPLY FILE", fake.LastSentText);   // the capture and the request both happened
+            Assert.True(Directory.GetFiles(Path.Combine(dir, "cap"), "*.md").Length == 1);
+            Assert.Equal("chat", r.CheckedSource);
+            Assert.Null(r.ReplyFile);
+            Assert.Null(r.PeerFile);
+            Assert.Null(r.PeerFileStatus);
+            var json = System.Text.Json.JsonSerializer.Serialize(r);
+            Assert.DoesNotContain("ReplyFile", json);
+            Assert.DoesNotContain("PeerFile", json);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task An_ordinary_ask_keeps_ReplyFile_because_nothing_else_can_flag_a_displaced_report()
+    {
+        var dir = TempDir();
+        try
+        {
+            var (r, _) = await AskOnce("Noted.", dir, captureDir: Path.Combine(dir, "cap"), expectTerminal: null, expectEcho: null);
+            Assert.NotNull(r.ReplyFile);
+            Assert.True(File.Exists(r.ReplyFile));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_flagged_discipline_reply_keeps_ReplyFile_and_a_capture_error_survives_a_healthy_one()
+    {
+        var dir = TempDir();
+        try
+        {
+            var (flagged, _) = await AskOnce("Noted.", dir, captureDir: Path.Combine(dir, "cap"));
+            Assert.True(flagged.TerminalTokenMissing);
+            Assert.NotNull(flagged.ReplyFile);
+
+            var blocker = Path.Combine(dir, "a-file");
+            File.WriteAllText(blocker, "x");
+            var (healthy, _) = await AskOnce(GoodReport, dir, captureDir: blocker);
+            Assert.False(healthy.TerminalTokenMissing);
+            Assert.Null(healthy.ReplyFile);
+            Assert.False(string.IsNullOrWhiteSpace(healthy.CaptureError));   // a failure signal is never hidden
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_reply_missing_ONLY_its_terminal_token_keeps_ReplyFile()
+    {
+        // The echo line is present, so the echo check passes: the TOKEN guard is the only thing that can keep the pointer.
+        // (A reply like "Noted." fails both checks, and the echo guard alone would hide a broken token guard.)
+        var dir = TempDir();
+        try
+        {
+            var (r, _) = await AskOnce("report\n\nthe last line of the artifact", dir, captureDir: Path.Combine(dir, "cap"));
+            Assert.True(r.TerminalTokenMissing);
+            Assert.False(r.EchoMissing);
+            Assert.NotNull(r.ReplyFile);
         }
         finally { Directory.Delete(dir, true); }
     }
