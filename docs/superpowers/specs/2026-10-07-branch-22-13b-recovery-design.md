@@ -48,7 +48,9 @@ itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested on
   (PROPOSED: 1 MiB; over it, the first 768 KiB and the last 128 KiB are kept with the line
   `----- cut: <n> characters omitted -----` between them, so the verdict at the end survives). The user-profile `.clavity` is already this server's data directory (`SessionPaths.cs:12`) and
   is not inside any repository, so no shield is involved. The result JSON gains `replyFile` (absolute path) and every
-  `[13b]` notice names it.
+  `[13b]` notice names it. **A failed capture never fails the ask** (panel R1, CA1): on any IO error the ask returns as
+  today, `replyFile` is `null`, the result gains `captureError: <one-line reason>`, and every notice drops recovery step
+  (1) and says the capture failed - a notice must never send the driver to a file that does not exist.
 - **C-check (D3).** The `[13b]` checks run on the UNTRUNCATED trailing assistant run (the same run `Answer` is cut
   from), not on the 16 000-char head copy - so a long but complete reply keeps its terminal token. When `AnswerTruncated` is true the result says so and points at
   `replyFile` EVEN IF every check passed (panel R1: a passing verdict must not hide that `Answer` is cut). A trailing TOOL step
@@ -56,13 +58,18 @@ itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested on
   points at `replyFile`, which holds the text.
 - **C-request (peer side, discipline named).** The outgoing message gains a short appended block asking the peer to
   ALSO write its whole reply verbatim to `<root>/.clavity/scratch/agy-replies/<cascade-id>-<first-step-index>.md`,
-  with a server-generated nonce as the file's FIRST line. This is a RECORDED EXCEPTION to the T4b "raw ask only" note
+  with a server-generated nonce as the file's FIRST line, exactly `agy-reply-nonce: <32 lowercase hex>` (a fresh
+  `Guid.NewGuid().ToString("N")` per ask; panel R1, PP1). This is a RECORDED EXCEPTION to the T4b "raw ask only" note
   (`AgyView.cs:210-213`): the appended block is peer-facing completion protocol, never driver guidance; the note is
   amended to say so. Ordinary asks (no discipline) are unchanged.
 - **C-peer-read.** If the chat text (C-check) FAILS a check and the peer file exists with the matching nonce on its
   first line, is within the cap, and passes, the reply is reported complete AND the result's `Answer` is the PEER
   FILE's text (agy F4: the text that passed is the text the driver receives - never check one text and surface
-  another). The result says which source passed: `checkedSource: chat | peer-file` (panel R1: `capture` was dropped - the checks never run on the full capture, whose
+  another). When the chat answer was null because the turn ENDED ON A TOOL STEP, the rescue still reports complete (a
+  nonce-correct file that passes the token and echo checks IS a complete report by the discipline's own test) but the
+  result carries `turnEndedOnToolStep: true` and a notice saying so - the "failure not hidden" design
+  (`BoundedView.cs:121-122`) is kept by REPORTING the tool-ended turn, not by declaring a complete report incomplete
+  (panel R1, AB1/MG1). The result says which source passed: `checkedSource: chat | peer-file` (panel R1: `capture` was dropped - the checks never run on the full capture, whose
   last line in the measured failure is the same bare acknowledgement that failed the chat check).
 - **C-order (D1 wording).** Every flagged notice and all four skills (both plugins) name ONE recovery order: (1) read
   `replyFile` (always present); (2) read the peer file if it was requested; (3) re-ask AT MOST ONCE; (4) halt and ask
@@ -94,3 +101,5 @@ The bash shield's semantics (section 41 stays deferred); Branch 21's hooks; `agy
 - `DISCARDED-BELOW-FLOOR` (R1 solo, Boundary Smuggler): a symlink planted at the peer-file path makes the server read and
   surface another local file - same-user only, inside the accepted same-user trust boundary
   (`clavity-dotnet/ROADMAP.md`, "Non-goals / accepted limitations": "Same-user trust boundary").
+- `DISCARDED-BELOW-FLOOR` (R1 agy, SC1): peer text that happens to equal the capture's cut-marker line is cosmetic only -
+  no check ever parses the capture file (C-check runs on the chat trailing run; C-peer-read on the peer file).
