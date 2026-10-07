@@ -1196,13 +1196,30 @@ with
                     PeerFile = peerFile,
                     PeerFileStatus = peerStatus,
                 }, checkText, expectTerminal, expectEcho);
-                if (peerFile is not null)
-                {
-                    if (judged.TerminalTokenMissing || judged.EchoMissing)
-                        judged = RescueFromPeerFile(judged, peerFile, peerNonce!, expectTerminal, expectEcho);
-                    ReplyCapture.Prune(Path.GetDirectoryName(peerFile)!, ReplyCapture.Keep);   // D-prune, its own event
-                }
+                if (peerFile is not null && (judged.TerminalTokenMissing || judged.EchoMissing))
+                    judged = RescueFromPeerFile(judged, peerFile, peerNonce!, expectTerminal, expectEcho);
                 return judged with { PeerStillBusy = peerStillBusy };
+```
+
+and replace the `finally` that closes the same `try` (lines 235-238)
+
+```csharp
+            finally
+            {
+                _inFlight.TryRemove(conversationId, out _);
+            }
+```
+
+with
+
+```csharp
+            finally
+            {
+                _inFlight.TryRemove(conversationId, out _);
+                // D-prune, its own event: WHENEVER a peer file was requested - also when the wait timed out, was
+                // cancelled or threw, so a run of failed asks cannot let peer files grow without bound (plan panel R1, SF1).
+                if (peerFile is not null) ReplyCapture.Prune(Path.GetDirectoryName(peerFile)!, ReplyCapture.Keep);
+            }
 ```
 
 - [ ] **Step 6: Implement - `Evaluate13b` + helpers.** Replace the `Evaluate13b` signature and its first two lines
