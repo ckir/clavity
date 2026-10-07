@@ -65,7 +65,9 @@ itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested on
 - **C-peer-read.** If the chat text (C-check) FAILS a check and the peer file exists with the matching nonce on its
   first line, is at most 1 MiB (the same cap as C-capture; a larger peer file is NOT read - the result says so and
   the chat verdict stands; panel R3, LI1), and passes, the reply is reported complete AND the result's `Answer` is the PEER
-  FILE's text (agy F4: the text that passed is the text the driver receives - never check one text and surface
+  FILE's text - BOUNDED EXACTLY LIKE A CHAT `Answer` (`AskMaxStepChars`, head kept, `AnswerTruncated` set, and the result
+  pointing at the peer file for the rest; panel R4, FA1: the checks run on the whole file, but the 16 000-character
+  context bound is never bypassed) (agy F4: the text that passed is the text the driver receives - never check one text and surface
   another). When the chat answer was null because the turn ENDED ON A TOOL STEP, the rescue still reports complete (a
   nonce-correct file that passes the token and echo checks IS a complete report by the discipline's own test) but the
   result carries `turnEndedOnToolStep: true` and a notice saying so - the "failure not hidden" design
@@ -73,7 +75,9 @@ itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested on
   (panel R1, AB1/MG1). The result says which source passed: `checkedSource: chat | peer-file` (panel R1: `capture` was dropped - the checks never run on the full capture, whose
   last line in the measured failure is the same bare acknowledgement that failed the chat check).
 - **C-order (D1 wording).** Every flagged notice and all four skills (both plugins) name ONE recovery order: (1) read
-  `replyFile` WHEN THE RESULT NAMES ONE (the skills are static text and cannot promise it: a failed capture leaves it
+  `replyFile` WHEN THE RESULT NAMES ONE - its END first: the verdict, the echo and the json sit at the TAIL of a file
+  that can reach 1 MiB, so the notice says "read its last 200 lines" rather than leaving the agent to page from the
+  top (panel R4, OA1) (the skills are static text and cannot promise it: a failed capture leaves it
   `null` - panel R2, FA1); (2) read the peer file if it was requested; (3) re-ask AT MOST ONCE; (4) halt and ask
   the human. `agy_look` is named only as a SHORT-reply tool with its 1000-character step cap stated. ECHO MISSING
   gains the same steps. When NO file is available (capture failed AND no peer file), the notice says so and names the
@@ -117,3 +121,6 @@ The bash shield's semantics (section 41 stays deferred); Branch 21's hooks; `agy
   supply a tool result" - agy runs its own tools; the driver only ever sends `SendUserCascadeMessageAsync` and waits for
   idle (`AgyView.cs` `AskAsync`), and today's own recovery for that exact turn is a re-ask. agy withdrew it after
   reading both files.
+- Declined (R4 agy, open-question answer, not a finding row): "C-peer-read is unnecessary - remove it". The owner ruled
+  BOTH capture paths knowingly; C-peer-read is what turns a report-then-bare-acknowledgement reply into a COMPLETE result
+  without a re-ask. Its one real hazard (an unbounded `Answer`) was folded as R4 FA1.
