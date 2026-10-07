@@ -3841,6 +3841,27 @@ not measured here (no macOS box). A pure-bash days-from-civil computation on the
 AND removes one `date` process from every SessionStart that reaches the age check - which is why it rides with
 Branch 21 (section 69).
 
+### §74 — Branch 22: a flagged `[13b]` reply has no named recovery, and an escaped echo is flagged falsely — ▶ **PROMOTED 2026-10-07 from the anomalies conveyor (owner-found during the Branch 21 plan panel), owner-ruled scope FULL, built BEFORE Branch 21 phase 1**
+
+**Defect 1 (owner-found).** `clavity-dotnet/src/Clavity.Mcp/McpTools.cs` (the `[13b]` notice blocks): TRUNCATED REPLY says
+only "Recover with agy_look or re-ask"; ECHO MISSING names no recovery at all; the four discipline skills (both plugins)
+carry the same agy_look-or-re-ask paragraph. `agy_look` truncates each step near 1000 characters, so it cannot recover a long
+report. The recovery that worked in practice - the peer ALSO writing its whole reply to a prepared, shielded
+`.clavity/scratch/` file - is named nowhere at the moment of failure.
+
+**Defect 2 (driver-found, reproduced with a control).** `clavity-dotnet/src/Clavity.Ls/SemanticEcho.cs` `IsSatisfied`:
+`Normalise` trims decoration only at the line ENDS, so a peer that escapes the inner backticks of a quoted line (backslash
+before each backtick) never matches - a false ECHO MISSING on an honest echo.
+
+**Owner rulings 2026-10-07 (after AGY-FIRST, seam `.clavity/seams/b21-13b-fold.md`):** a separate small branch off `main`
+(not folded into Branch 21), merged before Branch 21 phase 1 so that branch's capstones run on the fixed checks; scope FULL:
+(a) the notices and the four skills in both plugins name the same recovery order - read the reply file, then re-ask at most
+once; (b) `agy_ask` with a `discipline` appends the reply-file instruction itself and prepares + shields the scratch path; (c)
+`clavity-ls` reads that file to run the `[13b]` checks, so chat truncation no longer decides them. Defect 2's rule, agreed
+after one counter-turn and driver-tested on seven cases (four honest echoes accepted, a different line, a truncated prefix and
+a one-word change all rejected): SATISFIED if the raw tail line contains the needle, OR the reply-unescaped line does, OR both
+unescaped match; escape set backslash + one of: backtick, `*`, `_`, `>`, backslash.
+
 ---
 
 ## Non-goals / accepted limitations
