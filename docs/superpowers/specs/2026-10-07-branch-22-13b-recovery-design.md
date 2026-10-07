@@ -53,7 +53,8 @@ itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested on
   (1) and says the capture failed - a notice must never send the driver to a file that does not exist.
 - **C-check (D3).** The `[13b]` checks run on the UNTRUNCATED trailing assistant run (the same run `Answer` is cut
   from), not on the 16 000-char head copy - so a long but complete reply keeps its terminal token. When `AnswerTruncated` is true the result says so and points at
-  `replyFile` EVEN IF every check passed (panel R1: a passing verdict must not hide that `Answer` is cut). A trailing TOOL step
+  the file the `Answer` text came from - `replyFile` when `checkedSource` is `chat`, the peer file when it is
+  `peer-file` (panel R5, FA1: one rule for one field) - EVEN IF every check passed (panel R1: a passing verdict must not hide that `Answer` is cut). A trailing TOOL step
   still yields `Answer = null` (the "failure not hidden" design in `AskReplyProjectionTests` is kept); the notice then
   points at `replyFile`, which holds the text.
 - **C-request (peer side, discipline named).** The outgoing message gains a short appended block asking the peer to
@@ -80,7 +81,10 @@ itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested on
   top (panel R4, OA1) (the skills are static text and cannot promise it: a failed capture leaves it
   `null` - panel R2, FA1); (2) read the peer file if it was requested; (3) re-ask AT MOST ONCE; (4) halt and ask
   the human. `agy_look` is named only as a SHORT-reply tool with its 1000-character step cap stated. ECHO MISSING
-  gains the same steps. When NO file is available (capture failed AND no peer file), the notice says so and names the
+  gains the same steps. Each notice states the order as ONE compact sentence carrying the concrete paths (the
+  recovery text a notice adds is at most 400 characters); the skills carry the explanation. The notice must stay
+  self-sufficient: a flagged notice only fires on a failed check, and it can arrive after compaction has dropped
+  both a once-per-session block and the skill text (panel R5, CA1). When NO file is available (capture failed AND no peer file), the notice says so and names the
   two steps left - `agy_look` for a short reply, then the single re-ask - so it never ends on a dead end (panel R2, BA2).
 - **C-doc.** `SemanticEcho.cs` header comment corrected (the class reads the artifact itself now).
 
@@ -124,3 +128,7 @@ The bash shield's semantics (section 41 stays deferred); Branch 21's hooks; `agy
 - Declined (R4 agy, open-question answer, not a finding row): "C-peer-read is unnecessary - remove it". The owner ruled
   BOTH capture paths knowingly; C-peer-read is what turns a report-then-bare-acknowledgement reply into a COMPLETE result
   without a re-ask. Its one real hazard (an unbounded `Answer`) was folded as R4 FA1.
+- Declined (R5 agy, CA1 fix): "move the recovery order out of the notice into the once-per-session guidance block or
+  the skills, which survive compaction". agy itself conceded the once-per-session block does not survive compaction;
+  skills do not either - in the very session that drafted this spec, the carried-over skill bodies were marked
+  "truncated for compaction". Folded instead as a bound on the notice text (C-order).
