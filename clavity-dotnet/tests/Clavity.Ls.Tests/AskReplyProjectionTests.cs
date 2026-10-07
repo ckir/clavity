@@ -112,4 +112,47 @@ public class AskReplyProjectionTests
         Assert.Equal("step 90", StepKind.Label(90));
         Assert.Equal("user", StepKind.Label(14));
     }
+
+    [Fact]
+    public void TrailingAnswer_is_the_UNTRUNCATED_run_Answer_is_cut_from()
+    {
+        var big = new string('x', BoundedView.AskMaxStepChars + 50) + "\n[VERDICT: ALIGNED]";
+        var (text, endedOnTool) = BoundedView.TrailingAnswer(new[] { User("q"), Asst(big) });
+        Assert.Equal(big, text);
+        Assert.False(endedOnTool);
+        Assert.Equal(BoundedView.AskMaxStepChars, Project(User("q"), Asst(big)).Answer!.Length);
+    }
+
+    [Fact]
+    public void TrailingAnswer_of_a_tool_ended_turn_is_null_and_says_so()
+    {
+        var (text, endedOnTool) = BoundedView.TrailingAnswer(new[] { User("q"), Asst("prose"), Tool() });
+        Assert.Null(text);
+        Assert.True(endedOnTool);
+    }
+
+    [Fact]
+    public void TrailingAnswer_of_a_delta_with_no_reply_is_null_and_not_tool_ended()
+    {
+        var (text, endedOnTool) = BoundedView.TrailingAnswer(new[] { User("q") });
+        Assert.Null(text);
+        Assert.False(endedOnTool);
+    }
+
+    [Fact]
+    public void New_result_fields_are_omitted_from_the_json_while_unset()
+    {
+        var plain = System.Text.Json.JsonSerializer.Serialize(new AskReply("c", "a", Array.Empty<ActivityItem>(), false, false));
+        foreach (var f in new[] { "ReplyFile", "CaptureError", "CheckedSource", "TurnEndedOnToolStep", "PeerFile", "PeerFileStatus" })
+            Assert.DoesNotContain(f, plain);
+
+        var set = System.Text.Json.JsonSerializer.Serialize(new AskReply("c", "a", Array.Empty<ActivityItem>(), false, false,
+            ReplyFile: "r.md", CaptureError: "e", CheckedSource: "chat", TurnEndedOnToolStep: true, PeerFile: "p.md", PeerFileStatus: "s"));
+        Assert.Contains("\"ReplyFile\":\"r.md\"", set);
+        Assert.Contains("\"CaptureError\":\"e\"", set);
+        Assert.Contains("\"CheckedSource\":\"chat\"", set);
+        Assert.Contains("\"TurnEndedOnToolStep\":true", set);
+        Assert.Contains("\"PeerFile\":\"p.md\"", set);
+        Assert.Contains("\"PeerFileStatus\":\"s\"", set);
+    }
 }
