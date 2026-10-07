@@ -90,10 +90,15 @@ itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested on
 
 ## 4. Proposed defaults for the remaining sub-choices (agy's recommendation unless stated)
 
-- **D-root (F1).** `<root>` for the PEER file = the server's working directory - the same base `ExpectedFrom` already
-  resolves `artifactPath` against, measured to be the repository root on 2026-10-07. agy recommended its own
-  workspace via `GetConversationMetadataAsync` (`LsClient.cs:55`, unused today); the driver's lean differs because a
-  second root concept would let the artifact and the reply resolve against different directories. **Owner to rule.**
+- **D-root (F1) - OWNER-RULED 2026-10-07 (agreed with agy via AGY-NEGOTIATE).** `<root>` for the PEER file = agy's
+  workspace folder, read with `GetConversationMetadataAsync` (`LsClient.cs:55`; `Metadata.workspaces`,
+  `Workspace.workspace_folder_absolute_uri`) and converted from its `file:` URI to a local path - because agy writes
+  only inside its own working directory (`agy-assumptions.md:41`), so a path under the server's directory fails
+  whenever the two differ. Exactly ONE workspace: use it. The metadata call fails, lists none, or the URI cannot be
+  converted: do NOT request the peer file and say so in the result. SEVERAL workspaces: likewise do not request it,
+  UNTIL the plan's first task MEASURES live which listed workspace agy writes into (and the URI format on Windows and
+  Linux); the tie-break is then set to what that measurement shows. The server capture and the chat checks run in
+  every case. D-shield is checked at `<that root>/.clavity/.gitignore`.
 - **D-name (F2).** Unique per ask (`<cascade-id>-<first-step-index>`) + a nonce first line (defeats a stale or
   touched file; mtime is not trusted).
 - **D-shield (F3).** Refuse-and-degrade: request the peer file ONLY when `<root>/.clavity/.gitignore` already holds a
