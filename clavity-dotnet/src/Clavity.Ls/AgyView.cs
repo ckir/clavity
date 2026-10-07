@@ -39,6 +39,10 @@ public sealed class AgyViewOptions
     /// <summary>Absolute max total idle-wait regardless of progress. Env: CLAVITY_AGY_IDLE_MAX_SECONDS. Default
     /// 600s; <see cref="TimeSpan.Zero"/> = unbounded (rely purely on progress + the server idle signal).</summary>
     public TimeSpan IdleAbsoluteMax { get; init; } = TimeSpan.FromSeconds(600);
+
+    /// <summary>Where the server captures every ask's reply (ROADMAP section 74, C-capture) - the user-profile
+    /// <c>.clavity/agy-replies</c> in production. Null disables the capture (tests / classic).</summary>
+    public string? ReplyCaptureDir { get; init; }
 }
 
 /// <summary>
@@ -208,9 +212,18 @@ public sealed class AgyView
             var model = await ResolveSendModelAsync(client, beforeTrajectory, cancellationToken);
 
             // T4b (audience split): the golden header (SEED+GROWTH) and escalation index are DRIVER guidance, not
-            // peer-facing content — they no longer reach the wire. The peer receives ONLY the raw user ask; the
+            // peer-facing content — they no longer reach the wire. The peer receives the raw user ask; the
             // accumulated wisdom is instead delivered to the driver once per process via TryTakeGuidanceBlock().
+            // ONE RECORDED EXCEPTION (ROADMAP section 74, C-request): a discipline ask also carries the reply-file
+            // block - peer-facing completion protocol, never driver guidance.
             var outgoing = message;
+            var cascadeId = beforeTrajectory.CascadeId;
+            string? peerFile = null, peerNonce = null, peerStatus = null;
+            if (expectTerminal is not null)
+            {
+                (peerFile, peerNonce, peerStatus) = await PreparePeerFileAsync(client, conversationId, cascadeId, before, cancellationToken);
+                if (peerFile is not null) outgoing = message + PeerReplyFile.RequestBlock(peerFile, peerNonce!);
+            }
 
             _inFlight[conversationId] = 1;
             try
@@ -230,11 +243,29 @@ public sealed class AgyView
                 var full = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
                 var delta = full.Steps.Skip(before).ToList();
                 var projected = BoundedView.ProjectAskReply(full.CascadeId, delta);
-                return Evaluate13b(projected, expectTerminal, expectEcho) with { PeerStillBusy = peerStillBusy };
+                var (checkText, endedOnTool) = BoundedView.TrailingAnswer(delta);
+                var (replyFile, captureError) = _options.ReplyCaptureDir is { } captureDir
+                    ? ReplyCapture.Write(captureDir, cascadeId, before, delta)
+                    : (null, null);
+                var judged = Evaluate13b(projected with
+                {
+                    ReplyFile = replyFile,
+                    CaptureError = captureError,
+                    CheckedSource = expectTerminal is null ? null : "chat",
+                    TurnEndedOnToolStep = endedOnTool,
+                    PeerFile = peerFile,
+                    PeerFileStatus = peerStatus,
+                }, checkText, expectTerminal, expectEcho);
+                if (peerFile is not null && (judged.TerminalTokenMissing || judged.EchoMissing))
+                    judged = RescueFromPeerFile(judged, peerFile, peerNonce!, expectTerminal, expectEcho);
+                return judged with { PeerStillBusy = peerStillBusy };
             }
             finally
             {
                 _inFlight.TryRemove(conversationId, out _);
+                // D-prune, its own event: WHENEVER a peer file was requested - also when the wait timed out, was
+                // cancelled or threw, so a run of failed asks cannot let peer files grow without bound (plan panel R1, SF1).
+                if (peerFile is not null) ReplyCapture.Prune(Path.GetDirectoryName(peerFile)!, ReplyCapture.Keep);
             }
         }
     }
@@ -243,16 +274,18 @@ public sealed class AgyView
     /// mandates?) and semantically (did it quote the artifact's last substantive line near its verdict?).
     ///
     /// Both are pure string comparisons over a reply this method already has. There is deliberately no
-    /// third, statistical signal and nothing is written to disk: the byte-count heuristic and the reply
+    /// third, statistical signal, and THIS method writes nothing to disk (the ROADMAP section 74 reply capture
+    /// is a separate, recovery-only copy that no check reads): the byte-count heuristic and the reply
     /// archive that fed it were REMOVED after the capstone measured what they cost. They produced ten of
     /// the review's nineteen folds - prune ordering, temp naming, calendar culture, orphan sweeping, a
     /// diagnostics latch - to deliver a warning no caller was obliged to act on, for a failure mode
     /// (a complete-but-lazy reply) the capstone confirmed was only ever weakly caught. The deterministic
     /// half carried the value; the statistical half carried the defects.</summary>
-    private AskReply Evaluate13b(AskReply reply, string? expectTerminal, string? expectEcho)
+    private AskReply Evaluate13b(AskReply reply, string? checkText, string? expectTerminal, string? expectEcho)
     {
-        var tokenMissing = !TerminalToken.IsSatisfied(reply.Answer, expectTerminal);
-        var echoMissing = !SemanticEcho.IsSatisfied(reply.Answer, expectEcho);
+        // ROADMAP section 74, C-check: judge the UNTRUNCATED trailing run, not reply.Answer's 16 000-character head.
+        var tokenMissing = !TerminalToken.IsSatisfied(checkText, expectTerminal);
+        var echoMissing = !SemanticEcho.IsSatisfied(checkText, expectEcho);
 
         // EchoMissing IS assigned here. The plan's draft computed it and then returned a record that
         // carried only the other two - the exact "detector with no consumer" shape Task 5b exists to
@@ -262,6 +295,45 @@ public sealed class AgyView
         {
             TerminalTokenMissing = tokenMissing,
             EchoMissing = echoMissing,
+        };
+    }
+
+    /// <summary>D-root: agy's own workspace from the conversation metadata, then D-shield. Never throws for a
+    /// metadata failure - it becomes the status; a CALLER cancel still propagates.</summary>
+    private static async Task<(string? Path, string? Nonce, string? Status)> PreparePeerFileAsync(
+        LsClient client, string conversationId, string cascadeId, int firstStepIndex, CancellationToken cancellationToken)
+    {
+        Clavity.Ls.Proto.Metadata? metadata = null;
+        string? metadataError = null;
+        try
+        {
+            metadata = await client.GetConversationMetadataAsync(conversationId, cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            metadataError = ReplyCapture.OneLine(ex);
+        }
+        var (root, why) = PeerReplyFile.ResolveRoot(metadata, metadataError);
+        return root is null ? (null, null, why) : PeerReplyFile.Prepare(root, cascadeId, firstStepIndex);
+    }
+
+    /// <summary>C-peer-read: the chat copy failed; a nonce-correct peer file that passes BOTH checks becomes the
+    /// Answer, bounded exactly like a chat Answer (panel R4, FA1). Anything else leaves the chat verdict.</summary>
+    private static AskReply RescueFromPeerFile(AskReply chat, string path, string nonce, string? expectTerminal, string? expectEcho)
+    {
+        var (body, status) = PeerReplyFile.TryRead(path, nonce);
+        if (body is null) return chat with { PeerFileStatus = status };
+        if (!TerminalToken.IsSatisfied(body, expectTerminal) || !SemanticEcho.IsSatisfied(body, expectEcho))
+            return chat with { PeerFileStatus = "read: it failed the completeness checks too; the chat verdict stands" };
+        var cut = body.Length > BoundedView.AskMaxStepChars;
+        return chat with
+        {
+            Answer = cut ? body[..BoundedView.AskMaxStepChars] : body,
+            AnswerTruncated = cut,
+            TerminalTokenMissing = false,
+            EchoMissing = false,
+            CheckedSource = "peer-file",
+            PeerFileStatus = null,
         };
     }
 

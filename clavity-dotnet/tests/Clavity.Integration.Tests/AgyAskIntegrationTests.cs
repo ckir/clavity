@@ -95,6 +95,23 @@ public class AgyAskIntegrationTests
         public string? LastSentText { get; private set; }
         public int? LastSentModel { get; private set; }
 
+        // Branch 22. The conversation's workspaces (GetConversationMetadata); null => Unimplemented, as on every
+        // fake before this branch, which the driver treats as "agy's workspace is unknown".
+        public IReadOnlyList<string>? WorkspaceUris { get; set; }
+        // Branch 22. Runs on every send with the sent text - stands in for the peer writing its reply file.
+        public Action<string>? OnSend { get; set; }
+        // Branch 22. Append a TOOL step after the scripted reply, so the delta ends on a tool step.
+        public bool TrailingToolStep { get; set; }
+
+        public override Task<GetConversationMetadataResponse> GetConversationMetadata(
+            GetConversationMetadataRequest request, ServerCallContext context)
+        {
+            if (WorkspaceUris is null) throw new RpcException(new Status(StatusCode.Unimplemented, "no metadata"));
+            var md = new Clavity.Ls.Proto.Metadata();
+            foreach (var u in WorkspaceUris) md.Workspaces.Add(new Workspace { WorkspaceFolderAbsoluteUri = u });
+            return Task.FromResult(new GetConversationMetadataResponse { Metadata = md });
+        }
+
         public override async Task<GetCascadeTrajectoryResponse> GetCascadeTrajectory(
             GetCascadeTrajectoryRequest request, ServerCallContext context)
         {
@@ -127,6 +144,7 @@ public class AgyAskIntegrationTests
                 if (!SendAppendsNoStep)
                     _steps.Add(new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = LastSentText ?? "" } });
             }
+            OnSend?.Invoke(LastSentText ?? "");
             return Task.FromResult(new SendUserCascadeMessageResponse());
         }
 
@@ -153,6 +171,7 @@ public class AgyAskIntegrationTests
                 if (step.GoesIdle)
                 {
                     _steps.Add(new CascadeStep { Kind = 15, AssistantOutput = new CascadeAssistantOutput { Text = _replyText } });
+                    if (TrailingToolStep) _steps.Add(new CascadeStep { Kind = 5 });
                     return new WaitForConversationFullyIdleResponse { TimedOut = false };
                 }
             }
@@ -248,6 +267,26 @@ public class AgyAskIntegrationTests
         File.WriteAllText(path, content);
         return path;
     }
+
+    /// <summary>A workspace that passes D-shield: .clavity/.gitignore holds a bare '*'.</summary>
+    private static string ShieldedWorkspace(string dir)
+    {
+        var root = Path.Combine(dir, "ws");
+        Directory.CreateDirectory(Path.Combine(root, ".clavity"));
+        File.WriteAllText(Path.Combine(root, ".clavity", ".gitignore"), "*\n");
+        return root;
+    }
+
+    /// <summary>Stand-in for the peer: read the path and nonce from the request block, write <paramref name="body"/>.</summary>
+    private static Action<string> PeerWrites(string body, string? nonceOverride = null) => sent =>
+    {
+        var lines = sent.Split('\n');
+        var path = lines.Single(l => l.EndsWith(".md", StringComparison.Ordinal) && Path.IsPathRooted(l));
+        var nonce = lines[^1][PeerReplyFile.NonceLinePrefix.Length..];
+        File.WriteAllText(path, PeerReplyFile.NonceLinePrefix + (nonceOverride ?? nonce) + "\n\n" + body);
+    };
+
+    private const string GoodReport = "report\n\nthe last line of the artifact\n\n[VERDICT: ALIGNED]";
 
     private static int PortOf(WebApplication app) => new Uri(app.Urls.Single()).Port;
 
@@ -2031,6 +2070,221 @@ public class AgyAskIntegrationTests
             var reply = await view.AskAsync("hello");
             Assert.False(reply.TerminalTokenMissing);
             Assert.False(reply.EchoMissing);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // ---- Branch 22 (ROADMAP section 74) ----
+
+    private static async Task<(AskReply Reply, FakeAskLs Fake)> AskOnce(
+        string replyText, string dir, Action<FakeAskLs>? arrange = null, string? captureDir = null,
+        string? expectTerminal = "VERDICT:", string? expectEcho = "the last line of the artifact")
+    {
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", replyText, TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        arrange?.Invoke(fake);
+        await using var app = await StartFakeAsync(fake);
+        var agyDir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, ReplyCaptureDir = captureDir });
+            return (await view.AskAsync("review it", expectTerminal: expectTerminal, expectEcho: expectEcho), fake);
+        }
+        finally { Directory.Delete(agyDir, true); }
+    }
+
+    private static string TempDir()
+    {
+        var d = Path.Combine(Path.GetTempPath(), "b22-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(d);
+        return d;
+    }
+
+    [Fact]
+    public async Task A_long_complete_reply_keeps_its_verdict_although_Answer_is_cut()
+    {
+        var dir = TempDir();
+        try
+        {
+            var text = new string('x', BoundedView.AskMaxStepChars + 500) + "\n\n" + GoodReport;
+            var (r, _) = await AskOnce(text, dir, captureDir: Path.Combine(dir, "cap"));
+            Assert.True(r.AnswerTruncated);
+            Assert.False(r.TerminalTokenMissing);   // D3: checked on the untruncated run
+            Assert.False(r.EchoMissing);
+            Assert.Equal("chat", r.CheckedSource);
+            Assert.NotNull(r.ReplyFile);
+            var captured = File.ReadAllText(r.ReplyFile!);
+            Assert.StartsWith("----- agy step ", captured);
+            Assert.EndsWith("[VERDICT: ALIGNED]\n", captured);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_failed_capture_never_fails_the_ask()
+    {
+        var dir = TempDir();
+        try
+        {
+            var blocker = Path.Combine(dir, "a-file");
+            File.WriteAllText(blocker, "x");
+            var (r, _) = await AskOnce(GoodReport, dir, captureDir: blocker);
+            Assert.Equal(GoodReport, r.Answer);
+            Assert.Null(r.ReplyFile);
+            Assert.False(string.IsNullOrWhiteSpace(r.CaptureError));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task No_capture_dir_means_no_ReplyFile_and_no_CaptureError()
+    {
+        var dir = TempDir();
+        try
+        {
+            var (r, _) = await AskOnce(GoodReport, dir);
+            Assert.Null(r.ReplyFile);
+            Assert.Null(r.CaptureError);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_discipline_ask_requests_a_peer_file_inside_agy_s_workspace()
+    {
+        var dir = TempDir();
+        try
+        {
+            var ws = ShieldedWorkspace(dir);
+            var (r, fake) = await AskOnce(GoodReport, dir, f => f.WorkspaceUris = new[] { new Uri(ws).AbsoluteUri });
+            Assert.StartsWith("review it\n\n---\nREPLY FILE", fake.LastSentText);
+            Assert.Equal(Path.Combine(ws, ".clavity", "scratch", "agy-replies", "conv-1-0.md"), r.PeerFile);
+            Assert.Matches("agy-reply-nonce: [0-9a-f]{32}$", fake.LastSentText);
+            Assert.Null(r.PeerFileStatus);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task An_ordinary_ask_is_sent_raw_even_when_a_workspace_is_known()
+    {
+        var dir = TempDir();
+        try
+        {
+            var ws = ShieldedWorkspace(dir);
+            var (r, fake) = await AskOnce(GoodReport, dir, f => f.WorkspaceUris = new[] { new Uri(ws).AbsoluteUri },
+                                          expectTerminal: null, expectEcho: null);
+            Assert.Equal("review it", fake.LastSentText);
+            Assert.Null(r.PeerFile);
+            Assert.Null(r.CheckedSource);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Theory]
+    [InlineData("no-shield", ".gitignore")]
+    [InlineData("two-workspaces", "2 workspaces")]
+    [InlineData("no-metadata", "unknown")]
+    public async Task No_peer_file_is_requested_when_D_root_or_D_shield_says_no(string shape, string why)
+    {
+        var dir = TempDir();
+        try
+        {
+            var ws = shape == "no-shield" ? Directory.CreateDirectory(Path.Combine(dir, "bare")).FullName : ShieldedWorkspace(dir);
+            var uri = new Uri(ws).AbsoluteUri;
+            var (r, fake) = await AskOnce(GoodReport, dir, f => f.WorkspaceUris = shape switch
+            {
+                "two-workspaces" => new[] { uri, uri },
+                "no-metadata" => null,
+                _ => new[] { uri },
+            });
+            Assert.Equal("review it", fake.LastSentText);
+            Assert.Null(r.PeerFile);
+            Assert.Contains(why, r.PeerFileStatus);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task The_peer_file_rescues_a_reply_whose_chat_copy_failed()
+    {
+        var dir = TempDir();
+        try
+        {
+            var ws = ShieldedWorkspace(dir);
+            var (r, _) = await AskOnce("Noted.", dir, f =>
+            {
+                f.WorkspaceUris = new[] { new Uri(ws).AbsoluteUri };
+                f.OnSend = PeerWrites(GoodReport);
+            });
+            Assert.False(r.TerminalTokenMissing);
+            Assert.False(r.EchoMissing);
+            Assert.Equal("peer-file", r.CheckedSource);
+            Assert.Equal(GoodReport, r.Answer);   // the text that passed is the text the driver receives (agy F4)
+            Assert.False(r.TurnEndedOnToolStep);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_rescued_tool_ended_turn_is_complete_but_REPORTED()
+    {
+        var dir = TempDir();
+        try
+        {
+            var ws = ShieldedWorkspace(dir);
+            var (r, _) = await AskOnce(GoodReport, dir, f =>
+            {
+                f.WorkspaceUris = new[] { new Uri(ws).AbsoluteUri };
+                f.OnSend = PeerWrites(GoodReport);
+                f.TrailingToolStep = true;
+            });
+            Assert.Equal("peer-file", r.CheckedSource);
+            Assert.True(r.TurnEndedOnToolStep);
+            Assert.False(r.TerminalTokenMissing);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_rescued_Answer_is_bounded_like_a_chat_Answer()
+    {
+        var dir = TempDir();
+        try
+        {
+            var ws = ShieldedWorkspace(dir);
+            var body = new string('y', BoundedView.AskMaxStepChars + 10) + "\n\n" + GoodReport;
+            var (r, _) = await AskOnce("Noted.", dir, f =>
+            {
+                f.WorkspaceUris = new[] { new Uri(ws).AbsoluteUri };
+                f.OnSend = PeerWrites(body);
+            });
+            Assert.Equal("peer-file", r.CheckedSource);
+            Assert.Equal(BoundedView.AskMaxStepChars, r.Answer!.Length);
+            Assert.True(r.AnswerTruncated);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Theory]
+    [InlineData("wrong-nonce", "nonce")]
+    [InlineData("fails-too", "failed the completeness checks")]
+    public async Task A_peer_file_that_cannot_be_trusted_leaves_the_chat_verdict(string shape, string why)
+    {
+        var dir = TempDir();
+        try
+        {
+            var ws = ShieldedWorkspace(dir);
+            var (r, _) = await AskOnce("Noted.", dir, f =>
+            {
+                f.WorkspaceUris = new[] { new Uri(ws).AbsoluteUri };
+                f.OnSend = shape == "wrong-nonce" ? PeerWrites(GoodReport, nonceOverride: new string('0', 32))
+                                                  : PeerWrites("report without a token");
+            });
+            Assert.True(r.TerminalTokenMissing);
+            Assert.Equal("chat", r.CheckedSource);
+            Assert.Equal("Noted.", r.Answer);
+            Assert.Contains(why, r.PeerFileStatus);
         }
         finally { Directory.Delete(dir, true); }
     }
