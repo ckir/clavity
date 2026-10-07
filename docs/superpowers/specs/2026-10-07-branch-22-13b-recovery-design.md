@@ -115,6 +115,14 @@ itself - runs on EVERY ask; the peer-written file is a SECOND copy, requested on
   exists"): the recovery paragraph names the dotnet `replyFile` step AND says that on classic the driver requests the
   peer file by hand in its brief.
 
+- **D-pointers (OWNER-RULED 2026-10-07, capstone R2 CA1, after a neutral AGY-FIRST; agy recommended option 2, the driver option 3, the owner chose 3).**
+  The result names the capture and peer files only when they can matter. On a discipline ask whose chat copy passed every
+  check and whose `Answer` was not cut, `ReplyFile`, `PeerFile` and `PeerFileStatus` are omitted (measured: +255 characters per
+  ask became +23). They stay on every flagged, cut or rescued reply, and on every ORDINARY ask - no check runs there, so
+  nothing could flag a report displaced by a short acknowledgement, and the capture path is the only way back to it.
+  `CaptureError` is never hidden. The rule lives in `AgyView` (a second AGY-FIRST chose that over dropping at the MCP layer).
+  This supersedes C-capture's "the result JSON gains `replyFile`" for the healthy discipline case only.
+
 ## 5. Out of scope
 
 The bash shield's semantics (section 41 stays deferred); Branch 21's hooks; `agy_look`'s caps.
