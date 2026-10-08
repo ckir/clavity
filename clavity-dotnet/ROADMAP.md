@@ -2784,7 +2784,7 @@ than the noise. Decide that trade at plan time rather than assuming the suppress
 
 ---
 
-### §33 — The terminal-token matcher and its contract lookup disagree on case, and nothing pins either — ▶ **PROMOTED 2026-09-04, tracked debt, sibling of §29b**
+### §33 — The terminal-token matcher and its contract lookup disagree on case, and nothing pins either — ✅ **CLOSED 2026-10-08 at Branch 4 start (owner ruling, agy agreed): no longer reproduces - the case-sensitive match is deliberate (`TerminalToken.cs:82-92` comment) and pinned by `TerminalTokenTests.The_token_match_stays_case_SENSITIVE_...` (a `[Verdict: ALIGNED]` is refused); the contract lookup stays ignore-case by design** — was: PROMOTED 2026-09-04, tracked debt, sibling of §29b
 
 Two halves of one feature use different case semantics and only one of them is asserted.
 **VERIFIED 2026-09-04 by reading both files:** `clavity-dotnet/src/Clavity.Ls/TerminalToken.cs:82` matches
@@ -3388,7 +3388,7 @@ convention, so the practice works and the SKILL text is what is wrong.
 
 ---
 
-### §53 — `clavity start` has no test: the pairing-doc wiring and the refusal are unguarded — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor (AGY-TEST-AUDIT G1+G2, owner-deferred), not yet planned**
+### §53 — `clavity start` has no test: the pairing-doc wiring and the refusal are unguarded — ▶ **NARROWED 2026-10-08 at Branch 4 start (owner ruling, agy agreed): the refusal half is pinned since Branch 18's `StartFlow` extraction (`StartFlowTests.A_pairing_doc_that_cannot_be_written_launches_nothing` and `Agy_whose_pairing_doc_cannot_be_written_runs_nothing`); the WIRING half (the materialised path must reach the launch as `AgyInstallDocPath`) has no assertion and is Branch 4 work** — was: PROMOTED 2026-09-29 from the anomalies conveyor (AGY-TEST-AUDIT G1+G2, owner-deferred)
 
 The `start` branch of `clavity-dotnet/src/Clavity.Cli/Program.cs` is top-level statements, and no test in
 the repository invokes it (grep, 2026-09-29). Two behaviours from the pairing-doc fix (`3f686749`) are
