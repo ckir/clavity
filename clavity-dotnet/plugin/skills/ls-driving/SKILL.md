@@ -31,7 +31,7 @@ You (Claude) drive a paired agy over its Language Server via three MCP tools exp
   own, read from the log of an agy that `clavity start` / `clavity agy` launched, with the reset countdown; an agy
   started by hand is not covered - its stop still looks like `[13b] TRUNCATED REPLY`, so check its tab). The reply is incomplete because agy could not generate, not
   because it was dropped: WAIT for the reset, then re-ask. Do not resend meanwhile - each failed retry has been
-  observed to push the reset further out. No `[13b]` notice accompanies it; the stop explains the missing token
+  observed to push the reset further out. No `[13b] TRUNCATED REPLY` / `ECHO MISSING` notice accompanies it (the independent `NO ECHO` / `UNCHECKED` notes still can); the stop explains the missing token
   (a `[13b] RESCUED FROM PEER FILE` can precede it: then the reply file is complete and the stop is only context).
 - **`model_unavailable`** - the conversation's model is deprecated or unavailable; `message` says how to escape
   (switch it in the agy tab). Not a channel fault: `agy_status` still answers.
