@@ -3,6 +3,7 @@ using System.Text.Json;
 using Clavity.Ls;
 using Clavity.Mcp;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -103,6 +104,20 @@ public class ArgumentPrecheckTests
         var p = ArgumentPrecheck.Problem("agy_look", JsonDocument.Parse("""{"type":"object"}""").RootElement, args)!;
         Assert.Contains("'" + new string('n', 60) + "'", p);
         Assert.DoesNotContain(new string('n', 61), p, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_call_to_an_unknown_tool_gets_the_SDKs_own_answer_through_the_filter()
+    {
+        // The filter fails OPEN when the tool is not found (test-audit Branch 4 R1, CA-1). MEASURED on SDK 1.4.0: an unknown
+        // tool name is answered with an McpProtocolException "Unknown tool: '<name>'", with or without the filter.
+        var (client, server) = await ConnectAsync(withFilter: true);
+        await using (server)
+        {
+            var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+                await client.CallToolAsync("no_such_tool", new Dictionary<string, object?> { ["x"] = 1 }));
+            Assert.Contains("Unknown tool: 'no_such_tool'", ex.Message);
+        }
     }
 
     [Fact]

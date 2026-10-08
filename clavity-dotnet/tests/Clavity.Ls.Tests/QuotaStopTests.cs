@@ -68,6 +68,29 @@ public class QuotaStopTests
     }
 
     [Fact]
+    public void When_several_events_were_appended_the_LAST_one_wins()
+    {
+        // The reset countdown shrinks with time, so the newest event is the most accurate. Test-audit Branch 4 R1, MG-1: the
+        // original fixture repeats ONE identical sentence, so a first-match scan was indistinguishable from a last-match scan.
+        var p = Tmp("");
+        var mark = QuotaStopLog.Mark(p);
+        File.AppendAllText(p, "E1001 21:00:00.1 1 x.go:1] RESOURCE_EXHAUSTED (code 429): Individual quota reached. Please upgrade. Resets in 24m5s.\n");
+        File.AppendAllText(p, "E1001 21:20:00.1 1 x.go:1] RESOURCE_EXHAUSTED (code 429): Individual quota reached. Please upgrade. Resets in 4m5s.\n");
+        Assert.Equal("Individual quota reached. Please upgrade. Resets in 4m5s.", QuotaStopLog.FindSince(p, mark));
+    }
+
+    [Fact]
+    public void Control_characters_in_the_sentence_are_neutralised()
+    {
+        // Test-audit Branch 4 R1, BS-1: the sentence is lifted from a log file into the driver's context; an escape
+        // sequence or a tab inside it must not survive.
+        var p = Tmp("");
+        var mark = QuotaStopLog.Mark(p);
+        File.AppendAllText(p, "E1001 x] RESOURCE_EXHAUSTED (code 429): Individual quota reached. Please\u001b[31m upgrade\tnow. Resets in 24m5s.\n");
+        Assert.Equal("Individual quota reached. Please?[31m upgrade?now. Resets in 24m5s.", QuotaStopLog.FindSince(p, mark));
+    }
+
+    [Fact]
     public void A_429_that_is_not_a_quota_message_does_not_fire()
     {
         var p = Tmp("");

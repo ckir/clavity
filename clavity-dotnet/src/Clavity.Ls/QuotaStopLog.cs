@@ -19,6 +19,15 @@ public static partial class QuotaStopLog   // not `QuotaStop`: that is the AskRe
     [GeneratedRegex(@"RESOURCE_EXHAUSTED \(code 429\): (Individual quota reached\.[^\r\n]*?Resets in [^\s.]+\.?)(?=\r?\n)", RegexOptions.CultureInvariant)]
     private static partial Regex EventRegex();
 
+    // The sentence is lifted from a LOG FILE into the driver's context (test-audit Branch 4 R1, BS-1): control characters
+    // (an escape sequence, a tab, a NUL) are mapped to '?' exactly as ArgumentPrecheck does for client-supplied names.
+    private static string Printable(string s)
+    {
+        var sb = new StringBuilder(s.Length);
+        foreach (var c in s) sb.Append(char.IsControl(c) ? '?' : c);
+        return sb.ToString();
+    }
+
     /// <summary>The log's current length, or 0 when it cannot be read. Never throws.</summary>
     public static long Mark(string? path)
     {
@@ -41,7 +50,7 @@ public static partial class QuotaStopLog   // not `QuotaStop`: that is the AskRe
             var appended = reader.ReadToEnd();
             string? last = null;
             foreach (Match m in EventRegex().Matches(appended)) last = m.Groups[1].Value;
-            return last;
+            return last is null ? null : Printable(last);
         }
         catch { return null; }
     }
