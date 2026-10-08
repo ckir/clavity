@@ -11,6 +11,7 @@ cur = None; bad = []; removed = 0
 for l in d.split('\n'):
     if l.startswith('--- a/'): cur = l[6:]
     elif l.startswith('-') and not l.startswith('---'):
+        if not l[1:].strip(): continue      # a removed BLANK line is whitespace, not lost text
         removed += 1
         if not allowed.match(l[1:]): bad.append('%s: %s' % (cur, l[1:][:110]))
 print('removed lines: %d; not in the allow-list: %d' % (removed, len(bad)))

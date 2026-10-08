@@ -216,6 +216,7 @@ def main():
             sha = pick_sha(root, r[1], overrides, old, '\n'.join(lines[j + 1:j + 60]))
             if not sha: problems.append('NOSHA ' + r[1]); continue
         add = [STATUS_LINE_FMT(token, first_date(old), status_text(token, r[4], old, 'file', sha)), LEGACY + old]
+        if j + 1 < len(lines) and lines[j + 1].strip(): add.append('')   # all 19 stubs have a non-blank line right after the status line; a blockquote line would swallow it (lazy continuation)
         if token == 'CLOSED-BY-RULING':
             if r[1] not in FIXED_REOPEN: problems.append('NEED-REOPEN ' + r[1]); continue
             add += ['', '**Reopen if:** ' + FIXED_REOPEN[r[1]]]

@@ -84,9 +84,9 @@ dotnet-roadmap	§81 (formerly item 0 step 1b)	NONE	NONE	NOT an entry: the stale 
 backlog-stub	agent-shell-layer-corrupts-commands-and-probes.md	3	CLOSED-BY-RULING	
 backlog-stub	agy-learn-can-silently-not-run-for-a-whole-session.md	3	KILLED	
 backlog-stub	agy-mark-accepts-a-nonexistent-sha.md	3	SHIPPED	
-backlog-stub	agy-reply-channel-truncates-and-nulls-silently.md	3	SCHEDULED	
+backlog-stub	agy-reply-channel-truncates-and-nulls-silently.md	3	OPEN	
 backlog-stub	agy-status-reports-working-for-an-idle-peer.md	3	SCHEDULED	
-backlog-stub	agyview-diagnostics-writes-are-unguarded.md	3	SCHEDULED	
+backlog-stub	agyview-diagnostics-writes-are-unguarded.md	3	OPEN	
 backlog-stub	cheatsheet-reaches-live-path-before-the-human-gate.md	3	SCHEDULED	
 backlog-stub	cross-project-anomalies-have-no-cross-project-home.md	3	CLOSED-BY-RULING	
 backlog-stub	curate-abort-leaves-unreviewed-content-with-only-a-warning.md	3	SHIPPED	
@@ -96,9 +96,9 @@ backlog-stub	docs-audit-findings-are-invisible-to-git.md	3	JUDGE	closed words ['
 backlog-stub	git-index-fatal-recurs-during-test-runs.md	3	KILLED	
 backlog-stub	golden-header-per-ask-token-optimization.md	3	SHIPPED	
 backlog-stub	installed-plugin-drifts-under-an-unchanged-version.md	3	SCHEDULED	
-backlog-stub	ls-discovery-misreports-a-busy-peer-as-exited.md	3	SCHEDULED	
+backlog-stub	ls-discovery-misreports-a-busy-peer-as-exited.md	3	OPEN	
 backlog-stub	peer-scratch-dir-contains-executable-session-hooks.md	3	JUDGE	no status marker found
-backlog-stub	pester-temp-dirs-orphan-on-killed-runs.md	3	SCHEDULED	
+backlog-stub	pester-temp-dirs-orphan-on-killed-runs.md	3	OPEN	
 backlog-stub	whole-tree-sandbox-copies-are-unbounded.md	3	KILLED	
 fix-the-tool	agy-look-tail-truncation.md	6	SHIPPED	merged, no release yet
 fix-the-tool	answer-null-content-only-in-truncated-activity.md	6	OPEN	Branch C re-measure (six entries)
