@@ -1158,13 +1158,13 @@ Correct the spec row 26 text ("the recipe decision plus whatever measurement sho
         run: |
           for ($attempt = 1; $attempt -le 3; $attempt++) {
             choco install just -y --no-progress
-            $env:PATH = "C:\ProgramData\chocolateyin;$env:PATH"
+            $env:PATH = "C:\ProgramData\chocolatey\bin;$env:PATH"
             if (Get-Command just -ErrorAction SilentlyContinue) { break }
             Write-Host "::warning::just install attempt $attempt failed (choco exit $LASTEXITCODE); retrying"
             Start-Sleep -Seconds (5 * $attempt)
           }
           if (-not (Get-Command just -ErrorAction SilentlyContinue)) { throw 'just could not be installed' }
-          "C:\ProgramData\chocolateyin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "C:\ProgramData\chocolatey\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           just --version
       - run: just test
 ```
