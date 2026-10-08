@@ -3824,6 +3824,8 @@ path per hook, TOTAL processes including the harness's 3 boot processes (ceiling
 | `migrate-inbox` | 17 | 11 | `df4728d0` |
 | `agy-anomaly-dispatch-reminder`, `agy-anomaly-model-notice` (section 59 only) | 11, 14 | 9, 12 | `7b8612c0` |
 
+`fetch-clavity-ls` 14 is its worst MEASURED path (the release lookup returns nothing, with `true.exe` standing in for `curl` as a real external process). The real download path - `curl` for the lookup, the tarball and the checksum, then the extract - needs the network, runs once per plugin version, and is NOT in the census; it was never claimed to be under 16 (capstone R6).
+
 **The one standing exception, owner-ruled 2026-10-07.** Two `agy-discipline-reaching` rows measure 17 total: the one-time
 `!`-negation shield prepend (a `mktemp` + `cat` + `mv` that rewrites the shield file) and its already-latched repeat. They are
 the only rows over 16, they are pinned as two NAMED `-Max 14` rows in the budget suite (14 beyond Pester's 2-process boot),
