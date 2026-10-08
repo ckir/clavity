@@ -151,6 +151,12 @@ Describe 'check-tracker-status.ps1 - list mode and run errors' {
         $r.Out | Should -Match 'SCHEDULED.*§1.*Open one'
         $r.Out | Should -Not -Match '§2'
     }
+    It '-List prints an open fix-the-tool entry by its slug (the entries have no heading; -List once crashed on them)' {
+        $f = New-TrackerRepo @{ 'agy-autotrain/docs/fix-the-tool-backlog/x.md' = "---`nslug: my-slug`nstatus: SCHEDULED`n---`nbody`n" }
+        $r = Invoke-Gate $f.Root -List
+        $r.Code | Should -Be 0 -Because $r.Out
+        $r.Out | Should -Match 'SCHEDULED.*fix-the-tool.*x\.md.*my-slug'
+    }
     It 'exits 2 when the repository root is not a git repository' {
         $d = Join-Path $TestDrive 'nogit'; $null = New-Item -ItemType Directory -Path $d -Force
         (Invoke-Gate $d).Code | Should -Be 2
@@ -160,5 +166,16 @@ Describe 'check-tracker-status.ps1 - list mode and run errors' {
         $r = Invoke-Gate $f.Root
         $r.Out | Should -Match 'clavity-dotnet/ROADMAP\.md'
         $r.Code | Should -Be 1
+    }
+}
+
+Describe 'check-tracker-status.ps1 - the real repository' {
+    It 'passes on the committed trackers, sees them all, and -List runs' {
+        $r = Invoke-Gate $script:RepoRoot
+        $r.Code | Should -Be 0 -Because "the trackers must satisfy docs/tracker-format.md; output was:`n$($r.Out)"
+        $r.Out | Should -Match 'OK - \d+ entries'
+        $l = Invoke-Gate $script:RepoRoot -List
+        $l.Code | Should -Be 0
+        $l.Out | Should -Match 'check-tracker-status: \d+ open item'
     }
 }

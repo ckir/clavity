@@ -23,7 +23,8 @@
 
 > **Live roadmap — reconciled 2026-06-30.** This file is the single forward-looking source of truth.
 > It supersedes the original 2026-06-16 driving-session roadmap (now folded into **§ Shipped — history**
-> below). Detail for each item lives in `docs/superpowers/specs/` + `docs/superpowers/plans/`; this file
+> below). **Entry format (since 2026-10-08):** every section below is written to [`docs/tracker-format.md`](../docs/tracker-format.md) -
+> a title-only heading, then one `**Status:** <TOKEN> <date> - <line>` line; `just check-tracker-status` enforces it and `-List` prints the open items. Detail for each item lives in `docs/superpowers/specs/` + `docs/superpowers/plans/`; this file
 > tracks **what is done** and **what is next, in order**.
 
 ---
@@ -115,7 +116,10 @@ The two variants are **mutually exclusive** on a machine (the installers refuse 
 
 ## ▶ Forward backlog (in priority order)
 
-### 0. DISCIPLINE EFFICACY — stop confirming presence and calling it proof · ~~▶ TOP PRIORITY~~ → ~~**one defect fix (step 1b); owner ruling 2026-08-06**~~ → ✅ **ALL RATIFIED STEPS SHIPPED 2026-08-07 (2, 1a, 1b); the witness trial was KILLED, not deferred. Two coverage holes accepted — see item 1b.**
+### 0. DISCIPLINE EFFICACY — stop confirming presence and calling it proof
+
+**Status:** SHIPPED 2026-08-07 - merged to main in `40f9eaa1`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ~~▶ TOP PRIORITY~~ → ~~**one defect fix (step 1b); owner ruling 2026-08-06**~~ → ✅ **ALL RATIFIED STEPS SHIPPED 2026-08-07 (2, 1a, 1b); the witness trial was KILLED, not deferred. Two coverage holes accepted — see item 1b.**
 
 Numbered `0` deliberately: this list is priority-ordered, and renumbering 1-11 would invalidate every
 existing citation to §7 and §8. Owner-directed 2026-08-04. **The deferral is DISCHARGED: it waited on the
@@ -376,6 +380,7 @@ sessions.
 - **1b — PROMPT (deferred deliberately).** Where the direct-driver prompt eventually goes
   (`UserPromptSubmit`, `PostToolUseFailure`, or a derived trigger) is to be **decided from 1a's data rather
   than guessed** — which is the whole point of the split.
+  *(superseded 2026-10-08: step 1b SHIPPED 2026-08-07 - see the UPDATE block of this item and `40f9eaa` / `a527020` / `58afde2`; "deferred" is history.)*
 
 **Four things 1a's STEP 0 measured that this entry would otherwise have had you design around**
 (2026-08-04, probes in `.clavity/scratch/discipline-efficacy/`): a hook firing writes a **typed
@@ -394,7 +399,10 @@ trial needs a defect the prompt does NOT resemble, or it reproduces this item's 
 AGY-ANOMALIES working for real users?" from recorded evidence, without asking any agent what it thinks
 happened.
 
-### ~~1. `clavity --restart-agy` (classic) — 7.7~~ · 🚫 **KILLED 2026-08-06 (clauses 1 + 2)**
+### 1. `clavity --restart-agy` (classic) — 7.7
+
+**Status:** KILLED 2026-08-06 - will not be done - KILLED 2026-08-06 (clauses 1 + 2)
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** 🚫 **KILLED 2026-08-06 (clauses 1 + 2)**
 
 > **last-triaged: 2026-08-06.** Oracle: `rg 'restart-agy|restart_agy'` over `clavity-classic/src/` and
 > `clavity-dotnet/src/` returns **NOT IMPLEMENTED**, and `git log --grep='restart-agy'` finds only docs,
@@ -416,7 +424,11 @@ Agy-only restart: tear down + relaunch ONLY the agy psmux session under the same
 a new Claude (today only `clavity start` relaunches, which orphans the driving session). Re-run agy's exact launch
 + confirm readiness via a `ping`. Surfaced 2026-06-29 when an agy MCP hang forced a full teardown mid-session.
 
-### 2. Golden-header tamper-detection — 7.4 · ✅ SHIPPED · **spot-checked 2026-08-06**
+### 2. Golden-header tamper-detection — 7.4
+
+**Status:** SHIPPED 2026-08-06 - merged to main in `605cf76e`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ SHIPPED · **spot-checked 2026-08-06**
+
 **Verified in code 2026-08-06** — `Clavity.Ls/GoldenHeader.cs` reads the `.sha256` sidecar at read-time,
 warns and degrades the region to absent on mismatch, and enforces a 1 KiB sidecar cap (`:26`, `:79-80`,
 `:106-111`). The honest threat model is stated in the source itself (`:97` — it catches torn writes and
@@ -425,7 +437,11 @@ because §0 forbids renumbering: every citation to §7 and §8 depends on these 
 
 ~~Compare `golden-header.md` to its `.sha256` sidecar at read-time; LOUD warning on external change.~~
 
-### 3. Dynamic send-model resolution (dotnet) — T10 follow-up · ✅ SHIPPED as v0.1.9 · **spot-checked 2026-08-06**
+### 3. Dynamic send-model resolution (dotnet) — T10 follow-up
+
+**Status:** SHIPPED 2026-08-06 - merged to main in `a4526777`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ SHIPPED as v0.1.9 · **spot-checked 2026-08-06**
+
 **Verified in code 2026-08-06** — `Clavity.Ls/SendModelResolver.cs` resolves `default_agent_model_id` →
 the `models` map → the concrete model (`:37-44`), and `LsClient.cs:65` states that the literal `1037` now
 "lives in exactly one place" as the too-old-agy fallback. This entry described the hard-coded state that
@@ -434,7 +450,10 @@ v0.1.9 removed, and it sat in the forward backlog while also appearing in the Sh
 
 ~~`AgyView` hard-codes the send model id (`MODEL_GEMINI_3_1_PRO_HIGH = 1037`)… resolve dynamically.~~
 
-### ~~4. Packaging verifications — 7.5 / 7.6~~ · 🚫 **KILLED 2026-08-06 (clause 1)**
+### 4. Packaging verifications — 7.5 / 7.6
+
+**Status:** KILLED 2026-08-06 - will not be done - KILLED 2026-08-06 (clause 1)
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** 🚫 **KILLED 2026-08-06 (clause 1)**
 
 > **last-triaged: 2026-08-06.** Both halves are *"confirm X"* tasks with **no code deliverable**, and that
 > is what kills them.
@@ -453,7 +472,11 @@ v0.1.9 removed, and it sat in the forward backlog while also appearing in the Sh
 - **7.6** — confirm Claude/agy don't auto-update a locally path-installed plugin away from the version-pinned
   `{app}` binary.
 
-### 5. dotnet golden-header parity follow-ups · ✅ SHIPPED (both bullets) · **spot-checked 2026-08-06**
+### 5. dotnet golden-header parity follow-ups
+
+**Status:** SHIPPED 2026-08-06 - merged to main in `1136affb`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ SHIPPED (both bullets) · **spot-checked 2026-08-06**
+
 The classic 7.3 implementation (`src/golden_header.rs`) is the canonical golden-header behavior; two dotnet
 divergences were found during the Spec A capstone. **Both verified aligned in code 2026-08-06:**
 - ~~**`GoldenHeader.Apply` trim charset**~~ — **DONE.** `GoldenHeader.cs:201` and `:206` trim with `AsciiWs`,
@@ -464,7 +487,10 @@ divergences were found during the Spec A capstone. **Both verified aligned in co
   WHY that order matters (a failed move leaves the old header and old sidecar mutually consistent, rather
   than a fresh hash accusing a header that was never replaced).
 
-### ~~6. agy-autotrain knowledge-delivery — driver-side effectiveness measure~~ · 🚫 **KILLED 2026-08-06 (clause 1)**
+### 6. agy-autotrain knowledge-delivery — driver-side effectiveness measure
+
+**Status:** KILLED 2026-08-06 - will not be done - KILLED 2026-08-06 (clause 1)
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** 🚫 **KILLED 2026-08-06 (clause 1)**
 
 > **last-triaged: 2026-08-06.** Killed on clause 1, and it is the item that **proved clause 1 must stay
 > narrow** — so killing it is the bar working, not the bar being harsh.
@@ -491,7 +517,11 @@ changes driver behaviour on a known-failure scenario — so "delivers better dri
 Shares the same empirical-measurement question as the golden-header per-ask backlog stub
 (`docs/backlog/golden-header-per-ask-token-optimization.md`, the anti-drift trade-off). Owner-surfaced 2026-07-11.
 
-### 7. AGY-SCOPE — "pre-existing defects are always in scope" as a shipped discipline · ✅ **SHIPPED 2026-08-07**
+### 7. AGY-SCOPE — "pre-existing defects are always in scope" as a shipped discipline
+
+**Status:** SHIPPED 2026-08-07 - merged to main in `847cb4ea`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-08-07**
+
 **Status: designed, shipped and mirrored.** Owner-directed 2026-07-31; ships, like its siblings, with the
 clavity plugin (alongside `adversarial-panel-review` / `agy-test-audit`, mirrored to clavity-classic).
 
@@ -553,7 +583,10 @@ rounds. What remains for AGY-SCOPE is therefore only the DISPOSITION half: that 
 disposition, and that a verified pre-existing defect earns a tracked plan rather than a mention. The five
 open design questions above are unchanged; they were always disposition questions.
 
-### 8. Audit spending — round count, capstone placement, model tiering (BRAINSTORM FIRST) · ✅ **ANSWERED 2026-08-06**
+### 8. Audit spending — round count, capstone placement, model tiering (BRAINSTORM FIRST)
+
+**Status:** SHIPPED 2026-08-06 - merged to main in `502f66f5`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **ANSWERED 2026-08-06**
 
 > **✅ CLOSED as ANSWERED — the brainstorm this asked for was overtaken by a shipped epic.** The agy
 > discipline cost/quota hygiene epic ran and reached **capstone GREEN, owner-confirmed**, over
@@ -624,7 +657,10 @@ docs, memory maintenance, and one capstone round — with **zero** subagent dele
 purely mechanical log-sweeping and file-reading, and with the whole bulky measurement context held on the Opus
 main thread. That session's capstone round was *not* the waste: it caught a real regression the author missed.
 
-### ~~9. Tracked debt — clavity-classic consult guard: binary-native vs bash hook~~ · 🚫 **KILLED 2026-08-06 (clause 3)**
+### 9. Tracked debt — clavity-classic consult guard: binary-native vs bash hook
+
+**Status:** KILLED 2026-08-06 - will not be done - KILLED 2026-08-06 (clause 3)
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** 🚫 **KILLED 2026-08-06 (clause 3)**
 
 > **last-triaged: 2026-08-06.** Killed on clause 3 — **an unresolved design fork**, by its own words:
 > *"It remains undecided and is recorded here so it stops being invisible."* The originating spec
@@ -648,7 +684,10 @@ from scope, so the fork was orphaned rather than decided. (The superseded spec c
 task ID means nothing to a reader, so it is named descriptively here — owner ruling 2026-08-05.) Owner ruling 2026-07-31: it does NOT gate the
 productize release. It remains undecided and is recorded here so it stops being invisible.
 
-### ~~10. Follow-on epic — productize the two later disciplines~~ · 🚫 **KILLED 2026-08-06 (clause 1)**
+### 10. Follow-on epic — productize the two later disciplines
+
+**Status:** KILLED 2026-08-06 - will not be done - KILLED 2026-08-06 (clause 1)
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** 🚫 **KILLED 2026-08-06 (clause 1)**
 
 > **last-triaged: 2026-08-06.** Killed on clause 1, judged strictly as this entry's own framing demands.
 > **Name the wrong action its absence induces — there isn't one.** Two disciplines not yet packaged into a
@@ -673,7 +712,10 @@ productize release. It remains undecided and is recorded here so it stops being 
 and are not in its model. Owner ruling 2026-07-31: they are a follow-on, not a re-scope — retroactively
 widening a stalled epic prevents it closing. This epic closes at four disciplines.
 
-### 11. PINNING-ASSERTION-STRENGTH — ship assertion-strength as a mechanical discipline · ✅ **SHIPPED 2026-08-08** (`674b0f1` suite+registration · `c12af5b` hook, dotnet · `318889d` classic mirror · `d045777` widened Step 5 · this reconcile)
+### 11. PINNING-ASSERTION-STRENGTH — ship assertion-strength as a mechanical discipline
+
+**Status:** SHIPPED 2026-08-08 - merged to main in `674b0f1`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-08-08** (`674b0f1` suite+registration · `c12af5b` hook, dotnet · `318889d` classic mirror · `d045777` widened Step 5 · this reconcile)
 
 > **last-triaged: 2026-08-06.** The only item on this surface to clear the bar outright.
 > - **Clause 1 — MET, and this is the textbook case.** A cardinality assertion prints **PASS** over
@@ -742,7 +784,10 @@ test stays green. Measured, not reasoned: `5071872` records the mutation. Cardin
 **Cost:** ~190-220 tokens per firing, ~2 firings per session; verification is one targeted test run per
 directional or fallback assertion. Both variants' plugins must change together (byte-identical pair).
 
-### 12. Post-plan-2 leftovers — two guards that overstate what they verify · ✅ **SHIPPED 2026-08-07**
+### 12. Post-plan-2 leftovers — two guards that overstate what they verify
+
+**Status:** SHIPPED 2026-08-07 - merged to main in `56d6014`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-08-07**
 
 Both entries came out of `.clavity/local-anomalies.md` at the triage that followed plan 2's capstone. Each
 was verified by measurement before promotion, and each is stated with the measurement that establishes it.
@@ -856,7 +901,10 @@ on this platform — Windows `jq` terminates with `\r\n`, `printf` with `\n` (61
   `case` patterns are a deliberate complete set. **Below the reachability floor** — recorded in the backlog
   entry's *Known limit* section, not tracked here.
 
-### 13. Anomaly promotions — three entries from the 2026-08-10 triages (13c later corrected) · ✅ **DONE 2026-08-20**
+### 13. Anomaly promotions — three entries from the 2026-08-10 triages (13c later corrected)
+
+**Status:** SHIPPED 2026-08-20 - merged to main in `39f9545`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **DONE 2026-08-20**
 
 Promoted from `.clavity/local-anomalies.md`. Every one was **verified by measurement at triage**, not
 accepted on reading; two other entries in that file were deleted with recorded reasons (see the triage
@@ -962,7 +1010,10 @@ out to have been accidentally right for a reason nobody stated. Measure before a
 **Disposition:** low priority, off the critical path. Not a fail-open. Belongs with the knowledge-storage
 design work rather than as a standalone fix, since where GROWTH lives is exactly what that work decides.
 
-### §14 — anomalies promoted at the 2026-08-13 and 2026-08-14 triages — ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - all sub-items SHIPPED (§14a-e); the one known hole, the agy-curate crash window recorded in `agy-curate/SKILL.md`, is an accepted limitation (Non-goals)**
+### §14 — anomalies promoted at the 2026-08-13 and 2026-08-14 triages
+
+**Status:** CLOSED-BY-RULING 2026-10-08 - closed by ruling, see Non-goals / accepted limitations
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - all sub-items SHIPPED (§14a-e); the one known hole, the agy-curate crash window recorded in `agy-curate/SKILL.md`, is an accepted limitation (Non-goals)**
 
 All four were **verified by measurement at triage**, not accepted on reading. Each names the measurement
 so a later reader can re-check rather than re-derive. §14a–c came from the 2026-08-13 triage; §14d from
@@ -1191,6 +1242,7 @@ for.
 **KNOWN OPEN HOLE, recorded in `agy-curate/SKILL.md` and deliberately not patched:** a crash between the
 staging rename and its delete strands that batch, because each run reads only its own uniquely-named
 processing file and never globs. Patching it adds machinery the architectural fix deletes.
+*(superseded 2026-10-08: this is now an ACCEPTED LIMITATION - see the `§14` bullet under "Non-goals / accepted limitations"; it is no longer an open hole.)*
 
 **The fix is architectural:** move the canonical inbox to `<USERPROFILE or HOME>/.clavity/agy-observations.md`
 — exactly where the golden-header files already live, for exactly this reason — so every copy resolves one
@@ -1294,7 +1346,10 @@ dependency on that skill.
 **This remains the same "one shared review-core" question already open as the AGY-* family-coherence
 fork**, so the two should be decided together, not separately.
 
-### §15 — Workflow-position resilience → shipped as **consult-recovery** — ✅ **SHIPPED — AGY-CAPSTONE GREEN 2026-09-14 over `356760b..669547c` (`docs/agy-capstone-ledger.md` row 45) + AGY-TEST-AUDIT over `356760b..ad00fa4` (`docs/agy-test-audit-ledger.md` row 44). Header closed 2026-09-29 (it read "pending" for 15 days after both ran).**
+### §15 — Workflow-position resilience → shipped as **consult-recovery**
+
+**Status:** SHIPPED 2026-09-14 - merged to main in `669547c6`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED — AGY-CAPSTONE GREEN 2026-09-14 over `356760b..669547c` (`docs/agy-capstone-ledger.md` row 45) + AGY-TEST-AUDIT over `356760b..ad00fa4` (`docs/agy-test-audit-ledger.md` row 44). Header closed 2026-09-29 (it read "pending" for 15 days after both ran).**
 
 **Spec:** `docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md` (committed `4adab8b`).
 **Plan:** `docs/superpowers/plans/2026-09-13-consult-recovery.md` (AGY-FIRST-consulted, AGY-AFTER round-1 folded).
@@ -1324,7 +1379,10 @@ the directive; §6/§7 say directive ahead of path). The build follows §3b's ve
 *consults*. It does not cover implementation work (435 of 435 agent-written seams are consult payloads),
 does not retain decisions, and does not defend against a compromised agent.
 
-### §16 — Edit-verification pattern: a TRANSIENT Pester suite, not inline shell — **owner-ratified 2026-08-15** · ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - a PATTERN record, not work; its one open sub-question (does the durable subset earn a permanent gate) goes to the Branch T batch ruling**
+### §16 — Edit-verification pattern: a TRANSIENT Pester suite, not inline shell — **owner-ratified 2026-08-15**
+
+**Status:** CLOSED-BY-RULING 2026-10-08 - closed by ruling, see Non-goals / accepted limitations
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - a PATTERN record, not work; its one open sub-question (does the durable subset earn a permanent gate) goes to the Branch T batch ruling**
 
 **This records a PATTERN for the next plan, not work to schedule.** It changes nothing already shipped.
 
@@ -1363,7 +1421,10 @@ seat discipline is what found this; an unseated consult structurally could not.
 **Still open, NOT ratified by this entry:** whether the genuinely durable subset — "the seat instruction
 still exists in `agy-first` / `agy-test-audit`" — earns a permanent gate. That is a separate decision.
 
-### §17 — anomalies promoted at the 2026-08-17 triage — ✅ **CLOSED 2026-08-30** (§17a SHIPPED `99910c0`, AGY-CAPSTONE GREEN per ledger `eb26709`; §17b RULED KILLED — see the sub-entries)
+### §17 — anomalies promoted at the 2026-08-17 triage
+
+**Status:** SHIPPED 2026-08-30 - merged to main in `99910c0`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **CLOSED 2026-08-30** (§17a SHIPPED `99910c0`, AGY-CAPSTONE GREEN per ledger `eb26709`; §17b RULED KILLED — see the sub-entries)
 
 Two entries from the 7-entry triage of 2026-08-17. Every one verified by measurement at triage. The other
 five were dispositioned there: two fixed immediately (`assertion-strength-reminder.Tests.ps1` bash pinning,
@@ -1439,7 +1500,10 @@ what a pre-push gate is FOR**. Surfaced by an agy capstone seat, then confirmed 
 a safety net, it is a report you get later"*. If pre-push is also not measuring the pushed state, then this
 branch — 319 commits ahead and never pushed — currently has **neither** gate reasoning about what would land.
 
-### §18 — SEED/GROWTH split for the driver cheatsheet — ✅ **SHIPPED, AGY-CAPSTONE GREEN after 7 rounds** (ledger `519833f`)
+### §18 — SEED/GROWTH split for the driver cheatsheet
+
+**Status:** SHIPPED 2026-08-17 - merged to main in `519833f`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED, AGY-CAPSTONE GREEN after 7 rounds** (ledger `519833f`)
 
 **The problem, measured at the 2026-08-17 drain.** `driver-cheatsheet.core.md` is 100% SEED-shaped: it is
 byte-pinned to two compiled literals (`clavity-classic/src/driver_cheatsheet.rs` `BASELINE_FLOOR`,
@@ -1672,7 +1736,10 @@ all four constants are ALREADY 16 KiB (`DriverCheatsheet.cs:17`, `GoldenHeader.c
 `driver_cheatsheet.rs:12`, `golden_header.rs:15`), so that half of the condition would otherwise read as
 already satisfied. The new ceiling is not yet chosen.
 
-### §19 — `agy-mark.sh` exit codes: collapse the tri-state to 0 / non-zero — ✅ **SHIPPED 2026-08-29** (`64d5be4`, same capstone GREEN as §17a — ledger `eb26709`)
+### §19 — `agy-mark.sh` exit codes: collapse the tri-state to 0 / non-zero
+
+**Status:** SHIPPED 2026-08-29 - merged to main in `64d5be4`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-08-29** (`64d5be4`, same capstone GREEN as §17a — ledger `eb26709`)
 
 **This is a settled decision waiting for a carrier commit, not an open question.** Do not re-litigate it;
 do not execute it on its own.
@@ -1727,7 +1794,10 @@ priced. **Neither opening position survived.**
 same day to close a verified coverage gap. That is not a contradiction — the audit correctly tested the
 design as it then stood; this entry changes the design.
 
-### §20 — A mockable clock (`TimeProvider`) in `AgyView` — ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - not built; tracked debt 7 in `docs/coverage-debt.md` is DECIDED (accepted, moved to boundary P) and boundary J stays (Non-goals)** — was: ▶ **OPEN, not scheduled**
+### §20 — A mockable clock (`TimeProvider`) in `AgyView`
+
+**Status:** CLOSED-BY-RULING 2026-10-08 - closed by ruling, see Non-goals / accepted limitations
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - not built; tracked debt 7 in `docs/coverage-debt.md` is DECIDED (accepted, moved to boundary P) and boundary J stays (Non-goals)** — was: ▶ **OPEN, not scheduled**
 
 **Referred by the owner 2026-08-19**, out of the AGY-TEST-AUDIT capstone on the idle-wait limit label.
 This is a real refactor, not a hygiene tidy-up, and it is written down because two separate debts already
@@ -1776,7 +1846,10 @@ pattern, not the instance, is the problem. **Do not do it as a standalone commit
 
 ---
 
-### §21 — Ship the peer REPLY CONTRACT: disposition labels + the dual prose/JSON output — ✅ **DONE (capstone GREEN, owner-adjudicated 2026-09-13)**
+### §21 — Ship the peer REPLY CONTRACT: disposition labels + the dual prose/JSON output
+
+**Status:** SHIPPED 2026-09-13 - merged to main in `a72f618`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **DONE (capstone GREEN, owner-adjudicated 2026-09-13)**
 
 > **CLOSED 2026-09-13.** The §21 CODE shipped to `main` on **2026-09-02** (`a72f618` 21.1 · `06bc5e0`
 > 21.2 · `b577298` 21.4) and is live in the plugin. Its original Phase-1 capstone (`d528328..13ad80e`,
@@ -1969,6 +2042,7 @@ is not a substitute for the message.** P4 is the evidence that this works and co
 
 **Status: ACCEPTED, NOT STARTED.** This is the work item. Do these in order; each is independently
 shippable and step 1 does not depend on the rest.
+*(superseded 2026-10-08: the work item shipped - see this section's Status line; "NOT STARTED" is history.)*
 
 **1. Ship the anti-wrap-up clause NOW, on its own.** One sentence - *put nothing after the terminal
 token* - into the closer of all four skills. Cheapest change available and it fixes a MEASURED loss:
@@ -2053,7 +2127,10 @@ merits. **If Part B cannot be made to work inside the current shape, that is a f
 **Provenance.** Richest surviving copy of both halves: `.clavity/seams/capstone-gapclosure-r27.md:11-40`.
 Rationale and the compaction post-mortem: the `feedback-use-the-disciplines-own-vocabulary` memory.
 
-### §22 — The leaking redirect order in four plugin hooks — ✅ **SHIPPED 2026-09-08** (`136c001`). 🔴 **THE SITE TABLE BELOW WAS STALE AND THE COUNT WAS WRONG: it says 8 sites per driver; the 2026-09-08 sweep found TEN.** The two extra were added AFTER this section was written - `ff05520` (§24) and `5d25825` (§27) - so the class was still being INTRODUCED while the section sat open. **The durable half is therefore not the 20 one-token swaps but a glob-discovered guard** in `plugin-hooks-payload.Tests.ps1`, sweeping both driver payloads plus agy-autotrain, skipping comment lines, with a distractor control proving the matcher tells the two orders apart. Mutant: reintroducing the §27 site alone turns it red naming `agy-mark.sh:260`. ⚠ The table below is KEPT as the original evidence; its line numbers and count are historical, not current.
+### §22 — The leaking redirect order in four plugin hooks
+
+**Status:** SHIPPED 2026-09-08 - merged to main in `136c001`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-09-08** (`136c001`). 🔴 **THE SITE TABLE BELOW WAS STALE AND THE COUNT WAS WRONG: it says 8 sites per driver; the 2026-09-08 sweep found TEN.** The two extra were added AFTER this section was written - `ff05520` (§24) and `5d25825` (§27) - so the class was still being INTRODUCED while the section sat open. **The durable half is therefore not the 20 one-token swaps but a glob-discovered guard** in `plugin-hooks-payload.Tests.ps1`, sweeping both driver payloads plus agy-autotrain, skipping comment lines, with a distractor control proving the matcher tells the two orders apart. Mutant: reintroducing the §27 site alone turns it red naming `agy-mark.sh:260`. ⚠ The table below is KEPT as the original evidence; its line numbers and count are historical, not current.
 
 **Promoted at triage, not captured as opinion.** This was anomaly 1 of 2 in `.clavity/local-anomalies.md`,
 raised during the AGY-CAPSTONE round-8 Law-3 sweep on step 5. The capture recorded the pattern as
@@ -2107,7 +2184,10 @@ instead of two.
 
 ---
 
-### §23 — AGY-TEST-AUDIT has no ledger, so no audited range is recorded anywhere — ✅ **SHIPPED 2026-09-03** — `13f8a09` the ledger · `4154800` the row requirement + the ROADMAP line-count · `45b612e` the pins · `54eda7b` the suite count
+### §23 — AGY-TEST-AUDIT has no ledger, so no audited range is recorded anywhere
+
+**Status:** SHIPPED 2026-09-03 - merged to main in `13f8a09`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-09-03** — `13f8a09` the ledger · `4154800` the row requirement + the ROADMAP line-count · `45b612e` the pins · `54eda7b` the suite count
 
 🔴 **THE CAPTURE'S PREMISE WAS FALSE AND THE CORRECTED FINDING IS LARGER.** This was anomaly 2 of 2.
 It claimed the discipline-keyed marker "cannot represent more than one audited range", so auditing an
@@ -2174,7 +2254,10 @@ audit of `d33416c..d528328` survives only in a commit message and a private memo
 `check-seed-artifacts-synced.sh`) plus one new `docs/` file. Plugin-shipped, so class 2 - **panel, then
 capstone**, not a quiet edit.
 
-### §24 — AGY-FIRST is mandatory when a capstone round has to DEVELOP NEW CODE — ✅ **SHIPPED 2026-09-04** (`0218f81` the trigger · `ff05520` the stamp · `f426d3a` the wiring) — isolation RECORDED, not gated (owner ruling 2026-09-04)
+### §24 — AGY-FIRST is mandatory when a capstone round has to DEVELOP NEW CODE
+
+**Status:** SHIPPED 2026-09-04 - merged to main in `0218f81`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-09-04** (`0218f81` the trigger · `ff05520` the stamp · `f426d3a` the wiring) — isolation RECORDED, not gated (owner ruling 2026-09-04)
 
 **Owner accepted both this and §25 on 2026-08-31, to be executed as one plan.** Raised by the owner,
 consulted with the live peer, refinements folded. The peer's answer was YES with a mechanical trigger.
@@ -2234,7 +2317,10 @@ forces the rule to the weaker transport.**
 
 ---
 
-### §25 — A negotiation discipline in ALL four review-only skills — ✅ **SHIPPED 2026-09-04** (`d55b611` the sections · `716bba6` the pin) — `AGY-NEGOTIATE` now in all four review disciplines
+### §25 — A negotiation discipline in ALL four review-only skills
+
+**Status:** SHIPPED 2026-09-04 - merged to main in `d55b611`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-09-04** (`d55b611` the sections · `716bba6` the pin) — `AGY-NEGOTIATE` now in all four review disciplines
 
 **Ship the mechanism; do NOT make AGREEMENT the success criterion.** Owner accepted with that
 refinement on 2026-08-31, to be executed alongside §24.
@@ -2287,7 +2373,10 @@ halves in the same commit and must pass `plugin-hooks-payload.Tests.ps1`.
 
 ---
 
-### §26 — No plugin footprint is measured or published, so neither the maintainer nor a prospective installer can see the cost — ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - not built; reverses the 2026-09-03 owner acceptance; the spec `docs/superpowers/specs/2026-09-03-plugin-footprint-analyzer-design.md` stays on disk (Non-goals)** — was: ▶ **OWNER ACCEPTED 2026-09-03, spec written, SEQUENCED as Phase 6 (LAST), build DEFERRED**
+### §26 — No plugin footprint is measured or published, so neither the maintainer nor a prospective installer can see the cost
+
+**Status:** CLOSED-BY-RULING 2026-10-08 - closed by ruling, see Non-goals / accepted limitations
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - not built; reverses the 2026-09-03 owner acceptance; the spec `docs/superpowers/specs/2026-09-03-plugin-footprint-analyzer-design.md` stays on disk (Non-goals)** — was: ▶ **OWNER ACCEPTED 2026-09-03, spec written, SEQUENCED as Phase 6 (LAST), build DEFERRED**
 
 > **Placement ruled 2026-09-03 (AGY-FIRST, `.clavity/seams/agyfirst-s28-30-sequencing.md`): Phase 6, last, ON ITS OWN.** It is the ONLY additive item in the sequence — every other phase repairs something already wrong — and a repair-ordered sequence finishes its repairs first. Deliberately NOT batched with §28/§30: it needs architectural design review that contained fixes do not, and grouping them merely because all three are "tooling" is the shallow similarity that dilutes a panel.
 
@@ -2354,7 +2443,10 @@ caveat stated; do not publish a token count.
 **Spec:** `docs/superpowers/specs/2026-09-03-plugin-footprint-analyzer-design.md`.
 **AGY-FIRST consult:** `.clavity/seams/agyfirst-footprint-analyzer.md`.
 
-### §27 — A completion marker can advance with no ledger row, and nothing in the tree can detect it — ✅ **SHIPPED 2026-09-07. AGY-CAPSTONE GREEN, OWNER-ADJUDICATED at round 8 (NOT a clean round - round 8 filed two BLOCKING, both true and folded, and its own fold `f62e659` was never reviewed by a round). Ledger row in `docs/agy-capstone-ledger.md`. AGY-TEST-AUDIT RUN 2026-09-07: 5 gaps, ALL 5 verified by measurement, 3 closed as tests (`049ab39`), 2 deferred to the conveyor. The peer recommendation to REMOVE this gate was OWNER-RULED 2026-09-07 - the gate STAYS, and the disproportion was answered by deleting the PARSER instead: the reader is now a regex (`ca1f2e0`, 308 -> 133 lines, 38/38 agreement with the parser on real data). 🔴 The capstone marker is THREE COMMITS STALE (`f62e659`): `ade6242` and `ca1f2e0` both changed implementation source with the re-run OWNER-WAIVED. The push is HELD.**
+### §27 — A completion marker can advance with no ledger row, and nothing in the tree can detect it
+
+**Status:** SHIPPED 2026-09-07 - merged to main in `f62e659`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-09-07. AGY-CAPSTONE GREEN, OWNER-ADJUDICATED at round 8 (NOT a clean round - round 8 filed two BLOCKING, both true and folded, and its own fold `f62e659` was never reviewed by a round). Ledger row in `docs/agy-capstone-ledger.md`. AGY-TEST-AUDIT RUN 2026-09-07: 5 gaps, ALL 5 verified by measurement, 3 closed as tests (`049ab39`), 2 deferred to the conveyor. The peer recommendation to REMOVE this gate was OWNER-RULED 2026-09-07 - the gate STAYS, and the disproportion was answered by deleting the PARSER instead: the reader is now a regex (`ca1f2e0`, 308 -> 133 lines, 38/38 agreement with the parser on real data). 🔴 The capstone marker is THREE COMMITS STALE (`f62e659`): `ade6242` and `ca1f2e0` both changed implementation source with the re-run OWNER-WAIVED. The push is HELD.**
 
 > **Placement ruled 2026-09-03 (AGY-FIRST, `.clavity/seams/agyfirst-s27-phase2-fold.md`): §27 gets its
 > OWN phase, after Phase 2 — not folded into it, and not Phase 3.** Not Phase 3 because this sequence
@@ -2428,8 +2520,12 @@ corrected C2 citation, and two new forks. 🔴 **THE FORK COUNT IS NOW SIX AND F
 GATE IS — the panel is PAUSED for owner rulings, and no line-level plan may be written before them.**
 Two findings were killed by measurement and are recorded in the spec's `## Stand-downs`, including the
 peer's own retraction of "the write path is the wrong chokepoint".
+*(superseded 2026-10-08: the panel concluded, the rulings were made and the section SHIPPED - see its Status line; "PAUSED" is history.)*
 
-### §28 — Eight sites repeated the 8.3 prefix-arithmetic shape that `41eef75` fixed once — ✅ **SHIPPED 2026-09-08**, `734b30b..48da086` (`734b30b` the helper + suite · `332e729` `2365847` `6f12052` `5bd268a` the four migrations · `48da086` the guard) — ✅ **AGY-CAPSTONE GREEN 2026-09-11, owner-adjudicated after 9 rounds** (folds `bb64f73` the factory · `095ac89` `87be2ac` `fabe1ea` `9f1839b` `18286d0` the guard · `73f73e1` a case row; reviewed tip `18286d0`; row in `docs/agy-capstone-ledger.md`, debt as entry 12 in `docs/coverage-debt.md`)
+### §28 — Eight sites repeated the 8.3 prefix-arithmetic shape that `41eef75` fixed once
+
+**Status:** SHIPPED 2026-09-08 - merged to main in `48da086`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-09-08**, `734b30b..48da086` (`734b30b` the helper + suite · `332e729` `2365847` `6f12052` `5bd268a` the four migrations · `48da086` the guard) — ✅ **AGY-CAPSTONE GREEN 2026-09-11, owner-adjudicated after 9 rounds** (folds `bb64f73` the factory · `095ac89` `87be2ac` `fabe1ea` `9f1839b` `18286d0` the guard · `73f73e1` a case row; reviewed tip `18286d0`; row in `docs/agy-capstone-ledger.md`, debt as entry 12 in `docs/coverage-debt.md`)
 
 **The shape.** Each script resolved a root with `Resolve-Path ... .Path`/`.ProviderPath`, which
 **PRESERVES an 8.3 short path**, then computed a relative path by `Substring(<root>.Length)` against a
@@ -2507,7 +2603,10 @@ numbers against post-§28 code, and any new relative-path computation it adds mu
 
 ---
 
-### §29 — The 13b completeness check false-flags a valid reply, and its own remediation text says to discard the findings — ✅ **§29a SHIPPED 2026-09-03** (`573914d` the token · `b98315f` the bracket) — ▶ **§29b REMAINS TRACKED DEBT**
+### §29 — The 13b completeness check false-flags a valid reply, and its own remediation text says to discard the findings
+
+**Status:** SHIPPED 2026-09-03 - merged to main in `573914d`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **§29a SHIPPED 2026-09-03** (`573914d` the token · `b98315f` the bracket) — ▶ **§29b REMAINS TRACKED DEBT**
 
 > ✅ **§29a CLOSED.** `DisciplineContract` maps `adversarial-panel-review` to `PANEL VERDICT`, and
 > `TerminalToken` treats a leading `[` as decoration so a peer writing `[VERDICT: ALIGNED]` — the form
@@ -2573,7 +2672,10 @@ round is flagged every time, and the flag tells the driver to discard its findin
 
 ---
 
-### §30 — Three coverage gaps in the section-23 ledger suite, owner-deferred at audit — ✅ **30a + 30b SHIPPED 2026-09-11 (`d1f9559`); 30c NOT FIXED, by ruling (below)**
+### §30 — Three coverage gaps in the section-23 ledger suite, owner-deferred at audit
+
+**Status:** SHIPPED 2026-09-11 - merged to main in `d1f9559`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **30a + 30b SHIPPED 2026-09-11 (`d1f9559`); 30c NOT FIXED, by ruling (below)**
 
 Raised and VERIFIED by AGY-TEST-AUDIT over `73efca8..eba63a8`; the owner scoped that run to gap 1 (folded
 in `65b889a`) and deferred these three. Recorded here as tracked debt, which is where the audit
@@ -2694,7 +2796,10 @@ understated — there were THREE identical hardcoded rosters, not one two-elemen
 the same two names, the ledger stand-ins `New-ScratchRoot` stages, was left alone on purpose: it fails
 CLOSED, because the scratch-root positive controls expect exit 0 and redden on a missing stand-in.
 
-### §31 — Two shipped SessionStart hooks misbehave in repositories that are not clavity — ✅ **SHIPPED 2026-09-08** (`2808ede`). 🔴 **31a WAS ALREADY FIXED ON 2026-09-04 and this section was never updated** - `agy-anomaly-reminder.sh` moved to a `systemMessage` envelope at exit 0 the day AFTER this section was promoted; re-measured 2026-09-08 on both `compact` and `startup`, exit 0 and empty stderr. **31b is fixed here**: `agy-discipline-reaching.sh` now records ONLY where `.clavity/` already exists, so a globally registered hook leaves no trace in a repository that never asked for the plugin. **A THIRD DEFECT, of 31a CLASS, was found and fixed in the same pass and this section never named it:** `agy-liveness-check.sh` had SIX `exit 2` statements on the same matcher, and its worst instance was the kill-switch - `.no-agy` is how you ask for quiet, and asking is what produced the red hook error. Only the channel and exit code changed; every message still fires under the same condition. ⚠ **OPEN, deliberately not decided here: whether `.no-agy` should make this hook SILENT rather than announce its suppression.** ⚠ §22 still shares `agy-discipline-reaching.sh` and must re-derive its line numbers against post-§31 code.
+### §31 — Two shipped SessionStart hooks misbehave in repositories that are not clavity
+
+**Status:** SHIPPED 2026-09-04 - merged to main in `2808ede`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-09-08** (`2808ede`). 🔴 **31a WAS ALREADY FIXED ON 2026-09-04 and this section was never updated** - `agy-anomaly-reminder.sh` moved to a `systemMessage` envelope at exit 0 the day AFTER this section was promoted; re-measured 2026-09-08 on both `compact` and `startup`, exit 0 and empty stderr. **31b is fixed here**: `agy-discipline-reaching.sh` now records ONLY where `.clavity/` already exists, so a globally registered hook leaves no trace in a repository that never asked for the plugin. **A THIRD DEFECT, of 31a CLASS, was found and fixed in the same pass and this section never named it:** `agy-liveness-check.sh` had SIX `exit 2` statements on the same matcher, and its worst instance was the kill-switch - `.no-agy` is how you ask for quiet, and asking is what produced the red hook error. Only the channel and exit code changed; every message still fires under the same condition. ⚠ **OPEN, deliberately not decided here: whether `.no-agy` should make this hook SILENT rather than announce its suppression.** ⚠ §22 still shares `agy-discipline-reaching.sh` and must re-derive its line numbers against post-§31 code.
 
 Both found on 2026-09-03 while diagnosing an owner report, both REPRODUCED in a throwaway git repo, and
 both are in the shipped plugin payload — so **class 2: byte-identical pair, and a reinstall before either
@@ -2752,7 +2857,10 @@ counter-argument after one negotiation turn: `agy-discipline-reaching.sh:129-132
 `.clavity/.gitignore`, so the created directory never reaches the unrelated repository's `git status`.
 **The harm is to the OWNER'S ATTENTION, not to any repository's integrity.**
 
-### §32 — Two pathological-input defects in `agy-anomaly-reminder.sh`, deferred at the round-7 capstone cap — ▶ **PROMOTED 2026-09-04 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-10-01 on sweep Branch 3 (`d327711f`) - a file cwd resolves to its directory on both paths; the payload is read with a builtin, so an empty PATH writes no stderr**
+### §32 — Two pathological-input defects in `agy-anomaly-reminder.sh`, deferred at the round-7 capstone cap
+
+**Status:** SHIPPED 2026-10-01 - merged to main in `d327711f`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-04 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-10-01 on sweep Branch 3 (`d327711f`) - a file cwd resolves to its directory on both paths; the payload is read with a builtin, so an empty PATH writes no stderr**
 
 Both were raised by the live peer in AGY-CAPSTONE round 7 on the SessionStart hook-emission fix, both are
 REACHABLE rather than unreachable — which is why neither carries a `DISCARDED-BELOW-FLOOR` citation — and
@@ -2786,7 +2894,10 @@ than the noise. Decide that trade at plan time rather than assuming the suppress
 
 ---
 
-### §33 — The terminal-token matcher and its contract lookup disagree on case, and nothing pins either — ✅ **CLOSED 2026-10-08 at Branch 4 start (owner ruling, agy agreed): no longer reproduces - the case-sensitive match is deliberate (`TerminalToken.cs:82-92` comment) and pinned by `TerminalTokenTests.The_token_match_stays_case_SENSITIVE_...` (a `[Verdict: ALIGNED]` is refused); the contract lookup stays ignore-case by design** — was: PROMOTED 2026-09-04, tracked debt, sibling of §29b
+### §33 — The terminal-token matcher and its contract lookup disagree on case, and nothing pins either
+
+**Status:** KILLED 2026-10-08 - will not be done - CLOSED 2026-10-08 at Branch 4 start (owner ruling, agy agreed): no longer reproduces - the case-sens
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **CLOSED 2026-10-08 at Branch 4 start (owner ruling, agy agreed): no longer reproduces - the case-sensitive match is deliberate (`TerminalToken.cs:82-92` comment) and pinned by `TerminalTokenTests.The_token_match_stays_case_SENSITIVE_...` (a `[Verdict: ALIGNED]` is refused); the contract lookup stays ignore-case by design** — was: PROMOTED 2026-09-04, tracked debt, sibling of §29b
 
 Two halves of one feature use different case semantics and only one of them is asserted.
 **VERIFIED 2026-09-04 by reading both files:** `clavity-dotnet/src/Clavity.Ls/TerminalToken.cs:82` matches
@@ -2811,7 +2922,10 @@ does NOT satisfy `VERDICT:`.
 
 ---
 
-### §34 — Nine hook test files allocate temp resources OUTSIDE the `try`, so a failed allocation leaks every earlier one — ▶ **PROMOTED 2026-09-04, tracked debt**
+### §34 — Nine hook test files allocate temp resources OUTSIDE the `try`, so a failed allocation leaks every earlier one
+
+**Status:** SCHEDULED 2026-09-04 - scheduled - Branch T task
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-04, tracked debt**
 
 The shape is `$r = New-RepoWithAnomaly; $h = New-CleanHome` followed by
 `try { ... } finally { Remove-Item $r,$h ... }`. Any allocation past the first that throws leaks the
@@ -2836,7 +2950,10 @@ repo-wide in one pass so no file is left inconsistent with its siblings.
 
 ---
 
-### §35 — Persist every peer reply to disk; the practice existed, was never mechanised, and died silently — ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - half-built and closed as such: the dotnet side persists every reply (§74 `ReplyCapture`, 50 kept); the classic side has no capture code and relies on the peer-written reply file the skills ask for; the fold-gate is not built because, by this section's own caveat, persistence does not force the reading (Non-goals)** — was: ▶ **PROMOTED 2026-09-05, owner-raised, tracked debt** · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 9 - the consult transport persists every peer reply (runs before Branch 8)**
+### §35 — Persist every peer reply to disk; the practice existed, was never mechanised, and died silently
+
+**Status:** CLOSED-BY-RULING 2026-10-08 - closed by ruling, see Non-goals / accepted limitations
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - half-built and closed as such: the dotnet side persists every reply (§74 `ReplyCapture`, 50 kept); the classic side has no capture code and relies on the peer-written reply file the skills ask for; the fold-gate is not built because, by this section's own caveat, persistence does not force the reading (Non-goals)** — was: ▶ **PROMOTED 2026-09-05, owner-raised, tracked debt** · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 9 - the consult transport persists every peer reply (runs before Branch 8)**
 
 **The owner proposed this to earlier sessions and those agents agreed; it was never written down anywhere
 executable, so it survived only in agent memory and was lost across several memory compactions.** The
@@ -2891,7 +3008,10 @@ recovery possible — it does not force the reading. Any scoping that claims oth
 
 ---
 
-### §36 — Orphaned tests: three runners keep three disagreeing ledgers, and two of them assert coverage they do not provide — ▶ **PROMOTED 2026-09-05, owner-raised, tracked debt** · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 10 - the full redesign, one of the two recorded proposals, including the three `test-scripts*` recipes decision (runs before Branch 8)**
+### §36 — Orphaned tests: three runners keep three disagreeing ledgers, and two of them assert coverage they do not provide
+
+**Status:** SCHEDULED 2026-09-29 - scheduled - Branch T task
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-05, owner-raised, tracked debt** · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 10 - the full redesign, one of the two recorded proposals, including the three `test-scripts*` recipes decision (runs before Branch 8)**
 
 **Owner's statement of the problem:** *"The repo has a task runner and CI. The agent implements tests.
 Then the agent forgets to add them to the runner."* Recorded with BOTH proposals below; the owner chose
@@ -3014,7 +3134,10 @@ runner".**
 
 ---
 
-### §37 — git-cliff: DECIDED, NOT ADOPTING — the release engine already models a topology git-cliff cannot — ✅ **RULED 2026-09-05 (owner asked; driver and agy peer independently agreed)**
+### §37 — git-cliff: DECIDED, NOT ADOPTING — the release engine already models a topology git-cliff cannot
+
+**Status:** CLOSED-BY-RULING 2026-09-05 - closed by ruling, see Non-goals / accepted limitations
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **RULED 2026-09-05 (owner asked; driver and agy peer independently agreed)**
 
 **Not backlog work. A decision record, kept because it carries a CHECKABLE condition that would reverse
 it** — so a future session re-asking this question can settle it by measurement instead of re-deriving it.
@@ -3063,7 +3186,10 @@ sentence in a user's document. Subject lengths, last 30 commits: **min 56, media
 **Switching generators would render the same subjects.** Recorded as an open question about the WRITING
 convention, deliberately NOT actioned here.
 
-### §38 — The `.gitignore` prose describes a per-file read-before-publish control for plans that does not run — ▶ **PROMOTED 2026-09-05 from the anomalies conveyor, not yet planned** · ✅ **RULED by the owner [sweep-step0 2026-09-29]: keep publishing specs and plans; the `.gitignore` prose is reworded to describe that practice (ROADMAP sweep step 0)**
+### §38 — The `.gitignore` prose describes a per-file read-before-publish control for plans that does not run
+
+**Status:** SHIPPED 2026-09-29 - merged to main in `d0737382`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-05 from the anomalies conveyor, not yet planned** · ✅ **RULED by the owner [sweep-step0 2026-09-29]: keep publishing specs and plans; the `.gitignore` prose is reworded to describe that practice (ROADMAP sweep step 0)**
 
 **The False Safety Promise shape:** prose asserting a review control that is not the control in operation.
 `.gitignore:38-39` reads *"same DEFAULT-DENY opt-IN discipline as specs above: re-admit the plans/
@@ -3112,7 +3238,10 @@ alleged here; the finding is that nothing *looked*.
 
 ---
 
-### §39 — The marker path is built from `$discipline` on both sides, and nothing pins that they agree — ▶ **PROMOTED 2026-09-12 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 2 (`cda6a6f4`) - one shared builder, agy-marker-lib.sh, used by the writer and all three readers; no test, by owner ruling**
+### §39 — The marker path is built from `$discipline` on both sides, and nothing pins that they agree
+
+**Status:** SHIPPED 2026-09-30 - merged to main in `cda6a6f4`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-12 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 2 (`cda6a6f4`) - one shared builder, agy-marker-lib.sh, used by the writer and all three readers; no test, by owner ruling**
 
 The writer builds `rel=".clavity/agy-marks/$discipline.head"` (`clavity-dotnet/plugin/hooks/agy-mark.sh:337`)
 and the reader builds `marker="$cwd_path/.clavity/agy-marks/$discipline.head"`
@@ -3134,7 +3263,10 @@ writing any test here**, or the row passes on the dev box for a reason unrelated
 
 ---
 
-### §40 — The ledger endpoint's 7-character lower bound has no boundary row on either side — ▶ **PROMOTED 2026-09-12 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 2 (`e23d81ee`) - rows on both sides of the 7-character edge, each killed by its mutant**
+### §40 — The ledger endpoint's 7-character lower bound has no boundary row on either side
+
+**Status:** SHIPPED 2026-09-30 - merged to main in `e23d81ee`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-12 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 2 (`e23d81ee`) - rows on both sides of the 7-character edge, each killed by its mutant**
 
 `clavity-dotnet/plugin/hooks/agy-ledger-lib.sh:106-111` builds the match alternation from **every prefix of
 the query from 7 characters to its full length**, and `:126` requires the row's token to be one of them. Seven
@@ -3153,7 +3285,10 @@ rewrite. Recorded here rather than silently dropped, because the rewrite is exac
 
 ---
 
-### §41 — The shield's PREPEND fallback is a non-atomic read-modify-write — ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - accepted limitation; the 2026-09-08 deferral becomes final for the reasons recorded below (no portable lock; a contrived four-condition edge; a fix would be unfalsifiable without a failing control) (Non-goals)** — was: ▶ **PROMOTED 2026-09-12, OWNER-RULED 2026-09-08 to defer the fix** · ▶ **OWNER ACTION [sweep-step0 2026-09-29]: deferral re-confirmed - no portable lock; a fix must arrive with a failing control**
+### §41 — The shield's PREPEND fallback is a non-atomic read-modify-write
+
+**Status:** CLOSED-BY-RULING 2026-09-08 - closed by ruling, see Non-goals / accepted limitations
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - accepted limitation; the 2026-09-08 deferral becomes final for the reasons recorded below (no portable lock; a contrived four-condition edge; a fix would be unfalsifiable without a failing control) (Non-goals)** — was: ▶ **PROMOTED 2026-09-12, OWNER-RULED 2026-09-08 to defer the fix** · ▶ **OWNER ACTION [sweep-step0 2026-09-29]: deferral re-confirmed - no portable lock; a fix must arrive with a failing control**
 
 `clavity-dotnet/plugin/hooks/agy-shield-lib.sh:221-222` writes `*` to a temp file, `cat`s the existing shield
 in after it, then `mv`s the temp over the original. A human edit landing between the read and the rename is
@@ -3173,7 +3308,10 @@ failing control that demonstrates the loss**, or it is unfalsifiable by construc
 
 ---
 
-### §42 — A repository root that IS a drive root trims to a bare `C:`, which resolves to that drive's CURRENT directory — ▶ **PROMOTED 2026-09-12 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`3d568033`, comment `d8e5ffdd`) - ConvertTo-GateRepoRoot keeps a drive root's separator; the trims sat at `:163`/`:278`/`:506` at `e22c7f66`, not the `:164`/`:229`/`:457` cited below**
+### §42 — A repository root that IS a drive root trims to a bare `C:`, which resolves to that drive's CURRENT directory
+
+**Status:** SHIPPED 2026-09-30 - merged to main in `3d568033`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-12 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`3d568033`, comment `d8e5ffdd`) - ConvertTo-GateRepoRoot keeps a drive root's separator; the trims sat at `:163`/`:278`/`:506` at `e22c7f66`, not the `:164`/`:229`/`:457` cited below**
 
 `scripts/check-injected-context.ps1` strips a trailing separator with `-replace '[\\/]+$', ''` at **three**
 sites (`:164`, `:229`, `:457`, re-measured 2026-09-12). Given `-RepoRoot C:\` that yields the bare `C:`, and
@@ -3193,7 +3331,10 @@ No plugin pair, no installer payload — class 1.
 
 ---
 
-### §43 — The injected-context gate false-flags a deliberately-negative prose mention of a non-existent doc — ✅ **SHIPPED 2026-09-14** (reworded the `adversarial-panel-review/SKILL.md:437` prose to drop the `docs/agy-panel-ledger.md` path token — "no such per-discipline ledger file exists for it" — in both driver plugins; gate now exits 0)
+### §43 — The injected-context gate false-flags a deliberately-negative prose mention of a non-existent doc
+
+**Status:** SHIPPED 2026-09-14 - merged to main in `75297b4e`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-09-14** (reworded the `adversarial-panel-review/SKILL.md:437` prose to drop the `docs/agy-panel-ledger.md` path token — "no such per-discipline ledger file exists for it" — in both driver plugins; gate now exits 0)
 
 `scripts/check-injected-context.ps1`'s reference resolver reports `docs/agy-panel-ledger.md` as `unclassified`
 (3 violations, so `ci-injected-context` is RED on `main`). The reference is in
@@ -3211,7 +3352,10 @@ prose so the path is not token-shaped (both driver copies, byte-identical — ne
 
 ---
 
-### §44 — A hook builds its stderr payload in a non-`msg`-prefixed variable, invisible to the injected-context budget/hygiene invariants — ✅ **SHIPPED 2026-09-14** (renamed the hook's static jq-absent fallback message `_nm` → `msg_jq_missing` in both plugins so `Get-HookMessages` extracts it; the PRIMARY message is runtime-assembled from the seam list — no static literal, out of static scope by construction, self-bounded by LINECAP. corpus test 155/0)
+### §44 — A hook builds its stderr payload in a non-`msg`-prefixed variable, invisible to the injected-context budget/hygiene invariants
+
+**Status:** SHIPPED 2026-09-14 - merged to main in `75297b4e`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-09-14** (renamed the hook's static jq-absent fallback message `_nm` → `msg_jq_missing` in both plugins so `Get-HookMessages` extracts it; the PRIMARY message is runtime-assembled from the seam list — no static literal, out of static scope by construction, self-bounded by LINECAP. corpus test 155/0)
 
 `scripts/tests/check-injected-context.Tests.ps1`'s corpus test (`~:1345`, "extracts at least one message from
 every corpus hook that actually emits one") fails because `clavity-{dotnet,classic}/plugin/hooks/agy-consult-recovery.sh`
@@ -3226,7 +3370,10 @@ widen `Get-HookMessages`' binding regex. **Blast radius:** one hook pair + the g
 
 ---
 
-### §45 — A test asserts a git commit count that a shallow CI checkout truncates, so it fails only in CI — ✅ **SHIPPED 2026-09-14** (the ORIGINAL fetch-depth hypothesis was WRONG — the test builds its own temp repo, so main-checkout depth is irrelevant; the real cause is `_age_of` degrading to empty in CI, which is UNREPRODUCIBLE locally and ALLOWED by the hook's "degrade, never drop" contract. Fixed the TEST to pin that contract: age must NEVER be wall-clock (the §15 regression, non-vacuous), and WHEN present it is a commit count. 37/0)
+### §45 — A test asserts a git commit count that a shallow CI checkout truncates, so it fails only in CI
+
+**Status:** SHIPPED 2026-09-14 - merged to main in `75297b4e`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-09-14** (the ORIGINAL fetch-depth hypothesis was WRONG — the test builds its own temp repo, so main-checkout depth is irrelevant; the real cause is `_age_of` degrading to empty in CI, which is UNREPRODUCIBLE locally and ALLOWED by the hook's "degrade, never drop" contract. Fixed the TEST to pin that contract: age must NEVER be wall-clock (the §15 regression, non-vacuous), and WHEN present it is a commit count. 37/0)
 
 `scripts/tests/agy-consult-recovery.Tests.ps1`'s "age is reported in COMMITS, not wall-clock" test asserts a
 seam age measured with `git rev-list --count`. In `ci-scripts` the checkout is shallow, so the count is
@@ -3242,7 +3389,10 @@ radius:** one CI workflow + one test.
 
 ---
 
-### §46 — The user-facing-docs checker cannot exclude the top-level `archive/`, so it warns forever — ✅ **SHIPPED 2026-09-23** (promoted from anomaly triage the same day, then fixed with its guard mutation)
+### §46 — The user-facing-docs checker cannot exclude the top-level `archive/`, so it warns forever
+
+**Status:** SHIPPED 2026-09-23 - merged to main in `c896be51`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-09-23** (promoted from anomaly triage the same day, then fixed with its guard mutation)
 
 `scripts/check-user-facing-docs.ps1:22` excludes frozen historical docs with the pattern
 `(?i)(^|/)docs/archive/`. That REQUIRES a `docs/` prefix, so it matches `docs/archive/**` and a member's
@@ -3283,7 +3433,10 @@ mutation harness that cannot fail loudly proves nothing.
 
 ---
 
-### §47 — The docs-audit findings view keeps sections for docs that left the roster — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`c368d703`) - the view filters to the FULL roster at render time; the store is not pruned (`-Only` runs)**
+### §47 — The docs-audit findings view keeps sections for docs that left the roster
+
+**Status:** SHIPPED 2026-09-30 - merged to main in `c368d703`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`c368d703`) - the view filters to the FULL roster at render time; the store is not pruned (`-Only` runs)**
 
 `scripts/docs-audit.ps1` rebuilds `docs/docs-audit-findings.md` per doc but never drops a section whose doc
 is no longer in `docs/user-facing-docs.txt`. MEASURED 2026-09-23 and re-measured at triage 2026-09-29: the
@@ -3298,7 +3451,10 @@ about a deleted file. The view reports more than it checked.
 
 ---
 
-### §48 — The suite-registration test blames a missing file for an untracked one — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`c3199214`) - untracked-on-disk and missing are two named causes**
+### §48 — The suite-registration test blames a missing file for an untracked one
+
+**Status:** SHIPPED 2026-09-30 - merged to main in `c3199214`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`c3199214`) - untracked-on-disk and missing are two named causes**
 
 `scripts/tests/test-suite-registration.Tests.ps1`'s row `names no suite that is missing from disk` (`:131`)
 builds its on-disk set from `git ls-files`, i.e. TRACKED files only. A suite that is registered in the
@@ -3312,7 +3468,10 @@ untracked suite does not ship - but the row's name and `-Because` text send the 
 
 ---
 
-### §49 — No gate catches control characters in a member doc, or git reclassifying it as binary — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`cfae70f9`, inventory `be08601c`) - new gate `scripts/check-control-bytes.ps1` over tracked *.md, in pre-push and CI**
+### §49 — No gate catches control characters in a member doc, or git reclassifying it as binary
+
+**Status:** SHIPPED 2026-09-30 - merged to main in `cfae70f9`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`cfae70f9`, inventory `be08601c`) - new gate `scripts/check-control-bytes.ps1` over tracked *.md, in pre-push and CI**
 
 MEASURED 2026-09-29 (AiSaveDev shipping, Task 7): an edit wrote `%LOCALAPPDATA%\review-relay\aisavedev`
 into `review-relay/README.md` with `\r` and `\a` escape-interpreted into a CR and a BEL mid-line. git then
@@ -3337,7 +3496,10 @@ legitimately contains a tab must pass). Shared, not a plugin pair.
 
 ---
 
-### §50 — A fast-suite test rewrites a tracked fixture in place — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`83ad29b7`) - the fixture now lives in `$TestDrive`; the tracked copy is deleted**
+### §50 — A fast-suite test rewrites a tracked fixture in place
+
+**Status:** SHIPPED 2026-09-30 - merged to main in `83ad29b7`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`83ad29b7`) - the fixture now lives in `$TestDrive`; the tracked copy is deleted**
 
 `scripts/tests/generate-scoped-manifest.Tests.ps1` writes to the tracked
 `scripts/tests/fixtures/members-pluginName.json` instead of a `$TestDrive` copy. Re-measured at triage
@@ -3351,7 +3513,10 @@ surface later as a spurious diff or a CRLF warning on an unrelated commit.
 
 ---
 
-### §51 — `agy-mark.sh head` writes a marker for a sha that does not exist — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 2 (`bf7f8970`) - refuses where git can answer; no repository or no git means no check**
+### §51 — `agy-mark.sh head` writes a marker for a sha that does not exist
+
+**Status:** SHIPPED 2026-09-30 - merged to main in `bf7f8970`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 2 (`bf7f8970`) - refuses where git can answer; no repository or no git means no check**
 
 MEASURED 2026-09-29: while writing the AiSaveDev capstone marker the driver passed a mistyped full sha,
 `c0c17cb0b1a4d0da0000000000000000`. `agy-mark.sh head` accepted and wrote it: the ledger precondition
@@ -3374,7 +3539,10 @@ does not close this: it proves the ledger records the sha, not that the sha name
 
 ---
 
-### §52 — The agy-test-audit skill says write ambient HEAD; the marker gate refuses it — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 2 (`2ddcd50e`) - the skill writes the ledger row's range end; the capstone skill's command had the same defect and is fixed with it**
+### §52 — The agy-test-audit skill says write ambient HEAD; the marker gate refuses it
+
+**Status:** SHIPPED 2026-09-30 - merged to main in `2ddcd50e`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 2 (`2ddcd50e`) - the skill writes the ledger row's range end; the capstone skill's command had the same defect and is fixed with it**
 
 `agy-test-audit/SKILL.md`, section `## Debounce marker`, says the marker content is ambient `HEAD`. But the
 same skill requires the ledger row to be committed BEFORE the marker, and `agy-mark.sh head` records a sha
@@ -3390,7 +3558,10 @@ convention, so the practice works and the SKILL text is what is wrong.
 
 ---
 
-### §53 — `clavity start` has no test: the pairing-doc wiring and the refusal are unguarded — ✅ **SHIPPED 2026-10-08 (Branch 4 merged to local main `17244343`; capstone GREEN + test-audit at `7c891a3c`; NOT released, installs come from the release branch) - wiring half pinned by `a3b31e1c`; the refusal half was already pinned since Branch 18** — was: ▶ **NARROWED 2026-10-08 at Branch 4 start (owner ruling, agy agreed): the refusal half is pinned since Branch 18's `StartFlow` extraction (`StartFlowTests.A_pairing_doc_that_cannot_be_written_launches_nothing` and `Agy_whose_pairing_doc_cannot_be_written_runs_nothing`); the WIRING half (the materialised path must reach the launch as `AgyInstallDocPath`) has no assertion and is Branch 4 work** — was: PROMOTED 2026-09-29 from the anomalies conveyor (AGY-TEST-AUDIT G1+G2, owner-deferred)
+### §53 — `clavity start` has no test: the pairing-doc wiring and the refusal are unguarded
+
+**Status:** SHIPPED 2026-10-08 - merged to main in `17244343`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-10-08 (Branch 4 merged to local main `17244343`; capstone GREEN + test-audit at `7c891a3c`; NOT released, installs come from the release branch) - wiring half pinned by `a3b31e1c`; the refusal half was already pinned since Branch 18** — was: ▶ **NARROWED 2026-10-08 at Branch 4 start (owner ruling, agy agreed): the refusal half is pinned since Branch 18's `StartFlow` extraction (`StartFlowTests.A_pairing_doc_that_cannot_be_written_launches_nothing` and `Agy_whose_pairing_doc_cannot_be_written_runs_nothing`); the WIRING half (the materialised path must reach the launch as `AgyInstallDocPath`) has no assertion and is Branch 4 work** — was: PROMOTED 2026-09-29 from the anomalies conveyor (AGY-TEST-AUDIT G1+G2, owner-deferred)
 
 The `start` branch of `clavity-dotnet/src/Clavity.Cli/Program.cs` is top-level statements, and no test in
 the repository invokes it (grep, 2026-09-29). Two behaviours from the pairing-doc fix (`3f686749`) are
@@ -3417,7 +3588,10 @@ pairing launcher.
 
 ---
 
-### §54 — The injected-context gate resolves references against the working tree, so it passes locally on files CI cannot see — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`a996a1dd`, timing `1b9f819d`) - references resolve against the git INDEX at all four sites (`:562`, `:553`, `:852`, the index walk); `:553` was DEAD until a dot-prefix skip stopped swallowing `./`/`../`; the gate joined pre-push, glob-filtered, ~54s - and LEFT it the same day at the owner's anomaly triage (53,9-64,2s breaks `lefthook.yml`'s pre-push SECONDS-range rule; CI still runs it on every push)**
+### §54 — The injected-context gate resolves references against the working tree, so it passes locally on files CI cannot see
+
+**Status:** SHIPPED 2026-09-30 - merged to main in `a996a1dd`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-29 from the anomalies conveyor, not yet planned** · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`a996a1dd`, timing `1b9f819d`) - references resolve against the git INDEX at all four sites (`:562`, `:553`, `:852`, the index walk); `:553` was DEAD until a dot-prefix skip stopped swallowing `./`/`../`; the gate joined pre-push, glob-filtered, ~54s - and LEFT it the same day at the owner's anomaly triage (53,9-64,2s breaks `lefthook.yml`'s pre-push SECONDS-range rule; CI still runs it on every push)**
 
 `scripts/check-injected-context.ps1:562` accepts a backticked, repo-prefixed reference when
 `Test-Path (Join-Path $RepoRoot $Token)` finds it ON DISK. An untracked or gitignored file therefore
@@ -3439,7 +3613,10 @@ not a plugin pair.
 
 ---
 
-### §55 — LsDiscovery's un-anchored log patterns read a timestamp fraction as the pid when the glog thread field is missing — ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (capstone F1 at `8d00a56`, left open for an owner decision; AGY-TEST-AUDIT gap PP-1), owner-ruled low priority, not yet planned**
+### §55 — LsDiscovery's un-anchored log patterns read a timestamp fraction as the pid when the glog thread field is missing
+
+**Status:** SCHEDULED 2026-09-30 - scheduled - Branch C
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (capstone F1 at `8d00a56`, left open for an owner decision; AGY-TEST-AUDIT gap PP-1), owner-ruled low priority, not yet planned**
 
 `clavity-dotnet/src/Clavity.Ls/LsDiscovery.cs:63-69` (`GrpcLine`, `HttpLine`) are deliberately NOT anchored
 at `^`: agy 1.1.9 began prefixing these lines with pre-init logger noise, and an anchored pattern took the
@@ -3462,7 +3639,10 @@ classic has no log-scraping discovery (grep for the listening message, 2026-09-3
 
 ---
 
-### §56 — A roster doc that has never been audited is invisible to the docs-audit view, summary and SessionStart nudge — ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (sweep Branch 1 capstone round 1, deferred there), not yet planned**
+### §56 — A roster doc that has never been audited is invisible to the docs-audit view, summary and SessionStart nudge
+
+**Status:** SCHEDULED 2026-09-30 - scheduled - Branch T task
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (sweep Branch 1 capstone round 1, deferred there), not yet planned**
 
 `scripts/docs-audit-lib.ps1` renders the view (`Render-FindingsView`, `:152`) and counts the summary
 (`Get-FindingsSummary`, `:180`) from the findings STORE, filtered to the roster. A doc ADDED to
@@ -3480,7 +3660,10 @@ plugin pair.
 
 ---
 
-### §57 — The test-audit reminder never runs on a PowerShell tool call, and its matcher is unpinned — ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (sweep Branch 2 capstone round 4, Activation Auditor; owner-ruled DEFERRED at GREEN), not yet planned** · ▶ **SCHEDULED 2026-09-30: new sweep Branch 14, before Branch 8 (owner-approved after AGY-FIRST `.clavity/seams/branch3-forks-negotiate.md`)** · ▶ **57b FOLDED IN 2026-10-01 from the anomalies conveyor (owner ruling at triage)** · ✅ **FIXED 2026-10-01 on sweep Branch 14 (`5acaf41f`, 57b `13fcd695`) - the reminder runs on PowerShell calls under an exactly-pinned matcher in both plugins; the stamp suite launches Git Bash, and its three rejection rows assert exit 64 and the message**
+### §57 — The test-audit reminder never runs on a PowerShell tool call, and its matcher is unpinned
+
+**Status:** SHIPPED 2026-10-01 - merged to main in `5acaf41f`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (sweep Branch 2 capstone round 4, Activation Auditor; owner-ruled DEFERRED at GREEN), not yet planned** · ▶ **SCHEDULED 2026-09-30: new sweep Branch 14, before Branch 8 (owner-approved after AGY-FIRST `.clavity/seams/branch3-forks-negotiate.md`)** · ▶ **57b FOLDED IN 2026-10-01 from the anomalies conveyor (owner ruling at triage)** · ✅ **FIXED 2026-10-01 on sweep Branch 14 (`5acaf41f`, 57b `13fcd695`) - the reminder runs on PowerShell calls under an exactly-pinned matcher in both plugins; the stamp suite launches Git Bash, and its three rejection rows assert exit 64 and the message**
 
 `agy-test-audit-reminder.sh` is registered PostToolUse under `"matcher": "Bash|Write|Edit"`
 (`plugin/hooks/hooks.json:32`, both plugins), while the consult guards use `Bash|PowerShell|mcp__.*agy_ask`.
@@ -3510,7 +3693,10 @@ under a WSL-first PATH. Test-only, so it adds no bump of its own.
 
 ---
 
-### §58 — The working tree's line endings diverge from the all-LF index, and every tool pays for it — ▶ **RAISED 2026-09-30 by the owner, SCHEDULED: new sweep Branch 15, before Branch 8; AGY-FIRST WAIVED by the owner (work solo), `skipped.log` 2026-09-30** · ✅ **FIXED 2026-09-30 on sweep Branch 15 (`5f266eb2`) - `* text=auto eol=lf` leads `.gitattributes` with three explicit exceptions (register-plugin.ps1 and *.cmd/*.bat CRLF, *.bin binary, aisavedev -text), five redundant pins and one dead rule dropped, `.editorconfig` added; the working tree now matches the index (683 LF, 2 intended CRLF); agy WAIVED by the owner for the whole branch**
+### §58 — The working tree's line endings diverge from the all-LF index, and every tool pays for it
+
+**Status:** SHIPPED 2026-09-30 - merged to main in `5f266eb2`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **RAISED 2026-09-30 by the owner, SCHEDULED: new sweep Branch 15, before Branch 8; AGY-FIRST WAIVED by the owner (work solo), `skipped.log` 2026-09-30** · ✅ **FIXED 2026-09-30 on sweep Branch 15 (`5f266eb2`) - `* text=auto eol=lf` leads `.gitattributes` with three explicit exceptions (register-plugin.ps1 and *.cmd/*.bat CRLF, *.bin binary, aisavedev -text), five redundant pins and one dead rule dropped, `.editorconfig` added; the working tree now matches the index (683 LF, 2 intended CRLF); agy WAIVED by the owner for the whole branch**
 
 **MEASURED 2026-09-30:** every text blob in the index is LF (`git ls-files --eol`: 421 `i/lf w/crlf`, 260
 `i/lf w/lf`, 4 `i/lf w/mixed` - the four `CHANGELOG.md` files - and 8 `-text`; no `i/crlf` at all). The CRLF
@@ -3543,7 +3729,10 @@ does NOT do it: it skips a file git considers stat-clean (measured 2026-09-30).
 
 ---
 
-### §59 — Seven more hooks write stderr under an empty `PATH`; the §32b fix reached only one — ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-02 from the anomalies conveyor (captured 2026-10-01 starting Branch 14), owner ruling at triage: tracked debt, SCHEDULED as new sweep Branch 16 (plugin pair; version bump + reinstall), before Branch 8**
+### §59 — Seven more hooks write stderr under an empty `PATH`; the §32b fix reached only one
+
+**Status:** SHIPPED 2026-10-08 - merged to main in `01fbb727`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-02 from the anomalies conveyor (captured 2026-10-01 starting Branch 14), owner ruling at triage: tracked debt, SCHEDULED as new sweep Branch 16 (plugin pair; version bump + reinstall), before Branch 8**
 
 **IMPLEMENTED on Branch 21.** Measured 2026-10-07, only three of the seven still wrote stderr under an empty `PATH`
 (Branch 20 had already moved the other four off `$(cat)`): `assertion-strength-reminder.sh` (its `cat` AND its
@@ -3580,7 +3769,10 @@ degraded-path fixtures set `PATH` to a directory that still contains `cat` - the
 
 ---
 
-### §60 — On Linux, agy's shell is bash, so the pwsh-only pairing step cannot publish the endpoint — ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (two entries, Linux VM remediation of the 0.10.1 `clavity-ls` ENOENT), not yet planned** · ✅ **FIXED on sweep Branch 18 (`6c05ec48..914201c8`) - the pairing doc has a POSIX publish line next to the pwsh one, both refusing empty `ANTIGRAVITY_*` values and naming the built-in shell tool (agy ran it through an MCP shell tool first, MEASURED); both manuals and three `CLAUDE.md` say pwsh on Windows, bash on Linux. Suite `scripts/tests/pairing-doc.Tests.ps1` RUNS both lines (9).**
+### §60 — On Linux, agy's shell is bash, so the pwsh-only pairing step cannot publish the endpoint
+
+**Status:** SHIPPED 2026-10-02 - merged to main in `83611c01`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (two entries, Linux VM remediation of the 0.10.1 `clavity-ls` ENOENT), not yet planned** · ✅ **FIXED on sweep Branch 18 (`6c05ec48..914201c8`) - the pairing doc has a POSIX publish line next to the pwsh one, both refusing empty `ANTIGRAVITY_*` values and naming the built-in shell tool (agy ran it through an MCP shell tool first, MEASURED); both manuals and three `CLAUDE.md` say pwsh on Windows, bash on Linux. Suite `scripts/tests/pairing-doc.Tests.ps1` RUNS both lines (9).**
 
 **MEASURED 2026-10-02, Linux x86_64, agy 1.2.14 launched as plain `agy` from bash in a terminal (not
 `clavity start`):** the pairing Step 1 one-liner, given to agy to run, did not publish anything. agy's
@@ -3617,7 +3809,11 @@ Decide separately whether `clavity start` is in scope on Linux at all; if it is 
 
 ---
 
-### §61 — A plugin version reaches users before its `clavity-ls` binary exists, and the fetch miss is silent — ▶ **RAISED 2026-10-02 by the owner (a fresh Linux install failed with `ENOENT`); AGY-FIRST R1-R3 ALIGNED, owner-ruled; SCHEDULED as sweep Branch 17** · ✅ **FIXED on sweep Branch 17 (`dcc340fc..30630e98`) - marketplace serves `clavity` from `git-subdir` ref `release`; `umbrella-release.yml` job `release-channel` runs `scripts/ci/advance-release-channel.sh` (asset check, fast-forward only); `fetch-clavity-ls.sh` reports on stdout. Suites: advance-release-channel (8), marketplace-manifest (10), fetch-clavity-ls (7). Branch `release` must exist before the merge is pushed (owner, at `clavity-v24`).**
+### §61 — A plugin version reaches users before its `clavity-ls` binary exists, and the fetch miss is silent
+
+**Status:** SHIPPED 2026-10-02 - merged to main in `b6c2d87d`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **RAISED 2026-10-02 by the owner (a fresh Linux install failed with `ENOENT`); AGY-FIRST R1-R3 ALIGNED, owner-ruled; SCHEDULED as sweep Branch 17** · ✅ **FIXED on sweep Branch 17 (`dcc340fc..30630e98`) - marketplace serves `clavity` from `git-subdir` ref `release`; `umbrella-release.yml` job `release-channel` runs `scripts/ci/advance-release-channel.sh` (asset check, fast-forward only); `fetch-clavity-ls.sh` reports on stdout. Suites: advance-release-channel (8), marketplace-manifest (10), fetch-clavity-ls (7). Branch `release` must exist before the merge is pushed (owner, at `clavity-v24`).**
+**Released:** clavity-v24
 
 **MEASURED 2026-10-02.** A fresh install of plugin 0.10.1 on a Linux VM: `/mcp` showed
 `Failed to reconnect to plugin:clavity:clavity-ls: ENOENT`. The root marketplace served the plugin from `main`
@@ -3652,7 +3848,10 @@ only a release does. Verifying an installed change means cutting a release, or a
 
 ---
 
-### §62 — `clavity-ls start` is Windows-only: on Linux it crashes, and there is no visible agy to watch or fix — ▶ **RAISED 2026-10-02 by the owner; AGY-FIRST R1-R2 ALIGNED, owner-adopted; SCHEDULED with section 60 as ONE "Linux support" sweep branch, after Branch 17 merges** · ✅ **FIXED on sweep Branch 18 (`6c05ec48..914201c8`) - Linux `start` writes a per-session POSIX script (one `set -C` claim file) and opens it via `PosixAgyTab`: CLAVITY_TERMINAL, the detected terminal's tab, xdg-terminal-exec, x-terminal-emulator, other tab verbs; no display -> fallback, `clavity-ls agy` + `start --attach`. Suites SessionPathsTests, StartArgsTests, PosixScriptRunTests, PosixAgyTabTests (25). VM: no-display fallback, desktop start (endpoint in 28,7 s), and owner-run tab + --attach all worked 2026-10-03.**
+### §62 — `clavity-ls start` is Windows-only: on Linux it crashes, and there is no visible agy to watch or fix
+
+**Status:** SHIPPED 2026-10-03 - merged to main in `83611c01`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **RAISED 2026-10-02 by the owner; AGY-FIRST R1-R2 ALIGNED, owner-adopted; SCHEDULED with section 60 as ONE "Linux support" sweep branch, after Branch 17 merges** · ✅ **FIXED on sweep Branch 18 (`6c05ec48..914201c8`) - Linux `start` writes a per-session POSIX script (one `set -C` claim file) and opens it via `PosixAgyTab`: CLAVITY_TERMINAL, the detected terminal's tab, xdg-terminal-exec, x-terminal-emulator, other tab verbs; no display -> fallback, `clavity-ls agy` + `start --attach`. Suites SessionPathsTests, StartArgsTests, PosixScriptRunTests, PosixAgyTabTests (25). VM: no-display fallback, desktop start (endpoint in 28,7 s), and owner-run tab + --attach all worked 2026-10-03.**
 
 **MEASURED 2026-10-02 on an Ubuntu 26.04 MATE VM (desktop over RDP).** `clavity-ls start /tmp/x` ->
 `Unhandled exception. System.ComponentModel.Win32Exception (2): An error occurred trying to start process 'wt' ...
@@ -3689,7 +3888,10 @@ macOS (`open -a Terminal`?) is untested and explicitly out of the first cut unle
 
 ---
 
-### §63 — A `workflow_dispatch` release builds `clavity-ls` from the dispatch branch, not the tag — ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (AGY-CAPSTONE Branch 17 round 2, owner-deferred), not yet planned**
+### §63 — A `workflow_dispatch` release builds `clavity-ls` from the dispatch branch, not the tag
+
+**Status:** SCHEDULED 2026-10-02 - scheduled - Branch R
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (AGY-CAPSTONE Branch 17 round 2, owner-deferred), not yet planned**
 
 **Verified by reading at `b6c2d87d`.** `.github/workflows/umbrella-release.yml` takes a free-text `inputs.tag` on
 dispatch, but its `dotnet` job calls `./.github/workflows/build-dotnet.yml`, whose two `actions/checkout@v7` steps
@@ -3709,7 +3911,10 @@ comment at `:110`.
 
 ---
 
-### §64 — `fetch-clavity-ls.sh`'s `mktemp -d` failure exit has no test — ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-02 from the anomalies conveyor (AGY-TEST-AUDIT Branch 17 gap F, owner-deferred)**
+### §64 — `fetch-clavity-ls.sh`'s `mktemp -d` failure exit has no test
+
+**Status:** SHIPPED 2026-10-08 - merged to main in `01fbb727`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-02 from the anomalies conveyor (AGY-TEST-AUDIT Branch 17 gap F, owner-deferred)**
 
 **IMPLEMENTED on Branch 21 (`f9b110f8`).** `fetch-clavity-ls.Tests.ps1` now has the row ("notes `mktemp failed` and places NOTHING
 when mktemp exits non-zero", a fake `mktemp` that `exit 1`), and its non-vacuity proof was run: deleting the
@@ -3726,7 +3931,10 @@ nothing placed; proven non-vacuous by deleting the `|| { _note ...; exit 0; }`.
 
 ---
 
-### §65 — Pairing over ssh needs a copy/paste of a 36-character session id; and the agy-side environment variables may be retirable — ✅ **Fork 1 SHIPPED on Branch 19** (owner-approved scope after AGY-FIRST + AGY-NEGOTIATE, 2026-10-03); Forks 2 and 3 ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - not built; the reasons in the Decision below are kept (Non-goals)** — was: Forks 2 and 3 DEFERRED
+### §65 — Pairing over ssh needs a copy/paste of a 36-character session id; and the agy-side environment variables may be retirable
+
+**Status:** SHIPPED 2026-10-08 - merged to main in `4f0cb6a7`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **Fork 1 SHIPPED on Branch 19** (owner-approved scope after AGY-FIRST + AGY-NEGOTIATE, 2026-10-03); Forks 2 and 3 ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - not built; the reasons in the Decision below are kept (Non-goals)** — was: Forks 2 and 3 DEFERRED
 
 **Today (Branch 18):** with no display, `clavity-ls start` stops and says to run `clavity-ls agy <folder>`, which runs agy
 in that terminal and prints `clavity-ls start <folder> --attach <session-id>` for a SECOND ssh session - a GUID to copy
@@ -3766,10 +3974,15 @@ discovery; retire only after checking the oldest supported agy.
 - **Fork 3 DEFERRED** (a plain `claude` pairing automatically): `clavity-ls --mcp` starts with every `claude` in the
   folder - even `claude mcp list` - so it cannot tell an intent to pair from browsing; taking the lock at startup would
   take an agy meant for `start --attach`, taking it at the first call is a race. agy conceded this in AGY-NEGOTIATE.
+  *(superseded 2026-10-08: closed by ruling, not built - see the `§65 Forks 2 and 3` bullet under "Non-goals / accepted limitations".)*
+  *(superseded 2026-10-08: closed by ruling, not built - see the `§65 Forks 2 and 3` bullet under "Non-goals / accepted limitations".)*
 
 ---
 
-### §66 — `agy_ask` reports an agy quota stop as a truncated reply, so the driver cannot tell it from a dropped one — ✅ **SHIPPED 2026-10-08 (Branch 4 merged to local main `17244343`; capstone GREEN + test-audit at `7c891a3c`; NOT released, installs come from the release branch) - `20d8042f` (detector `QuotaStopLog`, `AskReply.QuotaStop`, the `[PEER QUOTA STOP]` notice), docs `94f05252`, `25778fce`** — was: ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-03, Branch 18 test-audit round 2), not yet planned**
+### §66 — `agy_ask` reports an agy quota stop as a truncated reply, so the driver cannot tell it from a dropped one
+
+**Status:** SHIPPED 2026-10-08 - merged to main in `17244343`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-10-08 (Branch 4 merged to local main `17244343`; capstone GREEN + test-audit at `7c891a3c`; NOT released, installs come from the release branch) - `20d8042f` (detector `QuotaStopLog`, `AskReply.QuotaStop`, the `[PEER QUOTA STOP]` notice), docs `94f05252`, `25778fce`** — was: ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-03, Branch 18 test-audit round 2), not yet planned**
 
 **Observed once, live (cascade `f2cdbc7a`, error id `-458`).** agy stopped with "Individual quota reached ... Resets
 in Nm" - a step of kind 17 with no reply text. `agy_ask` returned `[13b] TRUNCATED REPLY` with `Answer` null and
@@ -3784,7 +3997,10 @@ kind-17 step as a fixture first; the shape above is from one observation, not fr
 Built from agy's own per-session log (the file clavity-ls already reads for discovery; proven for a clavity-launched agy, unmeasured for a hand-started one whose log is the global cli.log), not from a kind-17 step: no such step was reachable as a fixture on 2026-10-08, and the rule is fixture first.
 ---
 
-### §67 — `lefthook run pre-commit --all-files` is not read-only: its ruff job reformats and stages `telemetry.py` — ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-03, Branch 19 Task 7 gates), not yet planned**
+### §67 — `lefthook run pre-commit --all-files` is not read-only: its ruff job reformats and stages `telemetry.py`
+
+**Status:** SCHEDULED 2026-10-03 - scheduled - Branch R
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-03, Branch 19 Task 7 gates), not yet planned**
 
 **Measured 2026-10-04:** `ruff format --check clavity-classic/agy-mcp-bridge/telemetry.py` -> "Would reformat", exit
 1. The `pre-commit` `ruff` job (`lefthook.yml:71-82`) runs `ruff check --fix` + `ruff format` with
@@ -3794,7 +4010,10 @@ behind by what reads as a check. Restored at the time with `git restore --staged
 **Fix direction:** ruff-format `telemetry.py` once on `main` (one commit, no logic change), so the gate is a no-op
 on a clean tree. Optionally add a `ruff format --check` over the bridge to CI so the drift cannot recur.
 
-### §68 — agy's copy of the plugin is registered ONCE and never refreshed, so plugin upgrades do not reach agy — ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-04 in agy's log while testing the owner's ECONNRESET hypothesis), not yet planned**
+### §68 — agy's copy of the plugin is registered ONCE and never refreshed, so plugin upgrades do not reach agy
+
+**Status:** SCHEDULED 2026-10-04 - scheduled - Branch R
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-04 in agy's log while testing the owner's ECONNRESET hypothesis), not yet planned**
 
 **Measured 2026-10-04:** `clavity-dotnet-setup.sh:44-45` registers the plugin with agy (`agy plugin uninstall` +
 `agy plugin install "$ROOT"`) only while the stamp `$CLAUDE_PLUGIN_DATA/.agy-registered` is absent, and
@@ -3810,7 +4029,10 @@ errors), but nothing in this hook did, so the next upgrade goes stale the same w
 each upgrade re-registers once. Pin it with a row in the setup hook's suite: a stamp from an older version must
 trigger `agy plugin install`, a stamp from the current version must not.
 
-### §69 — Branch 21: the eight census-found hooks over the 16-process ceiling — ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-04 (owner split of Branch 20)**
+### §69 — Branch 21: the eight census-found hooks over the 16-process ceiling
+
+**Status:** SHIPPED 2026-10-08 - merged to main in `01fbb727`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-04 (owner split of Branch 20)**
 
 **IMPLEMENTED on Branch 21.** Re-measured 2026-10-08 with the same census runner over the same 130 paths: `r1 == r2` on every
 row, zero runner errors, and the 20 rows that carry a hook's own designed stderr are the same 20 paths as before. Worst
@@ -3867,7 +4089,10 @@ Left out: sections 56, 70, 34. **One branch, SEQUENCED:** phase 1 = the two hook
 (`agy-inbox-snapshot` pruning; `agy-discipline-reaching` via the shared `agy-shield-lib.sh`, which every `agy_shield`
 caller uses) with their own capstone round; phase 2 = the six fork-free hooks and the folds.
 
-### §70 — the consult guard's consult path costs ~115 processes a side — ▶ **PROMOTED 2026-10-04 (owner ruling 3), not yet planned**
+### §70 — the consult guard's consult path costs ~115 processes a side
+
+**Status:** SCHEDULED 2026-10-04 - scheduled - Branch H
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-04 (owner ruling 3), not yet planned**
 
 `agy_guard_quad` + the gitignored-path census run on every real consult, pre and post (measured 2026-10-04 after Branch
 20: pre 114-120, post 117-129 total). Branch 20 pinned it (`$ConsultPin`) so it cannot grow. Needs its own design consult:
@@ -3878,7 +4103,10 @@ seams, `agy-consult-recovery.sh` took 6.2 / 6.0 s although it starts only 8 proc
 bash's own per-seam loop (glob + keyword match + `-nt` per file), which a process budget cannot see. Its timeout
 was raised 10 -> 30 s for now; bounding that loop (or pruning concluded seams) is the real fix.
 
-### §71 — `agy_ask` hides its own operator instructions behind the MCP SDK's generic error — ✅ **SHIPPED 2026-10-08 (Branch 4 merged to local main `17244343`; capstone GREEN + test-audit at `7c891a3c`; NOT released, installs come from the release branch) - `1860a98f` (typed `model_unavailable` / `error` from `RunAsync`), `70838a2e` + `4fb9381c` (argument-name and JSON-type precheck filter and its registration pin), docs `94f05252`, `25778fce`** — was: ▶ **PROMOTED 2026-10-06 from the anomalies conveyor (observed 2026-10-04, Branch 20 plan panel), not yet planned**
+### §71 — `agy_ask` hides its own operator instructions behind the MCP SDK's generic error
+
+**Status:** SHIPPED 2026-10-08 - merged to main in `17244343`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-10-08 (Branch 4 merged to local main `17244343`; capstone GREEN + test-audit at `7c891a3c`; NOT released, installs come from the release branch) - `1860a98f` (typed `model_unavailable` / `error` from `RunAsync`), `70838a2e` + `4fb9381c` (argument-name and JSON-type precheck filter and its registration pin), docs `94f05252`, `25778fce`** — was: ▶ **PROMOTED 2026-10-06 from the anomalies conveyor (observed 2026-10-04, Branch 20 plan panel), not yet planned**
 
 `RunAsync` (`src/Clavity.Mcp/McpTools.cs`) catches only `AgyModalHangException`, `AgyConversationPendingException`
 and exceptions `ChannelDown.IsChannelDown` accepts. `AgyModelUnavailableException` (thrown at `AgyView.cs` for a
@@ -3891,7 +4119,10 @@ returns a typed error with its message, and a test pins each.
 
 Widened 2026-10-08 (owner): a wrong argument NAME, or a right name with a value of the wrong JSON TYPE, is refused by a CallToolFilter before the SDK binds; the SDK itself (1.4.0, McpServerImpl) swallows the binding exception into the generic sentence, so only a pre-check can name it.
 
-### §72 — the test-audit reminder's per-session debounce files are never cleaned — ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 plan panel), low debt**
+### §72 — the test-audit reminder's per-session debounce files are never cleaned
+
+**Status:** SHIPPED 2026-10-08 - merged to main in `01fbb727`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 plan panel), low debt**
 
 **IMPLEMENTED on Branch 21 (`340db9b8`), in a different home than first sketched - owner ruling 2026-10-07 at plan approval.**
 The sweep does not live in "an existing SessionStart hook": it rides the once-per-session create-path `find` in
@@ -3910,7 +4141,10 @@ not yet observable on an install, which still runs the pre-Branch-20 plugin). No
 inside the firing hook would spend processes on its worst path (15 of 16), so the cheap home is a sweep in an
 existing SessionStart hook that removes such files older than N days. Fits Branch 21's hook work.
 
-### §73 — `agy-curate-nudge` age nudge never fires on macOS (GNU-only `date -d`) — ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 capstone round 2)**
+### §73 — `agy-curate-nudge` age nudge never fires on macOS (GNU-only `date -d`)
+
+**Status:** SHIPPED 2026-10-08 - merged to main in `01fbb727`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 capstone round 2)**
 
 **IMPLEMENTED on Branch 21 (`c00b4d7c`).** The age gate computes the oldest entry's day number with days_from_civil in plain
 bash arithmetic and no longer calls `date -d` at all; the impossible-date rejection `date -d` used to provide is an explicit
@@ -3930,7 +4164,10 @@ not measured here (no macOS box). A pure-bash days-from-civil computation on the
 AND removes one `date` process from every SessionStart that reaches the age check - which is why it rides with
 Branch 21 (section 69).
 
-### §74 — Branch 22: a flagged `[13b]` reply has no named recovery, and an escaped echo is flagged falsely — ▶ **PROMOTED 2026-10-07 from the anomalies conveyor (owner-found during the Branch 21 plan panel), owner-ruled scope FULL, built BEFORE Branch 21 phase 1** · ✅ **BUILT on Branch 22 (`072667fd`..`e4e6c55d`), capstone + test-audit pending, NOT released - installs come from the release branch**
+### §74 — Branch 22: a flagged `[13b]` reply has no named recovery, and an escaped echo is flagged falsely
+
+**Status:** SHIPPED 2026-10-07 - merged to main in `072667fd`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-07 from the anomalies conveyor (owner-found during the Branch 21 plan panel), owner-ruled scope FULL, built BEFORE Branch 21 phase 1** · ✅ **BUILT on Branch 22 (`072667fd`..`e4e6c55d`), capstone + test-audit pending, NOT released - installs come from the release branch**
 
 **Defect 1 (owner-found).** `clavity-dotnet/src/Clavity.Mcp/McpTools.cs` (the `[13b]` notice blocks): TRUNCATED REPLY says
 only "Recover with agy_look or re-ask"; ECHO MISSING names no recovery at all; the four discipline skills (both plugins)
@@ -3963,7 +4200,10 @@ instead of one re-ask) that `e4e6c55d` closed. **Capstone folds:** R1 BS1 - a cu
 
 - **T1 measured 2026-10-07 (agy language server 1.3.1, Windows):** `GetConversationMetadata` for the live conversation reports ONE workspace, `file:///C:/Users/user/Development/Rust/clavity` (`Uri.LocalPath` = `C:\Users\user\Development\Rust\clavity`), and a RELATIVE write by agy (`.clavity/scratch/b22-t1/where.md`) landed under that folder - D-root holds. The conversation id the metadata call needs is the key of `GetAllCascadeTrajectories`, NOT the `CascadeId` that `agy_status` prints (they differ: `269f29bc...` vs `d7db9a5e...`). The several-workspace tie-break stays "no peer file" (not reproducible here); the Linux URI form is UNMEASURED (CI is windows-latest only).
 
-### §75 — Agy hooks misread an inbox/table the author's editor wrote differently (CRLF on Linux awk, UTF-8 BOM, BSD `date -r`) — ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (3 entries, Branch 21 test-audit and re-capstone), pre-existing, not yet planned**
+### §75 — Agy hooks misread an inbox/table the author's editor wrote differently (CRLF on Linux awk, UTF-8 BOM, BSD `date -r`)
+
+**Status:** SCHEDULED 2026-10-08 - scheduled - Branch H
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (3 entries, Branch 21 test-audit and re-capstone), pre-existing, not yet planned**
 
 Three verified, pre-existing defects of one class - a hook assumes the file or the platform looks the way the shipping writer produces it:
 
@@ -3973,15 +4213,24 @@ Three verified, pre-existing defects of one class - a hook assumes the file or t
 
 **Plan shape:** one branch; strip a trailing CR in the awk blocks and a leading BOM in the inbox readers, replace `date -r FILE` with the §73 approach; failing control first for each (WSL for 1, a BOM fixture for 2); item 3 stays unmeasured on a Mac, so test it with a `BASH_ENV` `date` shim as §73 did.
 
-### §76 — `PluginInstaller.Clip` can split a UTF-16 surrogate pair — ✅ **SHIPPED 2026-10-08 (Branch 4 merged to local main `17244343`; capstone GREEN + test-audit at `7c891a3c`; NOT released, installs come from the release branch) - `e0bde0e2`** — was: ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (Branch 22 capstone R2), low debt, not yet planned**
+### §76 — `PluginInstaller.Clip` can split a UTF-16 surrogate pair
+
+**Status:** SHIPPED 2026-10-08 - merged to main in `17244343`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **SHIPPED 2026-10-08 (Branch 4 merged to local main `17244343`; capstone GREEN + test-audit at `7c891a3c`; NOT released, installs come from the release branch) - `e0bde0e2`** — was: ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (Branch 22 capstone R2), low debt, not yet planned**
 
 `clavity-dotnet/src/Clavity.Ls/Install/PluginInstaller.cs:37` cuts process output with `s[..200]`; a pair straddling the cut becomes one U+FFFD in an installer diagnostic (same class as the Branch 22 capstone BS1/FA1-FA4 folds, fixed elsewhere with `TextCut.Prefix`). Fix: use `TextCut.Prefix` and pin it with a row whose 200th character is the first half of a surrogate pair.
 
-### §77 — `check-roadmap-claims.ps1` verifies line COUNTS but never `:N` pointers, so section 14's evidence lines rot silently — ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (Branch 22 T10), tracked debt, not yet planned**
+### §77 — `check-roadmap-claims.ps1` verifies line COUNTS but never `:N` pointers, so section 14's evidence lines rot silently
+
+**Status:** IMPLEMENTED 2026-10-09 - Check C built on branch sweep/branch-t-format-and-gates (`633e3bf3`); merge pending
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (Branch 22 T10), tracked debt, not yet planned**
 
 `clavity-dotnet/ROADMAP.md` section 14's skill table cites evidence lines (`:54-56` agy-first, `:216` agy-test-audit, `:89/:92/:103` agy-capstone) that did not hold the quoted text even before the Branch 22 skill edits (capstone Seats/Rotate sat at `:177/:191` at `3013e8a2^`). Fix: either teach the checker to resolve each `file:N` pointer against a quoted anchor, or replace the pointers with anchor text. Decide at planning.
 
-### §78 — The consult guard did not flag an untracked-file breach during a long (backgrounded) `agy_ask`, and review briefs give the peer no sanctioned place to build — ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (Branch 4 plan-panel round 4), not yet planned; slot: the hooks / consult-guard branch, together with §70**
+### §78 — The consult guard did not flag an untracked-file breach during a long (backgrounded) `agy_ask`, and review briefs give the peer no sanctioned place to build
+
+**Status:** SCHEDULED 2026-10-08 - scheduled - Branch R
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (Branch 4 plan-panel round 4), not yet planned; slot: the hooks / consult-guard branch, together with §70**
 
 **Observed once, live (2026-10-08, Branch 4 plan panel round 4).** The brief named `.clavity/scratch/b4-plan-panel/` as the peer's only write area and said "name the command and I will run it". The peer nevertheless created `clavity-dotnet/test.cs` and a repo-root `scratch_test/` project (`scratch_test.csproj`, `Program.cs`, `bin/`, `obj/`) - its closing disclosure said it had "tested manually in a scratch program with `dotnet build`". Both were UNTRACKED, so no tracked file changed. `clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh:159` has a `worktree/untracked files` axis, yet NO `VERSION CONTROL CHANGED` alarm reached the driver; the files were found later, by the driver, by chance, while checking `git status`.
 
@@ -3994,6 +4243,26 @@ Three verified, pre-existing defects of one class - a hook assumes the file or t
 **Fix directions (none built):** (a) make the post check run at the task's COMPLETION, or have the guard record the in-flight baseline for a backgrounded ask and compare at the next consult or at session end; failing that, state in each review skill that a backgrounded ask needs the manual diff-after at completion; (b) have the briefs name a sanctioned build location outside the repository (for example a directory under the system temp folder) and say that a build elsewhere is a breach. **Blast radius:** the plugin pair (`agy-consult-guard-post.sh` and its byte-identical classic mirror, the review skills in both plugins), and `scripts/tests/agy-consult-guard.Tests.ps1` is the suite; the pair must change together and a plugin version bump follows the usual release path.
 
 **SECOND live occurrence (2026-10-08, the agy panel round on the final-sweep spec).** The brief allowed writes only under `.clavity/scratch/final-sweep-spec-panel/` and forbade creating files; the peer's closing disclosure said it "ran command wrappers (PowerShell/Python) to view file contents", and five untracked files appeared in the REPOSITORY ROOT - `all_headers.txt`, `all_numbered_headers.txt`, `headers.txt`, `py_headers.txt`, `leak.txt` (its own grep output). The driver's before/after snapshot caught them (the manual step 5 of the review skills); the consult guard was silent again, on an ask the harness had moved to the background. Deleted; no tracked file changed.
+
+### §79 — The 13b completeness false-flag whose cause is not determined (formerly §29b)
+
+**Status:** SCHEDULED 2026-10-08 - scheduled - Branch C: re-measure; propose close if no longer reproduces
+
+Split out of §29 on 2026-10-08 so an open sub-item does not hide inside a shipped section. The original paragraph, verbatim:
+
+> 🔴 **§29b — the flag whose cause is NOT DETERMINED — is explicitly OUT of the prerequisite and tracked
+> here as debt.** The returned reply satisfies `IsSatisfied` as documented (`TerminalToken.cs:14-21`), so
+> either the driver evaluates a different delta than it returns or the peer's escaping defeats the
+> matcher; **that must be MEASURED before either side is changed.** An open-ended investigation must not
+> gate the sequence — a prerequisite that is unbounded is how a prerequisite phase swallows a schedule.
+
+### §80 — `.no-agy` should make `agy-liveness-check.sh` silent (formerly §31)
+
+**Status:** SCHEDULED 2026-10-08 - scheduled - Branch H: owner ruled .no-agy makes agy-liveness-check.sh SILENT
+
+Split out of §31 on 2026-10-08. The original sentence, verbatim from §31's header:
+
+> ⚠ **OPEN, deliberately not decided here: whether `.no-agy` should make this hook SILENT rather than announce its suppression.**
 
 ## Non-goals / accepted limitations
 
@@ -4013,6 +4282,12 @@ Three verified, pre-existing defects of one class - a hook assumes the file or t
 - **§35 - mechanised persistence of every peer reply** (closed by ruling 2026-10-08): delivered on clavity-dotnet by §74's `ReplyCapture`; clavity-classic relies on the peer-written reply file; no fold-gate (persistence does not force the reading). Reopen if a reply is lost on classic.
 - **§41 - the shield PREPEND race** (closed by ruling 2026-10-08): no portable lock exists (`flock` is absent on Git Bash and macOS); the edge needs four conditions inside a sub-millisecond window. Reopen only with a failing control that demonstrates the loss.
 - **§65 Forks 2 and 3 - retiring the agy-side endpoint variable; auto-pairing a plain `claude`** (closed by ruling 2026-10-08): not built; Fork 3 because `--mcp` cannot tell intent and a lock can be stolen or raced, Fork 2 because it needs the oldest supported agy checked first and buys only a cleanup.
+- **item 7 (b) - the five coverage gaps backfilled onto the conveyor** (closed by ruling 2026-10-08): `docs/coverage-debt.md` tracks the gaps instead. Reopen if that file stops being maintained.
+- **item 13c - does a growth-region write append or replace?** (closed by ruling 2026-10-08, answered by reading): `GoldenHeader.cs:286-287` writes a temp file then `File.Move(tmp, path, overwrite: true)` - a REPLACE; the classic writer was re-checked during normalisation. Reopen if either writer changes.
+- **§15 - the spec section 3b-vs-6 ordering tension** (closed by ruling 2026-10-08): the build follows 3b; the shipped behaviour is the ruling. Reopen if the two sections are ever made to disagree in code.
+- **§21 - whether the anti-wrap-up clause is sufficient** (closed by ruling 2026-10-08): the clause stays as necessary; isolating it is a quota-costing experiment. Reopen if a report is displaced despite the clause.
+- **§37 - release notes from commit subjects** (closed by ruling 2026-10-08): the convention stays. Reopen on a reader complaint.
+- **§58 - older clones keep CRLF until refreshed** (closed by ruling 2026-10-08): measured 2026-10-08, this clone shows only the two declared CRLF exceptions in `git ls-files --eol`; the refresh procedure stays documented. Reopen if a fresh clone shows CRLF blobs.
 _(The former "no continuous .NET CI on `main`" limitation is resolved and has been removed: it described the
 pre-monorepo, branch-per-tool world. `.github/workflows/ci-dotnet.yml` now runs `dotnet build` + `dotnet test`
 on every push to `main`, and packaging ships via the unified `umbrella-release.yml` + `build-dotnet.yml`.)_

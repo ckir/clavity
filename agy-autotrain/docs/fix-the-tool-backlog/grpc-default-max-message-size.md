@@ -3,8 +3,10 @@ slug: grpc-default-max-message-size
 variant: clavity-dotnet
 observed: 2026-08-01
 source-inbox-entry: "A client that reads a peer conversation's full history over an RPC"
-status: fixed-in-repo
 last-triaged: 2026-08-07   # FIXED by this epic, BOTH halves (cap 80a254c + hint 98a6ecc). The 2026-08-06 oracle was SOUND: `MaxReceiveMessageSize` is an externally-defined gRPC symbol, not invented vocabulary, so its absence WAS evidence. See docs/backlog-triage-runbook.md section 2.
+status: SHIPPED
+fixed-by: 80a254c4
+fixed-on: 2026-10-08
 ---
 
 # Trajectory read hits the gRPC default receive cap and is misreported as a dead peer

@@ -3,7 +3,7 @@ slug: idle-status-is-not-completion
 variant: both
 observed: 2026-08-10
 source-inbox-entry: "AN IDLE STATUS FROM A PEER IS NOT EVIDENCE THE PEER FINISHED"
-status: open
+status: SCHEDULED
 ---
 
 # An idle peer status is reported as a completion signal, so a null answer reads as a clean result

@@ -1,6 +1,8 @@
 # Backlog stub — Pester temp directories orphan permanently when a run is killed
 
-**Status:** 🔴 **OPEN.** Verified by measurement, repo-wide, pre-existing.
+**Status:** SCHEDULED 2026-08-12 - scheduled - Branch T task
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** 🔴 **OPEN.** Verified by measurement, repo-wide, pre-existing.
+
 **Raised:** 2026-08-12, AGY-CAPSTONE round 3. The peer raised it against one suite; measuring it properly
 found the leak is real but in *other* suites.
 **Scope:** `scripts/tests/` — **29 suites** use the `BeforeEach`-mktemp / `AfterEach`-remove pattern.

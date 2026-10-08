@@ -3,8 +3,10 @@ slug: agy-look-tail-truncation
 variant: clavity-dotnet
 observed: 2026-07-10
 source-inbox-entry: "- [anti-pattern] When a synchronous review/consult payload is large enough to exceed the driver's idle-wait window,"
-status: fixed-in-repo
 last-triaged: 2026-08-07   # FIXED by this epic. The 2026-08-06 oracle was SOUND (it named an externally-defined symbol, `newestFirst`, that the code really does use) and it correctly found the call site unwired at AgyView.cs:110.
+status: SHIPPED
+fixed-by: 141dcc4f
+fixed-on: 2026-10-08
 ---
 
 # Oversized reply's trajectory read-back truncates to the head

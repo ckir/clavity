@@ -23,6 +23,7 @@ STATUS_LINE = re.compile(r'^\*\*Status:\*\* (' + '|'.join(TOKENS) + r') \d{4}-\d
 FIXED_REOPEN = {
     'agent-shell-layer-corrupts-commands-and-probes.md': 'the shell tool layer is fixed upstream, or the Write-tool workaround stops working',
     'cross-project-anomalies-have-no-cross-project-home.md': 'a defect that spans two repositories costs a session to rediscover',
+    'dev-box-background-load-contaminates-every-timing-figure.md': 'a new background service is measured contaminating a timing figure',
 }
 # Non-goals bullets the owner batch ruling requires (full text; id is the bullet key the gate matches).
 BULLETS = {
@@ -71,6 +72,23 @@ def first_date(*texts):
         m = DATE.search(t)
         if m: return m.group(0)
     return NORMALISED
+
+
+CLOSING = re.compile(r'SHIPPED|FIXED|CLOSED|KILLED|RULED|BUILT|DONE|ANSWERED|RESOLVED|MERGED')
+
+
+def status_date(token, tail, *fallback):
+    """The date OF THE CURRENT STATUS, not the first date in the legacy text (which is usually the promotion date): for a closed token the first
+    date at or after the LAST closing word; otherwise the last date in the tail; then the first date in the fallback texts; then the normalisation date."""
+    if token in ('SHIPPED', 'CLOSED-BY-RULING', 'KILLED'):
+        last = None
+        for m in CLOSING.finditer(tail): last = m
+        if last:
+            d = DATE.search(tail, last.start())
+            if d: return d.group(0)
+    ds = DATE.findall(tail)
+    if ds: return ds[-1]
+    return first_date(*fallback)
 
 
 def status_text(token, note, tail, kind, sha):
@@ -146,7 +164,7 @@ def main():
                 sha = pick_sha(root, eid, overrides, tail, '\n'.join(closure))
                 if not sha:
                     problems.append('NOSHA %s %s' % (rel, eid)); new.append(l); k += 1; continue
-            date = first_date(tail, '\n'.join(body[:40]))
+            date = status_date(token, tail, '\n'.join(body[:40]))
             sl = '**Status:** %s %s - %s' % (token, date, status_text(token, note, tail, kind, sha))
             new.append(head); new.append(''); new.append(sl)
             if tail: new.append(LEGACY + tail)
@@ -215,7 +233,7 @@ def main():
         if token == 'SHIPPED':
             sha = pick_sha(root, r[1], overrides, old, '\n'.join(lines[j + 1:j + 60]))
             if not sha: problems.append('NOSHA ' + r[1]); continue
-        add = [STATUS_LINE_FMT(token, first_date(old), status_text(token, r[4], old, 'file', sha)), LEGACY + old]
+        add = [STATUS_LINE_FMT(token, status_date(token, old, '\n'.join(lines[j + 1:j + 20])), status_text(token, r[4], old, 'file', sha)), LEGACY + old]
         if j + 1 < len(lines) and lines[j + 1].strip(): add.append('')   # all 19 stubs have a non-blank line right after the status line; a blockquote line would swallow it (lazy continuation)
         if token == 'CLOSED-BY-RULING':
             if r[1] not in FIXED_REOPEN: problems.append('NEED-REOPEN ' + r[1]); continue

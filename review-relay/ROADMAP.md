@@ -4,7 +4,9 @@
 
 ### D1 - Vendor APIs as review seats
 
-**Status:** open (owner, 2026-09-28).
+**Status:** SCHEDULED 2026-09-28 - scheduled - Branch RR start: owner decides
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** open (owner, 2026-09-28).
+
 
 Web review seats currently go through consumer chat sites, by hand. Vendor APIs (OpenAI, Meta models via
 a hosting provider, Google, and others) would give the same "different model family" benefit fully
@@ -15,7 +17,9 @@ alternative on record so it is weighed with real usage numbers once review-relay
 
 ### D2 - Resume full browser automation
 
-**Status:** paused (owner, 2026-09-28).
+**Status:** SCHEDULED 2026-09-28 - scheduled - Branch RR start: owner decides close (archived design) or resume
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** paused (owner, 2026-09-28).
+
 
 The fully automated design is archived, not abandoned. Neither document is in this repository; both
 live in the owner's local working copy:
@@ -29,7 +33,9 @@ Resume when the manual paste is the bottleneck. review-relay's templates, read p
 
 ### R1 - collect gives the wrong advice for an AiSaveDev capture whose scraper fell back
 
-**Status:** promoted from the anomalies conveyor 2026-09-29, not yet planned.
+**Status:** SCHEDULED 2026-09-29 - scheduled - Branch RR
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** promoted from the anomalies conveyor 2026-09-29, not yet planned.
+
 
 When a site's layout drifts, AiSaveDev's scrapers fall back: `scrapeGeneric` saves the whole page as one
 turn labelled "Conversation", and the OpenAI Playground scraper labels every turn "message". The file still

@@ -451,7 +451,10 @@ incorrect action. The gate auditing it anyway is fail-safe over-coverage.
 against a live agy, which is out of scope for a doc-and-test batch.
 **Anchor:** the "verify once" sentence at `commonmemory/README.md:57-58`.
 
-### H. The backlog `status:` enum has no durable enforcement (Stage 2, D2)
+### H. The backlog `status:` enum has no durable enforcement (Stage 2, D2) — VOIDED 2026-10-08
+
+- **VOIDED (Branch T, final sweep, 2026-10-08).** `scripts/check-tracker-status.ps1` (a registered Pester suite, `scripts/tests/check-tracker-status.Tests.ps1`, with a real-repository row, wired into the slow gate and CI) now asserts every fix-the-tool entry's `status:` is in the closed set, that `SHIPPED` carries an existing `fixed-by:` sha and `fixed-on:`, that `released-in:` appears only on `SHIPPED`, and that `KILLED` carries a `reason:`. The entry's own void-anchor was "a registered Pester suite asserts the `status:` frontmatter"; that exists now, and the old enum (`open | fixed-in-repo | released | wont-fix`) it described is gone from the entries and the template.
+- **Original gap (for the record):**
 
 D2 replaces `open | fixed | wont-fix` with `open | fixed-in-repo | released | wont-fix`, and requires
 `released-in:` alongside `released`. **Nothing enforces either.** Measured 2026-08-11: several scripts read

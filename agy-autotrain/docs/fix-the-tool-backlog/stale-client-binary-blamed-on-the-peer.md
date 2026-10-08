@@ -3,7 +3,7 @@ slug: stale-client-binary-blamed-on-the-peer
 variant: both
 observed: 2026-08-09
 source-inbox-entry: "When the channel to a peer fails, suspect the LOCAL CLIENT BINARY before the peer"
-status: open
+status: SCHEDULED
 ---
 
 # A transport error carries no build provenance, so a stale installed client is diagnosed as a peer fault

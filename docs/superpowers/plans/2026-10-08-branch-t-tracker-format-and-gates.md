@@ -480,7 +480,7 @@ if (Test-Path -LiteralPath $ftDir -PathType Container) {
             'CLOSED-BY-RULING' { if (-not (@($lines) -match '^\*\*Reopen if:\*\* \S')) { $problems.Add("NO-REOPEN  $where  CLOSED-BY-RULING needs a '**Reopen if:** ...' line") } }
         }
         if ($fm.ContainsKey('released-in') -and $tok -ne 'SHIPPED') { $problems.Add("RELEASED-ON-UNSHIPPED  $where  released-in: is only valid on SHIPPED") }
-        $entries.Add([pscustomobject]@{ Tracker = 'fix-the-tool'; Id = $f.Name; Token = $tok; Open = ($OpenTokens -contains $tok); Where = $where; Text = '' })
+        $entries.Add([pscustomobject]@{ Tracker = 'fix-the-tool'; Id = $f.Name; Token = $tok; Open = ($OpenTokens -contains $tok); Where = $where; Title = (($lines | Where-Object { $_ -match '^slug:' } | Select-Object -First 1) -replace '^slug:\s*', ''); Text = '' })
     }
 }
 
@@ -741,10 +741,12 @@ PLANNING-TIME RESULT (placeholder shas, provisional JUDGE rulings): script appli
 
 - [ ] **Step 4b: The REMOVED-LINES oracle (panel finding, BLOCKING: a heading-only check cannot see lost body text)** - commit `docs/superpowers/plans/2026-10-08-branch-t-removed-lines-oracle.py` (code below) and run it on the working tree right after the apply and BEFORE any hand edit: every line the diff removed must be a tracker heading, a status line, or a frontmatter `status/fixed-by/fixed-on/reason` key; anything else removed is lost body text.
 ```python
-"""Usage: python -I removed-lines-oracle.py <repo-root>   (working tree vs HEAD)  -> exit 0 clean, 1 lost lines"""
+"""Usage: python -I removed-lines-oracle.py <repo-root> [<tracker path> ...]   (working tree vs HEAD)  -> exit 0 clean, 1 lost lines.
+Pass the tracker paths (clavity-dotnet/ROADMAP.md docs/backlog agy-autotrain review-relay) so unrelated edits are not judged."""
 import subprocess, sys, re
 root = sys.argv[1]
-d = subprocess.run(['git', '-C', root, 'diff', '-U0', '--no-color'], capture_output=True, text=True, encoding='utf-8').stdout
+paths = sys.argv[2:]
+d = subprocess.run(['git', '-C', root, 'diff', '-U0', '--no-color'] + (['--'] + paths if paths else []), capture_output=True, text=True, encoding='utf-8').stdout
 # ENTRY headings only (a body sub-heading such as '### The problem' must NOT be allowed to vanish): a section sign or numbered item,
 # a review-relay D/R item, an agy-autotrain AT item; plus the status line and the frontmatter keys the script rewrites.
 allowed = re.compile(r'^(### (~~)?(§\d+ |\d+\. |[DR]\d+ )|## AT-\d+ |\*\*Status:\*\*|status:|fixed-by:|fixed-on:|reason:)')

@@ -144,7 +144,7 @@ if (Test-Path -LiteralPath $ftDir -PathType Container) {
             'CLOSED-BY-RULING' { if (-not (@($lines) -match '^\*\*Reopen if:\*\* \S')) { $problems.Add("NO-REOPEN  $where  CLOSED-BY-RULING needs a '**Reopen if:** ...' line") } }
         }
         if ($fm.ContainsKey('released-in') -and $tok -ne 'SHIPPED') { $problems.Add("RELEASED-ON-UNSHIPPED  $where  released-in: is only valid on SHIPPED") }
-        $entries.Add([pscustomobject]@{ Tracker = 'fix-the-tool'; Id = $f.Name; Token = $tok; Open = ($OpenTokens -contains $tok); Where = $where; Text = '' })
+        $entries.Add([pscustomobject]@{ Tracker = 'fix-the-tool'; Id = $f.Name; Token = $tok; Open = ($OpenTokens -contains $tok); Where = $where; Title = (($lines | Where-Object { $_ -match '^slug:' } | Select-Object -First 1) -replace '^slug:\s*', ''); Text = '' })
     }
 }
 
