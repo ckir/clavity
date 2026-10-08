@@ -4,7 +4,7 @@
 
 **Goal:** Close four `clavity-dotnet/ROADMAP.md` items on `sweep/branch-4-csharp-transport` (cut from `main` `29e47562`): `agy_ask` tells an agy quota stop from a dropped reply (§66); a rejected `agy_ask` call says why - a wrong argument name, an unavailable model, or any other exception (§71, owner-widened); `PluginInstaller.Clip` never splits a surrogate pair (§76); the materialised pairing-doc path is pinned to reach the agy launch (§53, wiring half).
 
-**Architecture:** All changes are in `clavity-dotnet/` (no classic mirror: `scripts/check-seed-artifacts-synced.sh:32-34` exempts the two transport-twin skills, and the hooks are untouched). §66 reads agy's own per-session log, which `clavity-ls` already opens for port discovery (`AgyViewOptions.CliLogPath`): the quota stop is written there as `RESOURCE_EXHAUSTED (code 429): Individual quota reached. ... Resets in 4h31m14s.` (measured 2026-10-08 in `~/.gemini/antigravity-cli/logs/clavity-*.log`, events of 09-30 and 10-01). The proto route the ROADMAP body sketched (a kind-17 step) is NOT built: no such step is reachable as a fixture - the live LS lists only the current cascade (probe 2026-10-08, 1 cascade, kinds 5/8/14/15/21/101/132), and the ROADMAP rule is fixture first. §71 has two halves: (a) `McpTools.RunAsync` catches the two exception classes it lets escape today; (b) a `CallToolFilter` (SDK 1.4.0 `McpServerOptions.Filters.Request.CallToolFilters`, registered with `WithRequestFilters(...AddCallToolFilter(...))`) checks the call's argument NAMES against the tool's own `InputSchema` BEFORE the SDK binds them, because the SDK's binding failure is swallowed into the generic text inside `McpServerImpl.cs` (v1.4.0, the catch under `BuildFilterPipeline(callToolHandler, ...)`: a non-`McpException` becomes `"An error occurred invoking '{name}'."` and only the LOG sees the cause). Filters run OUTSIDE that catch, so a pre-check is the only place the names are still visible.
+**Architecture:** All changes are in `clavity-dotnet/` (no classic mirror: `scripts/check-seed-artifacts-synced.sh:32-34` exempts the two transport-twin skills, and the hooks are untouched). §66 reads agy's own per-session log, which `clavity-ls` already opens for port discovery (`AgyViewOptions.CliLogPath`): the quota stop is written there as `RESOURCE_EXHAUSTED (code 429): Individual quota reached. ... Resets in 4h31m14s.` (measured 2026-10-08 in `~/.gemini/antigravity-cli/logs/clavity-*.log`, events of 09-30 and 10-01). MEASURED 2026-10-08 (grep of `~/.gemini/antigravity-cli`): all 7 logs that hold `Individual quota reached` are per-session `logs/clavity-*.log` files written by a clavity-launched agy (`agy --log-file <paths.AgyLog>`); the global `cli.log` holds 43 `errorreport.go` lines, all `You are not logged into Antigravity`, and no quota event. So detection is PROVEN for a clavity-launched agy (`CLAVITY_AGY_LOG` set, `CliLogPath` = that file) and UNMEASURED for a hand-launched agy whose `CliLogPath` falls back to the global `cli.log` (`AgyEnvironment.ResolveCliLogPath`): there the notice may simply never fire and the ask degrades to today's `[13b]` text. The proto route the ROADMAP body sketched (a kind-17 step) is NOT built: no such step is reachable as a fixture - the live LS lists only the current cascade (probe 2026-10-08, 1 cascade, kinds 5/8/14/15/21/101/132), and the ROADMAP rule is fixture first. §71 has two halves: (a) `McpTools.RunAsync` catches the two exception classes it lets escape today; (b) a `CallToolFilter` (SDK 1.4.0 `McpServerOptions.Filters.Request.CallToolFilters`, registered with `WithRequestFilters(...AddCallToolFilter(...))`) checks the call's argument NAMES against the tool's own `InputSchema` BEFORE the SDK binds them, because the SDK's binding failure is swallowed into the generic text inside `McpServerImpl.cs` (v1.4.0, the catch under `BuildFilterPipeline(callToolHandler, ...)`: a non-`McpException` becomes `"An error occurred invoking '{name}'."` and only the LOG sees the cause). Filters run OUTSIDE that catch, so a pre-check is the only place the names are still visible.
 
 **Tech Stack:** .NET 10, xunit, `ModelContextProtocol` 1.4.0 (`McpServerBuilderExtensions.WithRequestFilters`, `McpRequestFilterBuilderExtensions.AddCallToolFilter`, `ModelContextProtocol.Protocol.StreamClientTransport`, `McpServerBuilderExtensions.WithStreamServerTransport`, `McpClient.CreateAsync`), System.IO.Pipelines.
 
@@ -64,11 +64,11 @@ public sealed class PluginInstallerTests
         var output = new string('a', 199) + Emoji + "tail that is cut";
         var r = PluginInstaller.Install(Agent.Claude, "clavity", @"C:\mp", Returning(0, output));
         Assert.True(r.Ok);
-        Assert.StartsWith("register-plugin.ps1 exit 0: ", r.Message);
-        var cut = r.Message["register-plugin.ps1 exit 0: ".Length..];
+        Assert.StartsWith("register-plugin.ps1 exit 0: ", r.Detail);
+        var cut = r.Detail["register-plugin.ps1 exit 0: ".Length..];
         Assert.Equal(new string('a', 199), cut);                 // the pair backed off, nothing else lost
         Assert.False(char.IsHighSurrogate(cut[^1]));
-        Assert.DoesNotContain("\uFFFD", r.Message);
+        Assert.DoesNotContain("\uFFFD", r.Detail);
     }
 
     [Fact]
@@ -76,8 +76,8 @@ public sealed class PluginInstallerTests
     {
         var r = PluginInstaller.Uninstall(Agent.Agy, "clavity", Returning(4, new string('b', 300)));
         Assert.True(r.Ok);                                        // exit 4 = agent not detected = fail-open
-        Assert.EndsWith(new string('b', 200), r.Message);
-        Assert.DoesNotContain(new string('b', 201), r.Message);
+        Assert.EndsWith(new string('b', 200), r.Detail);
+        Assert.DoesNotContain(new string('b', 201), r.Detail);
     }
 
     [Fact]
@@ -85,12 +85,12 @@ public sealed class PluginInstallerTests
     {
         var r = PluginInstaller.Install(Agent.Agy, "clavity", @"C:\mp", Returning(3, ""));
         Assert.False(r.Ok);
-        Assert.Equal("register-plugin.ps1 exit 3: (no output)", r.Message);
+        Assert.Equal("register-plugin.ps1 exit 3: (no output)", r.Detail);
     }
 }
 ```
 
-If `AgentResult`'s members are not `Ok` / `Message` (check `Install/AgentResult.cs` lines 1-9 before writing), use its real names - do NOT rename the record.
+Verified 2026-10-08 (`src/Clavity.Ls/Install/AgentResult.cs:4`): `public readonly record struct AgentResult(Agent Agent, bool Ok, string Detail);` - the tests read `Ok` and `Detail`.
 
 - [ ] **Step 2: Run them - the first must FAIL**
 
@@ -263,7 +263,7 @@ public class McpToolsRunAsyncTests
 }
 ```
 
-If `ChannelDown.IsChannelDown` does NOT accept a model-unavailable wrapper around an `RpcException` (read `src/Clavity.Ls/ChannelDown.cs`, the method body, before running), delete the fourth row and say so in the commit message - do not bend the production order to make it pass.
+Verified 2026-10-08 (`src/Clavity.Ls/ChannelDown.cs:19-20`): `IsChannelDown` accepts an `AgyModelUnavailableException` whose `InnerException` is an `RpcException` that is not `Cancelled`, an `ObjectDisposedException` or an `LsDiscoveryException` - so the fourth row stays and the order of the arms is load-bearing.
 
 - [ ] **Step 3: Run - the first two must FAIL (exception escapes), the third passes, the fourth passes**
 
@@ -291,7 +291,7 @@ Expected: `Total tests: 5` (the Theory is two cases), 3 failed (unhandled `AgyMo
 
 - [ ] **Step 5: Green, mutants, commit**
 
-Run the filter: 5 passed. Mutant 1: swap the order so the `model_unavailable` arm precedes the channel-down catch -> row 4 RED. Mutant 2: drop `when (ex is not OperationCanceledException)` -> row 3 RED. Restore (`git checkout -- src/Clavity.Mcp/McpTools.cs` then re-apply Steps 1 and 4). Run the whole Integration suite: count = baseline + 4 (or + 3 if row 4 was deleted).
+Run the filter: 5 passed. Mutant 1: swap the order so the `model_unavailable` arm precedes the channel-down catch -> row 4 RED. Mutant 2: drop `when (ex is not OperationCanceledException)` -> row 3 RED. Restore (`git checkout -- src/Clavity.Mcp/McpTools.cs` then re-apply Steps 1 and 4). Run the whole Integration suite: count = baseline + 5 (the Theory is two cases).
 
 ```bash
 git add src/Clavity.Mcp/McpTools.cs src/Clavity.Mcp/Clavity.Mcp.csproj tests/Clavity.Integration.Tests/McpToolsRunAsyncTests.cs
@@ -841,7 +841,7 @@ In `AskReply.cs` append a parameter after `PeerFileStatus`:
     // ROADMAP section 66: agy's own quota-stop sentence, read from its log for THIS ask; null on every ordinary reply.
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? QuotaStop = null);
 ```
-Then open `AskReplyProjectionTests.cs:140-160`: the row there enumerates the fields that must be ABSENT from the JSON while unset (a string array containing `"ReplyFile", "CaptureError", "CheckedSource", "TurnEndedOnToolStep"`, ...) and a `with { ... }` object that sets each. Add `"QuotaStop"` to the array and `QuotaStop: "q"` (or `QuotaStop = "q"` in the `with`) to the set case, and `Assert.Contains("\"QuotaStop\":\"q\"", set);` beside the existing Contains. If the row's shape is different from this description, STOP and report `STATE_MISMATCH` with the lines quoted.
+Then edit `AskReplyProjectionTests.cs`, the row `New_result_fields_are_omitted_from_the_json_while_unset` (read 2026-10-08, lines 142-158): add `"QuotaStop"` to the `foreach (var f in new[] { "ReplyFile", ..., "PeerFileStatus" })` array; add `QuotaStop: "q"` after `PeerFileStatus: "s"` in the `set` construction; and add `Assert.Contains("\"QuotaStop\":\"q\"", set);` after the `PeerFileStatus` assertion.
 
 - [ ] **Step 6: Wire it in `AgyView.AskAsync`**
 
@@ -887,40 +887,56 @@ Replace the comment line at `:90`, the `if (reply13b is { CheckedSource: "peer-f
         }
 ```
 
-- [ ] **Step 8: Integration row - a quota line appended during the ask produces the block and no TRUNCATED notice**
+- [ ] **Step 8: Integration rows - a quota line appended during the ask is named; one written before it is not**
 
-Open `AgyAskIntegrationTests.cs` and find the row at `:1212` (`McpTools.AgyAsk(view, "review it", ...)` under a `FakeLs`-hosted Kestrel server whose `cliLog` file the view reads). Copy its harness shape (the `try { ... } finally { Directory.Delete(dir, true); }` and the `AgyViewOptions { CliLogPath = cliLog, IdleStallWindow = ..., IdleAbsoluteMax = ... }` block) into a new row in the same class:
+Verified 2026-10-08 (`AgyAskIntegrationTests.cs`): `FakeAskLs(cascadeId, replyText, idleDelay, initial, catalog?, waitPlan?)` (ctor at ~line 39) has `Action<string>? OnSend` (line 105, invoked at line 151 inside `SendUserCascadeMessage` - AFTER `AskAsync` took the log mark and BEFORE the wait returns) and `bool TrailingToolStep` (line 68: the delta then ENDS on a tool step, so `Answer` is null and a named discipline reports `TerminalTokenMissing`). Helpers used by the neighbouring rows: `StartFakeAsync(fake)`, `SetUpAgyDir(PortOf(app), out var cliLog)`, `CollectingProgress<ProgressNotificationValue>`. The existing `AskOnce` helper (line ~2084) builds its own `cliLog` and does not expose it, so these rows build the harness themselves, like the `PEER_STILL_BUSY` row at `:1212`.
 
 ```csharp
+    private const string QuotaLine =
+        "E1001 21:09:09.531891  308834 errorreport.go:224] generating and executing: RESOURCE_EXHAUSTED (code 429): Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 24m5s.\n";
+    private const string QuotaSentence = "Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 24m5s.";
+
+    // ROADMAP section 66. A tool-ended turn with a named discipline is exactly what flags [13b] TRUNCATED REPLY today.
+    private static async Task<(CallToolResult Result, string[] Texts)> AskToolEndedTurn(bool quotaDuringAsk, bool quotaBeforeAsk)
+    {
+        var fake = new FakeAskLs("conv-1", "partial work", TimeSpan.Zero, Array.Empty<CascadeStep>(),
+                                 waitPlan: new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) })
+        { TrailingToolStep = true };
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            if (quotaBeforeAsk) File.AppendAllText(cliLog, QuotaLine);                        // before the mark: must NOT count
+            if (quotaDuringAsk) fake.OnSend = _ => File.AppendAllText(cliLog, QuotaLine);     // after the mark: must count
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var result = await McpTools.AgyAsk(view, "review it", new CollectingProgress<ProgressNotificationValue>(), discipline: "agy-capstone");
+            return (result, result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToArray());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     [Fact]
     public async Task A_quota_stop_written_to_agys_log_during_the_ask_is_named_instead_of_a_truncated_reply()
     {
-        // ROADMAP section 66. The fake peer's turn ends with a tool step and no prose (what a quota stop looks like on the
-        // wire); the quota sentence is appended to the cli.log AFTER the ask started. Expect [PEER QUOTA STOP] and NO
-        // "[13b] TRUNCATED REPLY" even though a discipline was named.
-        <same harness as :1212 - a FakeLs whose post-send trajectory appends one step of Kind 90 and nothing else>
-        File.AppendAllText(cliLog,
-            "E1001 21:09:09.531891  308834 errorreport.go:224] generating and executing: RESOURCE_EXHAUSTED (code 429): Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 24m5s.\n");
-        var result = await McpTools.AgyAsk(view, "review it", new CollectingProgress<ProgressNotificationValue>(), discipline: "agy-capstone");
-        var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+        var (_, texts) = await AskToolEndedTurn(quotaDuringAsk: true, quotaBeforeAsk: false);
         var block = Assert.Single(texts, t => t.StartsWith("[PEER QUOTA STOP]"));
         Assert.Contains("Resets in 24m5s", block);
         Assert.DoesNotContain(texts, t => t.StartsWith("[13b] TRUNCATED REPLY"));
         using var doc = JsonDocument.Parse(texts[0]);
-        Assert.Equal("Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 24m5s.", doc.RootElement.GetProperty("QuotaStop").GetString());
+        Assert.Equal(QuotaSentence, doc.RootElement.GetProperty("QuotaStop").GetString());
+    }
+
+    [Fact]
+    public async Task A_quota_line_written_before_the_ask_started_is_not_this_asks_stop()
+    {
+        var (_, texts) = await AskToolEndedTurn(quotaDuringAsk: false, quotaBeforeAsk: true);
+        Assert.DoesNotContain(texts, t => t.StartsWith("[PEER QUOTA STOP]"));
+        Assert.Contains(texts, t => t.StartsWith("[13b] TRUNCATED REPLY"));      // today's behaviour, unchanged
+        using var doc = JsonDocument.Parse(texts[0]);
+        Assert.False(doc.RootElement.TryGetProperty("QuotaStop", out _));
     }
 ```
-The angle-bracket line is the ONE thing to author from the neighbouring row. Verified 2026-10-08: the fake that row uses is `FakeAskLs` (`AgyAskIntegrationTests.cs`), constructed as `new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: ...)` with a settable `Action<string>? OnSend` (line 105) that its `SendUserCascadeMessage` override invokes (line 151) - AFTER `AskAsync` has taken the log mark and BEFORE the wait returns. That is the only moment a quota event can be appended and still count, so the row appends it THERE:
-
-```csharp
-        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, new[] { new CascadeStep { Kind = 90, Status = 3 } },
-                                 waitPlan: <the same plan the :1196 row uses>);
-        await using var app = await StartFakeAsync(fake);
-        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
-        fake.OnSend = _ => File.AppendAllText(cliLog,
-            "E1001 21:09:09.531891  308834 errorreport.go:224] generating and executing: RESOURCE_EXHAUSTED (code 429): Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 24m5s.\n");
-```
-(Read `FakeAskLs`'s constructor parameters at its definition before writing: the first three arguments above are copied from the `:1196` row; the fourth is the post-send steps and must give a delta that ENDS on the Kind-90 tool step, so `TrailingAnswer` is null and `TerminalTokenMissing` would be true without the quota arm.) A second row proves the position rule through the same seam: an event appended to the log BEFORE `AgyAsk` is called (before the mark) must NOT fire - arrange it with `File.AppendAllText(cliLog, <same line>)` ahead of the call and no `OnSend`, and expect `[13b] TRUNCATED REPLY` and no `[PEER QUOTA STOP]`. State in the commit message that the first row uses `OnSend`.
+If `AskToolEndedTurn` fails inside LS discovery rather than on the assertions (the second row writes a quota-shaped line into the file `LsDiscovery` also reads - ROADMAP §55 is about its un-anchored patterns), print the first `texts` entry, and report it as a §55 finding with the line quoted; do NOT change the row to hide it.
 
 - [ ] **Step 9: Run both suites; mutants; commit**
 
@@ -993,7 +1009,8 @@ Step 0: `SKILL.md:30` starts `- **\`waiting_for_human\`** - agy is up but has no
 
 ```markdown
 - **`[PEER QUOTA STOP]` block, `QuotaStop` field set** - agy hit its quota during THIS ask (the sentence is agy's
-  own, read from its log, with the reset countdown). The reply is incomplete because agy could not generate, not
+  own, read from the log of an agy that `clavity start` / `clavity agy` launched, with the reset countdown; an agy
+  started by hand is not covered - its stop still looks like `[13b] TRUNCATED REPLY`, so check its tab). The reply is incomplete because agy could not generate, not
   because it was dropped: WAIT for the reset, then re-ask. Do not resend meanwhile - each failed retry has been
   observed to push the reset further out. No `[13b]` notice accompanies it; the stop explains the missing token
   (a `[13b] RESCUED FROM PEER FILE` can precede it: then the reply file is complete and the stop is only context).
@@ -1011,7 +1028,8 @@ Step 0: `SKILL.md:30` starts `- **\`waiting_for_human\`** - agy is up but has no
 
 ```markdown
 - **`agy_ask` returns a `[PEER QUOTA STOP]` block.** agy's quota ran out during that ask (the text is agy's own,
-  with its reset countdown). Wait for the reset; retrying earlier has been observed to push it further out.
+  with its reset countdown). Only for an agy that `clavity start` / `clavity agy` launched; with a hand-started agy a
+  quota stop still shows as a truncated reply - look at the agy tab. Wait for the reset; retrying earlier has been observed to push it further out.
 - **`agy_ask` returns `model_unavailable` or `error`.** The `message` field carries the cause; `error` also names
   the exception type. These replace the generic "An error occurred invoking 'agy_ask'." for faults inside the tool.
 - **`agy_ask` is refused with "missing required argument", "unknown argument" or "must be string".** The call used a
@@ -1024,7 +1042,7 @@ Step 0: `SKILL.md:30` starts `- **\`waiting_for_human\`** - agy is up but has no
 ```markdown
 ### Features
 - feat(mcp): a call with a wrong argument name is refused naming the real names, before the SDK binds (section 71b)
-- feat(ask): agy_ask names an agy quota stop read from agy's own log instead of reporting a truncated reply (section 66)
+- feat(ask): agy_ask names an agy quota stop, read from the log of a clavity-launched agy, instead of reporting a truncated reply (section 66)
 
 ### Fixes
 - fix(mcp): agy_ask returns a typed model_unavailable / error status instead of the SDK's generic text (section 71a)
@@ -1046,7 +1064,7 @@ git commit -m "docs(plugin): ls-driving and README name the quota stop, model_un
 **Files:**
 - Modify: `clavity-dotnet/ROADMAP.md` - the headers found by `grep -n '^### §53 \|^### §66 \|^### §71 \|^### §76 ' clavity-dotnet/ROADMAP.md`
 
-- [ ] **Step 1:** For each of the four, replace the trailing `▶ **... not yet planned**` (or `▶ **NARROWED ...**` for §53) status with `✅ **IMPLEMENTED 2026-10-08 on Branch 4 (\`sweep/branch-4-csharp-transport\`; capstone, test-audit and merge pending) - <fix shas from Tasks 1-6> — was: <the previous status text, verbatim>**`. Keep the title text unchanged. For §66 add one sentence to the BODY: `Built from agy's own log (the file clavity-ls already reads for discovery), not from a kind-17 step: no such step was reachable as a fixture on 2026-10-08, and the rule is fixture first.` For §71 add: `Widened 2026-10-08 (owner): a wrong argument NAME, or a right name with a value of the wrong JSON TYPE, is refused by a CallToolFilter before the SDK binds; the SDK itself (1.4.0, McpServerImpl) swallows the binding exception into the generic sentence, so only a pre-check can name it.`
+- [ ] **Step 1:** For each of the four, replace the trailing `▶ **... not yet planned**` (or `▶ **NARROWED ...**` for §53) status with `✅ **IMPLEMENTED 2026-10-08 on Branch 4 (\`sweep/branch-4-csharp-transport\`; capstone, test-audit and merge pending) - <fix shas from Tasks 1-6> — was: <the previous status text, verbatim>**`. Keep the title text unchanged. For §66 add one sentence to the BODY: `Built from agy's own per-session log (the file clavity-ls already reads for discovery; proven for a clavity-launched agy, unmeasured for a hand-started one whose log is the global cli.log), not from a kind-17 step: no such step was reachable as a fixture on 2026-10-08, and the rule is fixture first.` For §71 add: `Widened 2026-10-08 (owner): a wrong argument NAME, or a right name with a value of the wrong JSON TYPE, is refused by a CallToolFilter before the SDK binds; the SDK itself (1.4.0, McpServerImpl) swallows the binding exception into the generic sentence, so only a pre-check can name it.`
 
 - [ ] **Step 2:** `pwsh -NoProfile -File scripts/check-roadmap-claims.ps1` -> OK. Commit:
 ```bash
@@ -1054,7 +1072,7 @@ git add clavity-dotnet/ROADMAP.md
 git commit -m "docs(roadmap): Branch 4 - sections 53 (wiring), 66, 71, 76 IMPLEMENTED, citing the fix commits"
 ```
 
-- [ ] **Step 3:** Final gate tally (the sum of the per-task counts; compare with the Task 0 baselines). `Clavity.Ls.Tests` = baseline + 12 (Task 1: 3, Task 2: 3, Task 5: 6 QuotaStopLog rows). `Clavity.Integration.Tests` = baseline + 27 (Task 3: 5 - 4 if the wrapped-cause row was deleted per its own instruction; Task 4: 19; Task 5: 2; Task 6: 1; the edited `AskReplyProjectionTests` row and the schema pin add none). Run both suites once, read the COUNTS (a `--filter` that matches nothing exits 0), and report both numbers.
+- [ ] **Step 3:** Final gate tally (the sum of the per-task counts; compare with the Task 0 baselines). `Clavity.Ls.Tests` = baseline + 12 (Task 1: 3, Task 2: 3, Task 5: 6 QuotaStopLog rows). `Clavity.Integration.Tests` = baseline + 27 (Task 3: 5; Task 4: 19; Task 5: 2; Task 6: 1; the edited `AskReplyProjectionTests` row and the schema pin add none). Run both suites once, read the COUNTS (a `--filter` that matches nothing exits 0), and report both numbers.
 
 - [ ] **Step 4:** The orchestrator (not an executor) updates its execution index with every sha, the final counts, and the resume point = AGY-CAPSTONE over `29e47562..HEAD`.
 
@@ -1111,3 +1129,11 @@ git commit -m "docs(roadmap): Branch 4 - sections 53 (wiring), 66, 71, 76 IMPLEM
 
 ### Executed-code check of the plan's own code (driver, 2026-10-08, after round 4)
 The code blocks of Task 4 (`ArgumentPrecheck.cs`) and Task 5 (`QuotaStopLog.cs`) were extracted VERBATIM from this plan into a scratch console project (outside the repo) and run against SDK 1.4.0 with the plan's test cases: 32 checks - the 7-case type Theory, null handling, integer/number/untyped/`1e30`, name+type together, the no-arguments tool, control characters, and a real client/server round-trip through `WithRequestFilters(AddCallToolFilter(ArgumentPrecheck.Filter))` (control without the filter, wrong name, mistyped optional, wrong type, pass-through with arguments, `agy_status`, a no-argument tool with a stray argument), plus the quota detector (after-mark, before-mark, rotated log, missing log, non-quota 429, half-written then completed line, CRLF log). Result: ALL PASS after one fix - **the first run found a defect four review rounds had missed**: `ArgumentPrecheck.cs` used `TextCut` with no `using Clavity.Ls;` (the plan mentioned the `using` only in prose after the block); the block now carries it. Not covered by this run (executed for the first time at Tasks 1, 2, 3, 5-integration): `PluginInstaller.Clip`, the `StartFlow` rows, `RunAsync`'s new arms, the `AgyView`/`McpTools` wiring.
+
+### Round 4 follow-up: advisor-driven reads and measurements (driver, 2026-10-08, before round 5)
+- `FOLDED` Task 1 tests read `r.Message`; the real record is `AgentResult(Agent, bool Ok, string Detail)` - the tests would not have compiled. Hedge removed, verified members stated.
+- `FOLDED` Task 3 row 4 kept: `ChannelDown.cs:19-20` accepts a model-unavailable wrapper around an `RpcException`; Task 8 tally has no "if deleted" branch.
+- `FOLDED` Task 5 Step 5: exact `AskReplyProjectionTests` edit written from the file; the "if the shape differs, STOP" hedge is gone.
+- `FOLDED` Task 5 Step 8: the `<angle-bracket>` placeholder pointed at the PEER STILL BUSY row's plan (`Answer = "done"`, the opposite of a tool-ended turn); replaced by a complete helper built on `FakeAskLs.TrailingToolStep` + `OnSend`, both rows written out.
+- `FOLDED` (blocking, user-facing contract) the README / SKILL / CHANGELOG / ROADMAP text promised the quota notice for any agy; measured: quota events exist only in the per-session logs of clavity-launched agy, the global `cli.log` has none - wording now scopes the notice to a clavity-launched agy and says what a hand-started one still shows.
+- Real projects build with `ImplicitUsings` + `Nullable` enabled, no `TreatWarningsAsErrors`, no `Directory.Build.props` (read from the four csproj files) - the scratch probe's settings match.
