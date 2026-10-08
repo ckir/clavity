@@ -34,5 +34,7 @@ public static class PluginInstaller
         _ => throw new ArgumentOutOfRangeException(nameof(agent)),
     };
 
-    private static string Clip(string s) => string.IsNullOrEmpty(s) ? "(no output)" : (s.Length > 200 ? s[..200] : s);
+    // Branch 4 (ROADMAP §76): a character-count cut can split a UTF-16 surrogate pair, and STJ then emits U+FFFD in
+    // the diagnostic. TextCut.Prefix backs off one char in exactly that case (same fold as Branch 22 BS1/FA1-FA4).
+    private static string Clip(string s) => string.IsNullOrEmpty(s) ? "(no output)" : TextCut.Prefix(s, 200);
 }
