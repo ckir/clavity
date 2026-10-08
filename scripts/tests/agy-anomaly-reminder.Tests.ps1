@@ -204,29 +204,31 @@ Describe 'agy-anomaly-reminder.sh' {
     # would depend on how many entries happen to be untriaged today. Both the PowerShell location and
     # [Environment]::CurrentDirectory are set, because a native child inherits the latter.
     It 'falls back to the PROCESS directory when the payload is not JSON at all' {
-        $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
+        $w = $null; $h = $null
         $prevLoc = Get-Location; $prevEnv = [Environment]::CurrentDirectory
         try {
+            $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
             Set-Location $w; [Environment]::CurrentDirectory = $w
             $r = Invoke-Hook -Payload 'this is not json at all' -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '1 untriaged' -Because 'a malformed payload must fall back to the process directory, where the fixture lives'
         } finally {
             Set-Location $prevLoc; [Environment]::CurrentDirectory = $prevEnv
-            Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-TestPath $w, $h
         }
     }
     It 'falls back to the PROCESS directory when the payload OMITS cwd entirely' {
-        $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
+        $w = $null; $h = $null
         $prevLoc = Get-Location; $prevEnv = [Environment]::CurrentDirectory
         try {
+            $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
             Set-Location $w; [Environment]::CurrentDirectory = $w
             $r = Invoke-Hook -Payload '{"source":"startup"}' -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '1 untriaged' -Because 'the jq default // "." must supply the dot when the cwd key is absent'
         } finally {
             Set-Location $prevLoc; [Environment]::CurrentDirectory = $prevEnv
-            Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-TestPath $w, $h
         }
     }
 
@@ -244,9 +246,10 @@ Describe 'agy-anomaly-reminder.sh' {
         # The observable difference is the KILL-SWITCH. With the fallback, cwd_path is "." and a .no-agy
         # in the process directory silences the hook; without it, cwd_path is empty, the probe degrades to
         # "/.no-agy", and the hook warns instead.
-        $w = New-Workspace $null; $h = New-CleanHome
+        $w = $null; $h = $null
         $prevLoc = Get-Location; $prevEnv = [Environment]::CurrentDirectory
         try {
+            $w = New-Workspace $null; $h = New-CleanHome
             Set-Location $w; [Environment]::CurrentDirectory = $w
 
             # CONTROL FIRST, and it is the load-bearing half: with no .no-agy the same call MUST warn, or
@@ -260,7 +263,7 @@ Describe 'agy-anomaly-reminder.sh' {
             $r.ExitCode | Should -Be 0
         } finally {
             Set-Location $prevLoc; [Environment]::CurrentDirectory = $prevEnv
-            Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-TestPath $w, $h
         }
     }
 
@@ -364,59 +367,63 @@ Describe 'agy-anomaly-reminder.sh' {
     }
 
     It 'reads the oldest date from the field before task=, even when the fact and the task both contain " * "' {
-        $w = New-Workspace @(
-            '- [defect] the fact has a * star * here * src/a.cs:1 * 2026-09-10 * task=left * right',
-            '- [tool] 2024-01-01 appears in the prose only * n/a * 2026-08-03 * task=y',
-            '- [defect] task= is the FIRST field so there is no date * 2026-01-01'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                '- [defect] the fact has a * star * here * src/a.cs:1 * 2026-09-10 * task=left * right',
+                '- [tool] 2024-01-01 appears in the prose only * n/a * 2026-08-03 * task=y',
+                '- [defect] task= is the FIRST field so there is no date * 2026-01-01'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.StdOut | Should -Match '3 untriaged \(oldest 2026-08-03\)' -Because 'a date in the prose, a "task=" first field or a star inside the fact or task must not change the answer'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'REPORTS the count and demands triage when entries exist' {
-        $w = New-Workspace @(
-            '- [defect] ParseLatest never checks the pid pair matches * LsDiscovery.cs:94 * 2026-07-30 * task=capstone',
-            '- [tool] just test-scripts exceeds the 600s tool cap * n/a * 2026-08-01 * task=phase-b'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                '- [defect] ParseLatest never checks the pid pair matches * LsDiscovery.cs:94 * 2026-07-30 * task=capstone',
+                '- [tool] just test-scripts exceeds the 600s tool cap * n/a * 2026-08-01 * task=phase-b'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '2 untriaged'
             $r.StdOut   | Should -Match 'promote'
             $r.StdOut   | Should -Match 'delete'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'names the OLDEST entry date, not the newest' {
-        $w = New-Workspace @(
-            '- [tool] newer thing * n/a * 2026-08-01 * task=x',
-            '- [defect] older thing * a.cs:1 * 2026-07-14 * task=y'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                '- [tool] newer thing * n/a * 2026-08-01 * task=x',
+                '- [defect] older thing * a.cs:1 * 2026-07-14 * task=y'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.StdOut | Should -Match '2026-07-14'
             $r.StdOut | Should -Not -Match '2026-08-01'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'counts ONLY entry bullets, not prose or headings in the file' {
-        $w = New-Workspace @(
-            'Some explanatory prose that is not an entry.',
-            '## A heading',
-            '- not an entry because it has no bracketed type',
-            '- [defect] the only real entry * a.cs:1 * 2026-07-20 * task=z'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                'Some explanatory prose that is not an entry.',
+                '## A heading',
+                '- not an entry because it has no bracketed type',
+                '- [defect] the only real entry * a.cs:1 * 2026-07-20 * task=z'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '1 untriaged'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'does NOT count a bracketed type that appears MID-SENTENCE in prose' {
@@ -425,17 +432,18 @@ Describe 'agy-anomaly-reminder.sh' {
         # The anchor cannot be dropped by simply deleting the caret, because 'grep -c '- \[...'' makes
         # grep parse the pattern as OPTIONS and exit 2, which the unreadable-file branch turns into a
         # loud failure; the silent form is 'grep -c -- '- \[...'', and that is what this row pins.
-        $w = New-Workspace @(
-            'The count regex once matched a - [defect] mention written inside prose.',
-            '- [defect] the only real entry * a.cs:1 * 2026-07-20 * task=z'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                'The count regex once matched a - [defect] mention written inside prose.',
+                '- [defect] the only real entry * a.cs:1 * 2026-07-20 * task=z'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '1 untriaged'
             $r.StdOut   | Should -Not -Match '2 untriaged' -Because 'a mid-sentence bracketed type is prose, not an entry'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'is SILENT under a workspace .no-agy kill-switch' {
@@ -517,16 +525,17 @@ Describe 'agy-anomaly-reminder.sh' {
     It 'counts an entry whose type is Title-Case or multi-word' {
         # A sloppy type is still a real anomaly. A stricter [a-z] pattern would count these as zero and
         # silently discard exactly what the hook exists to surface.
-        $w = New-Workspace @(
-            '- [Defect] title-cased type * a.cs:1 * 2026-07-20 * task=z',
-            '- [tool misbehavior] multi-word type * n/a * 2026-07-21 * task=z'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                '- [Defect] title-cased type * a.cs:1 * 2026-07-20 * task=z',
+                '- [tool misbehavior] multi-word type * n/a * 2026-07-21 * task=z'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '2 untriaged'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'reads the date from its FIELD, ignoring a date written in the prose' {
@@ -549,18 +558,19 @@ Describe 'agy-anomaly-reminder.sh' {
         # it newer, the other entry supplies the same "oldest" either way and the test passes against the
         # broken form -- which is exactly how the first version of this test was vacuous. The second entry
         # also keeps a ' * ' in its FACT, proving that case stayed safe.
-        $w = New-Workspace @(
-            '- [defect] x * a.cs:1 * 2026-07-11 * task=investigating * timeout',
-            '- [tool] a * b thing * n/a * 2026-08-01 * task=z'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                '- [defect] x * a.cs:1 * 2026-07-11 * task=investigating * timeout',
+                '- [tool] a * b thing * n/a * 2026-08-01 * task=z'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '2 untriaged'
             $r.StdOut   | Should -Match '2026-07-11'
             $r.StdOut   | Should -Not -Match '2026-08-01'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'extracts the date by ANCHORING on task=, not by counting to a fixed field' {
@@ -571,18 +581,19 @@ Describe 'agy-anomaly-reminder.sh' {
         #
         # Here the OLDER date sits at field 4 and the NEWER one at field 3, so `print $3` yields the
         # newer date plus a non-date ('n/a') that the ISO filter drops, and the reported oldest flips.
-        $w = New-Workspace @(
-            '- [defect] x * a.cs:1 * 2026-08-01 * task=z',
-            '- [tool] a * b thing * n/a * 2026-07-05 * task=y'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                '- [defect] x * a.cs:1 * 2026-08-01 * task=z',
+                '- [tool] a * b thing * n/a * 2026-07-05 * task=y'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '2 untriaged'
             $r.StdOut   | Should -Match '2026-07-05' -Because 'the date is the field BEFORE task=, wherever that lands'
             $r.StdOut   | Should -Not -Match '2026-08-01'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'wraps the date as "(oldest <date>)" rather than emitting it bare' {
