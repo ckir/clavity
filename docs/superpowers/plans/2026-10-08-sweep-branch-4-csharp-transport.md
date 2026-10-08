@@ -10,7 +10,7 @@
 
 **Gates (the repo's, unchanged):** `cd clavity-dotnet && dotnet build && dotnet test tests/Clavity.Ls.Tests` and `dotnet test tests/Clavity.Integration.Tests`. READ THE COUNTS - `dotnet test --filter` exits 0 on no match. Last recorded: Ls 409 / Integration 114 (ROADMAP §74 body); Task 0 re-measures. Never run two test hosts at once.
 
-**Owner rulings carried in (2026-10-08, seam `.clavity/seams/b4-negotiate.md`):** §33 CLOSED, reply-channel stub CLOSED, §53 narrowed to the wiring half (all in `bb670a1c`). §71 widened to "a rejected call says why", with the SDK interception measured first - done above: interception is possible as a pre-check, not as an exception catch. Unknown argument names are REJECTED (fail closed): a mistyped optional (`artifactpath`) would otherwise silently switch off the echo check. If the owner prefers pass-through for unknown-but-complete calls, flip `ArgumentPrecheck.Problem` in Task 4 - the message text is the contract, not the strictness.
+**Owner rulings carried in (2026-10-08, seam `.clavity/seams/b4-negotiate.md`):** §33 CLOSED, reply-channel stub CLOSED, §53 narrowed to the wiring half (all in `bb670a1c`). §71 widened to "a rejected call says why", with the SDK interception measured first - done above: interception is possible as a pre-check, not as an exception catch. Unknown argument names are REJECTED (fail closed): a mistyped optional (`artifactpath`) would otherwise silently switch off the echo check. If the owner prefers pass-through for unknown-but-complete calls, flip `ArgumentPrecheck.Problem` in Task 4 - the message text is the contract, not the strictness. **Owner ruling 2026-10-08 (after panel round 2): a correct name with a WRONG JSON TYPE is in scope for §71b** - the filter also compares each value's JSON kind with the property's schema `type` (measured 2026-10-08 on SDK 1.4.0: every wrongly typed value fails into the same generic sentence; `message: null` binds into a non-nullable string and reaches the tool).
 
 **Commit discipline:** stage explicit paths; the LAST commit before the capstone (Task 8) flips the four ROADMAP headers to IMPLEMENTED citing the fix shas; every new test is proven by the named logic mutant BEFORE its commit (apply the mutant with `git stash`-free edits, run the ONE named test, restore with `git checkout -- <file>`, re-run green).
 
@@ -499,18 +499,59 @@ public static class ArgumentPrecheck
         var given = arguments?.Keys.ToList() ?? new List<string>();
         var missing = required.Where(r => !given.Contains(r, StringComparer.Ordinal)).ToList();
         var unknown = given.Where(g => !known.Contains(g, StringComparer.Ordinal)).ToList();
-        if (missing.Count == 0 && unknown.Count == 0) return null;
+        // Owner ruling 2026-10-08: a CORRECT name with a value of the WRONG JSON type fails in the SDK's binder into the same
+        // generic sentence (measured on 1.4.0: array/number/bool/object for `message`, a number for `discipline`, an array for
+        // `artifactPath` - all "An error occurred invoking 'agy_ask'." in 1-23 ms), and `message: null` binds into a
+        // non-nullable string and reaches the tool. Compare each value's JSON kind with the property's schema `type`.
+        var wrongTypes = new List<string>();
+        if (arguments is not null && props.ValueKind == JsonValueKind.Object)
+            foreach (var (key, value) in arguments)
+                if (props.TryGetProperty(key, out var propSchema) && TypeProblem(key, propSchema, value) is { } tp)
+                    wrongTypes.Add(tp);
+        if (missing.Count == 0 && unknown.Count == 0 && wrongTypes.Count == 0) return null;
 
         // The unknown names are the CLIENT's strings: clip them so a garbage key cannot flood the reply.
         var parts = new List<string>();
         if (missing.Count > 0) parts.Add("missing required argument " + string.Join(", ", missing.Select(m => $"'{m}'")));
         if (unknown.Count > 0) parts.Add("unknown argument " + string.Join(", ", unknown.Select(u => $"'{Printable(TextCut.Prefix(u, 60))}'")));
+        parts.AddRange(wrongTypes);
         var names = known.Count == 0
             ? "This tool takes no arguments"
             : "The arguments are: " + string.Join(", ", known.OrderBy(k => required.Contains(k) ? 0 : 1).ThenBy(k => k, StringComparer.Ordinal)
                 .Select(k => required.Contains(k) ? $"{k} (required)" : k));
-        return $"{toolName}: {string.Join("; ", parts)}. {names}. Argument names are case-sensitive.";
+        var nameHint = missing.Count > 0 || unknown.Count > 0 ? " Argument names are case-sensitive." : "";
+        return $"{toolName}: {string.Join("; ", parts)}. {names}.{nameHint}";
     }
+
+    // The property's schema `type` is a word or an array of words (the generated schema for `string?` is ["string","null"]).
+    // Fail OPEN on anything it cannot read: no `type`, an unknown type word, a non-string entry - the SDK's own answer stands.
+    private static string? TypeProblem(string name, JsonElement propSchema, JsonElement value)
+    {
+        if (propSchema.ValueKind != JsonValueKind.Object || !propSchema.TryGetProperty("type", out var t)) return null;
+        var allowed = t.ValueKind == JsonValueKind.String ? new List<string> { t.GetString()! }
+            : t.ValueKind == JsonValueKind.Array ? t.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!).ToList()
+            : new List<string>();
+        if (allowed.Count == 0 || allowed.Any(a => Matches(a, value))) return null;
+        return $"argument '{Printable(TextCut.Prefix(name, 60))}' must be {string.Join(" or ", allowed)}, got {KindName(value)}";
+    }
+
+    private static bool Matches(string type, JsonElement v) => type switch
+    {
+        "string" => v.ValueKind == JsonValueKind.String,
+        "boolean" => v.ValueKind is JsonValueKind.True or JsonValueKind.False,
+        "null" => v.ValueKind == JsonValueKind.Null,
+        "array" => v.ValueKind == JsonValueKind.Array,
+        "object" => v.ValueKind == JsonValueKind.Object,
+        "number" => v.ValueKind == JsonValueKind.Number,
+        "integer" => v.ValueKind == JsonValueKind.Number && v.TryGetDecimal(out var d) && d == decimal.Truncate(d),
+        _ => true,   // a type word this code does not know: fail open
+    };
+
+    private static string KindName(JsonElement v) => v.ValueKind switch
+    {
+        JsonValueKind.True or JsonValueKind.False => "boolean",
+        _ => v.ValueKind.ToString().ToLowerInvariant(),
+    };
 }
 ```
 (`TextCut` is `Clavity.Ls.TextCut`; add `using Clavity.Ls;`.) Add this unit row to `ArgumentPrecheckTests`:
@@ -523,7 +564,62 @@ public static class ArgumentPrecheck
         Assert.Equal("agy_look: unknown argument 'verbose'. This tool takes no arguments. Argument names are case-sensitive.", p);
     }
 ```
-(Task 4 then has 7 rows: control, wrong name, mistyped optional, pass-through, Problem-null, no-arguments tool, control-character - and the count to expect in Step 4 is 7, not 6.)
+Then add the type rows (owner ruling 2026-10-08; measured control = the SDK's generic sentence for every wrongly typed value, see the round-trip row):
+```csharp
+    // The REAL generated schema of agy_ask (printed by a probe on SDK 1.4.0, 2026-10-08), so these rows break if it changes.
+    private const string AgyAskSchema = """{"type":"object","properties":{"message":{"type":"string"},"discipline":{"type":["string","null"],"default":null},"artifactPath":{"type":["string","null"],"default":null}},"required":["message"]}""";
+
+    private static IDictionary<string, JsonElement> Args(params (string Key, string Json)[] kv) =>
+        kv.ToDictionary(x => x.Key, x => JsonDocument.Parse(x.Json).RootElement.Clone());
+
+    [Theory]
+    [InlineData("message", "[1,2]", "argument 'message' must be string, got array")]
+    [InlineData("message", "5", "argument 'message' must be string, got number")]
+    [InlineData("message", "true", "argument 'message' must be string, got boolean")]
+    [InlineData("message", "{}", "argument 'message' must be string, got object")]
+    [InlineData("message", "null", "argument 'message' must be string, got null")]
+    [InlineData("discipline", "7", "argument 'discipline' must be string or null, got number")]
+    [InlineData("artifactPath", "[]", "argument 'artifactPath' must be string or null, got array")]
+    public void A_wrongly_typed_value_is_refused_naming_the_expected_type(string name, string json, string expected)
+    {
+        using var schema = JsonDocument.Parse(AgyAskSchema);
+        var args = name == "message" ? Args(("message", json)) : Args(("message", "\"hi\""), (name, json));
+        var p = ArgumentPrecheck.Problem("agy_ask", schema.RootElement, args);
+        Assert.NotNull(p);
+        Assert.Contains(expected, p);
+        Assert.DoesNotContain("Argument names are case-sensitive", p);   // names were right: do not send the caller after them
+    }
+
+    [Fact]
+    public void Null_is_accepted_only_where_the_schema_allows_it()
+    {
+        using var schema = JsonDocument.Parse(AgyAskSchema);
+        Assert.Null(ArgumentPrecheck.Problem("agy_ask", schema.RootElement, Args(("message", "\"hi\""), ("discipline", "null"), ("artifactPath", "null"))));
+        Assert.NotNull(ArgumentPrecheck.Problem("agy_ask", schema.RootElement, Args(("message", "null"))));
+    }
+
+    [Fact]
+    public void Integer_and_number_are_told_apart_and_an_untyped_property_accepts_anything()
+    {
+        using var schema = JsonDocument.Parse("""{"type":"object","properties":{"n":{"type":"number"},"i":{"type":"integer"},"any":{}},"required":[]}""");
+        Assert.Null(ArgumentPrecheck.Problem("t", schema.RootElement, Args(("n", "1.5"), ("i", "3"), ("any", "[1]"))));
+        Assert.Null(ArgumentPrecheck.Problem("t", schema.RootElement, Args(("i", "3.0"))));                 // integral value, fraction digits
+        Assert.Contains("must be integer, got number", ArgumentPrecheck.Problem("t", schema.RootElement, Args(("i", "3.5")))!);
+    }
+
+    [Fact]
+    public async Task A_wrongly_typed_value_is_named_through_the_filter_instead_of_the_generic_sentence()
+    {
+        var (client, server) = await ConnectAsync(withFilter: true);
+        await using (server)
+        {
+            var r = await client.CallToolAsync("agy_ask", new Dictionary<string, object?> { ["message"] = new[] { 1, 2 } });
+            Assert.True(r.IsError);
+            Assert.Contains("argument 'message' must be string, got array", Text(r));
+        }
+    }
+```
+The control for the last row is `Without_the_filter_the_SDK_hides_the_cause_in_a_generic_sentence` (same sentence for a type error as for a name error - measured). Mutants: in `Matches` make `"string"` return `true` -> the Theory's `message` cases and the round-trip row RED; drop `parts.AddRange(wrongTypes)` -> all type rows RED while the name rows stay green; make `"null"` always match -> the `message: null` Theory case and `Null_is_accepted_only_where...` RED. (Task 4 then has 11 facts + 7 theory cases = 18 tests: control, wrong name, mistyped optional, pass-through, Problem-null, no-arguments tool, control-character, null-only-where-allowed, integer/number/untyped, round-trip wrong type, plus the 7-case Theory - and the count to expect in Step 4 is 18.)
 
 - [ ] **Step 3: Register the filter in `Program.cs`**
 
@@ -541,7 +637,7 @@ Replace the three-line chain with:
 - [ ] **Step 4: Run**
 
 Run: `dotnet build 2>&1 | grep -E "error|Build succeeded" | head -5` then `dotnet test tests/Clavity.Integration.Tests --filter "FullyQualifiedName~ArgumentPrecheckTests" 2>&1 | grep -E "Passed!|Failed!|Total tests"`
-Expected: `Total tests: 7`, all passed. If the CONTROL row fails because the SDK's text differs, quote the real text in the control and in the ROADMAP §71 close note - the control documents the SDK, it does not pass judgement on it. If `Pipe` does not resolve, add `<PackageReference Include="System.IO.Pipelines" Version="10.0.0" />` to the test project (it ships in the shared framework on net10 - this is the fallback, not the expectation).
+Expected: `Total tests: 18`, all passed. If the CONTROL row fails because the SDK's text differs, quote the real text in the control and in the ROADMAP §71 close note - the control documents the SDK, it does not pass judgement on it. If `Pipe` does not resolve, add `<PackageReference Include="System.IO.Pipelines" Version="10.0.0" />` to the test project (it ships in the shared framework on net10 - this is the fallback, not the expectation).
 
 - [ ] **Step 5: Mutants**
 
@@ -887,8 +983,9 @@ Step 0: `SKILL.md:30` starts `- **\`waiting_for_human\`** - agy is up but has no
 - **`error`** - any other failure inside the tool, with `exception` (the .NET type name) and `message`. Read the
   message; it used to be hidden behind the SDK's "An error occurred invoking".
 - **A refusal naming arguments** (`agy_ask: missing required argument 'message'; unknown argument 'payload'. The
-  arguments are: message (required), artifactPath, discipline.`) - the CALL was malformed and nothing reached agy.
-  Fix the argument NAMES (they are case-sensitive) and resend; `agy_status`'s step count will not have moved.
+  arguments are: message (required), artifactPath, discipline.`, or `agy_ask: argument 'message' must be string, got
+  array.`) - the CALL was malformed and nothing reached agy. Fix the argument NAMES (case-sensitive) or the value's
+  JSON TYPE and resend; `agy_status`'s step count will not have moved.
 ```
 
 - [ ] **Step 2: README.md** - insert BEFORE the `waiting_for_human` bullet:
@@ -898,8 +995,9 @@ Step 0: `SKILL.md:30` starts `- **\`waiting_for_human\`** - agy is up but has no
   with its reset countdown). Wait for the reset; retrying earlier has been observed to push it further out.
 - **`agy_ask` returns `model_unavailable` or `error`.** The `message` field carries the cause; `error` also names
   the exception type. These replace the generic "An error occurred invoking 'agy_ask'." for faults inside the tool.
-- **`agy_ask` is refused with "missing required argument" / "unknown argument".** The call used a wrong argument
-  name (names are case-sensitive: `message`, `discipline`, `artifactPath`); nothing reached agy. Fix the name.
+- **`agy_ask` is refused with "missing required argument", "unknown argument" or "must be string".** The call used a
+  wrong argument name (case-sensitive: `message`, `discipline`, `artifactPath`) or a value of the wrong JSON type;
+  nothing reached agy. Fix the name or the type.
 ```
 
 - [ ] **Step 3: CHANGELOG.md** - if the file has no `## Unreleased` heading above `## 0.10.2 - 2026-10-02`, add one; under it:
@@ -929,7 +1027,7 @@ git commit -m "docs(plugin): ls-driving and README name the quota stop, model_un
 **Files:**
 - Modify: `clavity-dotnet/ROADMAP.md` - the headers found by `grep -n '^### §53 \|^### §66 \|^### §71 \|^### §76 ' clavity-dotnet/ROADMAP.md`
 
-- [ ] **Step 1:** For each of the four, replace the trailing `▶ **... not yet planned**` (or `▶ **NARROWED ...**` for §53) status with `✅ **IMPLEMENTED 2026-10-08 on Branch 4 (\`sweep/branch-4-csharp-transport\`; capstone, test-audit and merge pending) - <fix shas from Tasks 1-6> — was: <the previous status text, verbatim>**`. Keep the title text unchanged. For §66 add one sentence to the BODY: `Built from agy's own log (the file clavity-ls already reads for discovery), not from a kind-17 step: no such step was reachable as a fixture on 2026-10-08, and the rule is fixture first.` For §71 add: `Widened 2026-10-08 (owner): a wrong argument NAME is refused by a CallToolFilter before the SDK binds; the SDK itself (1.4.0, McpServerImpl) swallows the binding exception into the generic sentence, so only a pre-check can name it.`
+- [ ] **Step 1:** For each of the four, replace the trailing `▶ **... not yet planned**` (or `▶ **NARROWED ...**` for §53) status with `✅ **IMPLEMENTED 2026-10-08 on Branch 4 (\`sweep/branch-4-csharp-transport\`; capstone, test-audit and merge pending) - <fix shas from Tasks 1-6> — was: <the previous status text, verbatim>**`. Keep the title text unchanged. For §66 add one sentence to the BODY: `Built from agy's own log (the file clavity-ls already reads for discovery), not from a kind-17 step: no such step was reachable as a fixture on 2026-10-08, and the rule is fixture first.` For §71 add: `Widened 2026-10-08 (owner): a wrong argument NAME, or a right name with a value of the wrong JSON TYPE, is refused by a CallToolFilter before the SDK binds; the SDK itself (1.4.0, McpServerImpl) swallows the binding exception into the generic sentence, so only a pre-check can name it.`
 
 - [ ] **Step 2:** `pwsh -NoProfile -File scripts/check-roadmap-claims.ps1` -> OK. Commit:
 ```bash
@@ -963,7 +1061,7 @@ git commit -m "docs(roadmap): Branch 4 - sections 53 (wiring), 66, 71, 76 IMPLEM
 - `FOLDED` MG-2 (lexical pin survives `/* */` and `#if false`): block comments are stripped, `#if` is refused, and the four mutants are listed.
 - `FOLDED` DC-1 (fixed-depth path): walk-up search for `src/Clavity.Cli/Program.cs` with a loud failure message.
 - `FOLDED` DC-2 (control pinned the SDK's exact sentence): `StartsWith` plus "names no argument".
-- OPEN, owner decision (peer open question b): a CORRECT name with the WRONG JSON TYPE (an array for `message`) would still bind-fail into the generic sentence. Not folded: unmeasured, and a type check against `InputSchema` has its own edges (`["string","null"]`, integer vs number). Options: (A) add a type check to `Problem` after a measured control row; (B) defer to the anomalies conveyor as a section 71 follow-up. Recommendation: B, unless the owner wants the stricter contract in this branch.
+- `FOLDED` (owner ruling 2026-10-08, option A) peer open question b - correct name, wrong JSON type: measured first (probe on SDK 1.4.0: array/number/bool/object for `message`, number for `discipline`, array for `artifactPath` all give the generic sentence in 1-23 ms; `message: null` is NOT rejected by the SDK and reaches the tool), then built into Task 4 with the real generated schema as the fixture (`["string","null"]` handled; integer vs number; untyped property fails open).
 
 ### Round 2 agy escalation (cascade fbf2f9db, 2026-10-08, seats rotated: Fold Auditor, Boundary Smuggler, State Corruptor, Resource Vampire, Stop Arguer) - dispositions
 - Fold Auditor: `none` - all three round-1 folds confirmed right (peer opened the plan and `AgyAskIntegrationTests.cs`).
