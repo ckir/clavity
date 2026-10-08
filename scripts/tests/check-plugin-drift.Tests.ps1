@@ -133,15 +133,16 @@ Describe 'check-plugin-drift.ps1' {
         # AGY-CAPSTONE round 3, MEASURED with a real FileShare::None lock: ReadAllBytes threw an unhandled
         # IOException, the run died mid-scan, and every file after it went unchecked while the exit code
         # still read as ordinary drift. An unreadable file is a first-class outcome, not a crash.
-        $r = New-FixtureRepo $script:Payload
-        $i = New-FixtureInstall @{
-            'skills/a/SKILL.md' = "line one`nline two`n"
-            'hooks/h.sh'        = "#!/usr/bin/env bash`necho hi`n"
-            'plugin.json'       = "{`n  `"version`": `"0.7.0`"`n}`n"
-        }
-        $locked = Join-Path $i 'skills' 'a' 'SKILL.md'
-        $fs = [IO.File]::Open($locked, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+        $fs = $null
         try {
+            $r = New-FixtureRepo $script:Payload
+            $i = New-FixtureInstall @{
+                'skills/a/SKILL.md' = "line one`nline two`n"
+                'hooks/h.sh'        = "#!/usr/bin/env bash`necho hi`n"
+                'plugin.json'       = "{`n  `"version`": `"0.7.0`"`n}`n"
+            }
+            $locked = Join-Path $i 'skills' 'a' 'SKILL.md'
+            $fs = [IO.File]::Open($locked, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
             # PRECONDITION - the fixture must actually apply, or this row proves nothing. AGY-TEST-AUDIT
             # 2026-09-02: this is `1913bdc`'s class, where a mutation silently failed to apply and only a
             # precondition assertion caught it.
@@ -163,7 +164,7 @@ Describe 'check-plugin-drift.ps1' {
             $res.Code | Should -Be 1
             $res.Out  | Should -CMatch 'UNREADABLE\s+skills/a/SKILL\.md'
             $res.Out  | Should -Not -Match 'being used by another process'
-        } finally { $fs.Dispose() }
+        } finally { if ($fs) { $fs.Dispose() } }
     }
 
     It 'counts a DIRECTORY standing where a payload file belongs as MISSING, not present' {

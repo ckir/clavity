@@ -2924,7 +2924,7 @@ does NOT satisfy `VERDICT:`.
 
 ### §34 — Nine hook test files allocate temp resources OUTSIDE the `try`, so a failed allocation leaks every earlier one
 
-**Status:** SCHEDULED 2026-09-04 - scheduled - Branch T task
+**Status:** IMPLEMENTED 2026-10-09 - every two-or-more-allocation-before-try site converted (Remove-TestPath + in-try allocation) on branch sweep/branch-t-format-and-gates; merge pending
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-04, tracked debt**
 
 The shape is `$r = New-RepoWithAnomaly; $h = New-CleanHome` followed by
