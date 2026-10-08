@@ -117,8 +117,13 @@ fi
 
 if [ -n "$tx" ]; then status='deferred'; else status='transcript_not_found'; fi
 
-# printf's %()T is a bash builtin - no `date` process. TZ=UTC above makes it UTC.
-printf -v ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1
+# printf's %()T is a bash >= 4.2 builtin - gate it (Branch 21; macOS /bin/bash is 3.2, where an
+# ungated call leaves ts EMPTY and the row's timestamp field silently lies). TZ=UTC is exported above.
+if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 402)); then
+  printf -v ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1
+else
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)
+fi
 
 out="$root/.clavity"
 
@@ -127,7 +132,11 @@ out="$root/.clavity"
 # its value carries no information and must not be branched on. $sid is the payload's session_id (:42),
 # forwarded as the debounce key so a persistent fault is reported once per session rather than on every
 # start; an empty $sid legally disables debouncing.
-. "$(dirname "$0")/agy-shield-lib.sh" 2>/dev/null || true
+# Builtin dirname (Branch 21): ${0%[/\\]*} handles both separators Windows bash can hand us; a $0 with
+# no separator at all leaves the string unchanged, hence the `.` fallback (the D1 idiom, Branch 20).
+_dr_src=${0%[/\\]*}
+[ "$_dr_src" = "$0" ] && _dr_src=.
+. "$_dr_src/agy-shield-lib.sh" 2>/dev/null || true
 if command -v agy_shield >/dev/null 2>&1; then
   agy_shield "$root" ".clavity/discipline-reaching.jsonl" "$sid"
 else

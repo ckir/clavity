@@ -564,10 +564,10 @@ agy-after-reminder.Tests.ps1                      9,7s   19 tests   <- COUNT 202
                                                                       TIME is the 2026-08-05 solo figure.
                                                                       14 -> 19 2026-10-06 (Branch 20 test-audit R2
                                                                       DH1/DH1b: +5 no-jq .md boundary rows).
-agy-anomaly-reminder.Tests.ps1                   26,8s   37 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-anomaly-reminder.Tests.ps1                   26,8s   39 tests   <- SLOW, re-measured 2026-08-06 (+4); 37 -> 39 2026-10-07 (Branch 21 Task 4: the jq-fallback cwd row + the oldest-date field row), time not re-measured
 agy-anomaly-capture-reminder.Tests.ps1            8,4s   26 tests   <- COUNT 2026-08-06 (+4)
-agy-anomaly-dispatch-reminder.Tests.ps1          12,7s   22 tests   <- COUNT 2026-08-06 (+4)
-agy-anomaly-model-notice.Tests.ps1               16,7s   11 tests   <- COUNT 2026-08-06 (+2)
+agy-anomaly-dispatch-reminder.Tests.ps1          12,7s   23 tests   <- 22 -> 23 2026-10-08 (Branch 21 Task 10: +1 empty-PATH stderr row, s59); COUNT 2026-08-06 (+4)
+agy-anomaly-model-notice.Tests.ps1               16,7s   12 tests   <- 11 -> 12 2026-10-08 (Branch 21 Task 10: +1 empty-PATH stderr row, s59); COUNT 2026-08-06 (+2)
 agy-drive-session-reset.Tests.ps1                   ?    6 tests   <- FAST, NEW 2026-08-06. NO SOLO TIME
                                                                       YET: its only sweep was the contended
                                                                       one (42,0s there, inflated ~1,55x by
@@ -678,16 +678,16 @@ check-peer-reply-citations.Tests.ps1             49,2s   39 tests   <- SLOW, add
   row is four `git check-ignore` / `git ls-files` calls, so nearly all of the figure is process launch.
   ⚠ It joins the FAST half, which measured 493-550s against the 600s foreground cap and is
   cap-ADJACENT - this adds ~6s to a half that has no headroom left to spend.
-agy-curate-nudge.Tests.ps1                       48,1s   20 tests   <- SLOW as of 2026-08-24; was FAST.
+agy-curate-nudge.Tests.ps1                       48,1s   38 tests   <- 29 -> 38 2026-10-08 (capstone R1: +5 days past the end of their month, +4 real last-days-of-month controls); 20 -> 29 2026-10-08 (Branch 21 Task 11, section 73: +40-day fires/no `date -d`, +20-day silent, +exact 30/29-day boundary under a frozen clock, +days_from_civil vs GNU date -f oracle, +4 impossible dates, +zero-padded year; time not re-measured); SLOW as of 2026-08-24; was FAST.
   MOVED with check-injected-context because the FAST half measured 576,0s against the 600s foreground
   cap - see the note under ## Measured runtimes. Re-measured 2026-08-24 WARM on an
   idle CPU (cold 53,6s) after the test-audit closure added 6 tests. The count row had ALSO been stale
   since before that: it said 11 when the file held 14.
-agy-inbox-snapshot.Tests.ps1                    120,1s   32 tests   <- SLOW, re-measured 2026-08-24 WARM
+agy-inbox-snapshot.Tests.ps1                    120,1s   41 tests   <- 38 -> 41 2026-10-08 (test-audit B21 R1, BS-1: +3 CRLF rows - positive, "Pending items" distractor, later-heading distractor); 37 -> 38 2026-10-08 (capstone R4: +"## Pending items" is not the Pending region); 36 -> 37 (capstone R3: +a bullet under a LATER heading buys no snapshot); SLOW, re-measured 2026-08-24 WARM; 32 -> 36 2026-10-07 (Branch 21 Task 1: KEEP=08, same-second KEEP=1, real-tab and literal-t heading rows), time not re-measured
   (cold 119,5s - this suite is I/O bound, so warm and cold agree). The test-audit closure added 3 It
   blocks; Pester expands them to 31 because two use -ForEach. The old row said 22. Before 2026-08-03 this
   suite was MISSING from this table entirely.
-agy-autotrain-migrate-inbox.Tests.ps1            16,0s    9 tests   <- SLOW, NEW 2026-09-14 (Inno-retirement:
+agy-autotrain-migrate-inbox.Tests.ps1            16,0s   16 tests   <- 15 -> 16 2026-10-08 (test-audit B21 R3, ca-1: +the destination folder cannot be created, stops before claiming the source, one message); 9 -> 15 2026-10-08 (Branch 21 Task 9: +directory dest, +ACL-denied dest, +ACL-denied sidecar, +non-empty dest left alone, +empty dest treated as absent, +recovery into an empty dest; time not re-measured); SLOW, NEW 2026-09-14 (Inno-retirement:
   the .iss MigrateInboxToUserState was ported to a bash SessionStart hook). REPLACES the retired
   agy-autotrain-installer.Tests.ps1 (17 tests, FAST, .iss line-inspection) — that .iss is deleted, and the
   migration is now RUN against real fixtures, so this is behavioural (bash + process launches per It, hence
@@ -727,7 +727,7 @@ agy-seam-inject.Tests.ps1                        39,4s   36 tests   <- SLOW, re-
                                                                       been comment-only). Time had said
                                                                       18,0s and was "count 2026-08-03,
                                                                       time older" - now both are current.
-agy-shield-lib.Tests.ps1                        409,1s   45 tests   <- SLOW, NEW 2026-08-16. Fixture-
+agy-shield-lib.Tests.ps1                        409,1s   57 tests   <- 56 -> 57 2026-10-08 (test-audit B21 R3, MG-1: +the prepend temp is created INSIDE .clavity, BASH_ENV mktemp shim); 55 -> 56 2026-10-08 (capstone R4: +CRLF `*` shield left byte-identical, bash + dash); 54 -> 55 (capstone R3: +the 30-day sweep age pinned at both find sites); SLOW, NEW 2026-08-16; 45 -> 47 2026-10-07 (Branch 21 Task 2: the ordering row became two, +1 deferred-prune row); 47 -> 54 (phase-1 capstone: +7 rows that run the helper under dash); time not re-measured. Fixture-
                                                                       heavy: many git + bash subprocess spawns per
                                                                       row across 17 Its. Measured solo, two
                                                                       consecutive runs immediately back to back:
@@ -754,7 +754,8 @@ agy-ledger-lib.Tests.ps1                        105,0s   34 tests   <- SLOW. RUN
                                                                       throwaway git repo with TWO commits and
                                                                       spawns bash, so ~7-20s per row.
 agy-test-audit-reminder.Tests.ps1                50,8s   36 tests   <- SLOW, re-measured 2026-08-06 (+4); 29 -> 35 2026-10-06 (Branch 20: +6 debounce rows), time not re-measured; 35 -> 36 2026-10-06 (Branch 20 test-audit R2 FPA1: no-jq closed-gate row), time not re-measured
-assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as of 2026-08-25; was FAST, measured 2026-08-12 with the driver
+agy-verify-reminder.Tests.ps1                    12,0s    8 tests   <- SLOW, NEW 2026-10-07 (Branch 21 Task 6: the hook had no suite; one run, box load uncontrolled)
+assertion-strength-reminder.Tests.ps1            54,9s   42 tests   <- 37 -> 42 2026-10-07 (Branch 21 Task 5: +2 empty-PATH stderr rows, +1 test-audit debounce sweep, +2 BASH3 day-key rows); SLOW as of 2026-08-25; was FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file
                                                                       already warns above.
@@ -1079,7 +1080,7 @@ check-control-bytes.Tests.ps1                    42,7s    9 tests   <- SLOW, NEW
   MEASURED at top level, two sequential runs, each its own pwsh + Pester cold start: 42,7s and 50,6s; background
   load not controlled. SLOW because the fast recipe was last measured at 480,5s against the 600s cap, so ~45s
   more would crowd it; rows 6-7 start child pwsh processes and row 8 scans every tracked *.md.
-docs-audit-reminder.Tests.ps1                    28,3s    7 tests   <- SLOW, NEW 2026-09-30 (docs-audit nudge, sweep
+docs-audit-reminder.Tests.ps1                    28,3s   12 tests   <- 11 -> 12 2026-10-08 (capstone R3: +hyphen near-miss header is not an unconfirmed doc); 7 -> 11 2026-10-07 (Branch 21 Task 7: +CRLF, +unterminated last line, +bullet near-misses, +unreadable view); SLOW, NEW 2026-09-30 (docs-audit nudge, sweep
   Branch 1). MEASURED at top level, two sequential runs: 28,3s and 29,4s (each a cold start; background load not
   controlled). SLOW for the same fast-recipe headroom reason; every row drives Git Bash. 5 -> 7 the same day (AGY-TEST-AUDIT: the AUDIT-* count and the JSON envelope), runtime NOT re-measured.
 docs-audit.Tests.ps1                            130,0s   90 tests   <- SLOW, re-measured 2026-08-06; 85 -> 88 on
@@ -1089,7 +1090,7 @@ drain-lib.Tests.ps1                               4,2s   36 tests   <- FAST, re-
                                                                       COUNT 29 -> 36 on 2026-08-28 (AGY-TEST-AUDIT
                                                                       covered the output-manifest producer).
   (cold 6,1s) after the test-audit closure added 2 tests and strengthened 3.
-fetch-clavity-ls.Tests.ps1                       47,9s  10 tests   <- SLOW, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled; +3 rows at the test audit, time NOT re-measured)
+fetch-clavity-ls.Tests.ps1                       47,9s  27 tests   <- 24 -> 27 2026-10-08 (test-audit B21 R3, pp-1: +win-x64 clavity-ls.exe member, +clavity-ls* glob RID suffix, +archive with no binary is refused; also fixes the glob matching the downloaded tarball); 23 -> 24 2026-10-08 (capstone R4: +version from the FIRST version line); 10 -> 23 2026-10-07 (Branch 21 Task 8: +mktemp s64, +sha-first URL, +7 OSTYPE rows, +unsupported platform, +pretty manifest, +stamp, +C0 strip; time not re-measured); SLOW, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled; +3 rows at the test audit, time NOT re-measured)
 generate-cheatsheet-literals.Tests.ps1           41,6s   18 tests   <- SLOW, NEW 2026-08-16 (14e): the
                                                                       cheatsheet-literal generator's pinning
                                                                       suite. Measured solo as the sole
@@ -1098,7 +1099,7 @@ generate-cheatsheet-literals.Tests.ps1           41,6s   18 tests   <- SLOW, NEW
 generate-scoped-manifest.Tests.ps1                2,1s    2 tests   <- FAST, re-measured 2026-08-05
 marketplace-manifest.Tests.ps1                    4,6s  10 tests   <- FAST, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled)
 pairing-doc.Tests.ps1                            22,2s   9 tests   <- SLOW, NEW 2026-10-03 (Branch 18, ROADMAP sections 60+62; warm run, cold first run 63,5s; box load uncontrolled)
-hook-spawn-budget.Tests.ps1                     226,5s  109 tests   <- SLOW, NEW 2026-10-06 (Branch 20 process budget; 1 row RED locally until Branch 21 - owner ruling; one run, box load uncontrolled; 55 -> 56 with the PreCompact re-arm row, Task 5; after Tasks 3-9 only the debt row is red, 168,6s); 56 -> 109 2026-10-06 (Branch 20 capstone R1: +53 bash 3.2 equivalence rows), time not re-measured
+hook-spawn-budget.Tests.ps1                     226,5s  167 tests   <- SLOW; 165 -> 167 2026-10-08 (capstone R3: +assertion-strength no-session_id day-key row x row/compat); 163 -> 165 (Task 9: +1 migrate-inbox row x row/compat; ALL 165 PASS - the debt list is empty and the debt row is green); 157 -> 163 (Task 8: +3 fetch-clavity-ls rows x row/compat; 162 pass, 1 red = the debt row, 1 entry left); 153 -> 157 (Task 7: +2 docs-audit-reminder rows x row/compat; 156 pass, 1 red = the debt row, 2 entries left); 149 -> 153 (Task 6: +2 agy-verify-reminder rows x row/compat; 152 pass, 1 red = the debt row, 3 entries left); 143 -> 149 (Task 5: +3 assertion-strength-reminder rows x row/compat; 148 pass, 1 red = the debt row, 4 entries left); 109 -> 121 2026-10-07 (Branch 21 Task 1: +6 inbox-snapshot rows x row/compat variants); 121 -> 139 2026-10-07 (Task 2: +9 discipline-reaching rows x row/compat variants); 139 -> 143 (Task 4: +2 anomaly-reminder rows x row/compat; 142 pass, 1 red = the debt row, 5 entries left), NEW 2026-10-06 (Branch 20 process budget; 1 row RED locally until Branch 21 - owner ruling; one run, box load uncontrolled; 55 -> 56 with the PreCompact re-arm row, Task 5; after Tasks 3-9 only the debt row is red, 168,6s); 56 -> 109 2026-10-06 (Branch 20 capstone R1: +53 bash 3.2 equivalence rows), time not re-measured
 plugin-hooks-registration.Tests.ps1               0,6s   37 tests   <- FAST, re-measured 2026-09-13 (+2 2026-10-01: section 57 test-audit-reminder PostToolUse matcher row; +2 since; +1 for the section-15 consult-recovery registration row; was
                                                                       0,5s / 18 tests; +4 for the recorder's
                                                                       SessionStart registration, which this

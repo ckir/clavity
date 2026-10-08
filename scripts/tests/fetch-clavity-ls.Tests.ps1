@@ -1,6 +1,9 @@
 # ROADMAP section 61. A SessionStart hook's STDERR is not shown to the user at startup, so a failed fetch used to
 # surface later as a bare ENOENT from /mcp. Every outcome the user must act on is now ALSO printed on STDOUT as hook
 # JSON. curl and uname are faked on PATH; tar and sha256sum are real.
+# BRANCH 21: the hook now reads $OSTYPE/$HOSTTYPE (bash builtins) and only falls back to uname for a platform bash does
+# not name, so every row pins OSTYPE/HOSTTYPE (bash honours both from the environment - measured) and the fake uname
+# is exercised only by the rows that pick an unnamed OSTYPE on purpose.
 BeforeAll {
     . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
     $script:Hook = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'clavity-dotnet/plugin/hooks/fetch-clavity-ls.sh'
@@ -19,15 +22,17 @@ BeforeAll {
         $p = $fx.Srv -replace '\\', '/'
         & $script:Bash -c "cd '$p' && printf 'BIN' > clavity-ls && tar -czf $($script:Asset) clavity-ls && rm clavity-ls && sha256sum $($script:Asset) > $($script:Asset).sha256"
         # Fake uname: Linux x86_64. Fake curl: modes via FAKE_CURL (fail | noasset | ok).
-        [IO.File]::WriteAllText((Join-Path $fx.Shim 'uname'), "#!/usr/bin/env bash`ncase `"`$1`" in -s) echo Linux;; -m) echo x86_64;; esac`n")
+        [IO.File]::WriteAllText((Join-Path $fx.Shim 'uname'), "#!/usr/bin/env bash`ncase `"`$1`" in -s) echo `"`${FAKE_UNAME_S:-Linux}`";; -m) echo x86_64;; esac`n")
         $curl = @'
 #!/usr/bin/env bash
 out=""; url=""
 while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2;; -H) shift 2;; -*) shift;; *) url="$1"; shift;; esac; done
+[ -n "${FAKE_LOG:-}" ] && [ -n "$url" ] && printf '%s\n' "$url" >> "$FAKE_LOG"
 case "${FAKE_CURL:-ok}" in fail) exit 22;; esac
 if [ -n "$out" ]; then cp "$FAKE_SRV/${url##*/}" "$out" || exit 22; exit 0; fi
 case "${FAKE_CURL:-ok}" in
   noasset) printf '[{"assets":[]}]';;
+  shafirst) bad=${FAKE_ASSET//./x}; printf '[{"assets":[{"name":"%s","browser_download_url":"https://x/bad/%s"},{"name":"%s.sha256","browser_download_url":"https://x/s/%s.sha256"},{"name":"%s","browser_download_url":"https://x/d/%s"}]}]' "$bad" "$bad" "$FAKE_ASSET" "$FAKE_ASSET" "$FAKE_ASSET" "$FAKE_ASSET";;
   ok) printf '[{"assets":[{"name":"%s","browser_download_url":"https://x/d/%s"},{"name":"%s.sha256","browser_download_url":"https://x/d/%s.sha256"}]}]' "$FAKE_ASSET" "$FAKE_ASSET" "$FAKE_ASSET" "$FAKE_ASSET";;
 esac
 '@
@@ -37,14 +42,16 @@ esac
         (& $script:Bash -c 'PATH="$(cygpath -u "$1"):$PATH"; uname -s; type -P curl' _ $fx.Shim | Out-String) | Should -Match '(?s)^Linux\s+\S*/shim/curl'
         return $fx
     }
-    function Invoke-Fetch($Fx, [string]$Mode, [string]$Data = $Fx.Data, [switch]$NoPluginContext, [switch]$NoJq) {
+    function Invoke-Fetch($Fx, [string]$Mode, [string]$Data = $Fx.Data, [switch]$NoPluginContext, [switch]$NoJq, [string]$OsType = 'linux-gnu', [string]$HostType = 'x86_64', [hashtable]$Extra = @{}) {
         # NOT Invoke-BashHook: Git's bin/bash.exe launcher puts its own dirs ahead of a PATH handed in from Windows,
         # so the fake uname/curl were ignored and the hook queried the REAL GitHub API (measured). The shim dir is
         # prepended INSIDE bash, the same way the fixture-sanity line in New-Fx proves it resolves.
         $vars = @{
             FAKE_CURL = $Mode; FAKE_SRV = ($Fx.Srv -replace '\\', '/'); FAKE_ASSET = $script:Asset
             CLAUDE_PLUGIN_ROOT = $Fx.PluginRoot; CLAUDE_PLUGIN_DATA = $(if ($NoPluginContext) { '' } else { $Data })
+            OSTYPE = $OsType; HOSTTYPE = $HostType
         }
+        foreach ($k in $Extra.Keys) { $vars[$k] = $Extra[$k] }
         $errFile = [IO.Path]::GetTempFileName()
         try {
             foreach ($k in $vars.Keys) { Set-Item -Path "Env:$k" -Value $vars[$k] }
@@ -62,6 +69,13 @@ esac
             foreach ($k in $vars.Keys) { Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue }
             Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue
         }
+    }
+    function Set-Archive($Fx, [string]$Member) {
+        # Re-pack the served archive so its ONLY member is $Member (and refresh the .sha256 the hook verifies). New-Fx packs the
+        # linux-x64 shape, a member literally named clavity-ls; the win-x64 RID ships clavity-ls.exe (test-audit B21 R3, pp-1).
+        $p = $Fx.Srv -replace '\\', '/'
+        & $script:Bash -c "cd '$p' && rm -rf w $($script:Asset) $($script:Asset).sha256 && mkdir w && printf 'BIN' > 'w/$Member' && tar -C w -czf $($script:Asset) '$Member' && rm -rf w && sha256sum $($script:Asset) > $($script:Asset).sha256"
+        $LASTEXITCODE | Should -Be 0 -Because 'the fixture archive must have been re-packed'
     }
     function Get-Message($Res) {
         # stdout must be exactly ONE JSON object Claude Code can parse.
@@ -126,6 +140,40 @@ Describe 'fetch-clavity-ls.sh tells the user what happened' {
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # Test-audit B21 R3 (pp-1). The hook accepts the archive member under its NATIVE name (win-x64 ships clavity-ls.exe, every other RID
+    # clavity-ls) and falls back to a clavity-ls* glob. The suite only ever packed a member named exactly clavity-ls, so deleting BOTH
+    # the .exe line and the glob left it green - while breaking every Windows install. Each row asserts the binary was PLACED, by content.
+    It 'places the binary when the archive ships the WIN-X64 native name clavity-ls.exe' {
+        $fx = New-Fx
+        try {
+            Set-Archive $fx 'clavity-ls.exe'
+            $msg = Get-Message (Invoke-Fetch $fx 'ok')
+            $msg | Should -Match ([regex]::Escape("fetched $($script:Asset)"))
+            Get-Content -Raw -LiteralPath (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -BeExactly 'BIN'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'falls back to the clavity-ls* GLOB when the member carries a RID suffix' {
+        $fx = New-Fx
+        try {
+            Set-Archive $fx 'clavity-ls-linux-x64'
+            $msg = Get-Message (Invoke-Fetch $fx 'ok')
+            $msg | Should -Match ([regex]::Escape("fetched $($script:Asset)"))
+            Get-Content -Raw -LiteralPath (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -BeExactly 'BIN'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # The distractor: a member that matches neither name nor the glob must be REFUSED, not placed.
+    It 'refuses an archive whose only member is not a clavity-ls binary, and places nothing' {
+        $fx = New-Fx
+        try {
+            Set-Archive $fx 'readme.txt'
+            $msg = Get-Message (Invoke-Fetch $fx 'ok')
+            $msg | Should -Match 'contained no clavity-ls binary'
+            Test-Path (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -BeFalse
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'says NOTHING when the right version is already in place' {
         $fx = New-Fx
         try {
@@ -175,6 +223,109 @@ Describe 'fetch-clavity-ls.sh tells the user what happened' {
             Remove-Item -LiteralPath (Join-Path $fx.Data 'bin/clavity-ls.exe')
             Get-Message (Invoke-Fetch $fx 'ok') | Should -Match ([regex]::Escape("fetched $($script:Asset)"))
             Get-Content -Raw -LiteralPath (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -BeExactly 'BIN'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # --- BRANCH 21 (Task 8) ---------------------------------------------------------------------------------------------
+
+    # ROADMAP section 64. mktemp can fail (a full or read-only TMPDIR); the hook must say so and place NOTHING. Without the
+    # handler the script carries on with an EMPTY _tmp and the failure surfaces one step later as "download failed", naming a
+    # URL, which sends the user looking at the network for a disk problem.
+    It 'notes "mktemp failed" and places NOTHING when mktemp exits non-zero (ROADMAP section 64)' {
+        $fx = New-Fx
+        try {
+            [IO.File]::WriteAllText((Join-Path $fx.Shim 'mktemp'), "#!/usr/bin/env bash`nexit 1`n")
+            $res = Invoke-Fetch $fx 'ok'
+            $res.ExitCode | Should -Be 0
+            Get-Message $res | Should -Match 'mktemp failed'
+            Test-Path (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -BeFalse
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # The no-jq path used to take `grep -o "https://[^\"]*/$ASSET" | head -1`, which matches the PREFIX of the .sha256 URL too, so a
+    # release listing the checksum FIRST (in a different directory) made the hook download the wrong place. The log is what
+    # shows it: the fake curl records every URL it is asked for.
+    It 'on the no-jq path requests the plain asset URL and the .sha256 URL, even when a decoy and the checksum are listed first' {
+        $fx = New-Fx
+        try {
+            $log = Join-Path $fx.Root 'curl.log'
+            $res = Invoke-Fetch $fx 'shafirst' -NoJq -Extra @{ FAKE_LOG = ($log -replace '\\', '/') }
+            Get-Message $res | Should -Match 'fetched' -Because $res.StdErr
+            $asked = @(Get-Content -LiteralPath $log)
+            $asked | Should -Contain "https://x/d/$($script:Asset)" -Because 'the asset must come from its own browser_download_url field'
+            $asked | Should -Contain "https://x/s/$($script:Asset).sha256"
+            $asked | Should -Not -Contain "https://x/s/$($script:Asset)" -Because 'that is the prefix of the checksum URL, not an asset'
+            # A DECOY listed first whose name differs from the asset only where the asset has dots (9x9x9xtarxgz): an
+            # unescaped dot is a wildcard and would take it.
+            @($asked | Where-Object { $_ -like 'https://x/bad/*' }).Count | Should -Be 0 -Because 'the dots in the asset name are literal dots'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # Platform -> RID. A table, not one case: each arm is a different line, and noasset mode puts the RID the hook chose into
+    # the note, so the row reads the DECISION back instead of inferring it. The 'solaris2' row is the fallback arm: bash names
+    # no such platform, so the fake uname (Linux) decides.
+    It 'maps OSTYPE <os> / HOSTTYPE <arch> to <rid>' -ForEach @(
+        @{ os = 'linux-gnu';  arch = 'x86_64';  rid = 'linux-x64' }
+        @{ os = 'darwin23.0'; arch = 'arm64';   rid = 'osx-arm64' }
+        @{ os = 'darwin22';   arch = 'aarch64'; rid = 'osx-arm64' }
+        @{ os = 'darwin22';   arch = 'x86_64';  rid = 'osx-x64' }
+        @{ os = 'msys';       arch = 'x86_64';  rid = 'win-x64' }
+        @{ os = 'cygwin';     arch = 'x86_64';  rid = 'win-x64' }
+        @{ os = 'solaris2';   arch = 'sparc';   rid = 'linux-x64' }
+    ) {
+        $fx = New-Fx
+        try {
+            $msg = Get-Message (Invoke-Fetch $fx 'noasset' -OsType $os -HostType $arch)
+            $msg | Should -Match ([regex]::Escape("no release asset named clavity-ls-$rid-9.9.9.tar.gz"))
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'refuses a platform neither bash nor uname names, saying what it saw' {
+        $fx = New-Fx
+        try {
+            $msg = Get-Message (Invoke-Fetch $fx 'noasset' -OsType 'plan9' -HostType 'mips' -Extra @{ FAKE_UNAME_S = 'Plan9' })
+            $msg | Should -Match ([regex]::Escape("unsupported platform 'Plan9/x86_64'"))
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'reads the version from a PRETTY-PRINTED manifest, and refuses a manifest with none' {
+        $fx = New-Fx
+        try {
+            [IO.File]::WriteAllText((Join-Path $fx.PluginRoot 'plugin.json'), "{`n  `"name`": `"clavity`",`n  `"version`": `"9.9.9`"`n}`n")
+            (Get-Message (Invoke-Fetch $fx 'noasset')) | Should -Match ([regex]::Escape("clavity-ls-linux-x64-9.9.9.tar.gz"))
+            [IO.File]::WriteAllText((Join-Path $fx.PluginRoot 'plugin.json'), "{`n  `"name`": `"clavity`"`n}`n")
+            (Get-Message (Invoke-Fetch $fx 'noasset')) | Should -Match 'could not read plugin version'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # Capstone R4 (mutant: drop the `break` after the first "version" match, so the LAST version-bearing line wins). The manifest
+    # version is the top-level one, which the old sed took from the FIRST such line; a nested "version" later must not override it.
+    It 'takes the version from the FIRST line that carries one, not a later nested one' {
+        $fx = New-Fx
+        try {
+            [IO.File]::WriteAllText((Join-Path $fx.PluginRoot 'plugin.json'), "{`n  `"name`": `"clavity`",`n  `"version`": `"9.9.9`",`n  `"engines`": {`n    `"host`": { `"version`": `"1.0.0`" }`n  }`n}`n")
+            (Get-Message (Invoke-Fetch $fx 'noasset')) | Should -Match ([regex]::Escape("clavity-ls-linux-x64-9.9.9.tar.gz"))
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'fetches again when the stamp names a DIFFERENT version, and stays quiet when the stamp has a trailing newline' {
+        $fx = New-Fx
+        try {
+            Get-Message (Invoke-Fetch $fx 'ok') | Should -Match 'fetched'
+            $stamp = Join-Path $fx.Data 'bin/.clavity-ls.version'
+            [IO.File]::WriteAllText($stamp, '9.9.8')
+            Get-Message (Invoke-Fetch $fx 'ok') | Should -Match 'fetched' -Because 'a stamp for another version means a plugin upgrade: re-fetch'
+            [IO.File]::WriteAllText($stamp, "9.9.9`n")
+            (Invoke-Fetch $fx 'fail').StdOut | Should -BeNullOrEmpty -Because 'a hand-edited stamp ending in a newline is still the right version'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'strips EVERY control character from the escaped message but keeps a space and DEL' {
+        $fx = New-Fx
+        try {
+            $odd = 'C:\a' + [char]1 + 'b' + [char]27 + 'c' + [char]31 + 'd e' + [char]127 + 'f\data'
+            $msg = Get-Message (Invoke-Fetch $fx 'fail' -Data $odd)
+            $msg | Should -Match ([regex]::Escape('C:\abcd e' + [char]127 + 'f\data/bin/clavity-ls.exe')) -Because 'C0 (0x01-0x1f) is deleted, 0x20 and 0x7f are not'
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }

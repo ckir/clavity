@@ -256,3 +256,26 @@ function Measure-BashHookProcesses {
     }
     [pscustomobject]@{ Spawned = $r.Total - $script:BashBootProcesses; Total = $r.Total; Boot = $script:BashBootProcesses; ExitCode = $r.ExitCode; StdOut = $r.StdOut.Trim(); StdErr = $r.StdErr.Trim() }
 }
+
+function Invoke-BashHookEmptyPath {
+    # Runs a hook under a genuinely EMPTY PATH, which Invoke-BashHook cannot reach: Get-GitBashOrThrow returns Git\bin\bash.exe,
+    # a wrapper that puts /mingw64/bin:/usr/bin back on PATH (measured 2026-09-30), so a hook that calls `cat` or `grep` finds
+    # them there and stays silent for the wrong reason. Claude Code runs Git\usr\bin\bash.exe, which does not, so this launches
+    # THAT binary with PATH='' (MSYS hands the child PATH as `=`, a relative directory that does not exist: no command resolves).
+    # Used by the ROADMAP section 59 rows: every spawn before the first jq check is a stderr leak on such a machine.
+    param([Parameter(Mandatory)][string]$HookPath, [string]$Payload = '{}', [Parameter(Mandatory)][string]$HomeDir, [hashtable]$Env = @{})
+    if (-not (Test-Path -LiteralPath $HookPath)) { throw "Invoke-BashHookEmptyPath: the hook '$HookPath' does not exist" }
+    $usrBash = Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin\bash.exe'
+    if (-not (Test-Path -LiteralPath $usrBash)) { throw "Invoke-BashHookEmptyPath: needs the non-wrapper Git Bash at $usrBash" }
+    $psi = [Diagnostics.ProcessStartInfo]::new($usrBash)
+    $psi.ArgumentList.Add(($HookPath -replace '\\', '/'))
+    $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $psi.Environment['PATH'] = ''
+    $psi.Environment['HOME'] = $HomeDir
+    foreach ($k in $Env.Keys) { $psi.Environment[$k] = $Env[$k] }
+    $p = [Diagnostics.Process]::Start($psi)
+    $p.StandardInput.Write($Payload); $p.StandardInput.Close()
+    $out = $p.StandardOutput.ReadToEnd(); $err = $p.StandardError.ReadToEnd(); $p.WaitForExit()
+    [pscustomobject]@{ StdOut = $out.Trim(); StdErr = $err.Trim(); ExitCode = $p.ExitCode }
+}

@@ -12,7 +12,9 @@
 # outcome) does not apply here: this records a fact the hook does know, that it already emitted.
 # Precedent and full rationale: agy-anomaly-capture-reminder.sh:49-53.
 set +e
-input=$(cat)
+# Branch 21 (ROADMAP section 59): the `read` builtin, not `cat`. Under an empty PATH `cat` printed its own
+# not-found noise on stderr (MEASURED 2026-10-07); the builtin is silent and costs no process.
+IFS= read -r -d '' input
 
 # --- jq guard. Without jq, fall back to a FIELD-BOUNDED grep on the RAW payload and, ONLY on a test-file
 # match, emit a loud hard-coded ASCII line so this is never a silent no-op. Kill-switch honored first. ---
@@ -27,14 +29,26 @@ if ! command -v jq >/dev/null 2>&1; then
   # used [Tt]ests?\.ps1, which fired on footests.ps1 and foo.Test.ps1 where the case stayed silent - the
   # degraded branch was MORE eager than the primary one, the exact direction the owner ruled against.
   # Anchor the separator before the stem and drop the optional s.
-  if printf '%s' "$input" | grep -Eq '"(file_path|path)"[[:space:]]*:[[:space:]]*"[^"]*([./\\][Tt]ests\.ps1|[Tt]ests\.cs|[Tt]est\.cs|_test\.(py|rs)|[./\\]test_[^"\\/]*\.(py|rs))"'; then
+  # Branch 21: the SAME ERE the grep used, now through the `[[ =~ ]]` builtin (no process, and no stderr noise
+  # from a missing grep under an empty PATH - ROADMAP section 59). Held in a variable so the quoting is not
+  # re-interpreted by the parser; the equivalence is pinned by the 'degraded predicate agrees' rows.
+  re_dg='"(file_path|path)"[[:space:]]*:[[:space:]]*"[^"]*([./\\][Tt]ests\.ps1|[Tt]ests\.cs|[Tt]est\.cs|_test\.(py|rs)|[./\\]test_[^"\\/]*\.(py|rs))"'
+  if [[ $input =~ $re_dg ]]; then
     # DEBOUNCE THE DEGRADED BRANCH TOO, ONCE PER SESSION. agy-after-reminder.sh's degraded branch emits on
     # every match because a spec/plan write is RARE. A test-file write is not - on this trigger an
     # undebounced warning is the high-frequency spam this discipline exists to remove, rebuilt one layer
     # down. One warning per session is enough to tell the operator the guard is inactive.
     [[ $input =~ \"session_id\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && dsid=${BASH_REMATCH[1]}
     dsid=${dsid//[^A-Za-z0-9_-]/}
-    [ -z "$dsid" ] && printf -v dsid 'day%(%Y%m%d)T' -1
+    if [ -z "$dsid" ]; then
+      # printf %(...)T needs bash >= 4.2; the stock macOS bash 3.2 prints nothing for it and leaves dsid EMPTY.
+      # CLAVITY_HOOK_BASH3 forces the fallback so the suite can exercise it on any bash.
+      if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 402)); then
+        printf -v dsid 'day%(%Y%m%d)T' -1
+      else
+        dsid="day$(date +%Y%m%d 2>/dev/null)"
+      fi
+    fi
     for _dc in "${TMPDIR:-/tmp}" "$HOME/.clavity-tmp"; do
       [ -d "$_dc" ] || mkdir -p "$_dc" 2>/dev/null
       _dw="$_dc/.clavity-assert-nojq-$dsid"
@@ -50,8 +64,12 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-fp=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.path // empty' 2>/dev/null)
-cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
+# ONE jq, the two fields joined by \u0001 (Branch 20 idiom). A raw regex is NOT safe here: a Write payload's
+# `content` field is user text that can legally contain `"file_path":"..."`, so the extraction must stay
+# scoped to `.tool_input`, which only jq can do.
+out=$(jq -j '(.tool_input.file_path // .tool_input.path // ""), "\u0001", (.cwd // ".")' <<<"$input" 2>/dev/null)
+fp=${out%%$'\001'*}
+cwd=${out#*$'\001'}
 [ -z "$fp" ] && exit 0
 
 # THE NORMALIZATION FORM MUST MATCH THE EXTRACTION SOURCE - see agy-after-reminder.sh:53-57. jq -r DECODES
@@ -103,8 +121,12 @@ sid=${sid//[^A-Za-z0-9_-]/}
 if [ -z "$sid" ]; then
   # NO-SESSION-ID BRANCH. Owner ruling 2026-08-08 accepted this fallback outright rather than probe for
   # the field. Degrade to per-day, NOT to per-edit: firing on every edit is the spam this discipline
-  # exists to avoid. printf %(...)T is a bash builtin - no subprocess.
-  printf -v sid 'day%(%Y%m%d)T' -1
+  # exists to avoid. printf %(...)T is a bash builtin - no subprocess - where bash >= 4.2 (gated, see below).
+  if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 402)); then
+    printf -v sid 'day%(%Y%m%d)T' -1
+  else
+    sid="day$(date +%Y%m%d 2>/dev/null)"
+  fi
 fi
 
 seen=""
@@ -122,7 +144,14 @@ for _cand in "${TMPDIR:-/tmp}" "$HOME/.clavity-tmp"; do
     seen=$_s
     # -mtime +30, NOT +7: the markers of a session that is still OPEN are as old as that session, and this
     # prune runs from a DIFFERENT session (agy-anomaly-capture-reminder.sh:103-106).
-    find "$_cand" -maxdepth 1 -name '.clavity-assert-*' -mtime +30 -delete 2>/dev/null
+    # Since Branch 21 the glob also sweeps the test-audit reminder's per-session debounce files (ROADMAP
+    # section 72): agy-test-audit-reminder.sh keeps one HEAD sha per session at
+    # ${TMPDIR:-/tmp}/claude-agy-test-audit-reminder.<sid>, and only a PreCompact in that SAME session deletes
+    # it, so every session that ends without compacting leaks one. This find already runs at most once per
+    # session, on the path that just proved the directory writable - widening its -name group costs ZERO
+    # processes, and a >30-day-old debounce belongs to a dead session (deleting it merely re-arms a reminder
+    # that session can no longer receive).
+    find "$_cand" -maxdepth 1 \( -name '.clavity-assert-*' -o -name 'claude-agy-test-audit-reminder.*' \) -mtime +30 -delete 2>/dev/null
     break
   fi
 done

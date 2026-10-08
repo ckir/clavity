@@ -84,13 +84,24 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
+# RAW-REGEX cwd first (Branch 21): the SessionStart payload's top-level fields carry no user content, so the
+# raw match cannot be spoofed (JSON escaping breaks a smuggled key - Branch 20, measured). The raw value keeps
+# its JSON escaping: collapse the doubled backslashes; and if removing every \\ pair still leaves a lone
+# backslash, the value carries an escape this read cannot decode (\u00e9, \t, \/, \") - pay the jq call for
+# that rare payload rather than resolving a wrong path silently.
+cwd=''
+[[ $input =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && cwd=${BASH_REMATCH[1]}
+_ar_probe=${cwd//\\\\/}
 # THE NORMALIZATION FORM MUST MATCH THE EXTRACTION SOURCE. jq -r DECODES the JSON escaping, so cwd holds
-# SINGLE backslashes here and the pattern is one escaped backslash; the degraded branch above reads the RAW
-# payload, where the DOUBLE backslashes survive, and needs ${cwd//\\\\//}. MEASURED 2026-08-05: the raw form
-# applied to a jq-decoded value matches nothing and leaves the path untouched - a silent no-op that looks
-# exactly like a working fix. Do NOT unify the two spellings.
-cwd_path=${cwd//\\//}
+# SINGLE backslashes there and the pattern is one escaped backslash; the raw read keeps the DOUBLE backslashes
+# and needs ${cwd//\\\\//}. MEASURED 2026-08-05: the raw form applied to a jq-decoded value matches nothing and
+# leaves the path untouched - a silent no-op that looks exactly like a working fix. Do NOT unify the spellings.
+if [[ $_ar_probe == *\\* ]]; then
+  cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
+  cwd_path=${cwd//\\//}
+else
+  cwd_path=${cwd//\\\\//}
+fi
 [ -z "$cwd_path" ] && cwd_path="."
 # A FILE as cwd is resolved to its DIRECTORY - see the note on the degraded path above. Here the miss was
 # masked for the kill-switch (no anomalies file under <file>/ either) but it also HID the root's anomalies.
@@ -154,15 +165,18 @@ f="$root/.clavity/local-anomalies.md"
 # the count coerces to zero, and the hook exits silently -- the exact indistinguishable-empty-result this
 # hook exists to prevent, reintroduced by the guard meant to prevent it. grep's contract is POSIX and
 # platform-independent: 0 = matched, 1 = matched nothing, anything greater = error.
-n=$(grep -c '^- \[[^]]*\]' "$f" 2>/dev/null)
-rc=$?
-if [ "$rc" -gt 1 ]; then
+# Branch 21: the probe is now an OPEN of the file (the redirect below), which consults Windows ACLs exactly as
+# grep's own open did - a failed open is the same oracle class as grep's exit code 2, just without a process.
+# NEVER WRITE THIS AS `if ! { :; } < "$f"`. MEASURED 2026-10-07 on an ACL-denied file: the negated form reports
+# "passed" (the failed redirect is swallowed by the `!`) while the plain form reports the failure - so the negated
+# probe would have turned an unreadable file into the silent zero this hook exists to prevent.
+if { :; } 2>/dev/null < "$f"; then
+  :
+else
   msg="[AGY-ANOMALIES] $f exists but cannot be read - untriaged anomalies NOT counted"
   jq -nc --arg m "$msg" '{systemMessage:$m,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
   exit 0
 fi
-[ -z "$n" ] && n=0
-[ "$n" -eq 0 ] && exit 0
 
 # Read the capture date from its FIELD, not from anywhere on the line. The format is
 #   - [type] fact * where * DATE * task=...
@@ -175,9 +189,31 @@ fi
 # counting from the LEFT breaks when the fact contains " * "; counting from the RIGHT with $(NF-1) breaks
 # when the task does ("task=investigating * timeout" silently yields no date). Anchoring survives both,
 # because task= is the only field with a fixed marker.
-oldest=$(grep '^- \[[^]]*\]' "$f" 2>/dev/null \
-  | awk -F' [*] ' '{ for (i=1; i<=NF; i++) if ($i ~ /^task=/) { print $(i-1); break } }' \
-  | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' | sort | head -1)
+#
+# ONE builtin pass (Branch 21) counts the entries and tracks the oldest capture date: the fields are split on
+# ' * ' with parameter expansion, the date is the field BEFORE the first `task=` field, and the minimum is a
+# string compare - correct because the date is validated as YYYY-MM-DD first.
+n=0; oldest=''
+re_entry='^- \[[^]]*\]'
+re_date='^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+while IFS= read -r line || [ -n "$line" ]; do
+  [[ $line =~ $re_entry ]] || continue
+  n=$((n + 1))
+  rest=$line; prev=''; d=''
+  while :; do
+    case "$rest" in
+      *' * '*) field=${rest%%' * '*}; rest=${rest#*' * '} ;;
+      *)       field=$rest;           rest='' ;;
+    esac
+    case "$field" in task=*) d=$prev; break ;; esac
+    prev=$field
+    [ -z "$rest" ] && break
+  done
+  if [[ $d =~ $re_date ]]; then
+    if [ -z "$oldest" ] || [[ $d < $oldest ]]; then oldest=$d; fi
+  fi
+done 2>/dev/null < "$f"
+[ "$n" -eq 0 ] && exit 0
 [ -n "$oldest" ] && oldest=" (oldest $oldest)"
 
 # Name the RESOLVED path, not a relative one. The reader may have started the session in a subdirectory,

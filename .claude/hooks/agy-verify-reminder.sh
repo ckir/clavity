@@ -14,10 +14,22 @@
 # unrecognised status cell, zero parsed rows) NAGS rather than exiting silently: a gate that
 # goes quiet while it cannot see is the defect this file exists to prevent.
 set +e
-input=$(cat 2>/dev/null)
+# Branch 21: the `read` builtin, not `cat` - no process on a path that runs at every session start.
+IFS= read -r -d '' input
 command -v jq >/dev/null 2>&1 || exit 0
 
-cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+# Branch 21: cwd from the RAW payload with a regex. A SessionStart payload carries no user-content field, so the raw
+# match cannot be fooled by text inside one. But a repo path with a non-ASCII character arrives as \uXXXX, which only
+# jq decodes: raw-only would turn this hook SILENT for such a repo where it works today. So a value still carrying a
+# JSON escape (a backslash left after collapsing the doubled path separators) falls back to jq.
+cwd=''
+[[ $input =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && cwd=${BASH_REMATCH[1]}
+_vr_probe=${cwd//\\\\/}
+if [[ $_vr_probe == *\\* ]]; then
+  cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+else
+  cwd=${cwd//\\\\//}
+fi
 [ -z "$cwd" ] && exit 0
 
 assertions="$cwd/agy-autotrain/verify/assertions.md"
@@ -32,7 +44,12 @@ elif [ -x "${LOCALAPPDATA:-}/agy/bin/agy.exe" ]; then
 fi
 [ -z "$agy_bin" ] && exit 0         # agy not installed here -> nothing to verify against
 
-live=$(timeout 8 "$agy_bin" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+# Branch 21: the version is picked with `[[ =~ ]]` instead of `grep -oE | head -1`. bash returns the LEFTMOST match,
+# the same first match the pipe took, so a `--version` line carrying two x.y.z tokens still yields the first.
+_vr_out=$(timeout 8 "$agy_bin" --version 2>/dev/null)
+live=''
+re_ver='([0-9]+\.[0-9]+\.[0-9]+)'
+[[ $_vr_out =~ $re_ver ]] && live=${BASH_REMATCH[1]}
 [ -z "$live" ] && exit 0            # could not read a version -> fail-open silent
 
 emit() {

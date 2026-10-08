@@ -331,6 +331,40 @@ Describe 'agy-anomaly-reminder.sh' {
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # BRANCH 21 (Task 4). cwd is now read from the RAW payload with a regex; a value carrying a JSON escape the raw read cannot
+    # decode (\u00e9, \t, \/, \") must fall back to jq, or the hook resolves a WRONG path and the workspace's anomalies vanish into
+    # the silent zero. 7 entries on purpose: a wrong path falls back to the PROCESS directory, which is this repo, and this repo's own
+    # inbox must not be able to produce the same count by accident.
+    It 'resolves a cwd carrying a \u escape through the jq fallback and still counts its anomalies' {
+        $e = [string][char]0xE9
+        $d = Join-Path ([IO.Path]::GetTempPath()) ("anom-$e-" + [Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path (Join-Path $d '.clavity') -Force | Out-Null
+        $lines = 1..7 | ForEach-Object { "- [defect] n$_ * a.cs:1 * 2026-07-2$($_ % 10) * task=z" }
+        Set-Content (Join-Path $d '.clavity/local-anomalies.md') ((@('# Untriaged anomalies (gitignored, local)', '') + $lines) -join "`n") -Encoding ascii
+        $h = New-CleanHome
+        try {
+            $cwd = ($d -replace '\\', '/').Replace($e, '\u00e9')
+            $payload = '{"cwd":"' + $cwd + '","source":"startup","hook_event_name":"SessionStart"}'
+            $payload | Should -Match '\\u00e9' -Because 'the fixture must carry a JSON \u escape, or this row exercises the raw arm and proves nothing'
+            $r = Invoke-Hook -Payload $payload -Env @{ HOME = $h }
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match '7 untriaged \(oldest 2026-07-21\)'
+        } finally { Remove-Item $d,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'reads the oldest date from the field before task=, even when the fact and the task both contain " * "' {
+        $w = New-Workspace @(
+            '- [defect] the fact has a * star * here * src/a.cs:1 * 2026-09-10 * task=left * right',
+            '- [tool] 2024-01-01 appears in the prose only * n/a * 2026-08-03 * task=y',
+            '- [defect] task= is the FIRST field so there is no date * 2026-01-01'
+        )
+        $h = New-CleanHome
+        try {
+            $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
+            $r.StdOut | Should -Match '3 untriaged \(oldest 2026-08-03\)' -Because 'a date in the prose, a "task=" first field or a star inside the fact or task must not change the answer'
+        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'REPORTS the count and demands triage when entries exist' {
         $w = New-Workspace @(
             '- [defect] ParseLatest never checks the pid pair matches * LsDiscovery.cs:94 * 2026-07-30 * task=capstone',

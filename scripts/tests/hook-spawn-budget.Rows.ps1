@@ -12,18 +12,11 @@ $script:HookCeiling = 13
 $script:ConsultPin = @{ PreMcp = 111; PreAsk = 114; PreSend = 117; PostMcp = 114; PostAsk = 117; PostAwait = 126 }
 
 # BRANCH 21 DEBT (owner ruling O3): census-measured paths of the eight hooks Branch 21 fixes, totals INCLUDING
-# the 3 boot processes. The suite's debt row stays RED while this list is non-empty. Branch 21 removes each
-# entry in the same commit that adds a passing budget row for that path.
-$script:B21Debt = @(
-    @{ Hook = 'agy-inbox-snapshot.sh';          Path = 'curate skill matched, 20 existing baks (snapshot + prune 16)'; Total = 67 }
-    @{ Hook = 'agy-discipline-reaching.sh';     Path = 'shield .gitignore carries a ! negation';                    Total = 36 }
-    @{ Hook = 'agy-anomaly-reminder.sh';        Path = 'one untriaged entry';                                       Total = 23 }
-    @{ Hook = 'agy-verify-reminder.sh';         Path = 'agy on PATH, assertion rows stale';                         Total = 24 }
-    @{ Hook = 'docs-audit-reminder.sh';         Path = 'generated findings view with open findings';                Total = 22 }
-    @{ Hook = 'assertion-strength-reminder.sh'; Path = 'TMPDIR unusable, HOME/.clavity-tmp fallback';               Total = 21 }
-    @{ Hook = 'fetch-clavity-ls.sh';            Path = 'binary installed, stamp matches (steady state)';            Total = 17 }
-    @{ Hook = 'migrate-inbox.sh';               Path = 'recover an interrupted migration';                          Total = 17 }
-)
+# the 3 boot processes. The suite's debt row stays RED while this list is non-empty. Branch 21 removed each
+# entry in the same commit that added a passing budget row for that path; the LAST one went with Task 9
+# (2026-10-08), so the list is EMPTY and the debt row is green. It is kept, empty, so the row stays a live gate:
+# a future hook that cannot meet the ceiling is recorded here, visibly, rather than skipped.
+$script:B21Debt = @()
 
 function New-HookFixture {
     # A throwaway repo, home and TMPDIR. -NoGit: the repo dir is a plain folder. -NoClavity: no .clavity/
@@ -103,6 +96,35 @@ function New-BudgetRow {
     # -Verify: an EFFECT check run after the hook, for a path whose output is silent - a silent row alone
     # cannot tell "did its work" from "exited early" (agy panel R1).
     @{ Hook = $Hook; Name = $Name; Setup = $Setup; Fixture = $Fixture; HookArgs = $HookArgs; Max = $Max; Expect = $Expect; Silent = [bool]$Silent; Verify = $Verify }
+}
+
+function Add-FxInbox {
+    # The canonical inbox lives in the FIXTURE home (${USERPROFILE:-$HOME} -> $fx.Home), never the real one.
+    param($Fx, [int]$Baks = 0, [switch]$EmptyPending)
+    $d = Join-Path $Fx.Home '.clavity'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+    $obs = Join-Path $d 'agy-observations.md'
+    $body = "# agy observations inbox (raw, project-agnostic)`n`nprose`n`n## Pending`n`n"
+    if (-not $EmptyPending) { $body += "- [heuristic] (driver/probabilistic) a rule * ``[corpus]`` * 2026-10-01 * agy 1.3.1`n" }
+    [IO.File]::WriteAllText($obs, $body)
+    for ($i = 1; $i -le $Baks; $i++) {
+        $p = '{0}.202601{1:d2}-000000.bak' -f $obs, $i
+        [IO.File]::WriteAllText($p, "old $i")
+        # Distinct ascending mtimes: index 1 is the OLDEST. Ordering is mtime (fork 1C), not name.
+        [IO.File]::SetLastWriteTimeUtc($p, [datetime]::UtcNow.AddMinutes($i - $Baks - 5))
+    }
+    $obs
+}
+function Get-FxBaks { param($Fx) @(Get-ChildItem -LiteralPath (Join-Path $Fx.Home '.clavity') -Filter 'agy-observations.md.*.bak' -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object Name) }
+
+function Set-FxShield {
+    # $Text = $null -> .clavity exists with NO .gitignore; otherwise the shield holds exactly $Text.
+    # New-HookFixture ALREADY writes .clavity/.gitignore = '*' (panel R1, measured): the $null case must
+    # DELETE it, or the "shield MISSING" row silently measures the healthy path instead.
+    param($Fx, $Text)
+    $d = Join-Path $Fx.Repo '.clavity'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+    $g = Join-Path $d '.gitignore'
+    if ($null -eq $Text) { Remove-Item -LiteralPath $g -Force -ErrorAction SilentlyContinue }
+    else { [IO.File]::WriteAllText($g, $Text) }
 }
 
 $D = 'clavity-dotnet/plugin/hooks'; $C = 'clavity-classic/plugin/hooks'; $A = 'agy-autotrain/hooks'; $L = '.claude/hooks'
@@ -281,8 +303,8 @@ $script:Rows = @(
     }
 
     # --- agy-curate-nudge.sh (agy-autotrain, SessionStart) ---
-    New-BudgetRow "$A/agy-curate-nudge.sh" 'inbox missing' { param($fx) New-SessionStartPayload $fx } -Silent
-    New-BudgetRow "$A/agy-curate-nudge.sh" 'worst: snooze expired + 16 recent entries' {
+    New-BudgetRow "$A/agy-curate-nudge.sh" 'inbox missing' -Max 3 { param($fx) New-SessionStartPayload $fx } -Silent
+    New-BudgetRow "$A/agy-curate-nudge.sh" 'worst: snooze expired + 16 recent entries' -Max 9 {
         param($fx)
         $today = (Get-Date).ToString('yyyy-MM-dd'); $dot = [char]0x00B7
         $bullets = (1..16 | ForEach-Object { "- [heuristic] (driver/probabilistic) rule $_  $dot  ``[corpus]`` $dot $today $dot agy 1.0.0" }) -join "`n"
@@ -292,11 +314,95 @@ $script:Rows = @(
     } -Expect 'agy-curate is OVERDUE'   # 16 >= 2 x threshold 8 takes the OVERDUE message (agy-curate-nudge.sh:80), not the nudge
 
     # --- every other registered hook: its default path (Branch 21 adds the worst paths) ---
-    New-BudgetRow "$D/agy-anomaly-dispatch-reminder.sh" 'Agent dispatch' { param($fx) New-ToolPayload $fx 'Agent' @{ prompt = 'x' } } -Expect 'AGY-ANOMALIES/1 relay'
-    New-BudgetRow "$D/assertion-strength-reminder.sh" 'non-test Edit' { param($fx) New-ToolPayload $fx 'Edit' @{ file_path = "$($fx.RepoFwd)/src/a.cs" } } -Silent
-    New-BudgetRow "$D/agy-anomaly-reminder.sh" 'startup, nothing captured' { param($fx) New-SessionStartPayload $fx } -Silent
-    New-BudgetRow "$D/agy-anomaly-model-notice.sh" 'startup' { param($fx) New-SessionStartPayload $fx } -Silent
-    New-BudgetRow "$D/agy-discipline-reaching.sh" 'startup, shield intact' { param($fx) New-SessionStartPayload $fx } -Silent
+    New-BudgetRow "$D/agy-anomaly-dispatch-reminder.sh" 'Agent dispatch' -Max 6 { param($fx) New-ToolPayload $fx 'Agent' @{ prompt = 'x' } } -Expect 'AGY-ANOMALIES/1 relay'
+    New-BudgetRow "$D/assertion-strength-reminder.sh" 'non-test Edit' -Max 3 { param($fx) New-ToolPayload $fx 'Edit' @{ file_path = "$($fx.RepoFwd)/src/a.cs" } } -Silent
+    # --- assertion-strength-reminder.sh: the Branch 21 census paths ---
+    # PINNED AT THE MEASURED COUNTS (2026-10-07, two runs identical), not at the shared ceiling of 13: the hook is the
+    # hottest one this plugin has (every test-file write), and at 13 a reintroduced `cat`, `grep` or second `jq`
+    # would still be green. Before Branch 21: first touch 14, TMPDIR-unusable 18, non-test 10.
+    New-BudgetRow "$D/assertion-strength-reminder.sh" 'test file, FIRST touch of the session -> marker + prune + emit' {
+        param($fx) New-ToolPayload $fx 'Write' @{ file_path = ($fx.RepoFwd + '/scripts/tests/x.Tests.ps1'); content = 'x' } } -Max 7 -Expect 'ASSERTION-STRENGTH'
+    # Capstone R3 (mutant: force the bash<4.2 `date` fallback always - no row reached the day-key site, so it stayed green). With no
+    # session_id the marker is keyed by the day, the one place the builtin clock replaces `date`. Measured 10 total = 7 beyond boot.
+    New-BudgetRow "$D/assertion-strength-reminder.sh" 'test file, no session_id (day-key marker: builtin clock, no date fork)' {
+        param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; tool_name = 'Write'; tool_input = @{ file_path = ($fx.RepoFwd + '/scripts/tests/x.Tests.ps1'); content = 'x' } } } -Max 7 -Expect 'ASSERTION-STRENGTH'
+    New-BudgetRow "$D/assertion-strength-reminder.sh" 'TMPDIR unusable -> HOME/.clavity-tmp fallback still emits' {
+        param($fx)
+        [IO.File]::WriteAllText((Join-Path $fx.Root 'blockfile'), 'x')
+        $fx.Env.TMPDIR = (($fx.Root -replace '\\', '/') + '/blockfile/sub')   # parent is a FILE: unusable
+        New-ToolPayload $fx 'Write' @{ file_path = ($fx.RepoFwd + '/scripts/tests/x.Tests.ps1'); content = 'x' } } -Max 11 -Expect 'ASSERTION-STRENGTH'
+    New-BudgetRow "$D/assertion-strength-reminder.sh" 'non-test file (the hottest path, silent)' {
+        param($fx) New-ToolPayload $fx 'Write' @{ file_path = ($fx.RepoFwd + '/src/a.cs'); content = 'x' } } -Max 3 -Silent
+    New-BudgetRow "$D/agy-anomaly-reminder.sh" 'startup, nothing captured' -Max 0 { param($fx) New-SessionStartPayload $fx } -Silent
+    # --- agy-anomaly-reminder.sh: the Branch 21 census paths (the hook EMITS, so -Expect works under the PP1 JSON check) ---
+    # TIGHT ON PURPOSE (Max 2 = the one jq that builds the envelope): every other step is a builtin, and at the shared
+    # ceiling of 13 a reintroduced grep or awk would still pass. Measured 2 on 2026-10-07 (it was 20 before Branch 21).
+    New-BudgetRow "$D/agy-anomaly-reminder.sh" '3 untriaged with dates -> EMIT the oldest' -Max 2 {
+        param($fx)
+        $d = Join-Path $fx.Repo '.clavity'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+        @('# Untriaged anomalies (local, never committed)', '',
+          '- [defect] a * src/a.rs:1 * 2026-09-01 * task=x',
+          '- [tool] b * n/a * 2026-08-15 * task=y',
+          '- [process] c * n/a * 2026-09-20 * task=z') | Set-Content -LiteralPath (Join-Path $d 'local-anomalies.md')
+        New-SessionStartPayload $fx } -Expect '3 untriaged (oldest 2026-08-15)'
+    New-BudgetRow "$D/agy-anomaly-reminder.sh" '50 untriaged (scaling: the count loop is builtin)' -Max 2 {
+        param($fx)
+        $d = Join-Path $fx.Repo '.clavity'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+        $lines = @('# Untriaged anomalies (local, never committed)', '') + (1..50 | ForEach-Object { "- [defect] n$_ * n/a * 2026-09-0$(1 + ($_ % 8)) * task=t" })
+        $lines | Set-Content -LiteralPath (Join-Path $d 'local-anomalies.md')
+        New-SessionStartPayload $fx } -Expect '50 untriaged'
+    New-BudgetRow "$D/agy-anomaly-model-notice.sh" 'startup' -Max 4 { param($fx) New-SessionStartPayload $fx } -Silent
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'startup, shield intact' -Max 2 { param($fx) New-SessionStartPayload $fx } -Silent
+    # --- agy-discipline-reaching.sh + the shared agy-shield-lib.sh: the Branch 21 census paths ---
+    # TIGHT ON PURPOSE (Max 2 = the single check-ignore): the two glob gates are what keep the sweep find and the
+    # say-prune find from running on a healthy repository, and each find costs 2 - at the shared ceiling of 13 an
+    # ungated find would still pass, so a regression to ungated finds is invisible. Measured 2 on 2026-10-07.
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'normal FIRST session (shield ok, sweep latch, row written)' -Max 2 {
+        param($fx) Set-FxShield $fx "*`n"; New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Join-Path $fx.Repo '.clavity/discipline-reaching.jsonl') | Should -Exist }
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'shield file MISSING -> created with *' -Max 2 {
+        param($fx) Set-FxShield $fx $null; New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Get-Content -LiteralPath (Join-Path $fx.Repo '.clavity/.gitignore') -Raw) | Should -Match '\*' }
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'shield lacks * -> appended' -Max 2 {
+        param($fx) Set-FxShield $fx "foo.txt`n"; New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) @(Get-Content -LiteralPath (Join-Path $fx.Repo '.clavity/.gitignore')) -contains '*' | Should -BeTrue }
+    # THE ONE NAMED EXEMPTION of Branch 21 (owner ruling 2026-10-07, agreed with agy): the first run that meets a
+    # `!` negation PREPENDS `*` (mktemp + cat + mv, section 41, deliberately untouched) and measures 14 beyond boot,
+    # one over the 13 allowed. It happens once per shield file per repository; every later run takes the recurring
+    # path below (7 or 9). The plan predicted 12 - its arithmetic was wrong. Max is 14 EXACTLY: a regression on
+    # this path fails here, it is not hidden by the exemption.
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'shield has a ! negation -> PREPEND, first session (one-time exemption, Max 14)' -Max 14 {
+        param($fx) Set-FxShield $fx "!discipline-reaching.jsonl`n"; New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) $s = @(Get-Content -LiteralPath (Join-Path $fx.Repo '.clavity/.gitignore'))
+        $s[0] | Should -BeExactly '*'; $s[1] | Should -BeExactly '!discipline-reaching.jsonl' }
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'shield already * + ! negation, REPEAT session (swept marker present)' -Max 9 {
+        param($fx) Set-FxShield $fx "*`n!discipline-reaching.jsonl`n"
+        New-Item -ItemType File -Path (Join-Path $fx.Repo '.clavity/.clavity-shield-swept-s1') | Out-Null
+        New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Get-Content -LiteralPath (Join-Path $fx.Repo '.clavity/.gitignore'))[0] | Should -BeExactly '*' }
+    # Max 4 = check-ignore + ls-files; tight for the same reason (the say-prune find must stay gated). Measured 4.
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'jsonl TRACKED by git -> persistent message, marker written' -Max 4 {
+        param($fx) Set-FxShield $fx "*`n"
+        [IO.File]::WriteAllText((Join-Path $fx.Repo '.clavity/discipline-reaching.jsonl'), "{}`n")
+        Invoke-FxGit $fx add --force .clavity/discipline-reaching.jsonl   # NOT -f: PowerShell binds it to -Fx
+        New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Join-Path $fx.Repo '.clavity/.clavity-shield-persistent-s1') | Should -Exist }
+    # LONG-LIVED REPO variants (panel R1): a real repository carries OTHER sessions' markers, so the glob
+    # gates PASS and both finds run - the cheapest-fixture rows above cannot see that cost.
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'long-lived repo: the FIRST-prepend run with old markers present (one-time exemption, Max 14)' -Max 14 {
+        param($fx) Set-FxShield $fx "!discipline-reaching.jsonl`n"
+        foreach ($k in 'old1', 'old2') { New-Item -ItemType File -Path (Join-Path $fx.Repo ".clavity/.clavity-shield-swept-$k") | Out-Null }
+        New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Get-Content -LiteralPath (Join-Path $fx.Repo '.clavity/.gitignore'))[0] | Should -BeExactly '*' }
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'long-lived repo: a NEW session on the recurring ! negation path (old markers present)' -Max 9 {
+        param($fx) Set-FxShield $fx "*`n!discipline-reaching.jsonl`n"
+        foreach ($k in 'old1', 'old2') { New-Item -ItemType File -Path (Join-Path $fx.Repo ".clavity/.clavity-shield-swept-$k") | Out-Null }
+        New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Join-Path $fx.Repo '.clavity/.clavity-shield-swept-s1') | Should -Exist }
+    New-BudgetRow "$D/agy-discipline-reaching.sh" 'long-lived repo: a NEW session, healthy shield (old markers present)' -Max 4 {
+        param($fx) foreach ($k in 'old1', 'old2') { New-Item -ItemType File -Path (Join-Path $fx.Repo ".clavity/.clavity-shield-swept-$k") | Out-Null }
+        New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx) (Join-Path $fx.Repo '.clavity/.clavity-shield-swept-s1') | Should -Exist }
     New-BudgetRow "$D/agy-anomaly-capture-reminder.sh" 'PreCompact' { param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'PreCompact'; trigger = 'manual' } } -Expect 'AGY-ANOMALIES/1 check BEFORE COMPACTION'
     New-BudgetRow "$D/agy-anomaly-capture-reminder.sh" 'PreCompact re-arming a test-audit debounce' {
         param($fx)
@@ -304,15 +410,121 @@ $script:Rows = @(
         ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'PreCompact'; trigger = 'manual' }
     } -Expect 'AGY-ANOMALIES/1 check BEFORE COMPACTION'
     New-BudgetRow "$D/agy-anomaly-capture-reminder.sh" 'UserPromptSubmit' { param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'UserPromptSubmit'; prompt = 'hi' } } -HookArgs @('UserPromptSubmit') -Silent
-    New-BudgetRow "$D/fetch-clavity-ls.sh" 'not a plugin context' { param($fx) New-SessionStartPayload $fx } -Silent
+    New-BudgetRow "$D/fetch-clavity-ls.sh" 'not a plugin context' -Max 0 { param($fx) New-SessionStartPayload $fx } -Silent
+    # --- fetch-clavity-ls.sh: the Branch 21 census paths, PINNED at the measured counts (2026-10-07; before: steady state 14,
+    # lookup fails 18, lookup empty 26). The plan called a steady-state row "existing"; only the
+    # not-a-plugin-context row was (measured 2026-10-07), so all three are added here. The fake curl is a SHELL FUNCTION
+    # in a BASH_ENV file, NOT an executable on PATH: the first draft dropped a copy of false.exe in a PREPENDED directory
+    # and the lookup row came back 'no release asset named ...win-x64...' - Git Bash reorders PATH, the REAL curl won, and
+    # the row was hitting the live GitHub API. A function cannot be shadowed. Each lookup row's -Expect is what proves the
+    # fake ran. The function costs no process, so the pinned counts are the hook's own. ---
+    New-BudgetRow "$D/fetch-clavity-ls.sh" 'binary installed, stamp matches (steady state)' {
+        param($fx)
+        $bin = Join-Path $fx.Root 'data/bin'; New-Item -ItemType Directory -Force -Path $bin, (Join-Path $fx.Root 'root') | Out-Null
+        [IO.File]::WriteAllText((Join-Path $fx.Root 'root/plugin.json'), '{"version":"9.9.9"}')
+        [IO.File]::WriteAllText((Join-Path $bin 'clavity-ls.exe'), 'BIN'); [IO.File]::WriteAllText((Join-Path $bin '.clavity-ls.version'), '9.9.9')
+        $fx.Env.CLAUDE_PLUGIN_DATA = (($fx.Root -replace '\\', '/') + '/data'); $fx.Env.CLAUDE_PLUGIN_ROOT = (($fx.Root -replace '\\', '/') + '/root')
+        New-SessionStartPayload $fx } -Max 0 -Silent
+    New-BudgetRow "$D/fetch-clavity-ls.sh" 'release lookup FAILS (fake curl = false) -> manual-install note' {
+        param($fx)
+        New-Item -ItemType Directory -Force -Path (Join-Path $fx.Root 'root') | Out-Null
+        $be = Join-Path $fx.Root 'fake-curl.sh'; [IO.File]::WriteAllText($be, "curl() { return 22; }`n")
+        [IO.File]::WriteAllText((Join-Path $fx.Root 'root/plugin.json'), '{"version":"9.9.9"}')
+        $fx.Env.CLAUDE_PLUGIN_DATA = (($fx.Root -replace '\\', '/') + '/data'); $fx.Env.CLAUDE_PLUGIN_ROOT = (($fx.Root -replace '\\', '/') + '/root')
+        $fx.Env.BASH_ENV = ($be -replace '\\', '/')
+        New-SessionStartPayload $fx } -Max 1 -Expect 'release lookup failed'
+    New-BudgetRow "$D/fetch-clavity-ls.sh" 'lookup EMPTY (fake curl = true, jq present) -> no-asset note' {
+        param($fx)
+        New-Item -ItemType Directory -Force -Path (Join-Path $fx.Root 'root') | Out-Null
+        $be = Join-Path $fx.Root 'fake-curl.sh'; [IO.File]::WriteAllText($be, "curl() { return 0; }`n")
+        [IO.File]::WriteAllText((Join-Path $fx.Root 'root/plugin.json'), '{"version":"9.9.9"}')
+        $fx.Env.CLAUDE_PLUGIN_DATA = (($fx.Root -replace '\\', '/') + '/data'); $fx.Env.CLAUDE_PLUGIN_ROOT = (($fx.Root -replace '\\', '/') + '/root')
+        $fx.Env.BASH_ENV = ($be -replace '\\', '/')
+        New-SessionStartPayload $fx } -Max 9 -Expect 'no release asset named'
     New-BudgetRow "$D/clavity-dotnet-setup.sh" 'not a plugin context' { param($fx) New-SessionStartPayload $fx } -Silent
-    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'non-curate skill' { param($fx) New-ToolPayload $fx 'Skill' @{ skill = 'dataviz' } } -Silent
-    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'UserPromptSubmit, ordinary prompt' { param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'UserPromptSubmit'; prompt = 'hi' } } -Silent
-    New-BudgetRow "$A/migrate-inbox.sh" 'nothing to migrate' { param($fx) New-SessionStartPayload $fx } -Silent
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'non-curate skill' -Max 0 { param($fx) New-ToolPayload $fx 'Skill' @{ skill = 'dataviz' } } -Silent
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'UserPromptSubmit, ordinary prompt' -Max 0 { param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'UserPromptSubmit'; prompt = 'hi' } } -Silent
+    # --- agy-inbox-snapshot.sh: the Branch 21 census paths (PreToolUse Skill + UserPromptSubmit) ---
+    # PINNED AT THE MEASURED COUNTS (2026-10-08, capstone R4: forcing the bash<4.2 `date` fallback always, +2 processes on the
+    # rotating paths, stayed green under the shared ceiling of 13). Totals measured 3 / 7 / 11 including boot, r1 == r2.
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, steady state: 5 baks -> snapshot + prune 1' -Max 8 {
+        param($fx) [void](Add-FxInbox $fx -Baks 5); New-ToolPayload $fx 'Skill' @{ skill = 'agy-autotrain:agy-curate' } } -Silent -Verify {
+        param($fx) $left = Get-FxBaks $fx; $left.Count | Should -Be 5
+        # IDENTITY, not count (test-audit B21 R1, MG-1): with ONE surplus slot a prune that deleted the wrong file - the fresh
+        # snapshot, or a newer old slot - still leaves five. Slot 01 is the OLDEST (see Add-FxInbox) and must be the one that went.
+        ($left -match '20260101-000000').Count | Should -Be 0
+        foreach ($n in 2..5) { ($left -match ('202601{0:d2}-000000' -f $n)).Count | Should -Be 1 }
+        # The new snapshot is the one name that is none of the five fixtures.
+        ($left -notmatch '202601\d\d-000000').Count | Should -Be 1 }
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, 20 baks -> snapshot + prune 16 in ONE rm' -Max 8 {
+        param($fx) [void](Add-FxInbox $fx -Baks 20); New-ToolPayload $fx 'Skill' @{ skill = 'agy-autotrain:agy-curate' } } -Silent -Verify {
+        param($fx) $left = Get-FxBaks $fx; $left.Count | Should -Be 5
+        # IDENTITY, not count: the survivors are the four NEWEST old slots (17..20) plus the new snapshot.
+        foreach ($n in 17..20) { ($left -match ('202601{0:d2}-000000' -f $n)).Count | Should -Be 1 } }
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate via UserPromptSubmit prompt, no baks -> first snapshot' -Max 4 {
+        param($fx) [void](Add-FxInbox $fx); ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'UserPromptSubmit'; prompt = '/agy-curate' } } -Silent -Verify {
+        param($fx) (Get-FxBaks $fx).Count | Should -Be 1 }
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, newest bak identical -> dedup, no rotate' -Max 4 {
+        param($fx) $obs = Add-FxInbox $fx; Copy-Item -LiteralPath $obs -Destination "$obs.20260101-000000.bak"
+        New-ToolPayload $fx 'Skill' @{ skill = 'agy-autotrain:agy-curate' } } -Silent -Verify {
+        param($fx) (Get-FxBaks $fx).Count | Should -Be 1 }
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, Pending empty -> invariant 2 refuses, silent' -Max 0 {
+        param($fx) [void](Add-FxInbox $fx -EmptyPending); New-ToolPayload $fx 'Skill' @{ skill = 'agy-autotrain:agy-curate' } } -Silent -Verify {
+        param($fx) (Get-FxBaks $fx).Count | Should -Be 0 }
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'non-curate prompt (hot path, silent)' -Max 0 {
+        param($fx) [void](Add-FxInbox $fx); ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'UserPromptSubmit'; prompt = 'hello' } } -Silent -Verify {
+        param($fx) (Get-FxBaks $fx).Count | Should -Be 0 }
+    New-BudgetRow "$A/migrate-inbox.sh" 'nothing to migrate' { param($fx) New-SessionStartPayload $fx } -Max 0 -Silent
+    # --- migrate-inbox.sh: the Branch 21 census path, PINNED at the measured count (2026-10-08; before: recover 14, nothing-to-migrate 1). The hook prints its "migrated" line to STDERR, so
+    # stdout is empty and -Silent + -Verify is the honest shape: the Verify proves the move really happened. ---
+    New-BudgetRow "$A/migrate-inbox.sh" 'RECOVER an interrupted migration (sidecar back, then complete)' {
+        param($fx)
+        $old = Join-Path $fx.Root 'lad/Programs/agy-autotrain/plugins/agy-autotrain/knowledge'
+        New-Item -ItemType Directory -Force -Path $old | Out-Null
+        [IO.File]::WriteAllText((Join-Path $old 'agy-observations.md.migrated-14g'), "- [h] rescued`n")
+        $fx.Env.LOCALAPPDATA = (Join-Path $fx.Root 'lad')
+        New-SessionStartPayload $fx } -Silent -Verify {
+        param($fx)
+        $new = Join-Path $fx.Home '.clavity/agy-observations.md'
+        $new | Should -Exist
+        (Get-Content -LiteralPath $new -Raw) | Should -Match 'rescued' } -Max 6
     New-BudgetRow "$A/agy-learn-reminder.sh" 'SessionStart' { param($fx) New-SessionStartPayload $fx } -HookArgs @('SessionStart') -Expect 'agy-autotrain is active'
     New-BudgetRow "$A/agy-learn-reminder.sh" 'PreCompact' { param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'PreCompact'; trigger = 'manual' } } -HookArgs @('PreCompact') -Expect 'agy-LEARN check BEFORE COMPACTION'
-    New-BudgetRow "$L/agy-verify-reminder.sh" 'not the clavity repo' { param($fx) New-SessionStartPayload $fx } -Silent
-    New-BudgetRow "$L/docs-audit-reminder.sh" 'no findings view' { param($fx) New-SessionStartPayload $fx } -Silent
+    New-BudgetRow "$L/agy-verify-reminder.sh" 'not the clavity repo' { param($fx) New-SessionStartPayload $fx } -Max 0 -Silent
+    # --- agy-verify-reminder.sh: the Branch 21 census paths, PINNED at the measured counts (2026-10-07; before: stale 21,
+    # current 19, not-the-repo 7). A FAKE agy keeps the count deterministic - the real agy's
+    # child-process count floats with its version. New-HookFixture's Env carries NO PATH key (measured, panel R1), so
+    # these rows PREPEND to the session's $env:PATH: prepending to $fx.Env.PATH would hand the hook a PATH holding only
+    # the fake directory and silently drop jq and every real tool. ---
+    New-BudgetRow "$L/agy-verify-reminder.sh" 'stale rows -> EMIT (fake agy on PATH)' {
+        param($fx)
+        $v = Join-Path $fx.Repo 'agy-autotrain/verify'; New-Item -ItemType Directory -Force -Path $v, (Join-Path $fx.Root 'fakebin') | Out-Null
+        @('| id | dotnet | classic |', '|----|--------|---------|', '| A1 | PASS 1.0.0 | N/A |') | Set-Content -LiteralPath (Join-Path $v 'assertions.md')
+        [IO.File]::WriteAllText((Join-Path $fx.Root 'fakebin/agy'), "#!/bin/sh`necho agy 9.9.9`n")
+        $fx.Env.PATH = ((Join-Path $fx.Root 'fakebin') + ';' + $env:PATH)
+        New-SessionStartPayload $fx } -Max 10 -Expect 'VERIFY-HARNESS reminder'
+    New-BudgetRow "$L/agy-verify-reminder.sh" 'all rows current -> silent (fake agy on PATH)' {
+        param($fx)
+        $v = Join-Path $fx.Repo 'agy-autotrain/verify'; New-Item -ItemType Directory -Force -Path $v, (Join-Path $fx.Root 'fakebin') | Out-Null
+        @('| id | dotnet | classic |', '|----|--------|---------|', '| A1 | PASS 9.9.9 | N/A |') | Set-Content -LiteralPath (Join-Path $v 'assertions.md')
+        [IO.File]::WriteAllText((Join-Path $fx.Root 'fakebin/agy'), "#!/bin/sh`necho agy 9.9.9`n")
+        $fx.Env.PATH = ((Join-Path $fx.Root 'fakebin') + ';' + $env:PATH)
+        New-SessionStartPayload $fx } -Max 8 -Silent
+    New-BudgetRow "$L/docs-audit-reminder.sh" 'no findings view' -Max 0 { param($fx) New-SessionStartPayload $fx } -Silent
+    # --- docs-audit-reminder.sh: the Branch 21 census paths. PINNED AT 0 (measured 2026-10-07): the whole hook is builtins now,
+    # so ANY process is a regression the shared ceiling of 13 could not see. Before: both rows 19. ---
+    New-BudgetRow "$L/docs-audit-reminder.sh" 'generated view, 3 open findings -> EMIT' {
+        param($fx)
+        $d = Join-Path $fx.Repo 'docs'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+        @('# docs audit findings (GENERATED 2026-10-07)', '', '## a.md', '- f1', '- f2', '- f3') | Set-Content -LiteralPath (Join-Path $d 'docs-audit-findings.md')
+        $fx.Env.CLAUDE_PROJECT_DIR = $fx.RepoFwd
+        New-SessionStartPayload $fx } -Max 0 -Expect '3 open finding'
+    New-BudgetRow "$L/docs-audit-reminder.sh" 'generated view, (no findings) only -> silent' {
+        param($fx)
+        $d = Join-Path $fx.Repo 'docs'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+        @('# docs audit findings (GENERATED 2026-10-07)', '', '## a.md', '- (no findings)') | Set-Content -LiteralPath (Join-Path $d 'docs-audit-findings.md')
+        $fx.Env.CLAUDE_PROJECT_DIR = $fx.RepoFwd
+        New-SessionStartPayload $fx } -Max 0 -Silent
 )
 
 # Narrow to ONE hook for a task's red/green runs: set HSB_HOOK to the hook's file name and run with

@@ -63,7 +63,8 @@ Describe 'agy-shield-lib.sh' {
             param(
                 [string]$Root,          # fixture repo root (bash-style path)
                 [string]$Body,          # sh to run after sourcing
-                [hashtable]$Env = @{}
+                [hashtable]$Env = @{},
+                [string]$Shell = ''     # '' = Git Bash; 'dash' = run the snippet under dash, launched THROUGH Git Bash (the portability rows)
             )
             $libSh = ($script:Lib -replace '\\', '/')
             # DEBOUNCE ISOLATION. Since roadmap 17a the marker lives in each repository's own .clavity/
@@ -94,7 +95,13 @@ Describe 'agy-shield-lib.sh' {
             $prev = @{}
             foreach ($k in $Env.Keys) { $prev[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $Env[$k]) }
             try {
-                $p = Start-Process -FilePath $script:Bash -ArgumentList @($sf) -WorkingDirectory $Root `
+                # dash is launched THROUGH Git Bash by a one-line launcher FILE: Start-Process does not quote the elements of an
+                # -ArgumentList array, so an inline `-c 'exec dash ...'` is split on its spaces and dash never runs (measured - the first
+                # version of the rows below passed VACUOUSLY because of exactly that).
+                $launcher = "$sf.run.sh"
+                if ($Shell -eq 'dash') { [IO.File]::WriteAllText($launcher, "exec dash `"`$(cygpath -u `"`$1`")`"`n") }
+                $argList = if ($Shell -eq 'dash') { @($launcher, $sf) } else { @($sf) }
+                $p = Start-Process -FilePath $script:Bash -ArgumentList $argList -WorkingDirectory $Root `
                         -RedirectStandardOutput $outF -RedirectStandardError $errF -NoNewWindow -Wait -PassThru
                 [pscustomobject]@{
                     ExitCode = $p.ExitCode
@@ -104,7 +111,7 @@ Describe 'agy-shield-lib.sh' {
             }
             finally {
                 foreach ($k in $Env.Keys) { [Environment]::SetEnvironmentVariable($k, $prev[$k]) }
-                Remove-Item -LiteralPath $sf, $outF, $errF -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath $sf, $outF, $errF, "$sf.run.sh" -Force -ErrorAction SilentlyContinue
             }
         }
 
@@ -213,6 +220,57 @@ Describe 'agy-shield-lib.sh' {
         }
     }
 
+    # BRANCH 21 capstone R1 (driver-measured): the open-issues skill SOURCES this file from whatever shell the agent's tool runs.
+    # Under dash the bash-only A2 read printed `[[: not found` and appended `\n*\n` to a healthy shield on EVERY call. The fast path is
+    # now taken only when BASH_VERSION is set; every other shell runs the original greps. These rows run the helper under dash and
+    # assert BYTES, so the unbounded-growth failure cannot come back unseen.
+    Context 'sourced under a NON-bash shell (dash) - the open-issues snippet runs in the agent''s shell' {
+        BeforeAll {
+            # PRECONDITION, asserted: if dash is missing every row below would run bash and assert nothing.
+            $script:DashProbe = & $script:Bash -c 'command -v dash >/dev/null 2>&1 && echo yes'
+            $script:DashProbe | Should -Be 'yes' -Because 'dash must exist in the Git for Windows MSYS tree, or these rows would silently test nothing'
+            $script:Dash = 'dash'
+        }
+        It 'leaves a healthy shield BYTE-IDENTICAL over three calls, silently' -ForEach @(
+            @{ Name = 'LF star';        Text = "*`n" }
+            @{ Name = 'CRLF star';      Text = "*`r`n" }
+            @{ Name = 'star + negation'; Text = "*`n!local-anomalies.md`n" }
+            @{ Name = 'no trailing newline'; Text = '*' }
+        ) {
+            $r = New-FixtureRepo -Shield $Text
+            $body = 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' + "`n" + 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' + "`n" + 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+            $res = Invoke-Shield -Root $r -Body ('printf "%s" "[${BASH_VERSION:-}]" > "$PWD/shell-probe.txt"' + "`n" + $body) -Shell $script:Dash
+            # CONTROL, asserted first: the snippet really ran under a shell WITHOUT BASH_VERSION. Without it an unlaunched dash leaves the
+            # shield untouched and every assertion below passes for the wrong reason.
+            (Get-Content -Raw -LiteralPath (Join-Path $r 'shell-probe.txt')) | Should -BeExactly '[]' -Because 'the rows must run under dash, not bash'
+            (Get-Shield $r) | Should -BeExactly $Text -Because "[$Name] a shield that already carries * must not be appended to, in ANY shell"
+            $res.Err | Should -Not -Match 'not found' -Because 'no bash-only construct may be EXECUTED under a non-bash shell'
+        }
+        It 'leaves a healthy shield byte-identical under dash even when BASH_VERSION is EXPORTED into it (capstone R2)' {
+            # A parent bash that exported BASH_VERSION would otherwise send a dash child down the bash-only branch.
+            $r = New-FixtureRepo -Shield "*`n"
+            # The variable is exported INSIDE the dash snippet, not through -Env: a process-level override leaked into the rows after
+            # this one (measured - they ran dash with BASH_VERSION set and failed), and the launching bash re-exports its own value.
+            $body = 'export BASH_VERSION=5.2.0-fake' + "`n" + 'printf "%s" "[${BASH_VERSION:-}]" > "$PWD/shell-probe.txt"' + "`n" + 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' + "`n" + 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+            $res = Invoke-Shield -Root $r -Body $body -Shell $script:Dash
+            # CONTROL: dash really has a non-empty BASH_VERSION, so the guard under test is the capability test and not an empty variable.
+            (Get-Content -Raw -LiteralPath (Join-Path $r 'shell-probe.txt')) | Should -BeExactly '[5.2.0-fake]' -Because 'BASH_VERSION must be set in the dash snippet, or this row tests nothing'
+            (Get-Shield $r) | Should -BeExactly "*`n"
+            $res.Err | Should -Not -Match 'not found'
+        }
+        It 'PREPENDS * to a negation-only shield under dash exactly as bash does' {
+            $r = New-FixtureRepo -Shield "!local-anomalies.md`n"
+            $null = Invoke-Shield -Root $r -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' -Shell $script:Dash
+            (Get-Shield $r) | Should -BeExactly "*`n!local-anomalies.md`n"
+        }
+        It 'APPENDS * to a shield that lacks it under dash (once, then stable)' {
+            $r = New-FixtureRepo -Shield "foo.txt`n"
+            $body = 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' + "`n" + 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+            $null = Invoke-Shield -Root $r -Body $body -Shell $script:Dash
+            (Get-Shield $r) | Should -BeExactly "foo.txt`n`n*`n"
+        }
+    }
+
     Context 'A2 middle case - a negation with no bare *' {
         # THREE properties, because each one failed in a different draft of this branch. Asserting
         # only "a fault was reported" passes against BOTH broken versions.
@@ -232,6 +290,25 @@ Describe 'agy-shield-lib.sh' {
             [IO.File]::WriteAllText((Join-Path $script:R '.clavity/other-marker.md'), "x`n")
             & git -C $script:R check-ignore -q -- '.clavity/other-marker.md'
             $LASTEXITCODE | Should -Be 0 -Because 'the bare * must cover everything the negation does not name'
+        }
+
+        # Test-audit B21 R3 (shield MG-1). The hook comment calls the temp file's LOCATION load-bearing: `mv` is atomic only WITHIN one
+        # filesystem, so the temp must be created beside the shield (inside .clavity), not at the repo root. Nothing pinned that - a
+        # mutant creating it at "$_as_root/.gitignore.tmp.XXXXXX" left every row green, because on the success path `mv` consumes the
+        # temp wherever it was made and 'leaves NO temp file behind' only ever looks inside .clavity. A bash FUNCTION in BASH_ENV
+        # (it wraps the external mktemp and cannot be shadowed by PATH order on Git Bash) records the template the hook asked for.
+        It 'creates the prepend temp file INSIDE .clavity, on the same filesystem as the shield it renames onto' {
+            $r = New-FixtureRepo -Shield "!local-anomalies.md`n"
+            $tag = [guid]::NewGuid().ToString('N')
+            $log = Join-Path ([IO.Path]::GetTempPath()) "mktemp-$tag.log"
+            $shim = Join-Path ([IO.Path]::GetTempPath()) "mktemp-$tag.sh"
+            [IO.File]::WriteAllText($shim, "mktemp() { printf '%s\n' `"`$1`" >> '$($log -replace '\\','/')'; command mktemp `"`$@`"; }`n")
+            try {
+                $null = Invoke-Shield -Root $r -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' -Env @{ BASH_ENV = ($shim -replace '\\','/') }
+                $asked = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue)
+                $asked.Count | Should -BeGreaterThan 0 -Because 'a shim that never ran would make every assertion below vacuous'
+                foreach ($t in $asked) { $t | Should -Match '/\.clavity/\.gitignore\.tmp\.XXXXXX$' -Because 'the temp lives beside the shield, never at the repo root' }
+            } finally { Remove-Item -LiteralPath $log, $shim -Force -ErrorAction SilentlyContinue }
         }
 
         It '(c) the ! line is still present and unmodified' {
@@ -675,61 +752,41 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
         # cross-repository collision this step removed - see 'reports the SAME fault in a SECOND repository
         # under the SAME key (roadmap 17a)'.
 
-        It 'the sweep runs AFTER Stage A2, so the shield is in place before the marker lands' {
-            # THIS ROW REPLACES ACCEPTED-BOUNDARY ENTRY M, WHICH WAS WRONG. The entry claimed the ordering
-            # could not be pinned, and the reasoning that produced it is worth stating because it is
-            # seductive: the two orders ARE end-state identical - sweep-first writes marker then shield,
-            # sweep-after writes shield then marker, and afterwards both leave the same files, all ignored.
-            # That much is true, and a row asserting anything about the state AFTER the call really is
-            # vacuous; one was written, proved vacuous by a mutant, and deleted. The error was concluding
-            # from that that NOTHING can observe the ordering. The hazard is a WINDOW, so the observation
-            # has to happen INSIDE the window rather than after it.
-            #
-            # HOW. The helper is SOURCED, and it calls `find` unqualified. A shell FUNCTION named `find`,
-            # defined in the body before the source, therefore intercepts the sweep at the exact moment it
-            # runs and can record the state of the world at that instant. It records whether the shield
-            # text exists yet, then delegates to the real `find` via `command`, so the helper's own
-            # behaviour is unchanged.
-            #
-            # WHY IT READS THE SHIELD'S CONTENT AND NOT THE CALL ORDER, which is the whole point. The
-            # obvious version records that `grep` (Stage A2) ran before `find` (the sweep) - and that is a
-            # PROXY for the property, the defect shape this repository has now hit five times. The line
-            # that actually WRITES the shield is a `printf` builtin with a redirect: no subprocess, nothing
-            # a PATH shim could intercept. Move ONLY that line below the sweep and a grep-before-find
-            # assertion stays GREEN while the property is broken. Reading the shield at sweep time observes
-            # the property itself, and reds on exactly that mutation too.
-            #
-            # TWO OBSERVATION POINTS, AND THE SECOND ONE EXISTS BECAUSE THE FIRST WAS DEFEATED. The row
-            # originally watched only `find`, and capstone round 2 broke it: hoist the gate (the marker
-            # existence check AND the `: >` that creates it) above Stage A2 while leaving the `find` below,
-            # and the marker lands in an unshielded directory - the exact hazard - while `find` still runs
-            # after A2 and observes the shield PRESENT. MEASURED: that mutant left this row GREEN.
-            # The second checkpoint closes it. `grep` is the FIRST subprocess Stage A2 runs, and every one
-            # of its `grep` calls happens BEFORE the `printf` that writes the shield, so "has the marker
-            # been created yet?" asked at grep time is a direct question about ordering. Under correct code
-            # the answer is always ABSENT; under the round-2 mutant the first grep already sees it PRESENT.
-            # Both shims delegate with `command` so the helper's behaviour is unchanged, and the find shim
-            # uses `command grep` so it cannot recurse into the grep shim.
-            #
-            # MUTATION-PROVEN AGAINST THREE MUTANTS, anchors checked both ways and each mutant re-parsed.
-            # BOTH checkpoints are load-bearing - do not delete either as redundant, because they catch
-            # DIFFERENT regressions and the first mapping I wrote for them was wrong until I ran mutant 3:
-            #   1. whole sweep block relocated above A2      -> caught at GREP time (marker already there)
-            #   2. gate hoisted above A2, find left below    -> caught at GREP time (this is the round-2
-            #                                                   mutant, and it defeated the find-time
-            #                                                   checkpoint on its own - that is why the
-            #                                                   grep checkpoint exists)
-            #   3. only the shield WRITE deferred below the  -> caught at FIND time, and ONLY there: the
-            #      sweep, gate and find left in place           marker is created after A2 begins, so the
-            #                                                   grep checkpoint sees nothing wrong
-            $r = New-FixtureRepo -NoClavityDir
+        # BRANCH 21 REWORK of the ordering row. It used to watch two points: every `grep` of Stage A2 and the
+        # sweep's `find`. Stage A2 now reads the shield with ONE builtin `read` (no grep process to shim), and the
+        # sweep's `find` runs only when a stale candidate exists (a builtin glob gate), so a fresh fixture never
+        # reaches it. The HAZARD is unchanged - the sweep marker landing in a directory whose shield is not yet in
+        # place - so the observation points moved, and each is still a direct question about the property:
+        #   ROW 1 (marker-at-mktemp): `mktemp` is the first external process of the A2 prepend branch, which a
+        #     shield holding only a negation takes. Asked at that instant "does the swept marker exist yet?" the
+        #     answer must be ABSENT. It catches the sweep gate (or the whole sweep block) being hoisted above A2.
+        #   ROW 2 (shield-at-find): with a stale temp planted the gate PASSES and `find` runs; asked at that instant
+        #     "is the shield text in place?" the answer must be PRESENT. It catches the shield WRITE being deferred
+        #     below the sweep and the sweep block being relocated above A2.
+        # Both shims delegate with `command`, so the helper's behaviour is unchanged. The preconditions come FIRST:
+        # a file that is absent would make the assertion about its contents vacuous.
+        It 'the sweep marker does not exist yet when Stage A2 prepends (shield first, marker after)' {
+            $r = New-FixtureRepo -Shield "!local-anomalies.md`n"
             $body = @(
-                'grep() {',
+                'mktemp() {',
                 '  _m=$(command ls "$PWD"/.clavity/.clavity-shield-swept-* 2>/dev/null | command head -1)',
-                '  if [ -n "$_m" ]; then echo PRESENT >> "$PWD/marker-at-grep.txt"',
-                '  else echo ABSENT >> "$PWD/marker-at-grep.txt"; fi',
-                '  command grep "$@"',
+                '  if [ -n "$_m" ]; then echo PRESENT >> "$PWD/marker-at-mktemp.txt"',
+                '  else echo ABSENT >> "$PWD/marker-at-mktemp.txt"; fi',
+                '  command mktemp "$@"',
                 '}',
+                'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+            ) -join "`n"
+            $null = Invoke-Shield -Root $r -Body $body
+            $atMktemp = Join-Path $r 'marker-at-mktemp.txt'
+            (Test-Path -LiteralPath $atMktemp) | Should -BeTrue -Because 'the negation shield must take the prepend branch (mktemp), or this checkpoint observes nothing'
+            @(Get-Content -LiteralPath $atMktemp) | Should -Not -Contain 'PRESENT' -Because 'the sweep marker must not exist yet when Stage A2 begins; if it does, it was written into a directory that is not yet shielded'
+        }
+
+        It 'the sweep find runs only after the shield text is in place (a stale temp opens the gate)' {
+            # No shield file, but .clavity/ exists and carries a planted stale temp: the glob gate PASSES, so `find` runs.
+            $r = New-FixtureRepo
+            [IO.File]::WriteAllText((Join-Path $r '.clavity/.gitignore.tmp.OLDOLD'), "stale`n")
+            $body = @(
                 'find() {',
                 '  if command grep -qFx ''*'' "$PWD/.clavity/.gitignore" 2>/dev/null; then echo PRESENT > "$PWD/sweep-order.txt"',
                 '  else echo ABSENT > "$PWD/sweep-order.txt"; fi',
@@ -739,16 +796,61 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             ) -join "`n"
             $null = Invoke-Shield -Root $r -Body $body
             $observed = Join-Path $r 'sweep-order.txt'
-            $atGrep = Join-Path $r 'marker-at-grep.txt'
-            # THE GREP CHECKPOINT. Its own precondition first, for the same reason as below: if Stage A2
-            # stopped calling grep entirely this file would be absent and the -NotContain would be vacuous.
-            (Test-Path -LiteralPath $atGrep) | Should -BeTrue -Because 'Stage A2 must call grep, or this checkpoint observes nothing'
-            @(Get-Content -LiteralPath $atGrep) | Should -Not -Contain 'PRESENT' -Because 'the sweep marker must not exist yet when Stage A2 begins; if it does, it was written into a directory that is not yet shielded'
-            # ASSERT THE PRECONDITION FIRST. Without this the row passes vacuously against any change that
-            # stops the sweep running at all: the file would simply be absent, and an assertion about its
-            # contents would never run. A control that cannot state its own precondition is not a control.
-            (Test-Path -LiteralPath $observed) | Should -BeTrue -Because 'the sweep must actually run, or this row asserts nothing at all'
-            (Get-Content -Raw -LiteralPath $observed).Trim() | Should -Be 'PRESENT' -Because 'Stage A2 must shield .clavity/ BEFORE the sweep writes its marker into it, or a concurrent `git add -A` in that window stages this helper''s own bookkeeping'
+            (Test-Path -LiteralPath $observed) | Should -BeTrue -Because 'the planted stale temp must open the gate so the sweep find runs, or this row asserts nothing at all'
+            (Get-Content -Raw -LiteralPath $observed).Trim() | Should -Be 'PRESENT' -Because 'Stage A2 must shield .clavity/ BEFORE the sweep runs, or a concurrent `git add -A` in that window stages this helper''s files'
+        }
+
+        It 'the prepending call defers the say-prune, and the NEXT call deletes the aged marker (not lost)' {
+            # Branch 21 (owner-approved, agreed with agy): the one call that prepends skips the say-prune find, because it is
+            # the run already nearest the process ceiling. DEFERRED, not lost: the next call latches the sweep and its find
+            # covers the same '.clavity-shield-*' markers. Pinned from BOTH sides - survives the prepend, gone after the next.
+            $r = New-FixtureRepo -Shield "!local-anomalies.md`n"
+            $old = Join-Path $r '.clavity/.clavity-shield-persistent-oldkey'
+            [IO.File]::WriteAllText($old, '')
+            (Get-Item -LiteralPath $old).LastWriteTimeUtc = [datetime]::UtcNow.AddDays(-40)
+            $call = 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+            $null = Invoke-Shield -Root $r -Body $call
+            (Get-Shield $r) | Should -Match '(?m)^\*\r?$' -Because 'the first call must have PREPENDED, or this row does not measure the prepending call'
+            (Test-Path -LiteralPath $old) | Should -BeTrue -Because 'the prepending call must not prune (deferred, to hold the run near the process ceiling)'
+            $null = Invoke-Shield -Root $r -Body $call
+            (Test-Path -LiteralPath $old) | Should -BeFalse -Because 'the next call latches the sweep and its find deletes the aged marker - deferred, not lost'
+        }
+
+        It 'the sweep age is 30 days at BOTH find sites: a 10-day-old marker survives, a 40-day-old one is deleted' {
+            # Capstone R3 (mutant: `-mtime +30` -> `+7` at the say-prune find survived the suite). The first call runs the latch
+            # sweep; once the latch exists a later call reaches the say-prune find instead. Each phase plants a 10-day marker (must
+            # survive) and a 40-day marker (must go), so the age is pinned from both sides at whichever find that call used.
+            $r = New-FixtureRepo -Shield "*`n"
+            $call = 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+            # Phase 'first' goes through agy_shield (the latch sweep find); phase 'say' calls _agy_shield_say with a NEW key, the
+            # branch that creates a marker and then prunes (the other find). The two finds are separate lines of the library.
+            $bodies = @{ first = $call; say = '_agy_shield_say unshielded keysay "msg" "$PWD"' }
+            foreach ($phase in 'first', 'say') {
+                $mid = Join-Path $r ".clavity/.clavity-shield-persistent-mid-$phase"
+                $old = Join-Path $r ".clavity/.clavity-shield-persistent-old-$phase"
+                [IO.File]::WriteAllText($mid, ''); [IO.File]::WriteAllText($old, '')
+                (Get-Item -LiteralPath $mid).LastWriteTimeUtc = [datetime]::UtcNow.AddDays(-10)
+                (Get-Item -LiteralPath $old).LastWriteTimeUtc = [datetime]::UtcNow.AddDays(-40)
+                $null = Invoke-Shield -Root $r -Body $bodies[$phase]
+                (Test-Path -LiteralPath $old) | Should -BeFalse -Because "the 40-day marker must be swept in the '$phase' call, or the sweep never ran and this phase proves nothing"
+                (Test-Path -LiteralPath $mid) | Should -BeTrue -Because "a 10-day marker is younger than the 30-day threshold (the '$phase' call)"
+            }
+        }
+
+        It 'recognises a CRLF shield (a "*" line ending in CR) and leaves it byte-for-byte alone' {
+            # Capstone R4 (mutant: drop the trailing-CR alternative of the "*" match - the suite stayed green). A shield written on
+            # Windows with CRLF endings is still a correct shield; if the match misses the CR the helper appends a second "*".
+            # TWO match sites: the bash builtin case and the grep fallback every other shell takes - so the row runs under both.
+            # HONEST LIMIT (measured): MSYS grep ignores a trailing CR (`grep -qFx '*'` on a CRLF line exits 0 here), so on this host the
+            # dash iteration cannot tell the grep fallback's CR alternative from its absence; on Linux grep exits 1 for that line and the
+            # alternative is what matches (measured under WSL). The builtin-case alternative IS discriminating here (mutant red).
+            foreach ($shell in '', 'dash') {
+                $r = New-FixtureRepo -Shield "*`r`n"
+                $path = Join-Path $r '.clavity/.gitignore'
+                $before = [IO.File]::ReadAllBytes($path)
+                $null = Invoke-Shield -Root $r -Shell $shell -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+                ([IO.File]::ReadAllBytes($path) -join ',') | Should -BeExactly ($before -join ',') -Because "a CRLF '*' is already a shield: nothing to append or rewrite (shell '$shell')"
+            }
         }
 
         It 'a failed shield write OUTSIDE a git repository is reported, not swallowed' {

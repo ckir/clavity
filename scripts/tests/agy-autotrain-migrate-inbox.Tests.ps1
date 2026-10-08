@@ -42,6 +42,15 @@ BeforeAll {
         if (-not (Test-Path -LiteralPath $Path)) { return 0 }
         @(Get-Content -LiteralPath $Path | Where-Object { $_ -eq $Needle }).Count
     }
+
+    # Makes $Path unreadable to THIS user, then probes from the BASH process the hook runs in (the deny can bind pwsh and not
+    # bash on some hosts - see agy-anomaly-reminder.Tests.ps1). Returns $false when the host does not enforce it.
+    function Deny-Read { param([string]$Path)
+        & icacls $Path /deny "$($env:USERNAME):(R)" 2>&1 | Out-Null
+        & $script:Bash -lc "cat '$($Path -replace '\\','/')' > /dev/null 2>&1"
+        return ($LASTEXITCODE -ne 0)
+    }
+    function Restore-Read { param([string]$Path) & icacls $Path /remove:d "$($env:USERNAME)" 2>&1 | Out-Null }
 }
 
 Describe 'agy-autotrain migrate-inbox hook' {
@@ -119,6 +128,24 @@ Describe 'agy-autotrain migrate-inbox hook' {
         } finally { Remove-Item -Recurse -Force $f.Base -ErrorAction SilentlyContinue }
     }
 
+    # Test-audit B21 R3 (ca-1). The branch edited the line guarding this path (`[ ! -d "$NEWDIR" ] && ! mkdir -p`), and no row reached
+    # its failure branch: dropping the `exit 0` after the message left the whole suite green. The destination folder cannot be created
+    # when `.clavity` already exists as a FILE. The hook must stop BEFORE it claims the source (nothing renamed, nothing written) and say
+    # so ONCE - a second "could not finish moving" line means it carried on into the write path and rolled back.
+    It 'stops BEFORE claiming the source when the destination folder cannot be created, and reports it once' {
+        $f = New-Fixture
+        try {
+            Set-Content -LiteralPath $f.Old -Value 'OLDC' -NoNewline
+            Set-Content -LiteralPath (Join-Path (Split-Path -Parent (Split-Path -Parent $f.New)) '.clavity') -Value 'i am a file, not a folder' -NoNewline
+            $r = Invoke-BashHook -HookPath $script:Hook -Env $f.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdErr | Should -Match 'could not be created' -Because 'the failure must be reported, not silent'
+            @($r.StdErr -split "`n" | Where-Object { $_ -match 'could not finish moving' }).Count | Should -Be 1 -Because 'one stop, one message: a second one means it kept going into the write path'
+            (Get-Content -Raw -LiteralPath $f.Old) | Should -BeExactly 'OLDC' -Because 'the source must be left in place, byte-for-byte'
+            Test-Path -LiteralPath $f.Aside | Should -BeFalse -Because 'the source must not be claimed (renamed) when the destination is unusable'
+        } finally { Remove-Item -Recurse -Force $f.Base -ErrorAction SilentlyContinue }
+    }
+
     It 'RECOVERS an interrupted migration (source gone, non-empty sidecar, empty destination)' {
         $f = New-Fixture
         try {
@@ -161,6 +188,91 @@ Describe 'agy-autotrain migrate-inbox hook' {
             $r1.ExitCode | Should -Be 0
             $r2.ExitCode | Should -Be 0
             $r2.StdErr | Should -Not -Match 'could not' -Because 'an empty inbox is a successful no-op, never a reported failure'
+        } finally { Remove-Item -Recurse -Force $f.Base -ErrorAction SilentlyContinue }
+    }
+
+    # --- BRANCH 21 (Task 9): the size probe lost its `wc` process. These rows pin the THREE states it must still tell apart
+    # (absent-or-empty / readable / UNREADABLE), because the .iss lesson stands: a failed read must never look like an empty
+    # file. None of them existed - the suite only ever exercised the readable and absent states. ---
+
+    It 'stops and rolls back when the destination is a DIRECTORY (size unreadable, nothing clobbered)' {
+        $f = New-Fixture
+        try {
+            Set-Content -LiteralPath $f.Old -Value 'KEEPME' -NoNewline
+            New-Item -ItemType Directory -Force -Path $f.New | Out-Null          # the destination PATH is a directory
+            $r = Invoke-BashHook -HookPath $script:Hook -Env $f.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdErr | Should -Match 'could not be read' -Because 'an unreadable destination must be REPORTED, not walked into the cp-failure path'
+            (Get-Content -Raw -LiteralPath $f.Old) | Should -BeExactly 'KEEPME' -Because 'the claim must be rolled back: the source goes home unchanged'
+            Test-Path -LiteralPath $f.Aside | Should -BeFalse
+            (Get-Item -LiteralPath $f.New).PSIsContainer | Should -BeTrue -Because 'the directory must be untouched'
+        } finally { Remove-Item -Recurse -Force $f.Base -ErrorAction SilentlyContinue }
+    }
+
+    It 'stops and rolls back when the destination is UNREADABLE (an ACL deny) - an open, not a -r test, decides' {
+        $f = New-Fixture
+        try {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $f.New) | Out-Null
+            Set-Content -LiteralPath $f.New -Value 'LIVE'
+            Set-Content -LiteralPath $f.Old -Value 'KEEPME' -NoNewline
+            if (-not (Deny-Read $f.New)) { Set-ItResult -Skipped -Because 'this host does not enforce the read deny against the hook process'; return }
+            $r = Invoke-BashHook -HookPath $script:Hook -Env $f.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdErr | Should -Match 'could not be read' -Because 'the -r builtin does not consult Windows ACLs; only an actual open does'
+            (Get-Content -Raw -LiteralPath $f.Old) | Should -BeExactly 'KEEPME'
+            Test-Path -LiteralPath $f.Aside | Should -BeFalse -Because 'the claim must be rolled back'
+        } finally { Restore-Read $f.New; Remove-Item -Recurse -Force $f.Base -ErrorAction SilentlyContinue }
+    }
+
+    It 'reports an UNREADABLE sidecar during recovery and touches nothing' {
+        $f = New-Fixture
+        try {
+            Set-Content -LiteralPath $f.Aside -Value 'RESCUE' -NoNewline        # source already claimed, destination absent
+            if (-not (Deny-Read $f.Aside)) { Set-ItResult -Skipped -Because 'this host does not enforce the read deny against the hook process'; return }
+            $r = Invoke-BashHook -HookPath $script:Hook -Env $f.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdErr | Should -Match 'their size could not be read' -Because 'an unreadable sidecar must be reported, not read as an empty one and silently skipped'
+            Test-Path -LiteralPath $f.New | Should -BeFalse
+        } finally { Restore-Read $f.Aside; Remove-Item -Recurse -Force $f.Base -ErrorAction SilentlyContinue }
+    }
+
+    It 'leaves a NON-EMPTY destination alone during recovery (a finished migration is not redone)' {
+        $f = New-Fixture
+        try {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $f.New) | Out-Null
+            Set-Content -LiteralPath $f.New -Value 'LIVE'
+            Set-Content -LiteralPath $f.Aside -Value 'RESCUE' -NoNewline
+            $r = Invoke-BashHook -HookPath $script:Hook -Env $f.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdErr | Should -BeNullOrEmpty
+            (Count-Line $f.New 'RESCUE') | Should -Be 0 -Because 'the sidecar must NOT be appended to a destination that already holds captures'
+            (Count-Line $f.New 'LIVE') | Should -Be 1
+            Test-Path -LiteralPath $f.Aside | Should -BeTrue -Because 'the sidecar is the done-marker and must stay'
+        } finally { Remove-Item -Recurse -Force $f.Base -ErrorAction SilentlyContinue }
+    }
+
+    It 'RECOVERS into an EMPTY existing destination (present but zero bytes counts as nothing written)' {
+        # The RECOVERS row above has an ABSENT destination; the probe must also read "present and empty" as 0, or an
+        # interrupted migration whose destination was created but never written is judged finished and abandoned.
+        $f = New-Fixture
+        try {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $f.New) | Out-Null
+            [IO.File]::WriteAllText($f.New, '')
+            Set-Content -LiteralPath $f.Aside -Value 'RESCUE' -NoNewline
+            $r = Invoke-BashHook -HookPath $script:Hook -Env $f.Env
+            $r.ExitCode | Should -Be 0
+            (Count-Line $f.New 'RESCUE') | Should -Be 1 -Because 'an empty destination plus a non-empty sidecar is an interrupted migration to COMPLETE'
+        } finally { Remove-Item -Recurse -Force $f.Base -ErrorAction SilentlyContinue }
+    }
+
+    It 'treats an EMPTY existing destination as absent: the captures land once, with no leading blank line' {
+        $f = New-Fixture
+        try {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $f.New) | Out-Null
+            [IO.File]::WriteAllText($f.New, '')
+            Set-Content -LiteralPath $f.Old -Value 'EPS' -NoNewline
+            Invoke-BashHook -HookPath $script:Hook -Env $f.Env | Out-Null
+            [IO.File]::ReadAllText($f.New) | Should -BeExactly 'EPS'
         } finally { Remove-Item -Recurse -Force $f.Base -ErrorAction SilentlyContinue }
     }
 }
