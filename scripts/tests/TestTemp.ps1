@@ -7,3 +7,29 @@ function Remove-TestPath {
     if ($p.Count -eq 0) { return }
     Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+function Get-TestTempRoot {
+    # ONE parent for every suite's scratch, so a killed run orphans files under ONE directory that the sweep can age out,
+    # instead of 30 000 siblings in %TEMP% (measured 2026-10-08: 30 765 directories).
+    $root = if ($env:CLAVITY_TEST_TEMP_ROOT) { $env:CLAVITY_TEST_TEMP_ROOT } else { Join-Path ([IO.Path]::GetTempPath()) 'clavity-tests' }
+    $null = New-Item -ItemType Directory -Path $root -Force
+    $root
+}
+function New-TestTempPath {
+    # Returns a path (not created): '<root>/<prefix>-<guid>'. $Suffix is for the few callers that need an extension.
+    param([Parameter(Mandatory)][string]$Prefix, [string]$Suffix = '')
+    Join-Path (Get-TestTempRoot) ("$Prefix-" + [Guid]::NewGuid().ToString('N') + $Suffix)
+}
+function Invoke-TestTempSweep {
+    # Deletes children of the shared root older than MaxAgeHours. 72 h by default: a run paused over a weekend (Friday evening to
+    # Monday morning is ~60 h) keeps its scratch (panel round 1 found 24 h breaks on weekends); scratch is small, so three days of slack costs nothing.
+    param([double]$MaxAgeHours = 72)
+    $root = Get-TestTempRoot
+    $cut = (Get-Date).AddHours(-$MaxAgeHours)
+    foreach ($c in @(Get-ChildItem -LiteralPath $root -Force -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $cut })) {
+        Remove-Item -LiteralPath $c.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+# Once per RUN, at dot-source time. A `$script:` flag would reset for every suite file (Pester gives each its own script scope), so ~58 sweeps per run
+# (panel round 3); an environment flag is inherited by child processes and lives for the whole run.
+if (-not $env:CLAVITY_TEST_TEMP_SWEPT) { $env:CLAVITY_TEST_TEMP_SWEPT = '1'; try { Invoke-TestTempSweep } catch { } }
