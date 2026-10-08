@@ -35,6 +35,11 @@ Describe 'agy-curate-nudge.sh' {
         }
 
         $script:Today = (Get-Date).ToString('yyyy-MM-dd')
+
+        # An inbox with exactly ONE pending entry dated $Date (count 1 < threshold 8, so ONLY the age gate can speak).
+        function New-DatedInbox { param([string]$Date)
+            "# agy observations inbox`n`n## Pending`n`n- [heuristic] (driver/probabilistic) an entry  ``[corpus]`` · $Date · agy 1.0.0"
+        }
     }
 
     It 'reads the USER-LOCAL inbox and IGNORES one left in the plugin tree (ROADMAP 14g)' {
@@ -532,6 +537,108 @@ Describe 'agy-curate-nudge.sh' {
             (Get-Item -LiteralPath $snooze).LastWriteTime = (Get-Date).AddDays(-8)
             $stale = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
             $stale.StdOut | Should -Match 'agy-curate nudge' -Because 'a snooze older than 7 days has expired and must NOT keep silencing the nudge'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # --- BRANCH 21 (Task 11, ROADMAP section 73): the age gate no longer calls GNU `date -d`. BSD/macOS date has no `-d <date>`
+    # parse, so on a Mac the age nudge could never fire. The day number now comes from Hinnant's days_from_civil in plain bash
+    # arithmetic. The clock is read through printf %()T (bash >= 4.2) or `date +%s`, so a BASH_ENV `date` function freezes
+    # "now" under CLAVITY_HOOK_BASH3 - which makes the boundary rows exact instead of racing UTC midnight. ---
+
+    It 'fires the age nudge for a 40-day-old pending entry, and the hook no longer contains `date -d` (section 73)' {
+        $d = (Get-Date).ToUniversalTime().AddDays(-40).ToString('yyyy-MM-dd')
+        $e = New-NudgeEnv -Inbox (New-DatedInbox $d) -Decoy "# clean decoy`n`n## Pending`n"
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.StdOut | Should -Match 'over 30 days old' -Because 'one entry is under the count threshold, so only the age gate can have fired'
+            $r.StdErr | Should -BeNullOrEmpty
+            # CODE lines only: the hook's own comments explain what `date -d` used to do, and a mention is not a call.
+            ((Get-Content -LiteralPath $script:Hook | Where-Object { $_ -notmatch '^\s*#' }) -join "`n") | Should -Not -Match 'date -d' -Because 'the GNU-only parse is the defect section 73 removes'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'stays SILENT for a 20-day-old pending entry (the gate is not simply always on)' {
+        $d = (Get-Date).ToUniversalTime().AddDays(-20).ToString('yyyy-MM-dd')
+        $e = New-NudgeEnv -Inbox (New-DatedInbox $d) -Decoy "# clean decoy`n`n## Pending`n"
+        try { (Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env).StdOut | Should -BeNullOrEmpty }
+        finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # THE BOUNDARY, exactly, under a frozen clock. `-ge 30` and `-gt 30` differ only here, and a 40-day / 20-day pair cannot see it.
+    # FAILING CONTROL on the unfixed hook: the frozen `date` function also swallows its `date -d` call, so ots == now, the age is
+    # 0 and the 30-day row stays silent.
+    It 'arms the age gate at EXACTLY MAX_AGE_DAYS and not a day earlier (clock frozen, CLAVITY_HOOK_BASH3)' {
+        $epoch = 1790000000
+        $today = [DateTimeOffset]::FromUnixTimeSeconds($epoch).UtcDateTime.Date
+        foreach ($case in @(@{ Age = 30; Fires = $true }, @{ Age = 29; Fires = $false })) {
+            $e = New-NudgeEnv -Inbox (New-DatedInbox $today.AddDays(-$case.Age).ToString('yyyy-MM-dd')) -Decoy "# clean decoy`n`n## Pending`n"
+            try {
+                $be = Join-Path $e.Root 'frozen-date.sh'; [IO.File]::WriteAllText($be, "date() { echo $epoch; }`n")
+                $env2 = @{} + $e.Env; $env2.CLAVITY_HOOK_BASH3 = '1'; $env2.BASH_ENV = ($be -replace '\\', '/')
+                $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $env2
+                if ($case.Fires) { $r.StdOut | Should -Match 'over 30 days old' -Because "an entry $($case.Age) days old is AT the threshold" }
+                else             { $r.StdOut | Should -BeNullOrEmpty -Because "an entry $($case.Age) days old is one day short of the threshold" }
+            } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+    }
+
+    # The equivalence oracle. _dfc is EXTRACTED from the shipped hook (sed range) so the test exercises the shipped text, and GNU
+    # `date -f` (ONE process for the whole list) is the reference. Every day of the leap-rule years (2000 is a leap year, 2100 is
+    # not, 2024 is an ordinary leap year, 1999 an ordinary common one) plus every 37th day of 1970-2104. The same loop run against a SHIFTED reference is the failing control: the comparison
+    # must be able to say NO, or this row could never go red.
+    It 'computes the same day number as GNU date -f for every day of 1999, 2000, 2024 and 2100 plus every 37th day of 1970-2104' {
+        $dates = [Collections.Generic.List[string]]::new()
+        $day = [datetime]::new(1970, 1, 1); $stop = [datetime]::new(2104, 12, 31); $n = 0
+        while ($day -le $stop) {
+            $y = $day.Year
+            if ($y -eq 1999 -or $y -eq 2000 -or $y -eq 2024 -or $y -eq 2100 -or ($n % 37 -eq 0)) { $dates.Add($day.ToString('yyyy-MM-dd')) }
+            $day = $day.AddDays(1); $n++
+        }
+        $list = Join-Path ([IO.Path]::GetTempPath()) ("dfc-" + [Guid]::NewGuid().ToString('N') + '.txt')
+        [IO.File]::WriteAllText($list, (($dates -join "`n") + "`n"))
+        $probe = @'
+eval "$(sed -n '/^_dfc()/,/^}/p' "$1")"
+mapfile -t ref < <(TZ=UTC date -f "$2" +%s)
+off=${3:-0}; i=0; bad=0
+while IFS= read -r line; do
+  _dfc "${line:0:4}" "${line:5:2}" "${line:8:2}"
+  [ "$_DFC" -eq "$(( ref[i + off] / 86400 ))" ] || bad=$((bad + 1))
+  i=$((i + 1))
+done < "$2"
+echo "checked $i bad $bad"
+'@
+        try {
+            $bash = Get-GitBashOrThrow
+            $ok = (& $bash -c $probe _ ($script:Hook -replace '\\', '/') ($list -replace '\\', '/') 0 | Out-String).Trim()
+            $ok | Should -Match "^checked $($dates.Count) bad 0$" -Because "_dfc must agree with GNU date on every sampled day: $ok"
+            $off = (& $bash -c $probe _ ($script:Hook -replace '\\', '/') ($list -replace '\\', '/') 1 | Out-String).Trim()
+            $off | Should -Not -Match 'bad 0$' -Because 'the oracle must be able to say NO: against a reference shifted by one entry it has to report mismatches'
+        } finally { Remove-Item -LiteralPath $list -Force -ErrorAction SilentlyContinue }
+    }
+
+    # What `date -d` used to reject must not arm the gate. THE DATES ARE IN THE PAST ON PURPOSE: _dfc reads a month-13 date as a
+    # LATER one, so an out-of-range date in the FUTURE would leave an unguarded hook silent and the row green (measured in the
+    # plan's panel). Each of these resolves years ago, so deleting the range check makes the unguarded hook nudge.
+    It 'does NOT arm the age gate on an out-of-range date: <date>' -ForEach @(
+        @{ date = '2020-13-45' }, @{ date = '2020-00-10' }, @{ date = '2020-05-00' }, @{ date = '2020-05-32' }
+    ) {
+        $e = New-NudgeEnv -Inbox (New-DatedInbox $date) -Decoy "# clean decoy`n`n## Pending`n"
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdOut | Should -BeNullOrEmpty -Because 'an impossible date is not an age'
+            $r.StdErr | Should -BeNullOrEmpty
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # A zero-padded year is read as OCTAL by bash arithmetic ("0099": value too great for base). The month and day already take 10#;
+    # the year must too, or an odd-but-matching date turns the hook noisy instead of merely wrong.
+    It 'handles a zero-padded year (0099-01-01) as an ancient date: it nudges, with nothing on stderr' {
+        $e = New-NudgeEnv -Inbox (New-DatedInbox '0099-01-01') -Decoy "# clean decoy`n`n## Pending`n"
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.StdErr | Should -BeNullOrEmpty -Because 'an octal-looking year must not raise an arithmetic error'
+            $r.StdOut | Should -Match 'over 30 days old'
         } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }

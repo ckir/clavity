@@ -678,7 +678,7 @@ check-peer-reply-citations.Tests.ps1             49,2s   39 tests   <- SLOW, add
   row is four `git check-ignore` / `git ls-files` calls, so nearly all of the figure is process launch.
   ⚠ It joins the FAST half, which measured 493-550s against the 600s foreground cap and is
   cap-ADJACENT - this adds ~6s to a half that has no headroom left to spend.
-agy-curate-nudge.Tests.ps1                       48,1s   20 tests   <- SLOW as of 2026-08-24; was FAST.
+agy-curate-nudge.Tests.ps1                       48,1s   29 tests   <- 20 -> 29 2026-10-08 (Branch 21 Task 11, section 73: +40-day fires/no `date -d`, +20-day silent, +exact 30/29-day boundary under a frozen clock, +days_from_civil vs GNU date -f oracle, +4 impossible dates, +zero-padded year; time not re-measured); SLOW as of 2026-08-24; was FAST.
   MOVED with check-injected-context because the FAST half measured 576,0s against the 600s foreground
   cap - see the note under ## Measured runtimes. Re-measured 2026-08-24 WARM on an
   idle CPU (cold 53,6s) after the test-audit closure added 6 tests. The count row had ALSO been stale

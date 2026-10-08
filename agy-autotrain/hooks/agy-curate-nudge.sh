@@ -15,6 +15,22 @@ HOME_DIR="${USERPROFILE:-$HOME}"
 OBS="${HOME_DIR}/.clavity/agy-observations.md"
 SNOOZE="${HOME_DIR}/.clavity/.agy-curate-snooze"
 
+# Days since the civil epoch (1970-01-01) for a year, month and day: Hinnant's days_from_civil, in plain bash-3.2-safe
+# arithmetic. ROADMAP section 73: BSD/macOS date has no `date -d <date>` parse, so the age nudge below could never fire on a
+# Mac; the GNU-only call is gone entirely. The result comes back in the global _DFC. It is a UTC day count, where `date -d`
+# gave local midnight: the boundary can shift by up to the UTC offset, which a 30-day threshold absorbs.
+# EVERY field takes 10#, the YEAR included: bash arithmetic reads a leading zero as octal, so a bare "0099" would die with
+# "value too great for base" (month and day alone were guarded in the first draft of this function).
+_dfc() {
+  _y=$((10#$1)); _m=$((10#$2)); _d=$((10#$3))
+  [ "$_m" -le 2 ] && _y=$((_y - 1))
+  if [ "$_y" -ge 0 ]; then _era=$((_y / 400)); else _era=$(((_y - 399) / 400)); fi
+  _yoe=$((_y - _era * 400))
+  _doy=$(((153 * ((_m + 9) % 12) + 2) / 5 + _d - 1))
+  _doe=$((_yoe * 365 + _yoe / 4 - _yoe / 100 + _doy))
+  _DFC=$((_era * 146097 + _doe - 719468))
+}
+
 # Opt-out: a .no-agy marker in cwd or ~/.claude silences everything (mirror agy-learn-reminder.sh).
 # PROCESS BUDGET (<=16 per run on Windows, ~200 ms each): `read` is a builtin (`$(cat)` costs two
 # processes); `read -d ''` returns non-zero at EOF but still fills $input; a trailing newline is kept,
@@ -77,9 +93,15 @@ count=${scan%%|*}; oldest=${scan#*|}
 
 # Age gate (spec section 5.C-A: nudge on "N entries / an age threshold"): is the oldest pending entry too old?
 age_stale=0
-if [ -n "$oldest" ]; then
-  if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 402)); then printf -v now '%(%s)T' -1 2>/dev/null; else now=$(date +%s); fi; ots="$(date -d "$oldest" +%s 2>/dev/null)"
-  if [ -n "$now" ] && [ -n "$ots" ] && [ "$(( (now - ots) / 86400 ))" -ge "$MAX_AGE_DAYS" ]; then age_stale=1; fi
+re_iso='^([0-9]{4})-([0-9]{2})-([0-9]{2})$'
+if [[ $oldest =~ $re_iso ]]; then
+  _mo=$((10#${BASH_REMATCH[2]})); _da=$((10#${BASH_REMATCH[3]}))
+  # Range-validate what `date -d` used to reject: an impossible date such as 2020-13-45 must not arm the gate.
+  if [ "$_mo" -ge 1 ] && [ "$_mo" -le 12 ] && [ "$_da" -ge 1 ] && [ "$_da" -le 31 ]; then
+    if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 402)); then printf -v now '%(%s)T' -1 2>/dev/null; else now=$(date +%s); fi
+    _dfc "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
+    if [ -n "$now" ] && [ "$(( now / 86400 - _DFC ))" -ge "$MAX_AGE_DAYS" ]; then age_stale=1; fi
+  fi
 fi
 
 # Silent only if NEITHER threshold is exceeded.
