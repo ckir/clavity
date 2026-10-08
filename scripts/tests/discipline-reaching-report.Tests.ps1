@@ -17,6 +17,7 @@
 
 Describe 'discipline-reaching-report.ps1' {
     BeforeAll {
+        . (Join-Path $PSScriptRoot 'TestTemp.ps1')   # Remove-TestPath: null-safe cleanup
         $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Script = Join-Path $script:RepoRoot 'scripts/discipline-reaching-report.ps1'
 
@@ -163,18 +164,19 @@ Describe 'discipline-reaching-report.ps1' {
         # source-counting happens BEFORE the version dispatch, so without the guard a future schema would
         # be counted as a hook FIRING and then dropped from `Sessions recorded` - a row present in one
         # total and absent from the other.
-        $tx = New-ScanTranscript
-        $d = New-Store @(
-            (CapRec3 $tx -Sid 'REAL' -Source 'startup')
-            ('{"v":99,"session_id":"FUTURE","timestamp":"2026-08-05T10:00:00Z","source":"teleport","scan_status":"ok"}')
-        )
+        $tx = $null; $d = $null
         try {
+            $tx = New-ScanTranscript
+            $d = New-Store @(
+                (CapRec3 $tx -Sid 'REAL' -Source 'startup')
+                ('{"v":99,"session_id":"FUTURE","timestamp":"2026-08-05T10:00:00Z","source":"teleport","scan_status":"ok"}')
+            )
             $o = Run $d
             $o | Should -Match 'startup\s*:\s*1' -Because 'the real v:3 row still counts'
             $o | Should -Not -Match 'teleport' -Because 'an unsupported schema must not enter the boot-source distribution it is about to be dropped from'
             $o | Should -Match 'unsupported schema version\s*:\s*1' -Because 'and it must be reported as skipped, not silently vanish'
             $o | Should -Match 'Sessions recorded\s*:\s*1'
-        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $d, $tx }
     }
 
     It 'orders -Last N CHRONOLOGICALLY across a year boundary, not alphabetically by a localised date' {
@@ -184,18 +186,19 @@ Describe 'discipline-reaching-report.ps1' {
         # "08/05/2026 08:00:00" / "01/01/2027 08:00:00" and an ALPHABETICAL sort puts January 2027 BEFORE
         # August 2026. -Last N then slices off the newest sessions and keeps the oldest.
         # Every fixture in this suite used same-day, increasing-hour timestamps, which masks it completely.
-        $tx = New-ScanTranscript
-        $d = New-Store @(
-            (CapRec3 $tx -Sid 'OLDER' -Source 'startup' -Ts '2026-08-05T08:00:00Z')
-            (CapRec3 $tx -Sid 'NEWER' -Source 'startup' -Ts '2027-01-01T08:00:00Z')
-        )
+        $tx = $null; $d = $null
         try {
+            $tx = New-ScanTranscript
+            $d = New-Store @(
+                (CapRec3 $tx -Sid 'OLDER' -Source 'startup' -Ts '2026-08-05T08:00:00Z')
+                (CapRec3 $tx -Sid 'NEWER' -Source 'startup' -Ts '2027-01-01T08:00:00Z')
+            )
             (Get-Item -LiteralPath $tx).LastWriteTimeUtc = (Get-Date).ToUniversalTime()
             $o = Run $d -Last 1
             $o | Should -Match 'Sessions recorded\s*:\s*1'
             $o | Should -Match 'NEWER' -Because '2027 is later than 2026 in every culture; only a string sort disagrees'
             $o | Should -Not -Match 'OLDER'
-        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $d, $tx }
     }
 
     It 'degrades ONE row with a non-numeric count instead of killing the whole report' {
@@ -302,18 +305,19 @@ Describe 'discipline-reaching-report.ps1' {
         # `[string]$_.timestamp` left all 25 tests green. There are two sorts and one test was covering one
         # of them. Here one session fires in Aug 2026 and again in Jan 2027, so a localised string sort
         # would make the 2027 compact look like the session's ORIGIN and report `began compact`.
-        $tx = New-ScanTranscript
-        $d = New-Store @(
-            (CapRec3 $tx -Sid 'SPAN' -Source 'startup' -Ts '2026-08-05T08:00:00Z')
-            (CapRec3 $tx -Sid 'SPAN' -Source 'compact' -Ts '2027-01-01T08:00:00Z')
-        )
+        $tx = $null; $d = $null
         try {
+            $tx = New-ScanTranscript
+            $d = New-Store @(
+                (CapRec3 $tx -Sid 'SPAN' -Source 'startup' -Ts '2026-08-05T08:00:00Z')
+                (CapRec3 $tx -Sid 'SPAN' -Source 'compact' -Ts '2027-01-01T08:00:00Z')
+            )
             (Get-Item -LiteralPath $tx).LastWriteTimeUtc = (Get-Date).ToUniversalTime()
             $o = Run $d
             $o | Should -Match 'Sessions recorded\s*:\s*1'
             $o | Should -Match 'began startup' -Because 'August 2026 precedes January 2027 chronologically'
             $o | Should -Not -Match 'began compact'
-        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $d, $tx }
     }
 
     It 'adopts a later fire transcript when the EARLIEST row named none' {
@@ -322,17 +326,18 @@ Describe 'discipline-reaching-report.ps1' {
         # earliest row named NO transcript and a later one did, there is exactly ONE distinct path, so the
         # disagreement branch never runs and the session keeps the earliest row's EMPTY path - reporting
         # transcript_not_found for a session whose transcript is right there and readable.
-        $tx = New-ScanTranscript
-        $d = New-Store @(
-            ('{"v":3,"session_id":"S1","timestamp":"2026-08-05T08:00:00Z","source":"startup","model":"m","transcript_path":"","scan_status":"transcript_not_found"}')
-            (CapRec3 $tx -Sid 'S1' -Source 'compact' -Ts '2026-08-05T09:00:00Z')
-        )
+        $tx = $null; $d = $null
         try {
+            $tx = New-ScanTranscript
+            $d = New-Store @(
+                ('{"v":3,"session_id":"S1","timestamp":"2026-08-05T08:00:00Z","source":"startup","model":"m","transcript_path":"","scan_status":"transcript_not_found"}')
+                (CapRec3 $tx -Sid 'S1' -Source 'compact' -Ts '2026-08-05T09:00:00Z')
+            )
             $o = Run $d
             $o | Should -Match 'Sessions recorded\s*:\s*1'
             $o | Should -Match 'scanned cleanly\s*:\s*1' -Because 'the session HAS a readable transcript; a later fire named it'
             $o | Should -Match 'reached the model, stamped\s*:\s*2' -Because 'and its counts must reach the totals'
-        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $d, $tx }
     }
 
     It 'survives a malformed line and says so rather than dying' {
@@ -358,27 +363,29 @@ Describe 'discipline-reaching-report.ps1' {
     It 'SCANS a v2 capture row and produces the counts the hook no longer computes' {
         # v2 is the CAPTURE shape: the hook names a transcript and stops, because scanning at SessionEnd was
         # CANCELLED on shipped v17 twice. The analysis moved HERE, so this is where it must be proven.
-        $tx = New-ScanTranscript
-        $d  = New-Store @( (CapRec $tx) )
+        $tx = $null; $d = $null
         try {
+            $tx = New-ScanTranscript
+            $d  = New-Store @( (CapRec $tx) )
             $o = Run $d
             $o | Should -Not -BeNullOrEmpty
     $o | Should -Match 'stamped\s+:\s+2' -Because 'two distinct STAMPED deliveries, one duplicated -> deduped by uuid'
     $o | Should -Match 'unstamped\s+:\s+1' -Because 'one pre-stamp delivery must not be counted as stamped'
     $o | Should -Match 'fired\s+:\s+1' -Because 'one hook_success names our script; the other names a different hook'
             $o | Should -Match 'compactions\s+:\s+2'
-        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $d, $tx }
     }
 
     It 'still reads a v1 row, because v17 SHIPPED that shape' {
         # An upgraded machine can hold both kinds in one file. Reading only the newest would silently drop
         # every session recorded before the split.
-        $tx = New-ScanTranscript
-        $d  = New-Store @( (Rec 5 0 5 0), (CapRec $tx) )
+        $tx = $null; $d = $null
         try {
+            $tx = New-ScanTranscript
+            $d  = New-Store @( (Rec 5 0 5 0), (CapRec $tx) )
             $o = Run $d
     $o | Should -Match 'stamped\s+:\s+7' -Because 'the v1 row contributes 5 and the scanned v2 row contributes 2'
-        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $d, $tx }
     }
 
     It 'records a v2 row whose transcript is GONE as an unknown, never a zero' {
@@ -391,14 +398,15 @@ Describe 'discipline-reaching-report.ps1' {
     }
 
     It 'COUNTS a v:3 row instead of routing it to unsupported' {
-        $tx = New-ScanTranscript
-        $d = New-Store @( (CapRec3 $tx) )
+        $tx = $null; $d = $null
         try {
+            $tx = New-ScanTranscript
+            $d = New-Store @( (CapRec3 $tx) )
             $o = Run $d
             $o | Should -Match 'Sessions recorded\s*:\s*1'
             $o | Should -Not -Match 'unsupported schema version'
             $o | Should -Match 'reached the model, stamped\s*:\s*2' -Because 'the fixture transcript holds 2 stamped deliveries'
-        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $d, $tx }
     }
 
     It 'collapses many rows of ONE session into one record, scanning its transcript ONCE' {
@@ -407,27 +415,29 @@ Describe 'discipline-reaching-report.ps1' {
         # keep the LATEST row left this test green. That rule is now pinned by the two tests below that
         # DO print it. This one proves what it can actually see: three fires collapse to one session and
         # the transcript is counted once rather than three times.
-        $tx = New-ScanTranscript
-        $d = New-Store @(
-            (CapRec3 $tx -Sid 'S1' -Source 'startup' -Ts '2026-08-05T08:00:00Z')
-            (CapRec3 $tx -Sid 'S1' -Source 'compact' -Ts '2026-08-05T12:00:00Z')
-            (CapRec3 $tx -Sid 'S1' -Source 'compact' -Ts '2026-08-05T16:00:00Z')
-        )
+        $tx = $null; $d = $null
         try {
+            $tx = New-ScanTranscript
+            $d = New-Store @(
+                (CapRec3 $tx -Sid 'S1' -Source 'startup' -Ts '2026-08-05T08:00:00Z')
+                (CapRec3 $tx -Sid 'S1' -Source 'compact' -Ts '2026-08-05T12:00:00Z')
+                (CapRec3 $tx -Sid 'S1' -Source 'compact' -Ts '2026-08-05T16:00:00Z')
+            )
             $o = Run $d
             $o | Should -Match 'Sessions recorded\s*:\s*1' -Because 'three fires, one session'
             $o | Should -Match 'reached the model, stamped\s*:\s*2' -Because 'the transcript must be counted ONCE, not three times'
-        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $d, $tx }
     }
 
     It 'orders -Last N by the LATEST fire, not the earliest' {
-        $tx = New-ScanTranscript
-        $d = New-Store @(
-            (CapRec3 $tx -Sid 'LONG'  -Source 'startup' -Ts '2026-08-05T08:00:00Z')
-            (CapRec3 $tx -Sid 'SHORT' -Source 'startup' -Ts '2026-08-05T12:00:00Z')
-            (CapRec3 $tx -Sid 'LONG'  -Source 'compact' -Ts '2026-08-05T18:00:00Z')
-        )
+        $tx = $null; $d = $null
         try {
+            $tx = New-ScanTranscript
+            $d = New-Store @(
+                (CapRec3 $tx -Sid 'LONG'  -Source 'startup' -Ts '2026-08-05T08:00:00Z')
+                (CapRec3 $tx -Sid 'SHORT' -Source 'startup' -Ts '2026-08-05T12:00:00Z')
+                (CapRec3 $tx -Sid 'LONG'  -Source 'compact' -Ts '2026-08-05T18:00:00Z')
+            )
             (Get-Item -LiteralPath $tx).LastWriteTimeUtc = (Get-Date).ToUniversalTime()
             $o = Run $d -Last 1
             $o | Should -Match 'Sessions recorded\s*:\s*1'
@@ -438,7 +448,7 @@ Describe 'discipline-reaching-report.ps1' {
             # Merge-SessionRows to keep the LATEST row broke nothing at all - measured, 25/25 still green.
             $o | Should -Match 'began startup' -Because 'the merge keeps the EARLIEST row for content'
             $o | Should -Match '2 fires' -Because 'and fire_count must survive the collapse it summarises'
-        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $d, $tx }
     }
 
     It 'does NOT collapse v:1 rows that share a session id - their counts are INLINE' {
@@ -459,13 +469,14 @@ Describe 'discipline-reaching-report.ps1' {
         # cannot be collapsed, so it is passed through - and it must still leave Merge-SessionRows carrying
         # last_seen, because the sort immediately after reads that property off EVERY row. Under
         # Set-StrictMode + $ErrorActionPreference='Stop' a single missing property kills the whole report.
-        $tx = New-ScanTranscript
-        $d = New-Store @( (CapRec3 $tx -Sid '' -Ts '2026-08-05T08:00:00Z'), (CapRec3 $tx -Sid 'OK' -Ts '2026-08-05T09:00:00Z') )
+        $tx = $null; $d = $null
         try {
+            $tx = New-ScanTranscript
+            $d = New-Store @( (CapRec3 $tx -Sid '' -Ts '2026-08-05T08:00:00Z'), (CapRec3 $tx -Sid 'OK' -Ts '2026-08-05T09:00:00Z') )
             $o = Run $d
             $o | Should -Match 'Sessions recorded\s*:\s*2' -Because 'an id-less row is its own session, not a crash and not a merge'
             $o | Should -Not -Match "(?i)cannot be found on this object"
-        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $d, $tx }
     }
 
     It 'reports cleanly when the store is <Case>' -ForEach @(
@@ -484,21 +495,23 @@ Describe 'discipline-reaching-report.ps1' {
     }
 
     It 'reports a still-being-written transcript as provisional, not as scanned cleanly' {
-        $tx = New-ScanTranscript
-        $d = New-Store @( (CapRec3 $tx -Sid 'LIVE') )
+        $tx = $null; $d = $null
         try {
+            $tx = New-ScanTranscript
+            $d = New-Store @( (CapRec3 $tx -Sid 'LIVE') )
             (Get-Item -LiteralPath $tx).LastWriteTimeUtc = (Get-Date).ToUniversalTime()
             $o = Run $d
             $o | Should -Match 'PROVISIONAL'
             $o | Should -Match 'scanned cleanly\s*:\s*0' -Because 'a live session is not a completed one'
             $o | Should -Match 'reached the model, stamped\s*:\s*0' -Because 'a partial count must not enter the DISPATCH RELAY totals'
-        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $d, $tx }
     }
 
     It 'reports an OLD transcript as scanned cleanly, not provisional' {
-        $tx = New-ScanTranscript
-        $d = New-Store @( (CapRec3 $tx -Sid 'DONE') )
+        $tx = $null; $d = $null
         try {
+            $tx = New-ScanTranscript
+            $d = New-Store @( (CapRec3 $tx -Sid 'DONE') )
             (Get-Item -LiteralPath $tx).LastWriteTimeUtc = (Get-Date).ToUniversalTime().AddHours(-3)
             $o = Run $d
             $o | Should -Match 'scanned cleanly\s*:\s*1'
@@ -510,23 +523,24 @@ Describe 'discipline-reaching-report.ps1' {
             # track live sessions". A zero must be stated, not implied by silence.
             $o | Should -Match 'provisional\s*:\s*0' -Because 'the bucket names itself even when empty'
             $o | Should -Not -Match 'PROVISIONAL\s+\(' -Because 'the per-session SECTION is what must be absent'
-        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $d, $tx }
     }
 
     It 'reports the source distribution as INVOCATIONS and keeps legacy reasons out of it' {
-        $tx = New-ScanTranscript
-        $d = New-Store @(
-            (CapRec3 $tx -Sid 'A' -Source 'startup' -Ts '2026-08-05T08:00:00Z')
-            (CapRec3 $tx -Sid 'A' -Source 'compact' -Ts '2026-08-05T09:00:00Z')
-            (Rec 1 0 0 0 'ok' 'OLD' 1)
-        )
+        $tx = $null; $d = $null
         try {
+            $tx = New-ScanTranscript
+            $d = New-Store @(
+                (CapRec3 $tx -Sid 'A' -Source 'startup' -Ts '2026-08-05T08:00:00Z')
+                (CapRec3 $tx -Sid 'A' -Source 'compact' -Ts '2026-08-05T09:00:00Z')
+                (Rec 1 0 0 0 'ok' 'OLD' 1)
+            )
             $o = Run $d
             $o | Should -Match 'HOOK INVOCATIONS'
             $o | Should -Match 'startup\s*:\s*1'
             $o | Should -Match 'compact\s*:\s*1'
             $o | Should -Match 'legacy \(v1/v2\)\s*:\s*1' -Because 'v1 carries an EXIT reason, which answers a different question than a BOOT source'
             $o | Should -Not -Match 'prompt_input_exit' -Because 'an exit reason must never bucket into the boot-source distribution'
-        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $d, $tx }
     }
 }

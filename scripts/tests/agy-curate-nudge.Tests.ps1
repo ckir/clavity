@@ -478,10 +478,11 @@ Describe 'agy-curate-nudge.sh' {
         # below is the one that actually discriminates, and the mutant reds there.
         # Real-world stake: at the shipped default THRESHOLD=8, a `+2` regression escalates every nudge to
         # OVERDUE at 10 entries instead of 16, destroying the escalation signal.
-        $atThreshold = New-NudgeEnv -Inbox (& $mkInbox 3)
-        $between     = New-NudgeEnv -Inbox (& $mkInbox 5)
-        $atTwice     = New-NudgeEnv -Inbox (& $mkInbox 6)
+        $atThreshold = $null; $between = $null; $atTwice = $null
         try {
+            $atThreshold = New-NudgeEnv -Inbox (& $mkInbox 3)
+            $between     = New-NudgeEnv -Inbox (& $mkInbox 5)
+            $atTwice     = New-NudgeEnv -Inbox (& $mkInbox 6)
             $env3 = @{ AGY_CURATE_NUDGE_THRESHOLD = '3' }
             $r1 = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env ($atThreshold.Env + $env3)
             $r1.StdOut | Should -Match 'Consider running' -Because 'precondition: it must be nudging at all, or the absence of OVERDUE below proves nothing'
@@ -496,9 +497,7 @@ Describe 'agy-curate-nudge.sh' {
             $r3 = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env ($atTwice.Env + $env3)
             $r3.StdOut | Should -Match 'OVERDUE' -Because 'at twice the threshold the wording must escalate'
         } finally {
-            Remove-Item -LiteralPath $atThreshold.Root -Recurse -Force -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath $between.Root -Recurse -Force -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath $atTwice.Root -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-TestPath $atThreshold.Root, $between.Root, $atTwice.Root
         }
     }
 
