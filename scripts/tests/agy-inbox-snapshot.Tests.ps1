@@ -68,6 +68,17 @@ Describe 'agy-inbox-snapshot' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # Capstone R3 (mutant: drop the `p=0` on a closing heading - the suite stayed green). The pending region ENDS at the next
+    # heading, so a bullet-shaped line under a later section is not a pending entry and must not buy a snapshot.
+    It 'does NOT snapshot an inbox whose only bullet sits under a LATER heading, not under Pending' {
+        $body = "# agy observations inbox (raw, project-agnostic)`n`n## Pending`n`n## Archive`n`n- [assumption] (peer/probabilistic) an archived rule`n"
+        $r = New-PluginRoot $body
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
+            BakCount $r | Should -Be 0 -Because 'a bullet after the closing heading is outside the Pending region'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'refuses to rotate when the inbox is empty' {
         $r = New-PluginRoot ''
         try {

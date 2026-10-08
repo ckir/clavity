@@ -322,6 +322,10 @@ $script:Rows = @(
     # would still be green. Before Branch 21: first touch 14, TMPDIR-unusable 18, non-test 10.
     New-BudgetRow "$D/assertion-strength-reminder.sh" 'test file, FIRST touch of the session -> marker + prune + emit' {
         param($fx) New-ToolPayload $fx 'Write' @{ file_path = ($fx.RepoFwd + '/scripts/tests/x.Tests.ps1'); content = 'x' } } -Max 7 -Expect 'ASSERTION-STRENGTH'
+    # Capstone R3 (mutant: force the bash<4.2 `date` fallback always - no row reached the day-key site, so it stayed green). With no
+    # session_id the marker is keyed by the day, the one place the builtin clock replaces `date`. Measured 10 total = 7 beyond boot.
+    New-BudgetRow "$D/assertion-strength-reminder.sh" 'test file, no session_id (day-key marker: builtin clock, no date fork)' {
+        param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; tool_name = 'Write'; tool_input = @{ file_path = ($fx.RepoFwd + '/scripts/tests/x.Tests.ps1'); content = 'x' } } } -Max 7 -Expect 'ASSERTION-STRENGTH'
     New-BudgetRow "$D/assertion-strength-reminder.sh" 'TMPDIR unusable -> HOME/.clavity-tmp fallback still emits' {
         param($fx)
         [IO.File]::WriteAllText((Join-Path $fx.Root 'blockfile'), 'x')

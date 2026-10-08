@@ -797,6 +797,27 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             (Test-Path -LiteralPath $old) | Should -BeFalse -Because 'the next call latches the sweep and its find deletes the aged marker - deferred, not lost'
         }
 
+        It 'the sweep age is 30 days at BOTH find sites: a 10-day-old marker survives, a 40-day-old one is deleted' {
+            # Capstone R3 (mutant: `-mtime +30` -> `+7` at the say-prune find survived the suite). The first call runs the latch
+            # sweep; once the latch exists a later call reaches the say-prune find instead. Each phase plants a 10-day marker (must
+            # survive) and a 40-day marker (must go), so the age is pinned from both sides at whichever find that call used.
+            $r = New-FixtureRepo -Shield "*`n"
+            $call = 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+            # Phase 'first' goes through agy_shield (the latch sweep find); phase 'say' calls _agy_shield_say with a NEW key, the
+            # branch that creates a marker and then prunes (the other find). The two finds are separate lines of the library.
+            $bodies = @{ first = $call; say = '_agy_shield_say unshielded keysay "msg" "$PWD"' }
+            foreach ($phase in 'first', 'say') {
+                $mid = Join-Path $r ".clavity/.clavity-shield-persistent-mid-$phase"
+                $old = Join-Path $r ".clavity/.clavity-shield-persistent-old-$phase"
+                [IO.File]::WriteAllText($mid, ''); [IO.File]::WriteAllText($old, '')
+                (Get-Item -LiteralPath $mid).LastWriteTimeUtc = [datetime]::UtcNow.AddDays(-10)
+                (Get-Item -LiteralPath $old).LastWriteTimeUtc = [datetime]::UtcNow.AddDays(-40)
+                $null = Invoke-Shield -Root $r -Body $bodies[$phase]
+                (Test-Path -LiteralPath $old) | Should -BeFalse -Because "the 40-day marker must be swept in the '$phase' call, or the sweep never ran and this phase proves nothing"
+                (Test-Path -LiteralPath $mid) | Should -BeTrue -Because "a 10-day marker is younger than the 30-day threshold (the '$phase' call)"
+            }
+        }
+
         It 'a failed shield write OUTSIDE a git repository is reported, not swallowed' {
             # CAPSTONE ROUND 6, and it is the worst reachable state this helper had left. Round 3 made the
             # PREPEND fallback report a failed write; the ORDINARY append - the path a fresh clone takes -

@@ -76,6 +76,16 @@ Describe 'docs-audit-reminder.sh' {
         $j.systemMessage | Should -Match ([regex]::Escape('1 open finding(s) and 3 unconfirmed doc(s)'))
     }
 
+    # Capstone R3 (mutant: relax the section-header regex to drop the em-dash - the suite stayed green because every fixture used the
+    # em-dash). The distractor is a near-miss header, a plain hyphen where the generated report writes U+2014.
+    It 'does NOT count a near-miss header (hyphen, not the em-dash) as an unconfirmed doc' {
+        $d = New-Workspace -Lines @($script:Header, '', "## A.md $($script:Dash) FINDINGS", '', '- one', '', '## X.md - AUDIT-TIMEOUT (claims inspected: 0)')
+        $r = Invoke-Hook $d
+        $r.ExitCode | Should -Be 0
+        $j = $r.StdOut | ConvertFrom-Json
+        $j.systemMessage | Should -Match ([regex]::Escape('1 open finding(s) and 0 unconfirmed doc(s)')) -Because 'only the em-dash header the generator writes is an audit outcome'
+    }
+
     It 'emits the SessionStart envelope, with the nudge in additionalContext for the model' {
         $d = New-Workspace -Lines @($script:Header, '', "## A.md $($script:Dash) FINDINGS", '', '- one')
         $r = Invoke-Hook $d
