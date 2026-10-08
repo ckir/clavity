@@ -88,10 +88,30 @@ public class McpTools
         // and emitting several would make the deterministic verdicts compete with the heuristic for the
         // reader's attention. The deterministic ones win, strongest first.
         // Branch 22 adds two arms to the same chain - RESCUED first (it replaces the verdicts it cleared), ANSWER CUT last.
+        // Branch 4 (section 66) puts the quota stop SECOND, after RESCUED and before the two incompleteness notices: a peer
+        // that wrote its reply file and was then quota-stopped before posting in chat is RESCUED (complete), and the stop is
+        // only context; a peer stopped before writing anything is explained by the stop, and the right move (wait for the
+        // reset) is the opposite of the re-ask the truncation notices suggest. The block itself is emitted in BOTH cases.
+        var quotaBlock = reply13b is { QuotaStop: { } quota }
+            ? new TextContentBlock
+            {
+                Text = "[PEER QUOTA STOP] agy hit its quota during this ask: \"" + quota + "\" (agy's own words, from its log). "
+                     + (string.IsNullOrEmpty(reply13b.Answer)
+                        ? "The reply is missing because agy could not generate, not because it was dropped. "
+                        : "The Answer above was produced before the stop; anything agy meant to add after it is missing. ")
+                     + "Wait for the reset, then re-ask; do not resend meanwhile - each failed retry has been observed to push "
+                     + "the reset further out."
+            }
+            : null;
         if (reply13b is { CheckedSource: "peer-file" } rescued)
         {
             // ROADMAP section 74, C-peer-read: complete, but never silently - say which file passed.
             blocks.Add(new TextContentBlock { Text = RecoveryNotice.Rescued(rescued) });
+            if (quotaBlock is not null) blocks.Add(quotaBlock);
+        }
+        else if (quotaBlock is not null)
+        {
+            blocks.Add(quotaBlock);
         }
         else if (reply13b is { TerminalTokenMissing: true })
         {
@@ -181,7 +201,7 @@ public class McpTools
 
     // Serialize the result, or — when agy has no conversation yet — a typed "waiting" object that tells Claude to
     // wait for the human and NOT auto-retry (spec §6).
-    private static async Task<string> RunAsync<T>(Func<Task<T>> action)
+    internal static async Task<string> RunAsync<T>(Func<Task<T>> action)
     {
         try
         {
@@ -212,6 +232,25 @@ public class McpTools
                 diagnostic = diag,
                 hint = ChannelDown.Hint(diag),
             });
+        }
+        catch (AgyModelUnavailableException ex)
+        {
+            // ROADMAP section 71. Thrown by AgyView when the conversation's model is deprecated or unavailable; its
+            // message says how to escape. It reaches here only when ChannelDown.IsChannelDown declined it (a wrapped
+            // channel-down cause is diagnosed above), so this is the pure model case.
+            return JsonSerializer.Serialize(new { status = "model_unavailable", message = ex.Message });
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException
+                                   && ex is not Grpc.Core.RpcException { StatusCode: Grpc.Core.StatusCode.Cancelled })
+        {
+            // ROADMAP section 71. Anything else used to escape to the SDK, which reports only
+            // "An error occurred invoking 'agy_ask'." and keeps the cause for its log. A caller-cancel is left alone:
+            // the SDK rethrows it as a cancellation, which is the right answer for a cancelled ask. A gRPC call cancelled by the
+            // caller's token is an RpcException{Cancelled}, NOT an OperationCanceledException; ChannelDown.IsChannelDown excludes
+            // it on purpose, and the existing AgyChannelDownTests.A_grpc_cancelled_status_is_not_reported_as_channel_down requires
+            // it to propagate - a bare `is not OperationCanceledException` filter would turn it into a typed "error" (found by the
+            // 2026-10-08 dry run).
+            return JsonSerializer.Serialize(new { status = "error", exception = ex.GetType().Name, message = ex.Message });
         }
     }
 }

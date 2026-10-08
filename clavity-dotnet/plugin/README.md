@@ -111,6 +111,14 @@ only when the server process starts, so changing it takes a reconnect, not a res
   concurrent registration write (`CliRouter.cs`).
 - **"No compatible agent (Claude Code / agy) found."** Neither agent was detected on this machine —
   install Claude Code or agy first, then re-run `clavity-ls install`.
+- **`agy_ask` returns a `[PEER QUOTA STOP]` block.** agy's quota ran out during that ask (the text is agy's own,
+  with its reset countdown). Only for an agy that `clavity start` / `clavity agy` launched; with a hand-started agy a
+  quota stop still shows as a truncated reply - look at the agy tab. Wait for the reset; retrying earlier has been observed to push it further out.
+- **`agy_ask` returns `model_unavailable` or `error`.** The `message` field carries the cause; `error` also names
+  the exception type. These replace the generic "An error occurred invoking 'agy_ask'." for faults inside the tool.
+- **`agy_ask` is refused with "missing required argument", "unknown argument" or "must be string".** The call used a
+  wrong argument name (case-sensitive: `message`, `discipline`, `artifactPath`) or a value of the wrong JSON type;
+  nothing reached agy. Fix the name or the type.
 - **`agy_status` / `agy_ask` returns `waiting_for_human`.** agy is up but has no conversation yet.
   Start or continue the agy session yourself; do not loop-retry.
 - **`agy_ask` returns `possible_modal`.** The idle-wait hit its timeout — agy may be stuck on a

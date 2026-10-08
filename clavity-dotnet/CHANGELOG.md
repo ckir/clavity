@@ -1,4 +1,14 @@
 # dotnet changelog
+## Unreleased
+
+### Features
+- feat(mcp): a call with a wrong argument name is refused naming the real names, before the SDK binds (section 71b)
+- feat(ask): agy_ask names an agy quota stop, read from the log of a clavity-launched agy, instead of reporting a truncated reply (section 66)
+
+### Fixes
+- fix(mcp): agy_ask returns a typed model_unavailable / error status instead of the SDK's generic text (section 71a)
+- fix(install): PluginInstaller.Clip never splits a surrogate pair (section 76)
+
 ## 0.10.2 - 2026-10-02
 
 ### Fixes

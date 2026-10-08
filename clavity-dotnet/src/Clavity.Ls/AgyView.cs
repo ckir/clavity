@@ -208,6 +208,8 @@ public sealed class AgyView
             // Full pre-send trajectory: its Count delimits the reply, AND it carries the conversation's model.
             var beforeTrajectory = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
             var before = beforeTrajectory.Steps.Count;
+            // ROADMAP section 66: where agy's log ends NOW; a quota stop during this ask lands after this point.
+            var logMark = QuotaStopLog.Mark(_options.CliLogPath);
 
             var model = await ResolveSendModelAsync(client, beforeTrajectory, cancellationToken);
 
@@ -255,6 +257,7 @@ public sealed class AgyView
                     TurnEndedOnToolStep = endedOnTool,
                     PeerFile = peerFile,
                     PeerFileStatus = peerStatus,
+                    QuotaStop = QuotaStopLog.FindSince(_options.CliLogPath, logMark),
                 }, checkText, expectTerminal, expectEcho);
                 if (peerFile is not null && (judged.TerminalTokenMissing || judged.EchoMissing))
                     judged = RescueFromPeerFile(judged, peerFile, peerNonce!, expectTerminal, expectEcho);

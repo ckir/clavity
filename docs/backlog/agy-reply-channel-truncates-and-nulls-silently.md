@@ -1,6 +1,6 @@
 # Backlog stub - the agy reply channel truncates and nulls, and both look like something else
 
-**Status:** OPEN. Promoted 2026-08-27 from `.clavity/local-anomalies.md` (2 entries).
+**Status:** CLOSED 2026-10-08 at Branch 4 start (owner ruling, agy agreed) - both halves landed with Branch 22 (§74): a cut Answer is announced by `RecoveryNotice.AnswerCut` with the file holding the whole reply (`BoundedView.cs:112-114` sets `AnswerTruncated`), and a turn that ends on a tool step is named in the notice (`AskReply.TurnEndedOnToolStep`, `McpTools.cs:101`, pinned by `AgyAskIntegrationTests`). A QUOTA stop is still not told apart - that is ROADMAP §66, Branch 4. Was: OPEN. Promoted 2026-08-27 from `.clavity/local-anomalies.md` (2 entries).
 **Raised:** capstone rounds 7 and 8, 2026-08-25.
 **Scope:** `agy_ask` / `agy_look` and the four AGY-* disciplines that consume them.
 

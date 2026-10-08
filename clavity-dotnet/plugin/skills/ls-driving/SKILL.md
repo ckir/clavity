@@ -27,6 +27,20 @@ You (Claude) drive a paired agy over its Language Server via three MCP tools exp
 
 ## Results you must handle
 
+- **`[PEER QUOTA STOP]` block, `QuotaStop` field set** - agy hit its quota during THIS ask (the sentence is agy's
+  own, read from the log of an agy that `clavity start` / `clavity agy` launched, with the reset countdown; an agy
+  started by hand is not covered - its stop still looks like `[13b] TRUNCATED REPLY`, so check its tab). The reply is incomplete because agy could not generate, not
+  because it was dropped: WAIT for the reset, then re-ask. Do not resend meanwhile - each failed retry has been
+  observed to push the reset further out. No `[13b] TRUNCATED REPLY` / `ECHO MISSING` notice accompanies it (the independent `NO ECHO` / `UNCHECKED` notes still can); the stop explains the missing token
+  (a `[13b] RESCUED FROM PEER FILE` can precede it: then the reply file is complete and the stop is only context).
+- **`model_unavailable`** - the conversation's model is deprecated or unavailable; `message` says how to escape
+  (switch it in the agy tab). Not a channel fault: `agy_status` still answers.
+- **`error`** - any other failure inside the tool, with `exception` (the .NET type name) and `message`. Read the
+  message; it used to be hidden behind the SDK's "An error occurred invoking".
+- **A refusal naming arguments** (`agy_ask: missing required argument 'message'; unknown argument 'payload'. The
+  arguments are: message (required), artifactPath, discipline.`, or `agy_ask: argument 'message' must be string, got
+  array.`) - the CALL was malformed and nothing reached agy. Fix the argument NAMES (case-sensitive) or the value's
+  JSON TYPE and resend; `agy_status`'s step count will not have moved.
 - **`waiting_for_human`** - agy is up but has no conversation yet. STOP and wait for the human to start or
   continue the agy session; do NOT loop-retry.
 - **`possible_modal`** - the idle-wait hit the client timeout. agy may have a blocking modal open - **or** the

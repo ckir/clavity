@@ -1222,6 +1222,61 @@ public class AgyAskIntegrationTests
         finally { Directory.Delete(dir, true); }
     }
 
+    private const string QuotaLine =
+        "E1001 21:09:09.531891  308834 errorreport.go:224] generating and executing: RESOURCE_EXHAUSTED (code 429): Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 24m5s.\n";
+    private const string QuotaSentence = "Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 24m5s.";
+
+    // ROADMAP section 66. A tool-ended turn with a named discipline is exactly what flags [13b] TRUNCATED REPLY today.
+    private static async Task<(CallToolResult Result, string[] Texts)> AskToolEndedTurn(bool quotaDuringAsk, bool quotaBeforeAsk, bool toolEnded = true)
+    {
+        var fake = new FakeAskLs("conv-1", "partial work", TimeSpan.Zero, Array.Empty<CascadeStep>(),
+                                 waitPlan: new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) })
+        { TrailingToolStep = toolEnded };
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            if (quotaBeforeAsk) File.AppendAllText(cliLog, QuotaLine);                        // before the mark: must NOT count
+            if (quotaDuringAsk) fake.OnSend = _ => File.AppendAllText(cliLog, QuotaLine);     // after the mark: must count
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var result = await McpTools.AgyAsk(view, "review it", new CollectingProgress<ProgressNotificationValue>(), discipline: "agy-capstone");
+            return (result, result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToArray());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_quota_stop_written_to_agys_log_during_the_ask_is_named_instead_of_a_truncated_reply()
+    {
+        var (_, texts) = await AskToolEndedTurn(quotaDuringAsk: true, quotaBeforeAsk: false);
+        var block = Assert.Single(texts, t => t.StartsWith("[PEER QUOTA STOP]"));
+        Assert.Contains("Resets in 24m5s", block);
+        Assert.Contains("could not generate", block);                       // the NO-ANSWER wording (the turn ended on a tool step)
+        Assert.DoesNotContain(texts, t => t.StartsWith("[13b] TRUNCATED REPLY"));
+        using var doc = JsonDocument.Parse(texts[0]);
+        Assert.Equal(QuotaSentence, doc.RootElement.GetProperty("QuotaStop").GetString());
+    }
+
+    [Fact]
+    public async Task A_quota_stop_after_partial_prose_says_the_Answer_was_produced_before_the_stop()
+    {
+        // toolEnded: false -> the delta ends on assistant prose ("partial work"), so Answer is NOT empty: the other wording branch.
+        var (_, texts) = await AskToolEndedTurn(quotaDuringAsk: true, quotaBeforeAsk: false, toolEnded: false);
+        var block = Assert.Single(texts, t => t.StartsWith("[PEER QUOTA STOP]"));
+        Assert.Contains("The Answer above was produced before the stop", block);
+        Assert.DoesNotContain("could not generate", block);
+    }
+
+    [Fact]
+    public async Task A_quota_line_written_before_the_ask_started_is_not_this_asks_stop()
+    {
+        var (_, texts) = await AskToolEndedTurn(quotaDuringAsk: false, quotaBeforeAsk: true);
+        Assert.DoesNotContain(texts, t => t.StartsWith("[PEER QUOTA STOP]"));
+        Assert.Contains(texts, t => t.StartsWith("[13b] TRUNCATED REPLY"));      // today's behaviour, unchanged
+        using var doc = JsonDocument.Parse(texts[0]);
+        Assert.False(doc.RootElement.TryGetProperty("QuotaStop", out _));
+    }
+
     [Fact]
     public async Task AskAsync_probe_failure_fails_toward_stall_without_a_second_trajectory_call()
     {

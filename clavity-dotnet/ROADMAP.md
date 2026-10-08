@@ -2784,7 +2784,7 @@ than the noise. Decide that trade at plan time rather than assuming the suppress
 
 ---
 
-### §33 — The terminal-token matcher and its contract lookup disagree on case, and nothing pins either — ▶ **PROMOTED 2026-09-04, tracked debt, sibling of §29b**
+### §33 — The terminal-token matcher and its contract lookup disagree on case, and nothing pins either — ✅ **CLOSED 2026-10-08 at Branch 4 start (owner ruling, agy agreed): no longer reproduces - the case-sensitive match is deliberate (`TerminalToken.cs:82-92` comment) and pinned by `TerminalTokenTests.The_token_match_stays_case_SENSITIVE_...` (a `[Verdict: ALIGNED]` is refused); the contract lookup stays ignore-case by design** — was: PROMOTED 2026-09-04, tracked debt, sibling of §29b
 
 Two halves of one feature use different case semantics and only one of them is asserted.
 **VERIFIED 2026-09-04 by reading both files:** `clavity-dotnet/src/Clavity.Ls/TerminalToken.cs:82` matches
@@ -3388,7 +3388,7 @@ convention, so the practice works and the SKILL text is what is wrong.
 
 ---
 
-### §53 — `clavity start` has no test: the pairing-doc wiring and the refusal are unguarded — ▶ **PROMOTED 2026-09-29 from the anomalies conveyor (AGY-TEST-AUDIT G1+G2, owner-deferred), not yet planned**
+### §53 — `clavity start` has no test: the pairing-doc wiring and the refusal are unguarded — ✅ **IMPLEMENTED 2026-10-08 on Branch 4 (`sweep/branch-4-csharp-transport`; capstone, test-audit and merge pending) - wiring half pinned by `a3b31e1c`; the refusal half was already pinned since Branch 18** — was: ▶ **NARROWED 2026-10-08 at Branch 4 start (owner ruling, agy agreed): the refusal half is pinned since Branch 18's `StartFlow` extraction (`StartFlowTests.A_pairing_doc_that_cannot_be_written_launches_nothing` and `Agy_whose_pairing_doc_cannot_be_written_runs_nothing`); the WIRING half (the materialised path must reach the launch as `AgyInstallDocPath`) has no assertion and is Branch 4 work** — was: PROMOTED 2026-09-29 from the anomalies conveyor (AGY-TEST-AUDIT G1+G2, owner-deferred)
 
 The `start` branch of `clavity-dotnet/src/Clavity.Cli/Program.cs` is top-level statements, and no test in
 the repository invokes it (grep, 2026-09-29). Two behaviours from the pairing-doc fix (`3f686749`) are
@@ -3767,7 +3767,7 @@ discovery; retire only after checking the oldest supported agy.
 
 ---
 
-### §66 — `agy_ask` reports an agy quota stop as a truncated reply, so the driver cannot tell it from a dropped one — ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-03, Branch 18 test-audit round 2), not yet planned**
+### §66 — `agy_ask` reports an agy quota stop as a truncated reply, so the driver cannot tell it from a dropped one — ✅ **IMPLEMENTED 2026-10-08 on Branch 4 (`sweep/branch-4-csharp-transport`; capstone, test-audit and merge pending) - `20d8042f` (detector `QuotaStopLog`, `AskReply.QuotaStop`, the `[PEER QUOTA STOP]` notice), docs `94f05252`, `25778fce`** — was: ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-03, Branch 18 test-audit round 2), not yet planned**
 
 **Observed once, live (cascade `f2cdbc7a`, error id `-458`).** agy stopped with "Individual quota reached ... Resets
 in Nm" - a step of kind 17 with no reply text. `agy_ask` returned `[13b] TRUNCATED REPLY` with `Answer` null and
@@ -3778,6 +3778,8 @@ response from a dropped reply (wait for the reset, not resend), and nothing in t
 surface its message - and the reset time when present - as a distinct status instead of `[13b]`. Needs a recorded
 kind-17 step as a fixture first; the shape above is from one observation, not from the proto.
 
+
+Built from agy's own per-session log (the file clavity-ls already reads for discovery; proven for a clavity-launched agy, unmeasured for a hand-started one whose log is the global cli.log), not from a kind-17 step: no such step was reachable as a fixture on 2026-10-08, and the rule is fixture first.
 ---
 
 ### §67 — `lefthook run pre-commit --all-files` is not read-only: its ruff job reformats and stages `telemetry.py` — ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-03, Branch 19 Task 7 gates), not yet planned**
@@ -3874,7 +3876,7 @@ seams, `agy-consult-recovery.sh` took 6.2 / 6.0 s although it starts only 8 proc
 bash's own per-seam loop (glob + keyword match + `-nt` per file), which a process budget cannot see. Its timeout
 was raised 10 -> 30 s for now; bounding that loop (or pruning concluded seams) is the real fix.
 
-### §71 — `agy_ask` hides its own operator instructions behind the MCP SDK's generic error — ▶ **PROMOTED 2026-10-06 from the anomalies conveyor (observed 2026-10-04, Branch 20 plan panel), not yet planned**
+### §71 — `agy_ask` hides its own operator instructions behind the MCP SDK's generic error — ✅ **IMPLEMENTED 2026-10-08 on Branch 4 (`sweep/branch-4-csharp-transport`; capstone, test-audit and merge pending) - `1860a98f` (typed `model_unavailable` / `error` from `RunAsync`), `70838a2e` + `4fb9381c` (argument-name and JSON-type precheck filter and its registration pin), docs `94f05252`, `25778fce`** — was: ▶ **PROMOTED 2026-10-06 from the anomalies conveyor (observed 2026-10-04, Branch 20 plan panel), not yet planned**
 
 `RunAsync` (`src/Clavity.Mcp/McpTools.cs`) catches only `AgyModalHangException`, `AgyConversationPendingException`
 and exceptions `ChannelDown.IsChannelDown` accepts. `AgyModelUnavailableException` (thrown at `AgyView.cs` for a
@@ -3884,6 +3886,8 @@ returns only "An error occurred invoking agy_ask". Observed twice (2026-10-04 22
 after 0 s) right after the owner switched agy's model with `/model`; which exception it was is unverified because
 the text was lost. Done = the model-unavailable case returns a typed status carrying its hint, any other exception
 returns a typed error with its message, and a test pins each.
+
+Widened 2026-10-08 (owner): a wrong argument NAME, or a right name with a value of the wrong JSON TYPE, is refused by a CallToolFilter before the SDK binds; the SDK itself (1.4.0, McpServerImpl) swallows the binding exception into the generic sentence, so only a pre-check can name it.
 
 ### §72 — the test-audit reminder's per-session debounce files are never cleaned — ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 plan panel), low debt**
 
@@ -3967,7 +3971,7 @@ Three verified, pre-existing defects of one class - a hook assumes the file or t
 
 **Plan shape:** one branch; strip a trailing CR in the awk blocks and a leading BOM in the inbox readers, replace `date -r FILE` with the §73 approach; failing control first for each (WSL for 1, a BOM fixture for 2); item 3 stays unmeasured on a Mac, so test it with a `BASH_ENV` `date` shim as §73 did.
 
-### §76 — `PluginInstaller.Clip` can split a UTF-16 surrogate pair — ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (Branch 22 capstone R2), low debt, not yet planned**
+### §76 — `PluginInstaller.Clip` can split a UTF-16 surrogate pair — ✅ **IMPLEMENTED 2026-10-08 on Branch 4 (`sweep/branch-4-csharp-transport`; capstone, test-audit and merge pending) - `e0bde0e2`** — was: ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (Branch 22 capstone R2), low debt, not yet planned**
 
 `clavity-dotnet/src/Clavity.Ls/Install/PluginInstaller.cs:37` cuts process output with `s[..200]`; a pair straddling the cut becomes one U+FFFD in an installer diagnostic (same class as the Branch 22 capstone BS1/FA1-FA4 folds, fixed elsewhere with `TextCut.Prefix`). Fix: use `TextCut.Prefix` and pin it with a row whose 200th character is the first half of a surrogate pair.
 
