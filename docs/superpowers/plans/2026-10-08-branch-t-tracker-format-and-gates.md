@@ -1149,9 +1149,27 @@ Correct the spec row 26 text ("the recipe decision plus whatever measurement sho
 
 **MEASURED PREMISE:** no workflow in this repository installs or invokes `just` today. This task introduces `just` into CI for the first time, so it cannot be verified locally (circuit-breaker rule: do not iterate remotely to dodge a missing local tool).
 
-- [ ] **Step 1: Decide the install step against the repo's own conventions** - read how the other workflows install tools (`choco install ... --no-progress -y` with a retry loop at `ci-scripts.yml:112-122`; `actions/setup-dotnet@v6`). The runner here is the `ci-dotnet.yml` job's `runs-on` (read it first). Pin to an exact, at least two-weeks-old version per the repo's action-pinning style. If a first-party-or-widely-used action cannot be pinned to a verified exact version from within this repository's existing usage, STOP and report `STATE_MISMATCH: no verifiable just-install step` to the driver - the fallback is to leave `ci-dotnet.yml` unchanged and add a CI-side drift check instead: a Pester row in `check-roadmap-claims`'s neighbour suite asserting the two `dotnet test` lines in `ci-dotnet.yml` are exactly the projects the `clavity-dotnet/justfile` `test` recipe lists. (That fallback fully closes shape 2 mechanically without `just` in CI, and is the recommendation if there is any doubt.)
-- [ ] **Step 2 (only if Step 1 found a pinned install step):** replace `- run: dotnet test tests/Clavity.Ls.Tests` and `- run: dotnet test tests/Clavity.Integration.Tests` with the install step plus `- run: just test`, keeping the explanatory comment (updated). Commit; the owner pushes and the first CI run is the proof - state in the handoff that this is the one change in Branch T that only a pushed CI run verifies.
-- [ ] **Step 3 (fallback path):** create `scripts/tests/dotnet-test-parity.Tests.ps1` (register it in `test-scripts-fast`, give it a `_partition.md` row), red first by editing the justfile recipe temporarily to list one project, then green:
+- [ ] **Step 1: OWNER RULING 2026-10-09: `just test` in CI (chosen over the drift-check row, knowing it is unverifiable until a pushed run).** The job is `runs-on: windows-latest` with `defaults.run.working-directory: clavity-dotnet` (`ci-dotnet.yml:14-19`), so `just test` there runs `clavity-dotnet/justfile`. The repo's own Windows convention for installing a tool is `choco install <pkg> -y --no-progress` with a bounded retry and an oracle on the tool's version, not on choco's exit code (`ci-scripts.yml:112-122`, the `yq` step). Follow it; do not introduce a new third-party action.
+- [ ] **Step 2: Edit `.github/workflows/ci-dotnet.yml`:** replace the two steps `- run: dotnet test tests/Clavity.Ls.Tests` and `- run: dotnet test tests/Clavity.Integration.Tests` (keep the long explanatory comment between them, reworded to say the recipe runs both and why) with:
+```yaml
+      - name: Install just
+        shell: pwsh
+        # Same shape as the yq step in ci-scripts.yml: bounded retry, and the ORACLE is `just --version`, not choco's exit code.
+        run: |
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            choco install just -y --no-progress
+            $env:PATH = "C:\ProgramData\chocolateyin;$env:PATH"
+            if (Get-Command just -ErrorAction SilentlyContinue) { break }
+            Write-Host "::warning::just install attempt $attempt failed (choco exit $LASTEXITCODE); retrying"
+            Start-Sleep -Seconds (5 * $attempt)
+          }
+          if (-not (Get-Command just -ErrorAction SilentlyContinue)) { throw 'just could not be installed' }
+          "C:\ProgramData\chocolateyin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          just --version
+      - run: just test
+```
+Before committing, the driver reads `ci-scripts.yml:105-125` (the yq step) and conforms the install step to it line by line (including how it exports the PATH to later steps), since this block was written from a description of that step, not copied from it. LOCAL VERIFICATION: `cd clavity-dotnet && just --dry-run test` prints both `dotnet test` lines (Task 8 Step 2); a YAML parse check (`python -I -c "import yaml,sys;yaml.safe_load(open(sys.argv[1]))" .github/workflows/ci-dotnet.yml` if PyYAML is present, else `yq '.' .github/workflows/ci-dotnet.yml`) must succeed. The first real proof is the owner's push: state this in the handoff. Commit `ci(dotnet): run the same two test projects as the local recipe, via just test (section 36)`. If the first CI run fails because of the install step, the fallback below replaces it (revert this commit; the local recipe from Task 8 stays).
+- [ ] **Step 3 (fallback path - only if the pushed run shows `just` cannot be installed on the runner; otherwise NOT executed):** create `scripts/tests/dotnet-test-parity.Tests.ps1` (register it in `test-scripts-fast`, give it a `_partition.md` row), red first by editing the justfile recipe temporarily to list one project, then green:
 ```powershell
 # ci-dotnet.yml and clavity-dotnet/justfile `test` must run the same dotnet test projects (ROADMAP section 36, shape 2).
 BeforeAll {
