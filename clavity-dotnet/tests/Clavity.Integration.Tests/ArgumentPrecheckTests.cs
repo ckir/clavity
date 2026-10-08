@@ -212,4 +212,28 @@ public class ArgumentPrecheckTests
             Assert.Contains("argument 'message' must be string, got array", Text(r));
         }
     }
+
+    [Fact]
+    public void Program_registers_the_precheck_filter()
+    {
+        // Lexical pin (Program.cs is not callable from a test): the round-trip rows above wire their OWN filter, so a
+        // Program.cs that forgot the registration would ship the generic sentence with every row green.
+        // Walk UP from the test binary until the repo's Program.cs is found - no fixed depth, so a custom output
+        // directory still resolves; a published flat directory has no src/ above it and fails loudly below.
+        string? dir = AppContext.BaseDirectory;
+        string? program = null;
+        while (dir is not null && program is null)
+        {
+            var candidate = Path.Combine(dir, "src", "Clavity.Cli", "Program.cs");
+            if (File.Exists(candidate)) program = candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        Assert.True(program is not null, "src/Clavity.Cli/Program.cs not found above " + AppContext.BaseDirectory + " - this pin needs the source tree");
+        var src = File.ReadAllText(program!);
+        // Comment-proof: drop /* ... */ blocks, refuse any #if (a disabled region), then require the registration at the
+        // start of a line (a `//`-commented line does not start with the call).
+        src = System.Text.RegularExpressions.Regex.Replace(src, @"/\*.*?\*/", "", System.Text.RegularExpressions.RegexOptions.Singleline);
+        Assert.DoesNotContain("#if", src);
+        Assert.Matches(new System.Text.RegularExpressions.Regex(@"^[ \t]*\.WithRequestFilters\(f => f\.AddCallToolFilter\(ArgumentPrecheck\.Filter\)\);", System.Text.RegularExpressions.RegexOptions.Multiline), src);
+    }
 }
