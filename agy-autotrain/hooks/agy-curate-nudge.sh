@@ -95,9 +95,15 @@ count=${scan%%|*}; oldest=${scan#*|}
 age_stale=0
 re_iso='^([0-9]{4})-([0-9]{2})-([0-9]{2})$'
 if [[ $oldest =~ $re_iso ]]; then
-  _mo=$((10#${BASH_REMATCH[2]})); _da=$((10#${BASH_REMATCH[3]}))
-  # Range-validate what `date -d` used to reject: an impossible date such as 2020-13-45 must not arm the gate.
-  if [ "$_mo" -ge 1 ] && [ "$_mo" -le 12 ] && [ "$_da" -ge 1 ] && [ "$_da" -le 31 ]; then
+  _mo=$((10#${BASH_REMATCH[2]})); _da=$((10#${BASH_REMATCH[3]})); _yr=$((10#${BASH_REMATCH[1]}))
+  # Range-validate what `date -d` used to reject: an impossible date such as 2020-13-45 or 2020-02-30 must not arm the gate
+  # (_dfc would fold a day past the end of its month into the next one). Days in the month, with the Gregorian leap rule.
+  case $_mo in
+    2) if (( _yr % 4 == 0 && (_yr % 100 != 0 || _yr % 400 == 0) )); then _dim=29; else _dim=28; fi ;;
+    4|6|9|11) _dim=30 ;;
+    *) _dim=31 ;;
+  esac
+  if [ "$_mo" -ge 1 ] && [ "$_mo" -le 12 ] && [ "$_da" -ge 1 ] && [ "$_da" -le "$_dim" ]; then
     if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 402)); then printf -v now '%(%s)T' -1 2>/dev/null; else now=$(date +%s); fi
     _dfc "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
     if [ -n "$now" ] && [ "$(( now / 86400 - _DFC ))" -ge "$MAX_AGE_DAYS" ]; then age_stale=1; fi

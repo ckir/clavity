@@ -631,6 +631,31 @@ echo "checked $i bad $bad"
         } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # Capstone R1: a day past the END of its month (Feb 30, Apr 31, Feb 29 in a common year) is still a date `date -d` rejected
+    # (measured: "invalid date '2020-02-30'"), but _dfc folds it into the next month. All in the PAST, so an unguarded hook nudges.
+    It 'does NOT arm the age gate on a day past the end of its month: <date>' -ForEach @(
+        @{ date = '2020-02-30' }, @{ date = '2021-02-29' }, @{ date = '2020-04-31' }, @{ date = '2020-06-31' }, @{ date = '1900-02-29' }
+    ) {
+        $e = New-NudgeEnv -Inbox (New-DatedInbox $date) -Decoy "# clean decoy`n`n## Pending`n"
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdOut | Should -BeNullOrEmpty -Because "$date does not exist, so it is not an age"
+            $r.StdErr | Should -BeNullOrEmpty
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # The failing control for the row above: the LAST day of each month, in a leap year and in the 400-year leap year, must still arm it.
+    It 'DOES arm the age gate on the last real day of a month: <date>' -ForEach @(
+        @{ date = '2020-02-29' }, @{ date = '2000-02-29' }, @{ date = '2020-04-30' }, @{ date = '2020-01-31' }
+    ) {
+        $e = New-NudgeEnv -Inbox (New-DatedInbox $date) -Decoy "# clean decoy`n`n## Pending`n"
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.StdOut | Should -Match 'over 30 days old' -Because "$date is a real date, years ago"
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     # A zero-padded year is read as OCTAL by bash arithmetic ("0099": value too great for base). The month and day already take 10#;
     # the year must too, or an odd-but-matching date turns the hook noisy instead of merely wrong.
     It 'handles a zero-padded year (0099-01-01) as an ancient date: it nudges, with nothing on stderr' {
