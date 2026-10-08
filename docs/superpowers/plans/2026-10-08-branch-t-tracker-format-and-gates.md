@@ -18,7 +18,7 @@
 |---|---|---|
 | 1 §36 | `clavity-dotnet/justfile` `test` runs BOTH projects; `ci-dotnet.yml` calls `just test`. **MEASURED CORRECTION (2026-10-08): NO workflow in `.github/workflows/` installs or runs `just` today** (the earlier claim "ci-dotnet is the only one without just" was wrong). The CI half is therefore a first-ever `just` in CI and is isolated as the LAST task (Task 9) so the owner can drop it without touching the rest. | owner chose (b); correction surfaced at handoff |
 | 2 §77 | Check C: `path:N` / `path:N-M` pointers range-checked; opt-in anchor `` `file:N` ("quoted text") `` verified on line N (or within N..M). Content drift of un-anchored pointers stays unchecked and is stated in the script header. | agy+driver agreed |
-| 3 temp | ONE shared root `%TEMP%/clavity-tests/`, a 24 h sweep of that root, a gate forbidding direct `GetTempPath()` / `$env:TEMP` / `$env:TMP` in suites, migrate ALL suites in this branch, with a NAMED exemption list (reason per entry) for the two `.testbak` sites. | owner asked for a common scope; agy+driver agreed after negotiation (reply-3); **awaits owner confirmation at handoff** |
+| 3 temp | ONE shared root `%TEMP%/clavity-tests/`, a 72 h sweep of that root, a gate forbidding direct `GetTempPath()` / `$env:TEMP` / `$env:TMP` in suites, migrate ALL suites in this branch, with a NAMED exemption list (reason per entry) for the two `.testbak` sites. | owner asked for a common scope; agy+driver agreed after negotiation (reply-3); **awaits owner confirmation at handoff** |
 | 4 §56 | A never-audited roster doc renders as `## <doc> - AUDIT-NEVER (claims inspected: 0)` (em dash, as the hook regex needs), so `docs-audit-reminder.sh:33` counts it unchanged; `Get-FindingsSummary` gains `NeverAudited`. | agy+driver agreed |
 | 5 gate scope | ONE parser shape for every entry of every tracker incl. numbered items 0-13; strikethrough removed (`KILLED` carries it). | agy withdrew its carve-out |
 | 6 evidence | ROADMAP-file entries closed by ruling need a `- **<id> ...` bullet under "Non-goals / accepted limitations" in `clavity-dotnet/ROADMAP.md`; standalone-file entries (backlog stub, fix-the-tool) carry their own `**Reopen if:**` line. | agy+driver agreed |
@@ -719,70 +719,47 @@ Mutants: change one word inside one classic skill's block → parity row (b) red
 
 The decided-token table is `docs/superpowers/plans/2026-10-08-branch-t-normalisation-table.tsv` (120 rows: tracker, id, line, token, note). **Before any apply, the driver shows the owner the 5 `JUDGE` rows and the 7 `SHIPPED-no-sha` rows (below) as ONE batch and records each ruling in the TSV `note` column.** Current JUDGE rows: `§59` (closed + scheduled words), `dev-box-background-load-contaminates-every-timing-figure.md`, `docs-audit-findings-are-invisible-to-git.md`, `peer-scratch-dir-contains-executable-session-hooks.md`, review-relay `D2`.
 
-- [ ] **Step 1: Resolve evidence the gate will demand (driver)**
-  - For every `SHIPPED` row with no backticked sha in its legacy header: find it with `git log -S'<id title phrase>' --oneline -- clavity-dotnet/ROADMAP.md` or from the entry body's closure line; record `id<TAB>sha` in `docs/superpowers/plans/2026-10-08-branch-t-sha-overrides.tsv`. A SHIPPED row for which NO sha can be recovered is reported to the owner (token becomes `CLOSED-BY-RULING` with a Non-goals bullet, or the owner supplies the sha) - never a placeholder.
-  - The 7 fix-the-tool entries that are `fixed-in-repo`/`released` but lack `fixed-by:` (only `curate-nudge-age-reads-drain-log-dates.md` and `idle-wait-false-modal.md` have it): recover from `git log --diff-filter=A -- <file>` plus the entry text; same override file.
-  - ADD these Non-goals bullets to `clavity-dotnet/ROADMAP.md` (full text, from the owner batch ruling), after the existing step-0 bullets:
-    - `- **§7 (b) - the five coverage gaps backfilled onto the conveyor** (closed by ruling 2026-10-08): \`docs/coverage-debt.md\` tracks the gaps instead. Reopen if that file stops being maintained.`
-    - `- **§13c - does a growth-region write append or replace?** (closed by ruling 2026-10-08, answered by reading): \`GoldenHeader.cs:286-287\` writes a temp file then \`File.Move(tmp, path, overwrite: true)\` - a REPLACE; the classic writer was re-checked during normalisation. Reopen if either writer changes.`
-    - `- **§15 - the spec section 3b-vs-6 ordering tension** (closed by ruling 2026-10-08): the build follows 3b; the shipped behaviour is the ruling. Reopen if the two sections are ever made to disagree in code.`
-    - `- **§21 - whether the anti-wrap-up clause is sufficient** (closed by ruling 2026-10-08): the clause stays as necessary; isolating it is a quota-costing experiment. Reopen if a report is displaced despite the clause.`
-    - `- **§37 - release notes from commit subjects** (closed by ruling 2026-10-08): the convention stays. Reopen on a reader complaint.`
-    - `- **§58 - older clones keep CRLF until refreshed** (closed by ruling 2026-10-08): measured 2026-10-08, this clone shows only the two declared CRLF exceptions in \`git ls-files --eol\`; the refresh procedure stays documented. Reopen if a fresh clone shows CRLF blobs.`
-  - Also record in the Task 4 commit message the two batch-ruling rows that need NO Non-goals bullet (they are `SHIPPED`): §18 (`11484a57`), §27 (§39/§40 fixes `cda6a6f4`, `e23d81ee` - confirm the match to the 2026-09-07 audit during this step).
+- [ ] **Step 1: Resolve the evidence the gate will demand (driver, before any apply)**
+  - Run the script in `--dry-run` once against the real tree: `python -I docs/superpowers/plans/2026-10-08-branch-t-normalise.py . docs/superpowers/plans/2026-10-08-branch-t-normalisation-table.tsv docs/superpowers/plans/2026-10-08-branch-t-sha-overrides.tsv --dry-run`. It prints every unresolved item (`NOSHA`, `NEEDS-RULING`, `NEED-REOPEN`, `NEED-REASON`, `STUB-SHAPE`, `SPLIT-SOURCE-NOT-FOUND`, `TABLE-ROW-NOT-FOUND`, `NOT-IN-TABLE`) and exits 3 with NOTHING written; it never guesses a sha. DRY-RUN RESULT on the unfixed tree with the 5 JUDGE rows given provisional rulings: **18 NOSHA** (items 2, 3, 5, 7, 8; sections 43, 44, 45, 46, 65; stubs `agy-mark-accepts-a-nonexistent-sha`, `curate-abort-leaves-unreviewed-content-with-only-a-warning`, `golden-header-per-ask-token-optimization`; fix-the-tool `agy-look-tail-truncation`, `conversation-scoped-tools-vs-no-open-conversation`, `grpc-default-max-message-size`, `inbox-snapshot-misses-slash-command-path`, `stalled-reply-recoverable-not-lost`) - everything else resolved from the headers and bodies.
+  - For each `NOSHA` id: find the closing commit (`git log -S'<distinctive phrase from the entry>' --oneline -- <the tracker file>`, or the commit named in the entry body) and append `<id><TAB><sha>` to `docs/superpowers/plans/2026-10-08-branch-t-sha-overrides.tsv` (create it with a `# id<TAB>sha` first line; ids are written exactly as the script prints them, e.g. `§43`, `item 7`, or the stub file name; the script now forces UTF-8 output so the section sign survives a copy). An entry for which NO sha can be recovered is reported to the owner (token becomes `CLOSED-BY-RULING` with a Non-goals bullet, or the owner supplies the sha) - never a placeholder.
+  - **Show the owner ONE batch**: the 5 `JUDGE` rows (`§59`; stubs `dev-box-background-load-contaminates-every-timing-figure`, `docs-audit-findings-are-invisible-to-git`, `peer-scratch-dir-contains-executable-session-hooks`; review-relay `D2`) and any sha the driver could not recover. Record each ruling in the TSV (`token` column). The script refuses to run while any row still says `JUDGE` (`NEEDS-RULING`).
+  - The six Non-goals bullets the owner batch ruling requires (`item 7 (b)`, `item 13c`, `§15`, `§21`, `§37`, `§58`) are embedded in the script (`BULLETS`) and added only if absent. Also record in the Task 4 commit message the two batch-ruling rows that need NO bullet (they are `SHIPPED`): §18 (`11484a57`) and §27 (the §39/§40 fixes `cda6a6f4`, `e23d81ee` - confirm the match to the 2026-09-07 audit report during this step).
 
-- [ ] **Step 2: Write the transform script** (scratchpad, never committed; its sha256 goes in the commit message). Full algorithm - the executor writes it exactly so:
+- [ ] **Step 2: The transform script is a COMMITTED file, already written and dry-run:** `docs/superpowers/plans/2026-10-08-branch-t-normalise.py` (about 255 lines; Python 3, run with `-I`; stdlib only; all-or-nothing; idempotent - an entry that already has a valid status line is skipped; headings are located by id, never by the table's line column). Its behaviour, so a reader need not open it: heading `### X title <sep> <tail>` -> heading with the tail removed (strike-through markers stripped) + blank + the new `**Status:**` line + `> **Legacy status (verbatim, before the 2026-10-08 normalisation):** <tail>` + the original body; a following `**Status:**` line (review-relay, agy-autotrain) is folded into the legacy line; `SHIPPED` picks the first EXISTING sha (override, then header, then the body's closure lines; ranges use the end sha); `CLOSED-BY-RULING` on a standalone file adds the `**Reopen if:**` line from the script's `FIXED_REOPEN` map; new entries `§79`/`§80` are appended before `## Non-goals` with the original paragraph/sentence quoted verbatim; backlog stubs get the new status line + legacy line; fix-the-tool frontmatter gets the closed token, `fixed-by`/`fixed-on` (SHIPPED) or `reason` (KILLED, from the entry's own `**KILLED - ...**` text). **A sibling the driver must not skip:** a Sonnet implementer does NOT rewrite this script - it is changed only by the driver, and any change re-runs Step 3.
 
-```python
-# normalise_trackers.py  - run with:  python -I normalise_trackers.py <repo-root> <table.tsv> <sha-overrides.tsv>  [--dry-run]
-# Reads/writes bytes; ASSERTS the file has no CR before and after (all tracked blobs are LF); never rewrites a line it did not own.
-import re, sys, io, os, glob
-STATUS_GLYPH_SEP = re.compile(r'\s+[—·]\s+(?=[~*]*(?:✅|▶|🔴|🚫|⚠|~~))')   # " — ✅ ..." or " · 🚫 ..."
-DATE = re.compile(r'\d{4}-\d{2}-\d{2}')
-SHA  = re.compile(r'`([0-9a-fA-F]{7,40})(?:\.\.([0-9a-fA-F]{7,40}))?`')
-NORMALISED = '2026-10-08'
-
-def split_heading(line):
-    """### §N — Title — <tail>  ->  (heading_without_tail, tail). The tail starts at the FIRST glyph-led separator; a heading
-    with no glyph-led separator is title-only and tail=''. Strike-through markers around the title are removed."""
-    m = STATUS_GLYPH_SEP.search(line)
-    head, tail = (line[:m.start()], line[m.end():]) if m else (line, '')
-    head = head.replace('~~', '')            # '### ~~1. Title~~' -> '### 1. Title'
-    return head.rstrip(), tail
-
-def status_line(token, tail, entry_lines, overrides, eid, note):
-    d = (DATE.search(tail) or DATE.search('\n'.join(entry_lines[:40])) or [NORMALISED])
-    date = d.group(0) if hasattr(d, 'group') else d[0]
-    text = {'SHIPPED': 'merged to main', 'CLOSED-BY-RULING': 'closed by ruling, see Non-goals / accepted limitations',
-            'KILLED': 'will not be done - ' + (re.sub(r'\*\*|~~|[✅▶🔴🚫⚠]', '', tail)[:90].strip() or 'see the legacy status below'),
-            'OPEN': 'not yet scheduled', 'SCHEDULED': 'scheduled - ' + note, 'IMPLEMENTED': 'built on an unmerged branch'}[token]
-    if token == 'SHIPPED':
-        sha = overrides.get(eid) or next((m.group(1) for m in SHA.finditer(tail)), None) \
-              or next((m.group(1) for l in entry_lines if re.search(r'SHIPPED|FIXED|CLOSED', l) for m in SHA.finditer(l)), None)
-        if not sha: raise SystemExit('NOSHA ' + eid)        # reported, never papered over
-        text += ' in `%s`' % sha
-    return '**Status:** %s %s - %s' % (token, date, text)
-
-# For each table row (tracker == dotnet-roadmap): locate the heading line BY ID, never by the table's line column (Tasks 2 and 3
-# and the Non-goals additions in step 1 shift lines before this runs; the line column is informational only): the unique line
-# matching '^### (~~)?' + re.escape(id-as-written) + r'[ .]' - assert exactly ONE match, else STOP with `AMBIGUOUS-HEADING <id>`; replace it with split_heading(...)[0]; insert after it  '' , status_line(...) , and, when tail is non-empty,
-# '> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ' + tail  (kept so no history is lost); then the original body.
-# Rows with line == 'NEW'  -> append the new entry (title, status line, the verbatim paragraph named in the table note) BEFORE '## Non-goals'.
-# backlog-stub rows: line 3 '**Status:** <old>' -> '**Status:** <TOKEN> ...' + a '> **Legacy status (verbatim...):** <old>' line;
-#   CLOSED-BY-RULING stubs also gain '**Reopen if:** <text from the table note>'.
-# fix-the-tool rows: rewrite the 'status:' frontmatter value to the token, add 'fixed-by:'/'fixed-on:' from overrides for SHIPPED,
-#   keep 'released-in:', and for KILLED (wont-fix) add 'reason:' from the entry's existing wont-fix paragraph.
-# review-relay / agy-autotrain-roadmap rows: same transform on their headings; their existing '**Status:**' lines are replaced.
-# Every apply path ends with:  assert b'\r' not in data ; re-read the file ; print a per-file diffstat.
+- [ ] **Step 3: Dry-run in a throwaway worktree (done once at planning time; the driver repeats it after any script or table change)** -
+```bash
+git worktree add --detach "$SCRATCH/wt" HEAD
+python -I docs/superpowers/plans/2026-10-08-branch-t-normalise.py "$SCRATCH/wt" <table> <overrides>      # applies in the worktree
+python -I <removed-lines oracle, Step 4b> "$SCRATCH/wt"                                                      # expect: not in the allow-list: 0
+pwsh -NoProfile -File scripts/check-tracker-status.ps1 -RepoRoot "$SCRATCH/wt"                                # expect: OK
+git worktree remove --force "$SCRATCH/wt"
 ```
+PLANNING-TIME RESULT (placeholder shas, provisional JUDGE rulings): script applied to 36 files; the gate printed `check-tracker-status: OK - 119 entries, 36 open`; the removed-lines oracle printed `removed lines: 121; not in the allow-list: 0`. Two real script defects were found and fixed by this run (a console code page mangled the section sign in ids; a KILLED `reason:` was derived from the wrong text and a `#` made the frontmatter parser read it as a comment). The 36 open entries are the list the owner sees in Step 8.
 
-- [ ] **Step 3: Dry-run** - `python -I normalise_trackers.py . <table> <overrides> --dry-run` prints, per file, the planned heading/status pairs. The driver reads ALL 120 pairs against the table before the apply (the heuristic failed on §20/§26/§65 because of "was:" text). Any disagreement → fix the table row, not the script.
+- [ ] **Step 4: Apply, then run the gate** - `python -I docs/superpowers/plans/2026-10-08-branch-t-normalise.py . <table> <overrides>` then `pwsh -NoProfile -File scripts/check-tracker-status.ps1`. Iterate (fix the table/override, re-run from a clean `git restore` of the five tracker paths) until it prints `OK`. The gate's output is the oracle; no hand-edit of a status line.
 
-- [ ] **Step 4: Apply, then run the gate** - `python -I normalise_trackers.py . <table> <overrides>` then `pwsh -NoProfile -File scripts/check-tracker-status.ps1`. Iterate (fix the table/override, re-run from a clean `git restore` of the five tracker paths) until it prints `OK`. The gate's output is the oracle; no hand-edit of a status line.
+- [ ] **Step 4b: The REMOVED-LINES oracle (panel finding, BLOCKING: a heading-only check cannot see lost body text)** - commit `docs/superpowers/plans/2026-10-08-branch-t-removed-lines-oracle.py` (code below) and run it on the working tree right after the apply and BEFORE any hand edit: every line the diff removed must be a tracker heading, a status line, or a frontmatter `status/fixed-by/fixed-on/reason` key; anything else removed is lost body text.
+```python
+"""Usage: python -I removed-lines-oracle.py <repo-root>   (working tree vs HEAD)  -> exit 0 clean, 1 lost lines"""
+import subprocess, sys, re
+root = sys.argv[1]
+d = subprocess.run(['git', '-C', root, 'diff', '-U0', '--no-color'], capture_output=True, text=True, encoding='utf-8').stdout
+allowed = re.compile(r'^(### |## AT-|\*\*Status:\*\*|status:|fixed-by:|fixed-on:|reason:)')
+cur = None; bad = []; removed = 0
+for l in d.split('\n'):
+    if l.startswith('--- a/'): cur = l[6:]
+    elif l.startswith('-') and not l.startswith('---'):
+        removed += 1
+        if not allowed.match(l[1:]): bad.append('%s: %s' % (cur, l[1:][:110]))
+print('removed lines: %d; not in the allow-list: %d' % (removed, len(bad)))
+for b in bad[:25]: print('LOST', b)
+sys.exit(1 if bad else 0)
+```
+Mutant: make the script drop the `body` of one entry (`new.extend(body ...)` -> `new.extend([])`) -> the oracle prints `LOST` and exits 1. The Step 5 stale-text corrections are made AFTER this oracle and are APPEND-ONLY (`(superseded 2026-10-08: ...)`), so they never remove a line either; the Step 10 loss check below stays as the second, independent look.
 
-- [ ] **Step 5: Splits and stale-text corrections (hand edits, each located by grep first)**
-  - §29 → body keeps §29a; the 29b paragraph (`ROADMAP.md` ~2538-2542, quoted in the table) is copied VERBATIM into the new `§79 - The 13b completeness false-flag whose cause is not determined (formerly §29b)`; the original paragraph stays, prefixed `(now tracked as §79)`.
-  - §31 → the sentence "`.no-agy` should make `agy-liveness-check.sh` SILENT ... OPEN, deliberately not decided here" becomes `§80 - .no-agy should make agy-liveness-check.sh silent (formerly §31)`, status `SCHEDULED 2026-10-08 - Branch H; owner ruled 2026-10-08: the hook is SILENT`; the original sentence stays in §31's legacy line.
+- [ ] **Step 5: Stale-text corrections (hand edits, each located by grep first; APPEND-ONLY)**
+  - The §29b and §31 splits (new `§79`, `§80`) are made by the script from the table's two `NEW` rows; verify with `grep -n '^### §79\|^### §80' clavity-dotnet/ROADMAP.md`.
   - Stale statements: append `(superseded 2026-10-08: <fact>)` after each of: item 0's `1b — PROMPT (deferred deliberately)` line (`:376`: steps 2/1a/1b SHIPPED 2026-08-07, see `:222`); §65's "Forks 2 and 3 DEFERRED" body (`:3764-3769`: closed by ruling, Non-goals); §14's "KNOWN OPEN HOLE" (`:1191`: accepted limitation, Non-goals); §74's "capstone + test-audit pending" (recorded in `docs/agy-capstone-ledger.md` / `docs/agy-test-audit-ledger.md`); §61's "branch `release` must exist" (it exists: `git ls-remote origin refs/heads/release`); §27's "push is HELD / panel is PAUSED"; §21's "ACCEPTED, NOT STARTED" plan block; `peer-scratch-dir-contains-executable-session-hooks.md`'s leftover SCHEDULED line; the `golden-header-per-ask-token-optimization.md` "never measured" probe; §14c's residual limit (add it to the §14 Non-goals bullet). The driver verifies each fact by command before writing it.
 
 - [ ] **Step 6: Update the prose that describes the old enum** - `agy-autotrain/docs/fix-the-tool-backlog/_template.md` (frontmatter uses the closed token set and the `fixed-by`/`fixed-on`/`released-in`/`reason` keys; delete the `open | fixed-in-repo | released | wont-fix` line), `agy-autotrain/docs/fix-the-tool-backlog/README.md`, `docs/backlog-triage-runbook.md:104` and `:276` (both state the stale enum `open | fixed | wont-fix`), `docs/coverage-debt.md` boundary H (heading `### H. ... — VOIDED 2026-10-08`, a **VOIDED** paragraph in the style of boundary E at line 402 naming `check-tracker-status.ps1` as the enforcement; keep the original text as "Original gap (for the record)"), the ROADMAP preamble (`clavity-dotnet/ROADMAP.md` line ~24-27: one sentence pointing at `docs/tracker-format.md`).
@@ -808,7 +785,7 @@ Describe 'check-tracker-status.ps1 - the real repository' {
 - [ ] **Step 10: Verify nothing was lost and endings are LF** -
 ```bash
 git diff --stat | tail -3
-for f in $(git diff --name-only); do python -I -c "import sys,subprocess;b=subprocess.run(['git','show',':'+sys.argv[1]],capture_output=True).stdout;print(sys.argv[1],'CR' if b'\r' in b else 'LF')" "$f"; done | grep -v ' LF$' || echo "all LF"
+git diff --name-only -z | while IFS= read -r -d '' f; do python -I -c "import sys;b=open(sys.argv[1],'rb').read();print(sys.argv[1],'CR' if b'\r' in b else 'LF')" "$f"; done | grep -v ' LF$' || echo "all LF"
 ```
 and a history-preservation oracle: for each of the 65+14 ROADMAP headings, the OLD heading text (from `git show HEAD:clavity-dotnet/ROADMAP.md`) appears verbatim, either as the new heading + the `Legacy status` line or in the new heading alone - the script prints `LOST <id>` otherwise (must print nothing). Mutant: truncate one tail in the script → the oracle prints `LOST`.
 
@@ -950,9 +927,9 @@ function New-TestTempPath {
     Join-Path (Get-TestTempRoot) ("$Prefix-" + [Guid]::NewGuid().ToString('N') + $Suffix)
 }
 function Invoke-TestTempSweep {
-    # Deletes children of the shared root older than MaxAgeHours. 24 h by default: a paused or overnight run keeps its scratch
-    # (agy and the driver agreed 2026-10-08); scratch is small, so a day of slack costs nothing.
-    param([double]$MaxAgeHours = 24)
+    # Deletes children of the shared root older than MaxAgeHours. 72 h by default: a run paused over a weekend (Friday evening to
+    # Monday morning is ~60 h) keeps its scratch (panel round 1 found 24 h breaks on weekends); scratch is small, so three days of slack costs nothing.
+    param([double]$MaxAgeHours = 72)
     $root = Get-TestTempRoot
     $cut = (Get-Date).AddHours(-$MaxAgeHours)
     foreach ($c in @(Get-ChildItem -LiteralPath $root -Force -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $cut })) {
@@ -974,10 +951,11 @@ BeforeAll {
         Get-ChildItem -LiteralPath (Join-Path $script:RepoRoot 'scripts' 'tests') -Filter '*.Tests.ps1' -File
         Get-ChildItem -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet' 'install') -Filter '*.Tests.ps1' -File -ErrorAction SilentlyContinue
     ) | Where-Object { $_.Name -ne 'test-temp-discipline.Tests.ps1' -and $_.Name -ne 'TestTemp.Tests.ps1' }
-    # file -> quoted line fragment -> reason. A fragment, not a line number, so an ordinary edit cannot move it out of coverage.
+    # file -> the EXACT trimmed line -> reason. The whole line, not a fragment: a fragment would let a second GetTempPath() on the SAME line
+    # ride the exemption (panel round 1); not a line number, so an ordinary edit cannot move it out of coverage.
     $script:Exempt = @(
-        @{ File = 'check-seed-artifacts-synced.Tests.ps1'; Fragment = "'clavity-classic-hooks-json.testbak'"; Reason = 'parks a TRACKED file at a fixed name outside the swept root: a sweep deleting it would destroy the file the test restores' }
-        @{ File = 'check-seed-artifacts-synced.Tests.ps1'; Fragment = "'clavity-dotnet-golden-header.testbak'"; Reason = 'same as above' }
+        @{ File = 'check-seed-artifacts-synced.Tests.ps1'; Line = "`$bak = Join-Path ([IO.Path]::GetTempPath()) 'clavity-classic-hooks-json.testbak'"; Reason = 'parks a TRACKED file at a fixed name outside the swept root: a sweep deleting it would destroy the file the test restores' }
+        @{ File = 'check-seed-artifacts-synced.Tests.ps1'; Line = "`$bak = Join-Path ([IO.Path]::GetTempPath()) 'clavity-dotnet-golden-header.testbak'"; Reason = 'same as above' }
     )
     # IgnoreCase: PowerShell environment-variable names are case-insensitive, so `$env:Temp` is the same hole as `$env:TEMP`
     # (measured: no lowercase spelling exists today - 58 suites / 222 lines either way - so this closes a latent evasion).
@@ -991,7 +969,7 @@ Describe 'test temp discipline' {
             foreach ($l in [IO.File]::ReadAllLines($s.FullName)) {
                 $n++
                 if ($l.TrimStart().StartsWith('#') -or -not $script:Direct.IsMatch($l)) { continue }
-                $ex = @($script:Exempt | Where-Object { $_.File -eq $s.Name -and $l.Contains($_.Fragment) })
+                $ex = @($script:Exempt | Where-Object { $_.File -eq $s.Name -and $l.Trim() -ceq $_.Line })
                 if ($ex.Count -eq 0) { "$($s.Name):$n  $($l.Trim())" }
             }
         }
@@ -999,8 +977,8 @@ Describe 'test temp discipline' {
     }
     It 'every exemption still matches a real line (a stale exemption is a hole)' {
         foreach ($e in $script:Exempt) {
-            $hit = [IO.File]::ReadAllLines((Join-Path $script:RepoRoot 'scripts' 'tests' $e.File)) | Where-Object { $_.Contains($e.Fragment) }
-            @($hit).Count | Should -BeGreaterThan 0 -Because "exemption '$($e.Fragment)' in $($e.File) must still exist"
+            $hit = [IO.File]::ReadAllLines((Join-Path $script:RepoRoot 'scripts' 'tests' $e.File)) | Where-Object { $_.Trim() -ceq $e.Line }
+            @($hit).Count | Should -BeGreaterThan 0 -Because "exemption line '$($e.Line)' in $($e.File) must still exist"
         }
     }
     It 'every suite that uses New-TestTempPath or Get-TestTempRoot can reach TestTemp.ps1' {
@@ -1184,8 +1162,15 @@ Mutant: remove the Integration line from the justfile → the row goes red. Comm
 
 **Spec coverage** (spec Branch T row + format decision + batch ruling): format file + excerpt in `open-issues`/`agy-capstone`/`agy-test-audit` of both plugins + parity check → Tasks 1, 3. Gate refusing malformed lines / requiring evidence per closed token / listing open items / covering fix-the-tool and voiding boundary H → Tasks 1, 4 (steps 6, 9). §77 absorbed → Task 2. Normalisation of all trackers with the batch rulings (§18, §27, §7, §13c, §58, §14h*, §15, §16, §21, §37, `agy-verify-needed` outside the bar) and the §29b/§31 splits → Task 4 and the TSV. §34 → Task 5. pester-temp-dirs → Task 6. §56 → Task 7. §36 small closure → Tasks 8-9. (*§14h is inside §14, closed by the step-0 ruling and its Non-goals bullet; §16's sub-question is closed by the step-0 §16 bullet - both already present.) The spec's Done-check scans → Task 4 step 8. Fourth tracker (`agy-autotrain/ROADMAP.md`) → in the gate and the table.
 
-**Placeholder scan:** the only deliberate non-literal items are (1) the Task 4 transform script, given as an algorithm with its helper functions in code and the per-file-kind rules in comments, because the apply is driven by the TSV and the gate is its oracle; (2) the Task 6 file list, which is the discipline gate's own failure output (an oracle, not a guess); (3) Task 9's install step, which cannot be decided without reading the workflow and has a fully specified fallback. `UNMEASURED` in `_partition.md` rows is filled by the driver.
+**Placeholder scan:** the Task 4 transform script is now a committed, dry-run file (`2026-10-08-branch-t-normalise.py`) with a committed removed-lines oracle; the only deliberate non-literal items are (1) the Task 6 file list, which is the discipline gate's own failure output (an oracle, not a guess); (2) Task 9's install step, which cannot be decided without reading the workflow and has a fully specified fallback. `UNMEASURED` in `_partition.md` rows is filled by the driver.
 
 **Type/name consistency:** `Remove-TestPath`, `Get-TestTempRoot`, `New-TestTempPath`, `Invoke-TestTempSweep` (Tasks 5-6); `CLAVITY_TEST_TEMP_ROOT` (Task 6 only); gate tokens `NO-STATUS BAD-TOKEN BAD-DATE HEADING-STATUS NO-SHA PHANTOM NO-NONGOALS NO-REOPEN NO-REASON RELEASED-ON-UNSHIPPED BAD-RELEASED NO-TITLE NO-DATE MISSING-TRACKER SHALLOW` (Task 1, used by Task 4's row); Check C tokens `OUT-OF-RANGE ANCHOR-MISS` (Task 2); `AUDIT-NEVER` / `NeverAudited` (Task 7).
 
 **Open items surfaced for the owner at handoff:** (1) Fork 3's agreed scope (all suites + named exemptions) awaits confirmation; (2) the measured correction that no workflow runs `just` (Task 9 separable, fallback recommended if in doubt); (3) the Task 4 batch of JUDGE and no-sha rows; (4) the pre-existing `.testbak` hazard folded into Task 6 step 5; (5) the 30 765 existing `%TEMP%` directories are the owner's to delete.
+
+## Stand-downs (adversarial-panel-review)
+
+- `DISCARDED-BELOW-FLOOR`: Task 9 fallback regex `dotnet test\s+(\S+)` would capture a QUOTED project path unquoted-vs-quoted differently - unreachable today because `.github/workflows/ci-dotnet.yml:26` and `:32` write both paths unquoted (`- run: dotnet test tests/Clavity.Ls.Tests`); a future quoting would turn the fallback row red loudly, not pass silently.
+- `REJECTED`: "CI fails on the real trackers after Task 1 commits the gate suite" - Task 1 Step 8 states the gate is not wired and the suite carries NO real-repo row until Task 4 Step 9 (measured: the plan's own Task 1 suite has 25 rows, all fixture-based; the real-repo row is a separate `Describe` appended in Task 4).
+- `REJECTED`: "Tasks 5 and 6 both modify TestTemp.ps1 and may conflict if executed out of order" - the tasks are strictly ordered in this document and Task 6 Step 1 appends to the file Task 5 created; subagent-driven execution runs tasks in order.
+- Panel round 1, agy escalation, was `[13b] TRUNCATED REPLY` (the final chat message was a pleasantry after the peer deleted its own scratch files); the report was recovered from its prepared reply file `.clavity/scratch/branch-t-plan-panel/reply.md` and every finding re-checked by the driver before folding. The peer also created `temp_user_prompt.txt` in the repository root during that round (a review-only breach; deleted by the driver, nothing tracked changed) - a third live occurrence for ROADMAP §78.

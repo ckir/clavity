@@ -1,0 +1,16 @@
+"""Task 4 step 4b oracle: after the normalisation apply, EVERY line the diff REMOVED must be a tracker heading line,
+a tracker status line, or a frontmatter status/fixed-by/fixed-on key. Anything else removed = body text lost.
+Usage: python -I removed_oracle.py <repo-root>   (compares the working tree with HEAD)"""
+import subprocess, sys, re
+root = sys.argv[1]
+d = subprocess.run(['git', '-C', root, 'diff', '-U0', '--no-color'], capture_output=True, text=True, encoding='utf-8').stdout
+allowed = re.compile(r'^(### |## AT-|\*\*Status:\*\*|status:|fixed-by:|fixed-on:|reason:)')
+cur = None; bad = []; removed = 0
+for l in d.split('\n'):
+    if l.startswith('--- a/'): cur = l[6:]
+    elif l.startswith('-') and not l.startswith('---'):
+        removed += 1
+        if not allowed.match(l[1:]): bad.append('%s: %s' % (cur, l[1:][:110]))
+print('removed lines: %d; not in the allow-list: %d' % (removed, len(bad)))
+for b in bad[:25]: print('LOST', b)
+sys.exit(1 if bad else 0)
