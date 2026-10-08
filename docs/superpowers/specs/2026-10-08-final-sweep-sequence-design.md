@@ -89,11 +89,27 @@ A fresh read-only agent was asked, WITHOUT this ledger, to list every open item 
 
 **(c) Stale headers and stale text** (the census's UNSURE list): §74's header still reads "capstone + test-audit pending" although Branch 22's capstone and audit are recorded in the ledgers; §21 "Remaining discipline: AGY-TEST-AUDIT" and its "ACCEPTED, NOT STARTED" plan block; §27's pre-ship "push is HELD" / "panel is PAUSED" text; §61's "branch `release` must exist" (it does); `peer-scratch-dir-contains-executable-session-hooks`' leftover "SCHEDULED" line; the `golden-header-per-ask-token-optimization` stub's carried "never measured" probe; §14c's stated residual limit. **Routing: Branch T's normalisation** - verify against the ledgers and git, then correct the text; a residual limit becomes an explicit accepted limitation.
 
-**(d) `docs/agy-verify-needed.md` "## Pending"** - one parked assumption (self-description priming), its pilot "NULL, underpowered, STILL PARKED". **OWNER DECISION** at the start of Branch T: it is a knowledge-verification queue owned by agy-autotrain, not a defect; either rule it outside the bar (named, like coverage-debt) or close the entry by ruling.
+**(d) `docs/agy-verify-needed.md` "## Pending"** - one parked assumption (self-description priming), its pilot "NULL, underpowered, STILL PARKED". Owner ruled 2026-10-08: OUTSIDE THE BAR (see the batch ruling below).
 
 **(e) `review-relay` D2** reads "paused (owner, 2026-09-28)" and **D1** "open (owner)": both already routed to Branch RR's start (above).
 
 `docs/coverage-debt.md`'s tracked debt was confirmed by the census at the same ten live entries; it stays outside the bar ("Scope boundary").
+
+### Owner batch ruling on the third inventory (2026-10-08, approved as recommended)
+Applied during Branch T's normalisation, each with the evidence the new gate will require:
+| Item | Ruling | Evidence |
+|---|---|---|
+| §18 (golden-header cap ceiling "not yet chosen") | SHIPPED | `11484a57` raised the combined cap 16 -> 32 KiB in both drivers (`GoldenHeader.cs:39`, `golden_header.rs:27`) |
+| §13c (does a growth write append or replace?) | CLOSED-BY-RULING (answered by reading) | `GoldenHeader.cs:286-287`: write to a temp file, then `File.Move(tmp, path, overwrite: true)` - a REPLACE; the classic writer is re-checked during normalisation |
+| §58 (older clones keep CRLF until refreshed) | CLOSED-BY-RULING | measured 2026-10-08: this clone shows only the two declared CRLF exceptions in `git ls-files --eol`; the refresh procedure stays documented |
+| §27 (two audit gaps "deferred to the conveyor") | SHIPPED via §39 / §40 | both promoted 2026-09-12 from the conveyor and FIXED (`cda6a6f4`, `e23d81ee`); the exact match to the 2026-09-07 audit report is confirmed during normalisation |
+| §7 (a) `adversarial-panel-review` not enrolled in the discipline checker; (b) five coverage gaps not backfilled onto the conveyor | (a) SHIPPED; (b) CLOSED-BY-RULING | (a) `DisciplineContract.cs` lists `adversarial-panel-review` (commit found during normalisation); (b) `docs/coverage-debt.md` tracks the gaps instead |
+| §14h (shared review-core / AGY-* family-coherence fork) | CLOSED-BY-RULING | an architecture question with no defect; reopen if the disciplines diverge into one |
+| §15 (spec §3b-vs-§6 ordering tension) | CLOSED-BY-RULING | the build follows §3b; the shipped behaviour is the ruling |
+| §16 sub-question (a permanent gate for the durable subset) | CLOSED-BY-RULING (no new gate) | `scripts/check-agy-discipline-skills.ps1` already pins those skills' content |
+| §21 (the anti-wrap-up clause's sufficiency never isolated) | CLOSED-BY-RULING | the clause stays as necessary; isolating it is a quota-costing experiment; reopen if a report is displaced despite the clause |
+| §37 (should release notes come from commit subjects?) | CLOSED-BY-RULING | the convention stays; reopen on a reader complaint |
+| `docs/agy-verify-needed.md` "## Pending" (self-description priming) | OUTSIDE THE BAR (named here, like coverage-debt) | a knowledge-verification queue owned by agy-autotrain, not a defect |
 
 ## Scope boundary - what the "nothing open" bar does NOT cover (named so it is not a surprise)
 The bar is the ROADMAP's, as the owner stated it. `docs/coverage-debt.md` is a SEPARATE committed record with its own "Tracked debt - verified gaps the owner deferred": ten live entries on 2026-10-08 (numbers 1-8, 11 and 12; 9 and 10 are marked RESOLVED / RETIRED), most of them test or gate gaps. Closing §20 decides entry 7, which leaves nine. They are not ROADMAP sections and this sequence does not build or close them. Extending the bar to cover them (for example as one more test-hygiene branch after T, or by ruling each accepted after re-validating its compensation) is the owner's call and would be made explicit before Branch T starts, not discovered at the end.
