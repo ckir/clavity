@@ -32,7 +32,7 @@ Describe 'agy-discipline-reaching.sh' {
         $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')
 
         function New-CleanHome {
-            $h = Join-Path ([IO.Path]::GetTempPath()) ("reach-home-" + [Guid]::NewGuid().ToString('N'))
+            $h = New-TestTempPath 'reach-home'
             New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
             return $h
         }
@@ -56,7 +56,7 @@ Describe 'agy-discipline-reaching.sh' {
         # real path to name, and so a regression that starts scanning would have something to find. The
         # counting expectations it encodes are asserted in discipline-reaching-report.Tests.ps1.
         function New-Transcript {
-            $p = Join-Path ([IO.Path]::GetTempPath()) ("reach-tx-" + [Guid]::NewGuid().ToString('N') + ".jsonl")
+            $p = New-TestTempPath 'reach-tx' -Suffix '.jsonl'
             $lines = @(
                 # --- OURS: two distinct stamped deliveries, one of them duplicated ---
                 # d1 uses the ARRAY content shape, which is what a real transcript carries (MEASURED:
@@ -147,7 +147,7 @@ Describe 'agy-discipline-reaching.sh' {
         $r = $null; $h = $null
         try {
             $r = New-ClavityRepo; $h = New-CleanHome
-            $bogus = Join-Path ([IO.Path]::GetTempPath()) 'no-such-transcript-xyz.jsonl'
+            $bogus = Join-Path (Get-TestTempRoot) 'no-such-transcript-xyz.jsonl'
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $bogus) -Env @{ HOME = $h }
             $x.ExitCode | Should -Be 0
             $rec = Get-Record $r
@@ -211,7 +211,7 @@ Describe 'agy-discipline-reaching.sh' {
         $r = $null; $h = $null
         try {
             $r = New-ClavityRepo; $h = New-CleanHome
-            $tx = if ($Kind -eq 'none') { $null } else { (Join-Path ([IO.Path]::GetTempPath()) 'definitely-not-here.jsonl') }
+            $tx = if ($Kind -eq 'none') { $null } else { (Join-Path (Get-TestTempRoot) 'definitely-not-here.jsonl') }
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h }
             $x.ExitCode | Should -Be 0
             $rec = Get-Record $r
@@ -305,7 +305,7 @@ Describe 'agy-discipline-reaching.sh' {
     It 'writes NOTHING and creates no directory when cwd has no .git ancestor' {
         $d = $null; $h = $null; $tx = $null
         try {
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("nogit-" + [Guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'nogit'
             New-Item -ItemType Directory -Path $d -Force | Out-Null
             $h = New-CleanHome; $tx = New-Transcript
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $d $tx) -Env @{ HOME = $h }
@@ -351,7 +351,7 @@ Describe 'agy-discipline-reaching.sh' {
             # .clavity/, which MASKS a broken shield and reports a false pass.
             function New-ReachingFixture {
                 param([string]$Shield)
-                $d = Join-Path ([IO.Path]::GetTempPath()) ("reachfx-" + [guid]::NewGuid().ToString('N'))
+                $d = New-TestTempPath 'reachfx'
                 New-Item -ItemType Directory -Force -Path $d | Out-Null
                 [void]$script:Fixtures.Add($d)   # FIXTURE HYGIENE
                 & git -C $d init -q
@@ -375,7 +375,7 @@ Describe 'agy-discipline-reaching.sh' {
                 $bash = Get-GitBashOrThrow
                 $hook = (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -replace '\\','/'
                 $payload = (@{ cwd = ($Dir -replace '\\','/'); session_id = $SessionId; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
-                $errF = Join-Path ([IO.Path]::GetTempPath()) ("reach-" + [guid]::NewGuid().ToString('N') + ".err")
+                $errF = New-TestTempPath 'reach' -Suffix '.err'
                 try {
                     $payload | & $bash $hook 2> $errF | Out-Null
                     [pscustomobject]@{ Err = (Get-Content -Raw -LiteralPath $errF -ErrorAction SilentlyContinue) }
@@ -406,7 +406,7 @@ Describe 'agy-discipline-reaching.sh' {
             # `[ ! -f ] ... elif [ -s ]` form ran neither branch against a zero-byte shield, leaving the
             # 14d defect itself unfixed on exactly the path that exists to be a floor.
             $d = New-ReachingFixture -Shield ''
-            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib-" + [guid]::NewGuid().ToString('N'))
+            $hookDir = New-TestTempPath 'nolib'
             New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
             # Copy the hook WITHOUT agy-shield-lib.sh beside it, so the source fails and the else runs.
             Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
@@ -427,7 +427,7 @@ Describe 'agy-discipline-reaching.sh' {
             # anywhere, the directory still exposed. This is the defect a fix RE-INTRODUCED here twice
             # (panel R1 pasted the unpatched idiom into this very branch), so it earns a pinned fixture.
             $d = New-ReachingFixture -Shield '!keepme.md'
-            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib2-" + [guid]::NewGuid().ToString('N'))
+            $hookDir = New-TestTempPath 'nolib2'
             New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
             Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
             $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-y'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
@@ -450,10 +450,10 @@ Describe 'agy-discipline-reaching.sh' {
             $d = New-ReachingFixture -Shield '!keepme.md'
             $gi = Join-Path $d '.clavity/.gitignore'
             $me = "$env:USERDOMAIN\$env:USERNAME"
-            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib3-" + [guid]::NewGuid().ToString('N'))
+            $hookDir = New-TestTempPath 'nolib3'
             New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
             Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
-            $errF = Join-Path ([IO.Path]::GetTempPath()) ("reach-deny-" + [guid]::NewGuid().ToString('N') + ".err")
+            $errF = New-TestTempPath 'reach-deny' -Suffix '.err'
             try {
                 # PLATFORM-BRANCHED, AND THE STDERR REDIRECT IS NOT DECORATION. This row first shipped
                 # calling `icacls` bare and ungated, while the CORRECT idiom already sat in a sibling
@@ -519,10 +519,10 @@ Describe 'agy-discipline-reaching.sh' {
             $gi = Join-Path $d '.clavity/.gitignore'
             Remove-Item -LiteralPath $gi -Force
             New-Item -ItemType Directory -Force -Path $gi | Out-Null
-            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib5-" + [guid]::NewGuid().ToString('N'))
+            $hookDir = New-TestTempPath 'nolib5'
             New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
             Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
-            $errF = Join-Path ([IO.Path]::GetTempPath()) ("reach-unread-" + [guid]::NewGuid().ToString('N') + ".err")
+            $errF = New-TestTempPath 'reach-unread' -Suffix '.err'
             try {
                 $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-unread'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
                 $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2> $errF | Out-Null
@@ -549,10 +549,10 @@ Describe 'agy-discipline-reaching.sh' {
             $cl = Join-Path $d '.clavity'
             $me = "$env:USERDOMAIN\$env:USERNAME"
             Remove-Item -LiteralPath $gi -Force
-            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib7-" + [guid]::NewGuid().ToString('N'))
+            $hookDir = New-TestTempPath 'nolib7'
             New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
             Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
-            $errF = Join-Path ([IO.Path]::GetTempPath()) ("reach-nocreate-" + [guid]::NewGuid().ToString('N') + ".err")
+            $errF = New-TestTempPath 'reach-nocreate' -Suffix '.err'
             # POSIX ONLY, and this row earned that restriction the hard way. It asserted twice on CI that
             # the hook names the DIRECTORY, and twice got NOTHING - the runner created the shield despite
             # the deny, so the state under test never existed and the row failed instead of skipping. It
@@ -624,10 +624,10 @@ Describe 'agy-discipline-reaching.sh' {
             & git -C $d check-ignore -q '.clavity/discipline-reaching.jsonl' 2>$null
             $LASTEXITCODE | Should -Not -Be 0 -Because 'the force-added file must actually be unignored, or there is nothing here to report'
 
-            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib6-" + [guid]::NewGuid().ToString('N'))
+            $hookDir = New-TestTempPath 'nolib6'
             New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
             Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
-            $errF = Join-Path ([IO.Path]::GetTempPath()) ("reach-tracked-" + [guid]::NewGuid().ToString('N') + ".err")
+            $errF = New-TestTempPath 'reach-tracked' -Suffix '.err'
             try {
                 $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-tracked'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
                 $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2> $errF | Out-Null
@@ -645,10 +645,10 @@ Describe 'agy-discipline-reaching.sh' {
             # Without this row the one above is half a test: a hook that warned unconditionally would
             # satisfy it while making every healthy start noisy.
             $d = New-ReachingFixture -Shield '!keepme.md'
-            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib4-" + [guid]::NewGuid().ToString('N'))
+            $hookDir = New-TestTempPath 'nolib4'
             New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
             Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
-            $errF = Join-Path ([IO.Path]::GetTempPath()) ("reach-ok-" + [guid]::NewGuid().ToString('N') + ".err")
+            $errF = New-TestTempPath 'reach-ok' -Suffix '.err'
             try {
                 $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-ok'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
                 $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2> $errF | Out-Null

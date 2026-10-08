@@ -9,7 +9,7 @@ Describe 'agy-liveness-check.sh' {
         # Build a fixture config-dir (the CLAUDE_CONFIG_DIR the hook reads as the USER-scope settings home)
         # with an enabledPlugins map. $Enabled = $true|$false|$null (no key) | 'nofile' (no settings.json).
         function New-ConfigFixture { param($Enabled)
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-cfg-" + [Guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'sp-d-cfg'
             New-Item -ItemType Directory -Path $d -Force | Out-Null
             if ('nofile' -ne $Enabled) {
                 $ep = @{}
@@ -21,7 +21,7 @@ Describe 'agy-liveness-check.sh' {
         }
         # An empty HOME fixture so the hook's `$HOME/.claude/.no-agy` global check never hits the host.
         function New-CleanHome {
-            $h = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-home-" + [Guid]::NewGuid().ToString('N'))
+            $h = New-TestTempPath 'sp-d-home'
             New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
             return $h
         }
@@ -73,7 +73,7 @@ Describe 'agy-liveness-check.sh' {
             return
         }
         $cfg = $null; $h = $null
-        $w = Join-Path ([IO.Path]::GetTempPath()) ("lv-nopath-" + [guid]::NewGuid().ToString('N'))
+        $w = New-TestTempPath 'lv-nopath'
         New-Item -ItemType Directory -Path $w -Force | Out-Null
         try {
             $cfg = New-ConfigFixture $true; $h = New-CleanHome
@@ -110,7 +110,7 @@ Describe 'agy-liveness-check.sh' {
     }
     It 'honors the settings hierarchy: project-local disable overrides user enable -> ADVISES' {
         $cfg = $null; $h = $null
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $proj = New-TestTempPath 'sp-d-proj'
         New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
         @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $false } } | ConvertTo-Json -Depth 5 |
             Set-Content (Join-Path $proj '.claude/settings.local.json') -Encoding ascii
@@ -123,7 +123,7 @@ Describe 'agy-liveness-check.sh' {
     }
     It 'honors the hierarchy: project-local enable overrides user disable -> SILENT' {
         $cfg = $null; $h = $null
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $proj = New-TestTempPath 'sp-d-proj'
         New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
         @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true } } | ConvertTo-Json -Depth 5 |
             Set-Content (Join-Path $proj '.claude/settings.local.json') -Encoding ascii
@@ -135,7 +135,7 @@ Describe 'agy-liveness-check.sh' {
         } finally { Remove-TestPath $cfg, $proj, $h }
     }
     It 'ADVISES on a corrupt (unreadable) settings.json (never fail-open)' {
-        $cfg = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-corrupt-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = New-TestTempPath 'sp-d-corrupt'
         New-Item -ItemType Directory -Path $cfg -Force | Out-Null
         '{ this is not json' | Set-Content (Join-Path $cfg 'settings.json') -Encoding ascii
         $h = New-CleanHome
@@ -326,8 +326,8 @@ Describe 'agy-liveness-check.sh' {
         # them the other way round: the collision was found on iteration 1 and the corrupt file was last,
         # so `continue` and `break` behaved identically and the mutation left the suite green. A guard
         # whose removal leaves the suite green is not a guard.
-        $cfg  = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-cfg-"  + [Guid]::NewGuid().ToString('N'))
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $cfg  = New-TestTempPath 'sp-d-cfg'
+        $proj = New-TestTempPath 'sp-d-proj'
         $h = New-CleanHome
         try {
             New-Item -ItemType Directory -Path $cfg -Force | Out-Null
@@ -345,7 +345,7 @@ Describe 'agy-liveness-check.sh' {
     It 'reports a settings file holding TWO JSON documents as unreadable (Branch 20, owner ruling Q1)' {
         # `jq -e .` and `jq -s` accept a document STREAM, so this file passed silently before Branch 20, while
         # Claude Code itself rejects it. One `try fromjson` per file now reports it like any corrupt file.
-        $cfg = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-cfg-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = New-TestTempPath 'sp-d-cfg'
         $h = New-CleanHome
         try {
             New-Item -ItemType Directory -Path $cfg -Force | Out-Null
@@ -367,7 +367,7 @@ Describe 'agy-liveness-check.sh' {
 
     It 'REPORTS a duplicate registered at PROJECT scope' {
         $cfg = $null; $h = $null
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
             $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
@@ -381,7 +381,7 @@ Describe 'agy-liveness-check.sh' {
 
     It 'REPORTS a duplicate registered in settings.local.json' {
         $cfg = $null; $h = $null
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
             $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
@@ -399,7 +399,7 @@ Describe 'agy-liveness-check.sh' {
         # is the directory every review-only brief hands the agy peer as its write area, so a hook wired from
         # there executes whatever the peer may have written.
         $cfg = $null; $h = $null
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
             $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
@@ -466,7 +466,7 @@ Describe 'agy-liveness-check.sh' {
 
     It 'finds a PROJECT-scope duplicate when cwd is a SUBDIRECTORY' {
         $cfg = $null; $h = $null
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
             $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
@@ -482,7 +482,7 @@ Describe 'agy-liveness-check.sh' {
 
     It 'says SCHEMA UNRECOGNISED (not "unreadable") when .hooks parses but is the wrong shape' {
         $cfg = $null; $h = $null
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
             $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
@@ -506,7 +506,7 @@ Describe 'agy-liveness-check.sh' {
         # [a-z0-9._-]+\.sh, so the extracted name list is empty. Must stay silent rather than reporting
         # anything, and must not be mistaken for the fail-closed schema case (cmd_count is non-zero).
         $cfg = $null; $h = $null
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
             $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
@@ -524,7 +524,7 @@ Describe 'agy-liveness-check.sh' {
         # it renamed .command, jq would yield an empty blob, exit 0, and the check would report no
         # collisions -- indistinguishable from a genuinely clean machine. Fail closed, not open.
         $cfg = $null; $h = $null
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
             $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
@@ -540,7 +540,7 @@ Describe 'agy-liveness-check.sh' {
         # The guard above must not fire on a merely MIXED shape -- an entry without a command is normal.
         # This is the exact edge a naive version of that guard breaks, so it is pinned separately.
         $cfg = $null; $h = $null
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
             $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
@@ -555,7 +555,7 @@ Describe 'agy-liveness-check.sh' {
 
     It 'says SHIPPED-HOOK LIST UNREADABLE when its own hooks.json will not parse' {
         $cfg = $null; $h = $null
-        $fake = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-plug-" + [Guid]::NewGuid().ToString('N'))
+        $fake = New-TestTempPath 'sp-d-plug'
         try {
             $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path $fake -Force | Out-Null
@@ -569,7 +569,7 @@ Describe 'agy-liveness-check.sh' {
 
     It 'derives the shipped list at RUNTIME - a hook added to hooks.json is picked up with no test edit' {
         $cfg = $null; $h = $null
-        $fake = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-plug-" + [Guid]::NewGuid().ToString('N'))
+        $fake = New-TestTempPath 'sp-d-plug'
         try {
             $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path $fake -Force | Out-Null

@@ -22,7 +22,7 @@ Describe 'discipline-reaching-report.ps1' {
         $script:Script = Join-Path $script:RepoRoot 'scripts/discipline-reaching-report.ps1'
 
         function New-Store { param([string[]]$Lines)
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("reach-rep-" + [Guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'reach-rep'
             New-Item -ItemType Directory -Path (Join-Path $d '.clavity') -Force | Out-Null
             if ($Lines) { Set-Content -LiteralPath (Join-Path $d '.clavity/discipline-reaching.jsonl') -Value ($Lines -join "`n") }
             return $d
@@ -48,7 +48,7 @@ Describe 'discipline-reaching-report.ps1' {
         # Same shape a real transcript uses, including the ARRAY content form. Expected: reached 2 (d1
         # duplicated + d2), unstamped 1, fired 1, compactions 2.
         function New-ScanTranscript {
-            $p = Join-Path ([IO.Path]::GetTempPath()) ("rep-tx-" + [Guid]::NewGuid().ToString('N') + ".jsonl")
+            $p = New-TestTempPath 'rep-tx' -Suffix '.jsonl'
             $S = 'AGY-ANOMALIES/1'
             @(
                 '{"type":"attachment","uuid":"d1","attachment":{"type":"hook_additional_context","hookEvent":"PreToolUse","hookName":"PreToolUse:Agent","content":["' + $S + ' relay."]}}'
@@ -226,7 +226,7 @@ Describe 'discipline-reaching-report.ps1' {
         # makes jq exit 5 while still emitting the earlier records, so the scan reported 1 delivery as a
         # COMPLETE reading when the real answer was unknown. That is Refusal #1 in its general form: a
         # partial result presented as an authoritative one.
-        $tx = Join-Path ([IO.Path]::GetTempPath()) ("trunc-" + [Guid]::NewGuid().ToString('N') + ".jsonl")
+        $tx = New-TestTempPath 'trunc' -Suffix '.jsonl'
         @(
             '{"type":"attachment","uuid":"d1","attachment":{"type":"hook_additional_context","hookEvent":"PreToolUse","hookName":"PreToolUse:Agent","content":["AGY-ANOMALIES/1 relay."]}}'
             '{"type":"attachment","uuid":"TRUNC","attachment":{"type":"hook_additional_context","hookEv'
@@ -246,7 +246,7 @@ Describe 'discipline-reaching-report.ps1' {
         # AGY-CAPSTONE round 3. The live-session alarm added in round 2 was pinned; the ORIGINAL
         # completed-session alarm never was. Every fixture with a finished session had reached > 0, so
         # deleting that branch outright left all 27 tests green. Two alarms, one covered.
-        $tx = Join-Path ([IO.Path]::GetTempPath()) ("done-tx-" + [Guid]::NewGuid().ToString('N') + ".jsonl")
+        $tx = New-TestTempPath 'done-tx' -Suffix '.jsonl'
         '{"type":"attachment","uuid":"s1","attachment":{"type":"hook_success","hookEvent":"PreToolUse","hookName":"PreToolUse:Agent","command":"bash /x/agy-anomaly-dispatch-reminder.sh","exitCode":0}}' |
             Set-Content -LiteralPath $tx -Encoding utf8NoBOM
         (Get-Item -LiteralPath $tx).LastWriteTimeUtc = (Get-Date).ToUniversalTime().AddHours(-3)
@@ -285,7 +285,7 @@ Describe 'discipline-reaching-report.ps1' {
         # banner at all. An engineer running this DURING the outage - the one moment it matters - was told
         # nothing was wrong. The provisional bucket is right to keep partial counts out of the TOTALS; it
         # was wrong to keep them out of the ALARM.
-        $tx = Join-Path ([IO.Path]::GetTempPath()) ("live-tx-" + [Guid]::NewGuid().ToString('N') + ".jsonl")
+        $tx = New-TestTempPath 'live-tx' -Suffix '.jsonl'
         '{"type":"attachment","uuid":"s1","attachment":{"type":"hook_success","hookEvent":"PreToolUse","hookName":"PreToolUse:Agent","command":"bash /x/agy-anomaly-dispatch-reminder.sh","exitCode":0}}' |
             Set-Content -LiteralPath $tx -Encoding utf8NoBOM
         $d = New-Store @( (CapRec3 $tx -Sid 'LIVE') )
@@ -389,7 +389,7 @@ Describe 'discipline-reaching-report.ps1' {
     }
 
     It 'records a v2 row whose transcript is GONE as an unknown, never a zero' {
-        $d = New-Store @( (CapRec (Join-Path ([IO.Path]::GetTempPath()) 'vanished-transcript.jsonl')) )
+        $d = New-Store @( (CapRec (Join-Path (Get-TestTempRoot) 'vanished-transcript.jsonl')) )
         try {
             $o = Run $d
             $o | Should -Match 'transcript_not_found\D+1'
@@ -484,7 +484,7 @@ Describe 'discipline-reaching-report.ps1' {
         @{ Case = 'empty';   Lines = @() }
     ) {
         $d = if ($Case -eq 'absent') {
-            $t = Join-Path ([IO.Path]::GetTempPath()) ("reach-rep-" + [Guid]::NewGuid().ToString('N'))
+            $t = New-TestTempPath 'reach-rep'
             New-Item -ItemType Directory -Path $t -Force | Out-Null; $t
         } else { New-Store @() }
         try {
