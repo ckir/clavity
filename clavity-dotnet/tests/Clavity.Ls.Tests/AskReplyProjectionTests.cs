@@ -143,17 +143,18 @@ public class AskReplyProjectionTests
     public void New_result_fields_are_omitted_from_the_json_while_unset()
     {
         var plain = System.Text.Json.JsonSerializer.Serialize(new AskReply("c", "a", Array.Empty<ActivityItem>(), false, false));
-        foreach (var f in new[] { "ReplyFile", "CaptureError", "CheckedSource", "TurnEndedOnToolStep", "PeerFile", "PeerFileStatus" })
+        foreach (var f in new[] { "ReplyFile", "CaptureError", "CheckedSource", "TurnEndedOnToolStep", "PeerFile", "PeerFileStatus", "QuotaStop" })
             Assert.DoesNotContain(f, plain);
 
         var set = System.Text.Json.JsonSerializer.Serialize(new AskReply("c", "a", Array.Empty<ActivityItem>(), false, false,
-            ReplyFile: "r.md", CaptureError: "e", CheckedSource: "chat", TurnEndedOnToolStep: true, PeerFile: "p.md", PeerFileStatus: "s"));
+            ReplyFile: "r.md", CaptureError: "e", CheckedSource: "chat", TurnEndedOnToolStep: true, PeerFile: "p.md", PeerFileStatus: "s", QuotaStop: "q"));
         Assert.Contains("\"ReplyFile\":\"r.md\"", set);
         Assert.Contains("\"CaptureError\":\"e\"", set);
         Assert.Contains("\"CheckedSource\":\"chat\"", set);
         Assert.Contains("\"TurnEndedOnToolStep\":true", set);
         Assert.Contains("\"PeerFile\":\"p.md\"", set);
         Assert.Contains("\"PeerFileStatus\":\"s\"", set);
+        Assert.Contains("\"QuotaStop\":\"q\"", set);
     }
 
     [Fact]

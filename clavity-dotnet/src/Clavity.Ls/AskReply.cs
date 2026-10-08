@@ -36,7 +36,9 @@ public sealed record AskReply(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CheckedSource = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool TurnEndedOnToolStep = false,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PeerFile = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PeerFileStatus = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PeerFileStatus = null,
+    // ROADMAP section 66: agy's own quota-stop sentence, read from its log for THIS ask; null on every ordinary reply.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? QuotaStop = null);
 
 /// <summary>One summarized step of the reply delta. Summary = bounded prose for assistant/user steps, else null.</summary>
 public sealed record ActivityItem(int Kind, string Label, string? Summary);

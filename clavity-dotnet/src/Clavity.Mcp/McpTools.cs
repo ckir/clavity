@@ -88,10 +88,30 @@ public class McpTools
         // and emitting several would make the deterministic verdicts compete with the heuristic for the
         // reader's attention. The deterministic ones win, strongest first.
         // Branch 22 adds two arms to the same chain - RESCUED first (it replaces the verdicts it cleared), ANSWER CUT last.
+        // Branch 4 (section 66) puts the quota stop SECOND, after RESCUED and before the two incompleteness notices: a peer
+        // that wrote its reply file and was then quota-stopped before posting in chat is RESCUED (complete), and the stop is
+        // only context; a peer stopped before writing anything is explained by the stop, and the right move (wait for the
+        // reset) is the opposite of the re-ask the truncation notices suggest. The block itself is emitted in BOTH cases.
+        var quotaBlock = reply13b is { QuotaStop: { } quota }
+            ? new TextContentBlock
+            {
+                Text = "[PEER QUOTA STOP] agy hit its quota during this ask: \"" + quota + "\" (agy's own words, from its log). "
+                     + (string.IsNullOrEmpty(reply13b.Answer)
+                        ? "The reply is missing because agy could not generate, not because it was dropped. "
+                        : "The Answer above was produced before the stop; anything agy meant to add after it is missing. ")
+                     + "Wait for the reset, then re-ask; do not resend meanwhile - each failed retry has been observed to push "
+                     + "the reset further out."
+            }
+            : null;
         if (reply13b is { CheckedSource: "peer-file" } rescued)
         {
             // ROADMAP section 74, C-peer-read: complete, but never silently - say which file passed.
             blocks.Add(new TextContentBlock { Text = RecoveryNotice.Rescued(rescued) });
+            if (quotaBlock is not null) blocks.Add(quotaBlock);
+        }
+        else if (quotaBlock is not null)
+        {
+            blocks.Add(quotaBlock);
         }
         else if (reply13b is { TerminalTokenMissing: true })
         {
