@@ -181,7 +181,7 @@ public class McpTools
 
     // Serialize the result, or — when agy has no conversation yet — a typed "waiting" object that tells Claude to
     // wait for the human and NOT auto-retry (spec §6).
-    private static async Task<string> RunAsync<T>(Func<Task<T>> action)
+    internal static async Task<string> RunAsync<T>(Func<Task<T>> action)
     {
         try
         {
@@ -212,6 +212,25 @@ public class McpTools
                 diagnostic = diag,
                 hint = ChannelDown.Hint(diag),
             });
+        }
+        catch (AgyModelUnavailableException ex)
+        {
+            // ROADMAP section 71. Thrown by AgyView when the conversation's model is deprecated or unavailable; its
+            // message says how to escape. It reaches here only when ChannelDown.IsChannelDown declined it (a wrapped
+            // channel-down cause is diagnosed above), so this is the pure model case.
+            return JsonSerializer.Serialize(new { status = "model_unavailable", message = ex.Message });
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException
+                                   && ex is not Grpc.Core.RpcException { StatusCode: Grpc.Core.StatusCode.Cancelled })
+        {
+            // ROADMAP section 71. Anything else used to escape to the SDK, which reports only
+            // "An error occurred invoking 'agy_ask'." and keeps the cause for its log. A caller-cancel is left alone:
+            // the SDK rethrows it as a cancellation, which is the right answer for a cancelled ask. A gRPC call cancelled by the
+            // caller's token is an RpcException{Cancelled}, NOT an OperationCanceledException; ChannelDown.IsChannelDown excludes
+            // it on purpose, and the existing AgyChannelDownTests.A_grpc_cancelled_status_is_not_reported_as_channel_down requires
+            // it to propagate - a bare `is not OperationCanceledException` filter would turn it into a typed "error" (found by the
+            // 2026-10-08 dry run).
+            return JsonSerializer.Serialize(new { status = "error", exception = ex.GetType().Name, message = ex.Message });
         }
     }
 }
