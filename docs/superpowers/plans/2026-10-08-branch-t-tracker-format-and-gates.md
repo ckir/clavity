@@ -916,6 +916,24 @@ Describe 'the shared test temp root' {
         { Invoke-TestTempSweep -MaxAgeHours 0 } | Should -Not -Throw
     }
 }
+Describe 'the once-per-run sweep flag' {
+    It 'a second dot-source in the same run does NOT sweep again' {
+        $saved = $env:CLAVITY_TEST_TEMP_SWEPT; $savedRoot = $env:CLAVITY_TEST_TEMP_ROOT
+        try {
+            $env:CLAVITY_TEST_TEMP_ROOT = Join-Path $TestDrive 'flagroot'; $null = New-Item -ItemType Directory $env:CLAVITY_TEST_TEMP_ROOT -Force
+            $old = Join-Path $env:CLAVITY_TEST_TEMP_ROOT 'old-2'; New-Item -ItemType Directory $old | Out-Null; (Get-Item $old).LastWriteTime = (Get-Date).AddHours(-200)
+            $env:CLAVITY_TEST_TEMP_SWEPT = '1'
+            . (Join-Path $PSScriptRoot 'TestTemp.ps1')
+            Test-Path $old | Should -BeTrue -Because 'the flag says this run already swept'
+            Remove-Item Env:CLAVITY_TEST_TEMP_SWEPT
+            . (Join-Path $PSScriptRoot 'TestTemp.ps1')
+            Test-Path $old | Should -BeFalse -Because 'without the flag the dot-source sweeps'
+        } finally {
+            if ($null -eq $saved) { Remove-Item Env:CLAVITY_TEST_TEMP_SWEPT -ErrorAction SilentlyContinue } else { $env:CLAVITY_TEST_TEMP_SWEPT = $saved }
+            if ($null -eq $savedRoot) { Remove-Item Env:CLAVITY_TEST_TEMP_ROOT -ErrorAction SilentlyContinue } else { $env:CLAVITY_TEST_TEMP_ROOT = $savedRoot }
+        }
+    }
+}
 ```
 
 - [ ] **Step 2: Implement** (append to `TestTemp.ps1`):
@@ -942,8 +960,9 @@ function Invoke-TestTempSweep {
         Remove-Item -LiteralPath $c.FullName -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
-# Once per process, at dot-source time (not on every call): a sweep is cheap but not free.
-if (-not (Test-Path variable:script:TestTempSwept)) { $script:TestTempSwept = $true; try { Invoke-TestTempSweep } catch { } }
+# Once per RUN, at dot-source time. A `$script:` flag would reset for every suite file (Pester gives each its own script scope), so ~58 sweeps per run
+# (panel round 3); an environment flag is inherited by child processes and lives for the whole run.
+if (-not $env:CLAVITY_TEST_TEMP_SWEPT) { $env:CLAVITY_TEST_TEMP_SWEPT = '1'; try { Invoke-TestTempSweep } catch { } }
 ```
 Run green. Mutants: sweep compares `-gt` instead of `-lt` → 'older ... KEEPS younger' red; sweep takes `$root = $env:TEMP` → 'never touches anything OUTSIDE' red.
 
@@ -1010,7 +1029,7 @@ The list is the second row's failure output, pasted into the dispatch (the execu
   Nothing else: no assertion, no test name, no `It` count changes. Per-suite oracle: the suite's `Passed` count before == after, `Failed: 0`.
   Batches (Sonnet, one dispatch per batch, driver reviews each diff): the list from Step 3 sorted alphabetically, 8 files per batch; the order does not matter.
 
-- [ ] **Step 5: The `.testbak` hazard (pre-existing, found by this consult)** - `check-seed-artifacts-synced.Tests.ps1:104-111` and `:168`: a kill between `Move-Item $f $bak` and the `finally` leaves the TRACKED `clavity-classic/plugin/hooks/hooks.json` / golden-header seed missing from the working tree with the only copy in `%TEMP%`. Add a `BeforeAll` recovery: if either `.testbak` exists at suite start, `Move-Item` it back to its tracked path (and report `RESTORED-FROM-KILLED-RUN` via `Write-Warning`). Failing control first: a row that creates a `.testbak`, removes the tracked file, runs the recovery function, and asserts the tracked file is back. Mutant: remove the `Move-Item` → that row red.
+- [ ] **Step 5: The `.testbak` hazard (pre-existing, found by this consult)** - `check-seed-artifacts-synced.Tests.ps1:104-111` and `:168`: a kill between `Move-Item $f $bak` and the `finally` leaves the TRACKED `clavity-classic/plugin/hooks/hooks.json` / golden-header seed missing from the working tree with the only copy in `%TEMP%`. Add a `BeforeAll` recovery function `Restore-KilledRunBackup -Backup <path> -Target <tracked path>` with this exact rule (panel round 3: an unconditional restore would move a STALE backup over a newer tracked file): **if the backup exists AND the target is MISSING -> `Move-Item` it back and `Write-Warning 'RESTORED-FROM-KILLED-RUN ...'`; if both exist -> leave the target untouched, `Write-Warning 'STALE-BACKUP-IGNORED ...'` and delete the stale backup; if only the target exists -> nothing.** Rows, failing control first: (a) backup present + target missing -> target is back with the backup's content; (b) backup present + target present with DIFFERENT content -> the target's content is unchanged and the backup is gone; (c) neither backup -> no change. Mutants: remove the `Move-Item` -> row (a) red; drop the `target is missing` condition -> row (b) red.
 
 - [ ] **Step 6: Run everything this touches** - `pwsh -NoProfile -c "Invoke-Pester scripts/tests/test-temp-discipline.Tests.ps1 -Output Detailed -CI"` → `Failed: 0`; then, BACKGROUNDED by the driver (the full fast gate can exceed 600 s... it is the FAST gate, ~480 s measured; the slow gate certainly does): `just test-scripts-fast` and `just test-scripts-slow`, each to a task output file, one at a time, with NO other tool call during a run (timing discipline). Expected: `Tests Passed:` lines with `Failed: 0` for both. Afterwards: `ls "$TEMP/clavity-tests" | wc -l` is small and `ls "$TEMP" | wc -l` did not grow by hundreds (record both numbers). The 30 765 pre-existing directories are the OWNER's to delete from their own `%TEMP%`; the plan does not touch them.
 
@@ -1181,3 +1200,4 @@ Mutant: remove the Integration line from the justfile → the row goes red. Comm
 - `REJECTED`: "Tasks 5 and 6 both modify TestTemp.ps1 and may conflict if executed out of order" - the tasks are strictly ordered in this document and Task 6 Step 1 appends to the file Task 5 created; subagent-driven execution runs tasks in order.
 - Panel round 1, agy escalation, was `[13b] TRUNCATED REPLY` (the final chat message was a pleasantry after the peer deleted its own scratch files); the report was recovered from its prepared reply file `.clavity/scratch/branch-t-plan-panel/reply.md` and every finding re-checked by the driver before folding. The peer also created `temp_user_prompt.txt` in the repository root during that round (a review-only breach; deleted by the driver, nothing tracked changed) - a third live occurrence for ROADMAP §78.
 - Panel round 2 (agy, `[13b] TRUNCATED REPLY`: its closing token `[VERDICT: BLOCKING]` is not in the discipline's token table; the report is intact in the chat reply and in `.clavity/scratch/branch-t-plan-panel/reply-r2.md`; envelope clean after the round, no stray file). `REJECTED`: "the script omits a fourth tracker `open-issues.md`" - no such tracker exists (the four are the dotnet ROADMAP, backlog stubs, fix-the-tool entries, plus review-relay and agy-autotrain ROADMAPs, all handled: `heading_engine` is called for each ROADMAP and the stub and frontmatter loops follow); the real defect inside the claim - a table row that no handler consumes passes silently - was `FOLDED` as `TABLE-ROW-UNHANDLED`. `REJECTED`: "`awk` is not present on the Windows driver" - `command -v awk` printed `/usr/bin/awk` in the Bash tool this plan's shell blocks run in. `FOLDED`: the `awk` scan only matched TWO allocations on ONE line - re-measured with a run-based scan: 114 sites in 13 files (3 sites on consecutive lines, 15 sites in three suites outside the ROADMAP's list). `FOLDED`: the removed-lines oracle allowed any `### ` line - tightened to entry headings and proven by a mutant.
+- Panel round 3 (agy, `[13b] TRUNCATED REPLY`: its echoed line was from an older version of the plan; the report is intact in the chat reply and `.clavity/scratch/branch-t-plan-panel/reply-r3.md`; envelope clean). `FOLDED`: the sweep ran once per suite scope (a `$script:` flag resets per Pester file) - now an environment flag, with a row. `FOLDED` (the real defect inside a mis-stated finding): the `.testbak` recovery now restores ONLY when the tracked target is missing, so a stale backup can never overwrite newer content. `FOLDED` (hardening): the normalise script refuses a table name that is not a plain `*.md` file name. `DISCARDED-BELOW-FLOOR`: "a poisoned `.testbak` planted in %TEMP% overwrites tracked source" - unreachable beyond the accepted boundary: anyone able to write the user's own %TEMP% already executes code as that user, and `clavity-dotnet/ROADMAP.md:4003` records the same-user trust boundary as an accepted limitation (Non-goals); the missing-target rule above also bounds the damage to a file that is already absent. `REJECTED`: "`just test` aborting on the first failing project hides the second in CI" - `.github/workflows/ci-dotnet.yml:26` and `:32` are plain `- run:` steps with no `if: always()` / `continue-on-error`, so a failing first step already stops the second today (measured by grep: no match). `DISCARDED-BELOW-FLOOR`: "Check C passes silently when `git ls-files` is empty" - `scripts/check-roadmap-claims.ps1:61-65` exits 2 when `git ls-files` fails, an empty index makes Check A report `UNRESOLVED` for every line-count claim (`:111-113`) so the run goes red, and the OK line prints the not-checkable count.

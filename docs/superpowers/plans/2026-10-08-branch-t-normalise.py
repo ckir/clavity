@@ -89,6 +89,9 @@ def main():
     dry = '--dry-run' in sys.argv
     rows = [l.rstrip('\n').split('\t') for l in rd(table).split('\n')[1:] if l.strip()]
     rows = [r + [''] * (5 - len(r)) for r in rows]
+    for r in rows:     # a table-supplied file name is a plain name, never a path (defence in depth: the table is committed, but it is also edited by hand)
+        if r[0] in ('backlog-stub', 'fix-the-tool') and (os.path.basename(r[1]) != r[1] or not r[1].endswith('.md')):
+            print('BAD-TABLE-NAME ' + r[1]); return 2
     overrides = {}
     for l in rd(ovr).split('\n'):
         if l.strip() and not l.startswith('#'):
