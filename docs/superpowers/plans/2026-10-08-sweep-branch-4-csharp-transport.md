@@ -462,6 +462,7 @@ If `McpClient.CallToolAsync(string, IReadOnlyDictionary<string, object?>, ...)` 
 
 ```csharp
 using System.Text.Json;
+using Clavity.Ls;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -562,7 +563,7 @@ public static class ArgumentPrecheck
     };
 }
 ```
-(`TextCut` is `Clavity.Ls.TextCut`; add `using Clavity.Ls;`.) Add this unit row to `ArgumentPrecheckTests`:
+Add this unit row to `ArgumentPrecheckTests`:
 ```csharp
     [Fact]
     public void A_tool_with_no_arguments_says_so_instead_of_listing_nothing()
@@ -1107,3 +1108,6 @@ git commit -m "docs(roadmap): Branch 4 - sections 53 (wiring), 66, 71, 76 IMPLEM
 - `FOLDED` MG-2 (Task 3): a hardcoded `InvalidOperationException` name survived; the row is a two-type Theory.
 - `none`: Task 1 (no survivor constructed), Task 2 index 5 (`Launcher.cs:96-98`, verified by the peer), Task 5 `OnSend` position (peer verified `AgyView.cs` mark before send before wait), Cascade Analyst's four items (catch order, `TaskCanceledException` is an `OperationCanceledException` so it escapes as intended, serialisation fault lands in the typed `error` arm, `File.Exists` is false for a directory path).
 - Process notes: the peer answered all three open questions, said it could not find a wrong disposition after re-checking five, used the declared JSON keys, and again did not open the SDK XML. Its Stop Arguer said stop; the round still had four findings, so a round 5 runs on these folds.
+
+### Executed-code check of the plan's own code (driver, 2026-10-08, after round 4)
+The code blocks of Task 4 (`ArgumentPrecheck.cs`) and Task 5 (`QuotaStopLog.cs`) were extracted VERBATIM from this plan into a scratch console project (outside the repo) and run against SDK 1.4.0 with the plan's test cases: 32 checks - the 7-case type Theory, null handling, integer/number/untyped/`1e30`, name+type together, the no-arguments tool, control characters, and a real client/server round-trip through `WithRequestFilters(AddCallToolFilter(ArgumentPrecheck.Filter))` (control without the filter, wrong name, mistyped optional, wrong type, pass-through with arguments, `agy_status`, a no-argument tool with a stray argument), plus the quota detector (after-mark, before-mark, rotated log, missing log, non-quota 429, half-written then completed line, CRLF log). Result: ALL PASS after one fix - **the first run found a defect four review rounds had missed**: `ArgumentPrecheck.cs` used `TextCut` with no `using Clavity.Ls;` (the plan mentioned the `using` only in prose after the block); the block now carries it. Not covered by this run (executed for the first time at Tasks 1, 2, 3, 5-integration): `PluginInstaller.Clip`, the `StartFlow` rows, `RunAsync`'s new arms, the `AgyView`/`McpTools` wiring.
