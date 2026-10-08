@@ -586,7 +586,7 @@ Describe 'agy-curate-nudge.sh' {
     # `date -f` (ONE process for the whole list) is the reference. Every day of the leap-rule years (2000 is a leap year, 2100 is
     # not, 2024 is an ordinary leap year, 1999 an ordinary common one) plus every 37th day of 1970-2104. The same loop run against a SHIFTED reference is the failing control: the comparison
     # must be able to say NO, or this row could never go red.
-    It 'computes the same day number as GNU date -f for every day of 1999, 2000, 2024 and 2100 plus every 37th day of 1970-2104' {
+    It 'computes the same day number as GNU date -f for every day of 1999, 2000, 2024 and 2100 plus every 37th day of 1970-2104 and the year-0 edge (negative era)' {
         $dates = [Collections.Generic.List[string]]::new()
         $day = [datetime]::new(1970, 1, 1); $stop = [datetime]::new(2104, 12, 31); $n = 0
         while ($day -le $stop) {
@@ -594,6 +594,9 @@ Describe 'agy-curate-nudge.sh' {
             if ($y -eq 1999 -or $y -eq 2000 -or $y -eq 2024 -or $y -eq 2100 -or ($n % 37 -eq 0)) { $dates.Add($day.ToString('yyyy-MM-dd')) }
             $day = $day.AddDays(1); $n++
         }
+        # Year 0 is where _y goes NEGATIVE (January and February of year 0 use the previous year), the only inputs that reach the era's
+        # else-branch. GNU date accepts all of these (measured), including the proleptic leap day 0000-02-29.
+        foreach ($d in '0000-01-01', '0000-02-29', '0000-03-01', '0000-12-31', '0001-03-01') { $dates.Add($d) }
         $list = Join-Path ([IO.Path]::GetTempPath()) ("dfc-" + [Guid]::NewGuid().ToString('N') + '.txt')
         [IO.File]::WriteAllText($list, (($dates -join "`n") + "`n"))
         $probe = @'
