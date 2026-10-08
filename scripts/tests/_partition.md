@@ -1170,6 +1170,7 @@ clavity-install.Tests.ps1                         7,9s   12 tests   <- SLOW, ADD
                                                                       blind spot itself was closed.
 check-tracker-status.Tests.ps1                UNMEASURED  27 tests   <- SLOW, NEW 2026-10-08 (a child pwsh per row, ~3.5s each: ~90-110s contended; SLOW on purpose - the fast half is cap-adjacent. The driver measures it idle at the Task 10 gates.)
 check-tracker-format-excerpt.Tests.ps1       UNMEASURED  9 tests    <- SLOW, NEW 2026-10-08 (a child pwsh per row, ~2s each; the driver measures it idle at the Task 10 gates.)
+TestTemp.Tests.ps1                         UNMEASURED  5 tests    <- FAST, NEW 2026-10-08 (in-process, sub-second rows; Remove-TestPath and, from task 6, the shared temp root)
 ```
 
 Every FAST row above was re-measured in ONE sweep on 2026-08-05 (the 292,09s sample below). The SLOW rows

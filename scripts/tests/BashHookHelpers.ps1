@@ -1,6 +1,9 @@
 # Shared Pester helpers for driving the shipped bash hooks with synthetic payloads.
 # Dot-source from a *.Tests.ps1 BeforeAll: . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
 
+# Null-safe cleanup shared by every suite (Remove-TestPath); see TestTemp.ps1.
+. (Join-Path $PSScriptRoot 'TestTemp.ps1')
+
 function Get-GitBashOrThrow {
     # Claude Code runs plugin hooks with Git Bash on Windows; pin it explicitly. `Get-Command bash` is
     # NON-DETERMINISTIC: locally it resolves to WSL's C:\WINDOWS\System32\bash.exe (own filesystem, cannot
