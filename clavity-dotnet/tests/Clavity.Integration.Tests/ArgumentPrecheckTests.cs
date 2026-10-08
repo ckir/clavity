@@ -89,6 +89,16 @@ public class ArgumentPrecheckTests
     }
 
     [Fact]
+    public void A_very_long_unknown_name_is_clipped_in_the_refusal()
+    {
+        // The name is the CLIENT's string and the refusal is read by a model: it is cut to 60 characters (capstone R1, MG-1).
+        var args = new Dictionary<string, JsonElement> { [new string('n', 500)] = JsonDocument.Parse("1").RootElement };
+        var p = ArgumentPrecheck.Problem("agy_look", JsonDocument.Parse("""{"type":"object"}""").RootElement, args)!;
+        Assert.Contains("'" + new string('n', 60) + "'", p);
+        Assert.DoesNotContain(new string('n', 61), p, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_wrong_argument_name_is_rejected_naming_the_missing_and_unknown_names_and_the_real_ones()
     {
         var (client, server) = await ConnectAsync(withFilter: true);
