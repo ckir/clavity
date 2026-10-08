@@ -368,7 +368,10 @@ public class ArgumentPrecheckTests
         {
             var r = await client.CallToolAsync("agy_ask", new Dictionary<string, object?> { ["payload"] = "hi" });
             Assert.True(r.IsError);
-            Assert.Equal("An error occurred invoking 'agy_ask'.", Text(r));
+            // StartsWith, not Equal: the SDK may append a cause in a later patch; what the control documents is that today
+            // NO argument name appears in it. If the SDK starts naming the cause, this row going red is the good news.
+            Assert.StartsWith("An error occurred invoking 'agy_ask'", Text(r));
+            Assert.DoesNotContain("payload", Text(r));
         }
     }
 
@@ -401,16 +404,19 @@ public class ArgumentPrecheckTests
     }
 
     [Fact]
-    public async Task A_well_formed_call_passes_through_to_the_tool()
+    public async Task A_well_formed_call_with_arguments_passes_through_to_the_tool()
     {
-        // No LS is running: the tool answers with its own channel_down JSON, which proves the filter called `next`.
+        // The call CARRIES arguments (message + the optional discipline), so a filter that dropped or corrupted
+        // Arguments would change the outcome. No LS runs: the tool answers with its own typed channel fault, which
+        // proves the filter called `next` and the SDK still bound the arguments.
         var (client, server) = await ConnectAsync(withFilter: true);
         await using (server)
         {
-            var r = await client.CallToolAsync("agy_status", new Dictionary<string, object?>());
-            Assert.NotEqual(true, r.IsError);
-            using var doc = JsonDocument.Parse(Text(r).Split('\n')[0]);
-            Assert.True(doc.RootElement.TryGetProperty("State", out _) || doc.RootElement.TryGetProperty("status", out _));
+            var r = await client.CallToolAsync("agy_ask", new Dictionary<string, object?> { ["message"] = "hi", ["discipline"] = "agy-first" });
+            var t = Text(r);
+            Assert.DoesNotContain("missing required argument", t);
+            Assert.DoesNotContain("unknown argument", t);
+            Assert.NotEqual("An error occurred invoking 'agy_ask'.", t);   // bound and ran; its own JSON answered
         }
     }
 
@@ -755,7 +761,17 @@ Open `AgyAskIntegrationTests.cs` and find the row at `:1212` (`McpTools.AgyAsk(v
         Assert.Equal("Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 24m5s.", doc.RootElement.GetProperty("QuotaStop").GetString());
     }
 ```
-The angle-bracket line is the ONE thing to author from the neighbouring row: the FakeLs in that file is constructed with the post-send trajectory it should return (read the class at `:20-60` of `McpToolsIntegrationTests.cs` or the one in `AgyAskIntegrationTests.cs` - use the one the `:1212` row uses). The appended step must be `new CascadeStep { Kind = 90, Status = 3 }` so `TrailingAnswer` is null and `TerminalTokenMissing` would be true without the quota arm. Write the `File.AppendAllText` AFTER the view is constructed and BEFORE `AgyAsk` is awaited: the mark is taken inside `AgyAsk`, so append it from the FakeLs's `SendUserCascadeMessage` override instead if the row's fake supports a callback; if it does not, append it before the call AND assert the row still passes - then add a second assertion that an event appended BEFORE the view was created does NOT fire (construct the view after the append and expect `[13b] TRUNCATED REPLY`). State in the commit message which of the two shapes was used.
+The angle-bracket line is the ONE thing to author from the neighbouring row. Verified 2026-10-08: the fake that row uses is `FakeAskLs` (`AgyAskIntegrationTests.cs`), constructed as `new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: ...)` with a settable `Action<string>? OnSend` (line 105) that its `SendUserCascadeMessage` override invokes (line 151) - AFTER `AskAsync` has taken the log mark and BEFORE the wait returns. That is the only moment a quota event can be appended and still count, so the row appends it THERE:
+
+```csharp
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, new[] { new CascadeStep { Kind = 90, Status = 3 } },
+                                 waitPlan: <the same plan the :1196 row uses>);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        fake.OnSend = _ => File.AppendAllText(cliLog,
+            "E1001 21:09:09.531891  308834 errorreport.go:224] generating and executing: RESOURCE_EXHAUSTED (code 429): Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 24m5s.\n");
+```
+(Read `FakeAskLs`'s constructor parameters at its definition before writing: the first three arguments above are copied from the `:1196` row; the fourth is the post-send steps and must give a delta that ENDS on the Kind-90 tool step, so `TrailingAnswer` is null and `TerminalTokenMissing` would be true without the quota arm.) A second row proves the position rule through the same seam: an event appended to the log BEFORE `AgyAsk` is called (before the mark) must NOT fire - arrange it with `File.AppendAllText(cliLog, <same line>)` ahead of the call and no `OnSend`, and expect `[13b] TRUNCATED REPLY` and no `[PEER QUOTA STOP]`. State in the commit message that the first row uses `OnSend`.
 
 - [ ] **Step 9: Run both suites; mutants; commit**
 
@@ -784,14 +800,26 @@ Step 0: `Program.cs` builds its host inside `Main`/top-level statements and is n
     {
         // Lexical pin (Program.cs is not callable from a test): the round-trip rows above wire their OWN filter, so a
         // Program.cs that forgot the registration would ship the generic sentence with every row green.
-        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Clavity.Cli", "Program.cs"));
-        Assert.True(File.Exists(root), root);
-        var src = File.ReadAllText(root);
-        // At the start of a line (after indentation), so a commented-out registration does not satisfy it.
-        Assert.Matches(new System.Text.RegularExpressions.Regex(@"^\s*\.WithRequestFilters\(f => f\.AddCallToolFilter\(ArgumentPrecheck\.Filter\)\);", System.Text.RegularExpressions.RegexOptions.Multiline), src);
+        // Walk UP from the test binary until the repo's Program.cs is found - no fixed depth, so a custom output
+        // directory still resolves; a published flat directory has no src/ above it and fails loudly below.
+        string? dir = AppContext.BaseDirectory;
+        string? program = null;
+        while (dir is not null && program is null)
+        {
+            var candidate = Path.Combine(dir, "src", "Clavity.Cli", "Program.cs");
+            if (File.Exists(candidate)) program = candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        Assert.True(program is not null, "src/Clavity.Cli/Program.cs not found above " + AppContext.BaseDirectory + " - this pin needs the source tree");
+        var src = File.ReadAllText(program!);
+        // Comment-proof: drop /* ... */ blocks, refuse any #if (a disabled region), then require the registration at the
+        // start of a line (a `//`-commented line does not start with the call).
+        src = System.Text.RegularExpressions.Regex.Replace(src, @"/\*.*?\*/", "", System.Text.RegularExpressions.RegexOptions.Singleline);
+        Assert.DoesNotContain("#if", src);
+        Assert.Matches(new System.Text.RegularExpressions.Regex(@"^[ \t]*\.WithRequestFilters\(f => f\.AddCallToolFilter\(ArgumentPrecheck\.Filter\)\);", System.Text.RegularExpressions.RegexOptions.Multiline), src);
     }
 ```
-Check the relative depth: `AppContext.BaseDirectory` is `tests/Clavity.Integration.Tests/bin/<Config>/net10.0/`, so five `..` reach `clavity-dotnet/`. Run the row; if the path assertion fails, print `root` and fix the count - do not loosen the Contains.
+Run the row; it walks up from the test binary, so no depth count is involved. Mutants for this row: delete the registration line, comment it with `//`, wrap it in `/* ... */`, wrap it in `#if false` - all four must go red.
 
 - [ ] **Step 2: Run, mutant, commit**
 
@@ -893,3 +921,12 @@ git commit -m "docs(roadmap): Branch 4 - sections 53 (wiring), 66, 71, 76 IMPLEM
 - `REJECTED`: "a quota stop during a long wait surfaces as `possible_modal`, which Task 5 never annotates" - the stop ENDS agy's turn, so the idle-wait returns normally; the §66 observation itself came back as a normal reply (`[13b] TRUNCATED REPLY`, `PeerStillBusy` false), not as a modal (ROADMAP §66 body).
 - `DISCARDED-BELOW-FLOOR`: "two asks in flight could share one log mark" - `AgyView.AskAsync` is serialized by the doorbell idle-gate and the mark is a local of the call (`AgyView.cs:205-262`, the `using (client)` block).
 - Solo-panel folds (round 1): quota block emitted after RESCUED and in both the answered and unanswered cases, with wording that does not call a rescued reply incomplete; log scan capped to the last 1 MiB of the appended region; `QuotaStop` class renamed `QuotaStopLog` (it fills the `AskReply.QuotaStop` field); the `agy` verb pinned once (it is POSIX-script on every platform, `StartFlow.cs:94`); a tool with no properties says "takes no arguments"; client-supplied unknown names clipped to 60 chars; the Task 6 lexical pin anchored to line start so a commented-out registration fails it; "measured" -> "observed" for the reset-pushback claim (the source is driver guidance, not a measurement).
+
+### Round 1 agy escalation (cascade fbf2f9db, 2026-10-08) - dispositions
+- `FOLDED` AB-1 / LI-1 (Task 5 Step 8 contradicted itself: the mark is taken inside `AskAsync`, so an event appended before the call cannot count): the rows now append from `FakeAskLs.OnSend` (exists, `AgyAskIntegrationTests.cs:105,151`); the "append before the call and still pass" fallback is deleted; a second row pins that a pre-mark event does not fire.
+- `REJECTED` PP-1 (`context.Request` / `tool.Tool` do not exist): SDK v1.4.0 `RequestContext.cs:43` declares `public TParams Params { get; set; }`; `McpToolsIntegrationTests.cs:233-234` already uses `tool.ProtocolTool`. The peer's census lists neither the SDK source nor the package XML among the files it opened.
+- `FOLDED` MG-1 (pass-through row used an argument-less tool): it now calls `agy_ask` with `message` + `discipline` and asserts the SDK bound them.
+- `FOLDED` MG-2 (lexical pin survives `/* */` and `#if false`): block comments are stripped, `#if` is refused, and the four mutants are listed.
+- `FOLDED` DC-1 (fixed-depth path): walk-up search for `src/Clavity.Cli/Program.cs` with a loud failure message.
+- `FOLDED` DC-2 (control pinned the SDK's exact sentence): `StartsWith` plus "names no argument".
+- OPEN, owner decision (peer open question b): a CORRECT name with the WRONG JSON TYPE (an array for `message`) would still bind-fail into the generic sentence. Not folded: unmeasured, and a type check against `InputSchema` has its own edges (`["string","null"]`, integer vs number). Options: (A) add a type check to `Problem` after a measured control row; (B) defer to the anomalies conveyor as a section 71 follow-up. Recommendation: B, unless the owner wants the stricter contract in this branch.
