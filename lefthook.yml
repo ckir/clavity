@@ -19,6 +19,9 @@ pre-push:
   commands:
     seed-sync:
       run: just seed-sync-check
+    tracker-excerpt:
+      # Seconds-range (one pwsh start + six file reads): the tracker-format excerpt must equal docs/tracker-format.md in both plugins.
+      run: just check-tracker-format-excerpt
     agy-skills:
       run: just check-agy-skills
     doc-stubs:

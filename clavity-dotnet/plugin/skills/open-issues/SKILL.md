@@ -208,6 +208,10 @@ entry and do exactly one of:
 2. **DELETE** it with a recorded reason - it was wrong, it was already fixed, it does not meet the bar,
    or it is a duplicate. Say which, in the commit message or to the owner.
 
+<!-- tracker-format:begin -->
+**Writing a tracker entry** (full rules: `docs/tracker-format.md`): the heading is the TITLE ONLY; the next non-blank line is `**Status:** <TOKEN> <YYYY-MM-DD> - <one line>`. TOKEN is one of OPEN, SCHEDULED, IMPLEMENTED (open) or SHIPPED (cite a commit sha), CLOSED-BY-RULING (a ROADMAP entry needs a Non-goals bullet; a stub needs a `**Reopen if:**` line), KILLED (state why). Never put a status in the heading; an open sub-item gets its own entry. `just check-tracker-status` enforces this.
+<!-- tracker-format:end -->
+
 **There is no third outcome. Nothing may sit "acknowledged" or "noted".** A parked state is how a list of
 surfaced-but-untracked findings forms in the first place, which is the failure this skill exists to end.
 An entry that is real but not worth doing now is PROMOTED as tracked debt, not left in the file.
