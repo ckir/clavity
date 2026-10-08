@@ -44,17 +44,19 @@ Describe 'agy-anomaly-model-notice.sh' {
     }
 
     It 'is SILENT when there are no untriaged anomalies' {
-        $r = New-RepoWith $null; $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWith $null; $h = New-CleanHome
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r) -Env @{ HOME = $h }
             $x.ExitCode | Should -Be 0
             $x.StdOut   | Should -BeNullOrEmpty
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
 
     It 'emits hookSpecificOutput naming the EXACT count when entries are pending' {
-        $r = New-RepoWith (New-Entries 2); $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWith (New-Entries 2); $h = New-CleanHome
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r) -Env @{ HOME = $h }
             $x.ExitCode | Should -Be 0
             $j = $x.StdOut | ConvertFrom-Json
@@ -65,7 +67,7 @@ Describe 'agy-anomaly-model-notice.sh' {
             ($ctx -match '(\d+) untriaged') | Should -BeTrue -Because 'the notice must name a count'
             $Matches[1] | Should -BeExactly '2'
             $ctx | Should -Match ([regex]::Escape('There is no parked state'))
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
 
     It 'delivers the triage directive WHOLE, not just its bookends' {
@@ -75,8 +77,9 @@ Describe 'agy-anomaly-model-notice.sh' {
         # message whose instruction has been gutted. Measured on a prior epic at ~95% of the clause.
         # The head and tail are invariant; only the count and the path interpolate, so both invariant
         # halves are pinned WHOLE here.
-        $r = New-RepoWith (New-Entries 3); $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWith (New-Entries 3); $h = New-CleanHome
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r) -Env @{ HOME = $h }
             $x.ExitCode | Should -Be 0
             $ctx = Get-Ctx $x
@@ -90,18 +93,19 @@ Describe 'agy-anomaly-model-notice.sh' {
                  -Because 'the notice must NAME the anomalies file it counted'
             $ctx | Should -Match ([regex]::Escape('. Triage before new work via the open-issues skill: each entry is either PROMOTED to a tracked item with an owner, or DELETEd with a recorded reason. There is no parked state.')) `
                  -Because 'the directive is the payload - gutting it leaves a notice that names a number and asks for nothing'
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
 
     It 'reports 12 as twelve, not as a substring of two' {
         # The control for the assertion above. Without it, a count that is wrong in the tens digit is
         # indistinguishable from a correct one under any substring match.
-        $r = New-RepoWith (New-Entries 12); $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWith (New-Entries 12); $h = New-CleanHome
             $ctx = Get-Ctx (Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r) -Env @{ HOME = $h })
             ($ctx -match '(\d+) untriaged') | Should -BeTrue -Because 'the notice must name a count'
             $Matches[1] | Should -BeExactly '12'
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
 
     It 'agrees with the OWNER-side hook on the count' {
@@ -117,8 +121,9 @@ Describe 'agy-anomaly-model-notice.sh' {
         # moved to a stdout JSON envelope like this one. CAUGHT BY CI, not locally: this row read
         # `.StdErr`, found nothing, and failed on "the owner-side hook must also be reporting a count".
         # The row was right and its premise had rotted underneath it.
-        $r = New-RepoWith (New-Entries 5); $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWith (New-Entries 5); $h = New-CleanHome
             $model = Get-Ctx (Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r) -Env @{ HOME = $h })
             ($model -match '(\d+) untriaged') | Should -BeTrue -Because 'the model half must name a count'
             $modelN = $Matches[1]
@@ -129,46 +134,50 @@ Describe 'agy-anomaly-model-notice.sh' {
 
             $modelN | Should -BeExactly $ownerN
             $modelN | Should -BeExactly '5' -Because 'both halves agreeing on a WRONG number would still pass the equality above'
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
 
     It 'exits 0 even with entries pending, so the owner-side hook is unaffected' {
         # Its sibling exits 2 by design. This one must not, or a SessionStart carrying pending anomalies
         # would surface two blocking advisories where the design intends one notice per audience.
-        $r = New-RepoWith (New-Entries 1); $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWith (New-Entries 1); $h = New-CleanHome
             (Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r) -Env @{ HOME = $h }).ExitCode | Should -Be 0
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
 
     It 'is SILENT under a WORKSPACE .no-agy' {
         # Both sibling hooks honour the workspace kill-switch as well as the global one. A hook that
         # honours only the global switch cannot be turned off for one repo.
-        $r = New-RepoWith (New-Entries 1); $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWith (New-Entries 1); $h = New-CleanHome
             New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r) -Env @{ HOME = $h }
             $x.ExitCode | Should -Be 0
             $x.StdOut   | Should -BeNullOrEmpty
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
 
     It 'is SILENT under a GLOBAL .no-agy' {
-        $r = New-RepoWith (New-Entries 1); $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWith (New-Entries 1); $h = New-CleanHome
             New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r) -Env @{ HOME = $h }
             $x.ExitCode | Should -Be 0
             $x.StdOut   | Should -BeNullOrEmpty
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
 
     It 'is SILENT when .no-agy is at the repo root and cwd is a subdirectory' {
         # The suite's own Payload helper forward-slashes cwd, which is the repo-wide convention and is
         # exactly why this bug survived: a POSIX-shaped path cannot exercise the Windows walk. These two
         # tests hand-build the RAW backslashed shape the real payload has.
-        $r = New-RepoWith (New-Entries 1); $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWith (New-Entries 1); $h = New-CleanHome
             $sub = Join-Path $r 'src'
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
@@ -178,7 +187,7 @@ Describe 'agy-anomaly-model-notice.sh' {
 
             $x.ExitCode | Should -Be 0
             $x.StdOut   | Should -BeNullOrEmpty -Because 'an opt-out at the repo root must suppress this hook from a subdirectory'
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
 
     It 'DOES fire from that same subdirectory when .no-agy is absent (positive control)' {
@@ -187,8 +196,9 @@ Describe 'agy-anomaly-model-notice.sh' {
         # never leaves the subdirectory, so the hook cannot find the anomalies file and exits silently -
         # and the silence test above passes for entirely the wrong reason. Only this control goes red.
         # Never delete it, and never read a green silence test here as evidence the walk works.
-        $r = New-RepoWith (New-Entries 1); $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWith (New-Entries 1); $h = New-CleanHome
             $sub = Join-Path $r 'src'
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
 
@@ -196,7 +206,7 @@ Describe 'agy-anomaly-model-notice.sh' {
             $x = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ HOME = $h }
 
             (Get-Ctx $x) | Should -Match 'AGY-ANOMALIES/1' -Because 'without the opt-out it must still fire - otherwise the silence test proves nothing'
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
 
     # ROADMAP section 59. FAILING CONTROL, measured 2026-10-08 with this launcher against the unfixed hook: line 19 writes
