@@ -687,7 +687,7 @@ agy-inbox-snapshot.Tests.ps1                    120,1s   41 tests   <- 38 -> 41 
   (cold 119,5s - this suite is I/O bound, so warm and cold agree). The test-audit closure added 3 It
   blocks; Pester expands them to 31 because two use -ForEach. The old row said 22. Before 2026-08-03 this
   suite was MISSING from this table entirely.
-agy-autotrain-migrate-inbox.Tests.ps1            16,0s   15 tests   <- 9 -> 15 2026-10-08 (Branch 21 Task 9: +directory dest, +ACL-denied dest, +ACL-denied sidecar, +non-empty dest left alone, +empty dest treated as absent, +recovery into an empty dest; time not re-measured); SLOW, NEW 2026-09-14 (Inno-retirement:
+agy-autotrain-migrate-inbox.Tests.ps1            16,0s   16 tests   <- 15 -> 16 2026-10-08 (test-audit B21 R3, ca-1: +the destination folder cannot be created, stops before claiming the source, one message); 9 -> 15 2026-10-08 (Branch 21 Task 9: +directory dest, +ACL-denied dest, +ACL-denied sidecar, +non-empty dest left alone, +empty dest treated as absent, +recovery into an empty dest; time not re-measured); SLOW, NEW 2026-09-14 (Inno-retirement:
   the .iss MigrateInboxToUserState was ported to a bash SessionStart hook). REPLACES the retired
   agy-autotrain-installer.Tests.ps1 (17 tests, FAST, .iss line-inspection) — that .iss is deleted, and the
   migration is now RUN against real fixtures, so this is behavioural (bash + process launches per It, hence
@@ -727,7 +727,7 @@ agy-seam-inject.Tests.ps1                        39,4s   36 tests   <- SLOW, re-
                                                                       been comment-only). Time had said
                                                                       18,0s and was "count 2026-08-03,
                                                                       time older" - now both are current.
-agy-shield-lib.Tests.ps1                        409,1s   56 tests   <- 55 -> 56 2026-10-08 (capstone R4: +CRLF `*` shield left byte-identical, bash + dash); 54 -> 55 (capstone R3: +the 30-day sweep age pinned at both find sites); SLOW, NEW 2026-08-16; 45 -> 47 2026-10-07 (Branch 21 Task 2: the ordering row became two, +1 deferred-prune row); 47 -> 54 (phase-1 capstone: +7 rows that run the helper under dash); time not re-measured. Fixture-
+agy-shield-lib.Tests.ps1                        409,1s   57 tests   <- 56 -> 57 2026-10-08 (test-audit B21 R3, MG-1: +the prepend temp is created INSIDE .clavity, BASH_ENV mktemp shim); 55 -> 56 2026-10-08 (capstone R4: +CRLF `*` shield left byte-identical, bash + dash); 54 -> 55 (capstone R3: +the 30-day sweep age pinned at both find sites); SLOW, NEW 2026-08-16; 45 -> 47 2026-10-07 (Branch 21 Task 2: the ordering row became two, +1 deferred-prune row); 47 -> 54 (phase-1 capstone: +7 rows that run the helper under dash); time not re-measured. Fixture-
                                                                       heavy: many git + bash subprocess spawns per
                                                                       row across 17 Its. Measured solo, two
                                                                       consecutive runs immediately back to back:
@@ -1090,7 +1090,7 @@ drain-lib.Tests.ps1                               4,2s   36 tests   <- FAST, re-
                                                                       COUNT 29 -> 36 on 2026-08-28 (AGY-TEST-AUDIT
                                                                       covered the output-manifest producer).
   (cold 6,1s) after the test-audit closure added 2 tests and strengthened 3.
-fetch-clavity-ls.Tests.ps1                       47,9s  24 tests   <- 23 -> 24 2026-10-08 (capstone R4: +version from the FIRST version line); 10 -> 23 2026-10-07 (Branch 21 Task 8: +mktemp s64, +sha-first URL, +7 OSTYPE rows, +unsupported platform, +pretty manifest, +stamp, +C0 strip; time not re-measured); SLOW, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled; +3 rows at the test audit, time NOT re-measured)
+fetch-clavity-ls.Tests.ps1                       47,9s  27 tests   <- 24 -> 27 2026-10-08 (test-audit B21 R3, pp-1: +win-x64 clavity-ls.exe member, +clavity-ls* glob RID suffix, +archive with no binary is refused; also fixes the glob matching the downloaded tarball); 23 -> 24 2026-10-08 (capstone R4: +version from the FIRST version line); 10 -> 23 2026-10-07 (Branch 21 Task 8: +mktemp s64, +sha-first URL, +7 OSTYPE rows, +unsupported platform, +pretty manifest, +stamp, +C0 strip; time not re-measured); SLOW, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled; +3 rows at the test audit, time NOT re-measured)
 generate-cheatsheet-literals.Tests.ps1           41,6s   18 tests   <- SLOW, NEW 2026-08-16 (14e): the
                                                                       cheatsheet-literal generator's pinning
                                                                       suite. Measured solo as the sole

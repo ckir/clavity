@@ -292,6 +292,25 @@ Describe 'agy-shield-lib.sh' {
             $LASTEXITCODE | Should -Be 0 -Because 'the bare * must cover everything the negation does not name'
         }
 
+        # Test-audit B21 R3 (shield MG-1). The hook comment calls the temp file's LOCATION load-bearing: `mv` is atomic only WITHIN one
+        # filesystem, so the temp must be created beside the shield (inside .clavity), not at the repo root. Nothing pinned that - a
+        # mutant creating it at "$_as_root/.gitignore.tmp.XXXXXX" left every row green, because on the success path `mv` consumes the
+        # temp wherever it was made and 'leaves NO temp file behind' only ever looks inside .clavity. A bash FUNCTION in BASH_ENV
+        # (it wraps the external mktemp and cannot be shadowed by PATH order on Git Bash) records the template the hook asked for.
+        It 'creates the prepend temp file INSIDE .clavity, on the same filesystem as the shield it renames onto' {
+            $r = New-FixtureRepo -Shield "!local-anomalies.md`n"
+            $tag = [guid]::NewGuid().ToString('N')
+            $log = Join-Path ([IO.Path]::GetTempPath()) "mktemp-$tag.log"
+            $shim = Join-Path ([IO.Path]::GetTempPath()) "mktemp-$tag.sh"
+            [IO.File]::WriteAllText($shim, "mktemp() { printf '%s\n' `"`$1`" >> '$($log -replace '\\','/')'; command mktemp `"`$@`"; }`n")
+            try {
+                $null = Invoke-Shield -Root $r -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' -Env @{ BASH_ENV = ($shim -replace '\\','/') }
+                $asked = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue)
+                $asked.Count | Should -BeGreaterThan 0 -Because 'a shim that never ran would make every assertion below vacuous'
+                foreach ($t in $asked) { $t | Should -Match '/\.clavity/\.gitignore\.tmp\.XXXXXX$' -Because 'the temp lives beside the shield, never at the repo root' }
+            } finally { Remove-Item -LiteralPath $log, $shim -Force -ErrorAction SilentlyContinue }
+        }
+
         It '(c) the ! line is still present and unmodified' {
             (Get-Shield $script:R) | Should -Match '(?m)^!local-anomalies\.md$'
         }

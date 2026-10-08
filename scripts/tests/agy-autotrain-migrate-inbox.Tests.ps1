@@ -128,6 +128,24 @@ Describe 'agy-autotrain migrate-inbox hook' {
         } finally { Remove-Item -Recurse -Force $f.Base -ErrorAction SilentlyContinue }
     }
 
+    # Test-audit B21 R3 (ca-1). The branch edited the line guarding this path (`[ ! -d "$NEWDIR" ] && ! mkdir -p`), and no row reached
+    # its failure branch: dropping the `exit 0` after the message left the whole suite green. The destination folder cannot be created
+    # when `.clavity` already exists as a FILE. The hook must stop BEFORE it claims the source (nothing renamed, nothing written) and say
+    # so ONCE - a second "could not finish moving" line means it carried on into the write path and rolled back.
+    It 'stops BEFORE claiming the source when the destination folder cannot be created, and reports it once' {
+        $f = New-Fixture
+        try {
+            Set-Content -LiteralPath $f.Old -Value 'OLDC' -NoNewline
+            Set-Content -LiteralPath (Join-Path (Split-Path -Parent (Split-Path -Parent $f.New)) '.clavity') -Value 'i am a file, not a folder' -NoNewline
+            $r = Invoke-BashHook -HookPath $script:Hook -Env $f.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdErr | Should -Match 'could not be created' -Because 'the failure must be reported, not silent'
+            @($r.StdErr -split "`n" | Where-Object { $_ -match 'could not finish moving' }).Count | Should -Be 1 -Because 'one stop, one message: a second one means it kept going into the write path'
+            (Get-Content -Raw -LiteralPath $f.Old) | Should -BeExactly 'OLDC' -Because 'the source must be left in place, byte-for-byte'
+            Test-Path -LiteralPath $f.Aside | Should -BeFalse -Because 'the source must not be claimed (renamed) when the destination is unusable'
+        } finally { Remove-Item -Recurse -Force $f.Base -ErrorAction SilentlyContinue }
+    }
+
     It 'RECOVERS an interrupted migration (source gone, non-empty sidecar, empty destination)' {
         $f = New-Fixture
         try {

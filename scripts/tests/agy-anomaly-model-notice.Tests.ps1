@@ -83,6 +83,11 @@ Describe 'agy-anomaly-model-notice.sh' {
             $ctx | Should -Not -BeNullOrEmpty -Because 'a silent hook would satisfy every match below vacuously'
             $ctx | Should -Match ('^' + [regex]::Escape('AGY-ANOMALIES/1: 3 untriaged in ')) `
                  -Because 'the contract stamp and the count open the message; see agy-anomaly-contract-stamp.Tests.ps1'
+            # Test-audit B21 R3 (mg-2). The head ends "untriaged in " and the tail starts ". Triage", so a message with the FILE
+            # PATH between them deleted ("untriaged in . Triage") satisfied BOTH bookend matches. The path is what tells the reader
+            # which anomalies file to open: pin the interpolated middle by IDENTITY (this repo's folder), not by presence.
+            $ctx | Should -Match ('untriaged in [^ ]*' + [regex]::Escape((Split-Path -Leaf $r)) + '[\\/]\.clavity[\\/]local-anomalies\.md\. Triage') `
+                 -Because 'the notice must NAME the anomalies file it counted'
             $ctx | Should -Match ([regex]::Escape('. Triage before new work via the open-issues skill: each entry is either PROMOTED to a tracked item with an owner, or DELETEd with a recorded reason. There is no parked state.')) `
                  -Because 'the directive is the payload - gutting it leaves a notice that names a number and asks for nothing'
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }

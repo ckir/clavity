@@ -70,6 +70,13 @@ esac
             Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue
         }
     }
+    function Set-Archive($Fx, [string]$Member) {
+        # Re-pack the served archive so its ONLY member is $Member (and refresh the .sha256 the hook verifies). New-Fx packs the
+        # linux-x64 shape, a member literally named clavity-ls; the win-x64 RID ships clavity-ls.exe (test-audit B21 R3, pp-1).
+        $p = $Fx.Srv -replace '\\', '/'
+        & $script:Bash -c "cd '$p' && rm -rf w $($script:Asset) $($script:Asset).sha256 && mkdir w && printf 'BIN' > 'w/$Member' && tar -C w -czf $($script:Asset) '$Member' && rm -rf w && sha256sum $($script:Asset) > $($script:Asset).sha256"
+        $LASTEXITCODE | Should -Be 0 -Because 'the fixture archive must have been re-packed'
+    }
     function Get-Message($Res) {
         # stdout must be exactly ONE JSON object Claude Code can parse.
         $j = $Res.StdOut | ConvertFrom-Json
@@ -130,6 +137,40 @@ Describe 'fetch-clavity-ls.sh tells the user what happened' {
             $msg | Should -Match '/mcp'
             Get-Content -Raw -LiteralPath (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -BeExactly 'BIN'
             Get-Content -Raw -LiteralPath (Join-Path $fx.Data 'bin/.clavity-ls.version') | Should -BeExactly '9.9.9'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # Test-audit B21 R3 (pp-1). The hook accepts the archive member under its NATIVE name (win-x64 ships clavity-ls.exe, every other RID
+    # clavity-ls) and falls back to a clavity-ls* glob. The suite only ever packed a member named exactly clavity-ls, so deleting BOTH
+    # the .exe line and the glob left it green - while breaking every Windows install. Each row asserts the binary was PLACED, by content.
+    It 'places the binary when the archive ships the WIN-X64 native name clavity-ls.exe' {
+        $fx = New-Fx
+        try {
+            Set-Archive $fx 'clavity-ls.exe'
+            $msg = Get-Message (Invoke-Fetch $fx 'ok')
+            $msg | Should -Match ([regex]::Escape("fetched $($script:Asset)"))
+            Get-Content -Raw -LiteralPath (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -BeExactly 'BIN'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'falls back to the clavity-ls* GLOB when the member carries a RID suffix' {
+        $fx = New-Fx
+        try {
+            Set-Archive $fx 'clavity-ls-linux-x64'
+            $msg = Get-Message (Invoke-Fetch $fx 'ok')
+            $msg | Should -Match ([regex]::Escape("fetched $($script:Asset)"))
+            Get-Content -Raw -LiteralPath (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -BeExactly 'BIN'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # The distractor: a member that matches neither name nor the glob must be REFUSED, not placed.
+    It 'refuses an archive whose only member is not a clavity-ls binary, and places nothing' {
+        $fx = New-Fx
+        try {
+            Set-Archive $fx 'readme.txt'
+            $msg = Get-Message (Invoke-Fetch $fx 'ok')
+            $msg | Should -Match 'contained no clavity-ls binary'
+            Test-Path (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -BeFalse
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
