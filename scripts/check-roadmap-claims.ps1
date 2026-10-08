@@ -8,9 +8,12 @@
 # believed. MEASURED 2026-08-31: all FOUR of the ROADMAP's `(N lines)` claims were wrong, and all four sat
 # in the 14h entry - the one that had been stale for sixteen days. Precision 4/4 on the real defect.
 #
-# TWO CHECKS, deliberately narrow so they cannot be argued with:
+# THREE CHECKS, deliberately narrow so they cannot be argued with:
 #   A. every `path` (N lines) claim matches the tracked file it names;
-#   B. every backticked 7-40 hex sha on a line ALSO carrying a closure token actually exists.
+#   B. every backticked 7-40 hex sha on a line ALSO carrying a closure token actually exists;
+#   C. every backticked `path/with/slash:N` or `:N-M` pointer into a tracked file is inside that file, and an ANCHORED pointer
+#      (`file:N` ("quoted text")) still finds its text on line N. An UN-anchored pointer can drift in range and read GREEN - agy and
+#      the driver agreed 2026-10-08 that a range check cannot see content drift; new pointers should be anchored (ROADMAP section 77).
 # Check B passed 28/28 when written - it is a trap for a future phantom, not a backlog.
 #
 # EXIT CODES: 0 = every claim holds · 1 = at least one claim is false OR could not be checked ·
@@ -233,6 +236,41 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
     }
 }
 
+# --- C. path:N / path:N-M pointers (ROADMAP section 77) ---------------------------------------------
+# WHAT THIS CATCHES: a pointer past the end of its file (OUT-OF-RANGE), and - only for the OPT-IN anchored form
+# `file:N` ("quoted text") - a pointer whose line no longer holds the text (ANCHOR-MISS). WHAT IT DOES NOT: an
+# un-anchored pointer that is still in range but now points at the wrong line reads GREEN; a pure range check
+# cannot see content drift (agy and the driver agreed, 2026-10-08). New pointers should be anchored.
+# NOT CHECKABLE (counted, never failed): a bare name with no '/', or a path that is not a tracked file.
+$ptrRe  = [regex]'`(?<path>[A-Za-z0-9_./-]+\.[A-Za-z0-9]+):(?<a>\d+)(?:-(?<b>\d+))?`(?:\s+\("(?<anchor>[^"]+)"\))?'
+$fence  = $false; $unchecked = 0
+for ($i = 0; $i -lt $lines.Count; $i++) {
+    if ($lines[$i] -match '^\s*```') { $fence = -not $fence; continue }
+    if ($fence) { continue }
+    foreach ($m in $ptrRe.Matches($lines[$i])) {
+        $rel = $m.Groups['path'].Value
+        $a = 0; $b = 0
+        if (-not [int]::TryParse($m.Groups['a'].Value, [ref]$a)) { $unchecked++; continue }
+        $b = $a
+        if ($m.Groups['b'].Success -and -not [int]::TryParse($m.Groups['b'].Value, [ref]$b)) { $unchecked++; continue }
+        if ($rel -notmatch '/') { $unchecked++; continue }
+        $hits = @($tracked | Where-Object { $_ -eq $rel -or $_.EndsWith("/$rel", [StringComparison]::OrdinalIgnoreCase) })
+        if ($hits.Count -ne 1) { $unchecked++; continue }
+        $hp = Join-Path $RepoRoot ($hits[0] -replace '/', [IO.Path]::DirectorySeparatorChar)
+        try { $fl = [IO.File]::ReadAllLines($hp) } catch { $unchecked++; continue }
+        if ($a -lt 1 -or $b -lt $a -or $b -gt $fl.Count) {
+            $problems += "OUT-OF-RANGE  ROADMAP:$($i+1)  ``$rel`:$a$(if ($b -ne $a) { "-$b" }) points outside $($hits[0]) ($($fl.Count) lines)"
+            continue
+        }
+        if ($m.Groups['anchor'].Success) {
+            $needle = $m.Groups['anchor'].Value
+            $found = $false
+            for ($n = $a; $n -le $b; $n++) { if ($fl[$n - 1].Contains($needle, [StringComparison]::Ordinal)) { $found = $true; break } }
+            if (-not $found) { $problems += "ANCHOR-MISS  ROADMAP:$($i+1)  ``$rel`:$a$(if ($b -ne $a) { "-$b" }) does not contain `"$needle`"" }
+        }
+    }
+}
+
 if ($isShallow) {
     $problems += "SHALLOW     this repository has no history, so $shaCount cited sha(s) could not be verified - deepen the checkout (git fetch --unshallow) and re-run"
 }
@@ -252,9 +290,9 @@ if ($problems.Count -gt 0) {
     # repository" and then "1 claim(s) that could not be checked", two lines apart. PHANTOM is the
     # entire product of check B, so the one outcome that half exists to produce was the one mislabelled.
     # The full token set, and which bucket each belongs to - keep this list complete:
-    #   FALSE (checked, and wrong): STALE, PHANTOM
+    #   FALSE (checked, and wrong): STALE, PHANTOM, OUT-OF-RANGE, ANCHOR-MISS
     #   NOT CHECKED:                UNPARSEABLE, UNRESOLVED, UNREADABLE, AMBIGUOUS, SHALLOW
-    $falseTokens = @('STALE', 'PHANTOM')
+    $falseTokens = @('STALE', 'PHANTOM', 'OUT-OF-RANGE', 'ANCHOR-MISS')
     $stale = @($problems | Where-Object { $falseTokens -contains (($_ -split '\s+')[0]) }).Count
     $other = $problems.Count - $stale
     $summary = if ($other -eq 0) { "$stale false claim(s)" }
@@ -263,5 +301,5 @@ if ($problems.Count -gt 0) {
     Write-Host "check-roadmap-claims: $summary in $RoadmapPath" -ForegroundColor Red
     exit 1
 }
-Write-Host "check-roadmap-claims: OK - every line-count claim and closure sha in $RoadmapPath holds" -ForegroundColor Green
+Write-Host "check-roadmap-claims: OK - every line-count claim, closure sha and checkable path:N pointer in $RoadmapPath holds ($unchecked pointer(s) not checkable)" -ForegroundColor Green
 exit 0

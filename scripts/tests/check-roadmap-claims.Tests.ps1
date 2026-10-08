@@ -385,6 +385,39 @@ Describe 'check-roadmap-claims.ps1 - sha notations the document actually uses' {
     }
 }
 
+Describe 'check-roadmap-claims.ps1 - the path:N pointer half (Check C)' {
+    It 'passes a pointer inside the file' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n2`n3`n" } -Roadmap "See ``skills/a/SKILL.md:3``.`n"
+        (Invoke-Claims $f.Root $f.Roadmap).Code | Should -Be 0
+    }
+    It 'fails a pointer past the end of the file and says OUT-OF-RANGE' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n2`n3`n" } -Roadmap "See ``skills/a/SKILL.md:4``.`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap; $r.Code | Should -Be 1; $r.Out | Should -Match 'OUT-OF-RANGE.*SKILL\.md:4'
+    }
+    It 'checks BOTH ends of a range' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n2`n3`n" } -Roadmap "See ``skills/a/SKILL.md:2-9``.`n"
+        (Invoke-Claims $f.Root $f.Roadmap).Code | Should -Be 1
+    }
+    It 'verifies an ANCHORED pointer: the quoted text must be on line N' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`ngamma`n" } -Roadmap "See ``skills/a/SKILL.md:2`` (`"beta`").`n"
+        (Invoke-Claims $f.Root $f.Roadmap).Code | Should -Be 0
+        $g = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`ngamma`n" } -Roadmap "See ``skills/a/SKILL.md:3`` (`"beta`").`n"
+        $r = Invoke-Claims $g.Root $g.Roadmap; $r.Code | Should -Be 1; $r.Out | Should -Match 'ANCHOR-MISS.*beta'
+    }
+    It 'verifies an anchored RANGE: the text may sit anywhere inside N..M' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`ngamma`n" } -Roadmap "See ``skills/a/SKILL.md:1-2`` (`"beta`").`n"
+        (Invoke-Claims $f.Root $f.Roadmap).Code | Should -Be 0
+    }
+    It 'does not check a pointer whose path is a bare name or not tracked, and counts it as unchecked' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n" } -Roadmap "See ``SKILL.md:99`` and ``elsewhere/x.cs:7``.`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap; $r.Code | Should -Be 0; $r.Out | Should -Match '2 pointer\(s\) not checkable'
+    }
+    It 'ignores a pointer inside a fenced code block' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n" } -Roadmap "``````text`n``skills/a/SKILL.md:50```n```````n"
+        (Invoke-Claims $f.Root $f.Roadmap).Code | Should -Be 0
+    }
+}
+
 Describe 'check-roadmap-claims.ps1 - the real repository' {
     It 'passes on the committed ROADMAP' {
         # RED until Task 4 reconciles the four stale headers. That is deliberate: this row is the

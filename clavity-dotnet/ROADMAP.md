@@ -1244,6 +1244,8 @@ documents, recurring one section later. Re-measure against the REPO file, never 
 | `agy-capstone/SKILL.md` (542 lines) | **YES — not defective** | `:89` reads, literally and in ASCII: `- **Seats (defect-class lenses).** Seat the proven adversarial-panel-review personas - Axiom Breaker`. `:92` seats those whose trigger the diff meets; `:103` rotates seats across rounds. **Quoted verbatim so it can be grepped:** an earlier version of this row rendered that line with an em-dash and an ellipsis, neither of which the file contains - it is ASCII-gated - so the "quote" matched nothing. |
 | `adversarial-panel-review/SKILL.md` (446 lines) | **YES** | the palette, selection rule, and anti-gaming guard live here. |
 
+**Re-anchored 2026-10-08 (section 77; the pointers in the table above are as measured then and no longer hold).** The two `agy-capstone` ones that still have a home, now checked by `check-roadmap-claims.ps1` Check C: `clavity-dotnet/plugin/skills/agy-capstone/SKILL.md:185` ("Seats (defect-class lenses)") and `clavity-dotnet/plugin/skills/agy-capstone/SKILL.md:199` ("Rotate seats across rounds"). The `agy-first` (`:54-56`) and `agy-test-audit` (`:216`) quotations CANNOT be re-anchored: measured 2026-10-08, neither "Default persona: bold inventive systems-designer" nor "Optional per-run mitigation: rotate the audit" exists in its skill any more - the section's own fix replaced that text - so those two rows are history, not live pointers.
+
 **Blast radius: 4 files** — `agy-first` and `agy-test-audit` in `clavity-dotnet/plugin/skills/` and
 `clavity-classic/plugin/skills/`. Byte-identical pair, so both variants change together and
 `plugin-hooks-payload.Tests.ps1` gates it.
