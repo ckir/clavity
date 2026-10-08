@@ -28,7 +28,7 @@ Expected: `sweep/branch-4-csharp-transport` and `bb670a1c ...`. Anything else: S
 - [ ] **Step 2: Measure the two suites**
 
 Run (from `clavity-dotnet/`): `dotnet build 2>&1 | tail -3 && dotnet test tests/Clavity.Ls.Tests 2>&1 | grep -E "Passed!|Failed!|Total tests"` then `dotnet test tests/Clavity.Integration.Tests 2>&1 | grep -E "Passed!|Failed!|Total tests"`
-Expected: both `Passed!`, 0 failed. Write both totals into the execution index (`project_branch-4-csharp-transport_execution.md`) as the baseline.
+Expected: both `Passed!`, 0 failed. Report both totals in your reply as the BASELINE (an executor never writes the orchestrator's memory files; the orchestrator records them in its execution index).
 
 ---
 
@@ -156,7 +156,10 @@ Step 0 (state check): `StartFlow.cs:92-102` reads `if (TryMaterialize(fx, paths)
         var line = script.Split('\n').Single(l => l.StartsWith("agy --log-file ", StringComparison.Ordinal));
         Assert.Contains(" -i ", line);
         Assert.Contains("Fetch and follow the instructions at ", line);
-        Assert.Contains("agy-pairing-INSTALL.md", line);
+        // The FULL path the Fake returns for the directory StartFlow hands to MaterializePairingDoc
+        // (StartFlow.cs:315: Path.GetDirectoryName(paths.Endpoint)) - a hardcoded bare file name must not satisfy this.
+        var paths = SessionPaths.For(fx.UserProfile, fx.NewSessionId());
+        Assert.Contains(Path.Combine(Path.GetDirectoryName(paths.Endpoint)!, "agy-pairing-INSTALL.md"), line);
     }
 ```
 
@@ -170,7 +173,7 @@ Expected: `Total tests: 3`, all passed. (These rows pin EXISTING behaviour; the 
 - [ ] **Step 3: Mutants (two, one per verb)**
 
 Mutant A: `StartFlow.cs:220` `AgyInstallDocPath = agyInstallDoc,` -> `AgyInstallDocPath = null,`. Run the filter. Expected: the two `agyVerb: false` rows RED (no ` -i `), the `agyVerb: true` row green. Restore with `git checkout -- src/Clavity.Ls/StartFlow.cs`.
-Mutant B: `StartFlow.cs:102` `AgyInstallDocPath = doc,` -> `AgyInstallDocPath = null,`. Expected: the `agyVerb: true` row RED, the other two green. Restore the same way. Re-run: 3 passed. Run the WHOLE Ls suite once: count = baseline + 3 (Task 1 added 3, so baseline + 6 so far).
+Mutant B: `StartFlow.cs:102` `AgyInstallDocPath = doc,` -> `AgyInstallDocPath = null,`. Expected: the `agyVerb: true` row RED, the other two green. Restore the same way. Re-run: 3 passed. Run the WHOLE Ls suite once: count = baseline + 6 (Task 1 added 3, this task added 3).
 
 - [ ] **Step 4: Commit**
 
@@ -228,13 +231,16 @@ public class McpToolsRunAsyncTests
         Assert.Contains("run /model", root.GetProperty("message").GetString());
     }
 
-    [Fact]
-    public void Any_other_exception_is_a_typed_error_naming_its_type_and_message()
+    [Theory]
+    [InlineData(typeof(InvalidOperationException), "the catalog answered with no models")]
+    [InlineData(typeof(IOException), "disk full")]
+    public void Any_other_exception_is_a_typed_error_naming_its_type_and_message(Type type, string message)
     {
-        var root = Run(new InvalidOperationException("the catalog answered with no models"));
+        // Two different types, so an implementation that hardcodes one type name cannot pass both.
+        var root = Run((Exception)Activator.CreateInstance(type, message)!);
         Assert.Equal("error", root.GetProperty("status").GetString());
-        Assert.Equal("InvalidOperationException", root.GetProperty("exception").GetString());
-        Assert.Equal("the catalog answered with no models", root.GetProperty("message").GetString());
+        Assert.Equal(type.Name, root.GetProperty("exception").GetString());
+        Assert.Equal(message, root.GetProperty("message").GetString());
     }
 
     [Fact]
@@ -262,7 +268,7 @@ If `ChannelDown.IsChannelDown` does NOT accept a model-unavailable wrapper aroun
 - [ ] **Step 3: Run - the first two must FAIL (exception escapes), the third passes, the fourth passes**
 
 Run: `dotnet test tests/Clavity.Integration.Tests --filter "FullyQualifiedName~McpToolsRunAsyncTests" 2>&1 | grep -E "Passed!|Failed!|Total tests"`
-Expected: `Total tests: 4`, 2 failed (unhandled `AgyModelUnavailableException` / `InvalidOperationException`).
+Expected: `Total tests: 5` (the Theory is two cases), 3 failed (unhandled `AgyModelUnavailableException` and both generic-exception cases).
 
 - [ ] **Step 4: Add the two arms AFTER the channel-down catch**
 
@@ -285,7 +291,7 @@ Expected: `Total tests: 4`, 2 failed (unhandled `AgyModelUnavailableException` /
 
 - [ ] **Step 5: Green, mutants, commit**
 
-Run the filter: 4 passed. Mutant 1: swap the order so the `model_unavailable` arm precedes the channel-down catch -> row 4 RED. Mutant 2: drop `when (ex is not OperationCanceledException)` -> row 3 RED. Restore (`git checkout -- src/Clavity.Mcp/McpTools.cs` then re-apply Steps 1 and 4). Run the whole Integration suite: count = baseline + 4 (or + 3 if row 4 was deleted).
+Run the filter: 5 passed. Mutant 1: swap the order so the `model_unavailable` arm precedes the channel-down catch -> row 4 RED. Mutant 2: drop `when (ex is not OperationCanceledException)` -> row 3 RED. Restore (`git checkout -- src/Clavity.Mcp/McpTools.cs` then re-apply Steps 1 and 4). Run the whole Integration suite: count = baseline + 4 (or + 3 if row 4 was deleted).
 
 ```bash
 git add src/Clavity.Mcp/McpTools.cs src/Clavity.Mcp/Clavity.Mcp.csproj tests/Clavity.Integration.Tests/McpToolsRunAsyncTests.cs
@@ -1047,7 +1053,9 @@ git add clavity-dotnet/ROADMAP.md
 git commit -m "docs(roadmap): Branch 4 - sections 53 (wiring), 66, 71, 76 IMPLEMENTED, citing the fix commits"
 ```
 
-- [ ] **Step 3:** Update the execution index (`project_branch-4-csharp-transport_execution.md`): every sha, final counts, resume point = AGY-CAPSTONE over `29e47562..HEAD`.
+- [ ] **Step 3:** Final gate tally (the sum of the per-task counts; compare with the Task 0 baselines). `Clavity.Ls.Tests` = baseline + 12 (Task 1: 3, Task 2: 3, Task 5: 6 QuotaStopLog rows). `Clavity.Integration.Tests` = baseline + 27 (Task 3: 5 - 4 if the wrapped-cause row was deleted per its own instruction; Task 4: 19; Task 5: 2; Task 6: 1; the edited `AskReplyProjectionTests` row and the schema pin add none). Run both suites once, read the COUNTS (a `--filter` that matches nothing exits 0), and report both numbers.
+
+- [ ] **Step 4:** The orchestrator (not an executor) updates its execution index with every sha, the final counts, and the resume point = AGY-CAPSTONE over `29e47562..HEAD`.
 
 ---
 
@@ -1091,3 +1099,11 @@ git commit -m "docs(roadmap): Branch 4 - sections 53 (wiring), 66, 71, 76 IMPLEM
 - `FOLDED` open question (a): my round-2 wording "cannot hide a match" was wrong as stated; corrected in place above with the real condition.
 - `none`: Activation Auditor (filter reached for every `tools/call`; unknown tools fail in the SDK's own path), Blindspot Auditor (messages and docs not misleading), Protocol Pedant (`McpTools.cs` generates only primitive and `["x","null"]` types, so `Matches` covers the subset in use; an unknown type word fails open).
 - Process notes: the peer's JSON used the declared keys this time; it answered the three open questions; it did NOT open the SDK XML (its own census) and read only the plan and `McpTools.cs`. Stop Arguer: "the review should stop" - not accepted on the peer's say-so alone: this round had four real findings, so round 4 runs on the round-3 folds.
+
+### Round 4 agy escalation (cascade fbf2f9db, 2026-10-08; seats re-aimed: cold-read Literal Implementer, cross-task Axiom Breaker, Mechanism Gamer on Tasks 1/2/3/5, Cascade Analyst on RunAsync + AgyView, Stop Arguer) - dispositions
+- `FOLDED` LI-1: Task 0 told an executor to write into the orchestrator's memory file (outside the repo); it now reports the baselines in its reply.
+- `FOLDED` LI-2 / Axiom Breaker: Task 2's "count = baseline + 3 ... so baseline + 6" contradicted itself; now "baseline + 6", and Task 8 carries one cross-task tally (Ls +12, Integration +27) so no per-task figure is the only source.
+- `FOLDED` MG-1 (Task 2): a hardcoded bare `agy-pairing-INSTALL.md` satisfied `Contains`; the row now asserts the full path `Path.Combine(Path.GetDirectoryName(paths.Endpoint), ...)` that `StartFlow.cs:315` hands over.
+- `FOLDED` MG-2 (Task 3): a hardcoded `InvalidOperationException` name survived; the row is a two-type Theory.
+- `none`: Task 1 (no survivor constructed), Task 2 index 5 (`Launcher.cs:96-98`, verified by the peer), Task 5 `OnSend` position (peer verified `AgyView.cs` mark before send before wait), Cascade Analyst's four items (catch order, `TaskCanceledException` is an `OperationCanceledException` so it escapes as intended, serialisation fault lands in the typed `error` arm, `File.Exists` is false for a directory path).
+- Process notes: the peer answered all three open questions, said it could not find a wrong disposition after re-checking five, used the declared JSON keys, and again did not open the SDK XML. Its Stop Arguer said stop; the round still had four findings, so a round 5 runs on these folds.
