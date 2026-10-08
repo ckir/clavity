@@ -39,6 +39,7 @@ public class ArgumentPrecheckTests
         {
             var client = await McpClient.CreateAsync(
                 new StreamClientTransport(clientToServer.Writer.AsStream(), serverToClient.Reader.AsStream(), loggerFactory: null));
+            stopper.Client = client;   // so disposing the stopper disposes the client too (capstone R2, RV-1)
             return (client, stopper);
         }
         catch
@@ -51,8 +52,14 @@ public class ArgumentPrecheckTests
 
     private sealed class Stopper(CancellationTokenSource cts, Task run, ServiceProvider sp) : IAsyncDisposable
     {
+        public McpClient? Client { get; set; }
+
         public async ValueTask DisposeAsync()
         {
+            if (Client is not null)
+            {
+                try { await Client.DisposeAsync(); } catch { /* the transport may already be closed */ }
+            }
             cts.Cancel();
             try { await run; } catch (OperationCanceledException) { }
             await sp.DisposeAsync();
