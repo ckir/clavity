@@ -23,12 +23,12 @@ Describe 'agy-anomaly-capture-reminder.sh' {
         # An empty HOME so a REAL ~/.claude/.no-agy on the dev box cannot silence the hook and hand us a
         # false green. Absolute paths only - MSYS mangles a relative HOME.
         function New-CleanHome {
-            $h = Join-Path ([IO.Path]::GetTempPath()) ("anom-cap-home-" + [Guid]::NewGuid().ToString('N'))
+            $h = New-TestTempPath "anom-cap-home"
             New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
             return $h
         }
         function New-Workspace {
-            $w = Join-Path ([IO.Path]::GetTempPath()) ("anom-cap-ws-" + [Guid]::NewGuid().ToString('N'))
+            $w = New-TestTempPath "anom-cap-ws"
             New-Item -ItemType Directory -Path $w -Force | Out-Null
             return $w
         }

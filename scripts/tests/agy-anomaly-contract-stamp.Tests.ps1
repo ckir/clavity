@@ -33,7 +33,7 @@ Describe 'AGY-ANOMALIES contract stamp' {
             Join-Path $script:RepoRoot "$Driver/plugin/hooks/$Name"
         }
         function New-CleanHome {
-            $h = Join-Path ([IO.Path]::GetTempPath()) ("anom-stamp-home-" + [Guid]::NewGuid().ToString('N'))
+            $h = New-TestTempPath "anom-stamp-home"
             New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
             return $h
         }

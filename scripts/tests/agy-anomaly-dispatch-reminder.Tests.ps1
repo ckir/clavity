@@ -20,12 +20,12 @@ Describe 'agy-anomaly-dispatch-reminder.sh' {
         $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')
 
         function New-CleanHome {
-            $h = Join-Path ([IO.Path]::GetTempPath()) ("anom-disp-home-" + [Guid]::NewGuid().ToString('N'))
+            $h = New-TestTempPath "anom-disp-home"
             New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
             return $h
         }
         function New-Workspace {
-            $w = Join-Path ([IO.Path]::GetTempPath()) ("anom-disp-ws-" + [Guid]::NewGuid().ToString('N'))
+            $w = New-TestTempPath "anom-disp-ws"
             New-Item -ItemType Directory -Path $w -Force | Out-Null
             return $w
         }

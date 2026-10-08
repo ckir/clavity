@@ -11,7 +11,7 @@ BeforeAll {
     $bashDir = Split-Path -Parent (Get-GitBashOrThrow)
     $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')
     # An empty HOME fixture so a real global ~/.claude/.no-agy on the dev box can't suppress the hook mid-test.
-    $script:CleanHome = Join-Path ([IO.Path]::GetTempPath()) ("sp-c-home-" + [Guid]::NewGuid().ToString('N'))
+    $script:CleanHome = New-TestTempPath "sp-c-home"
     New-Item -ItemType Directory -Path (Join-Path $script:CleanHome '.claude') -Force | Out-Null
 
     # The clauses VERBATIM. Asserted whole, not by bookend fragments: an audit mutant that deleted the

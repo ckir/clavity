@@ -24,7 +24,7 @@ Describe 'agy-drive-session-reset.sh' {
         }
 
         function New-FlagDir {
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("drv-" + [Guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath "drv"
             New-Item -ItemType Directory -Path $d -Force | Out-Null
             return $d
         }
@@ -33,7 +33,7 @@ Describe 'agy-drive-session-reset.sh' {
             # Hermeticity: without an overridden HOME every test below reads the DEVELOPER's real
             # ~/.claude/.no-agy. If that file ever exists, every assertion in this suite passes
             # vacuously - the hook would exit at :10 having tested nothing.
-            $h = Join-Path ([IO.Path]::GetTempPath()) ("drv-home-" + [Guid]::NewGuid().ToString('N'))
+            $h = New-TestTempPath "drv-home"
             New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
             return $h
         }

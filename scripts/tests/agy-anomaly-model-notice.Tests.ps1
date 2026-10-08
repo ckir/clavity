@@ -22,7 +22,7 @@ Describe 'agy-anomaly-model-notice.sh' {
         $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')
 
         function New-CleanHome {
-            $h = Join-Path ([IO.Path]::GetTempPath()) ("anom-mn-home-" + [Guid]::NewGuid().ToString('N'))
+            $h = New-TestTempPath "anom-mn-home"
             New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
             return $h
         }

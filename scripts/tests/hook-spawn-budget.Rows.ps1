@@ -23,7 +23,7 @@ function New-HookFixture {
     # (the plugin's opt-in). The Env hashtable is what every row hands the hook: it pins every variable a hook
     # reads from the environment, so nothing leaks in from the session running the tests.
     param([switch]$NoGit, [switch]$NoClavity)
-    $root = Join-Path ([IO.Path]::GetTempPath()) ('hsb-' + [Guid]::NewGuid().ToString('N'))
+    $root = New-TestTempPath 'hsb'
     $repo = Join-Path $root 'repo'; $homeDir = Join-Path $root 'home'; $tmp = Join-Path $root 'tmp'
     New-Item -ItemType Directory -Force -Path $repo, (Join-Path $homeDir '.claude'), (Join-Path $homeDir '.clavity'), $tmp | Out-Null
     $fx = [pscustomobject]@{

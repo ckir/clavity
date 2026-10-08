@@ -21,7 +21,7 @@ Describe 'agy-after-reminder.sh' {
         }
 
         function New-CleanHomeAR {
-            $h = Join-Path ([IO.Path]::GetTempPath()) ("ar-home-" + [Guid]::NewGuid().ToString('N'))
+            $h = New-TestTempPath "ar-home"
             New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
             return $h
         }
@@ -50,7 +50,7 @@ Describe 'agy-after-reminder.sh' {
         } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
     }
     It 'is suppressed by a global $HOME/.claude/.no-agy' {
-        $home2 = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-h-" + [Guid]::NewGuid().ToString('N'))
+        $home2 = New-TestTempPath "sp-d-h"
         New-Item -ItemType Directory -Path (Join-Path $home2 '.claude') -Force | Out-Null
         New-Item -ItemType File -Path (Join-Path $home2 '.claude/.no-agy') -Force | Out-Null
         try {

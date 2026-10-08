@@ -10,7 +10,7 @@ Describe 'agy-learn-reminder.sh' {
         function New-HomePair {
             # Returns two SEPARATE roots: one to point USERPROFILE at, one to point HOME at. Keeping them
             # distinct is the whole point - a shared root cannot distinguish which variable the hook read.
-            $base = Join-Path ([IO.Path]::GetTempPath()) ("learnrem-" + [Guid]::NewGuid().ToString('N'))
+            $base = New-TestTempPath "learnrem"
             $up   = Join-Path $base 'profile'
             $hm   = Join-Path $base 'unixhome'
             New-Item -ItemType Directory -Path $up -Force | Out-Null

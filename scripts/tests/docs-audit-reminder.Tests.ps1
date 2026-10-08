@@ -8,7 +8,7 @@ Describe 'docs-audit-reminder.sh' {
 
         # A workspace whose docs/docs-audit-findings.md carries $Lines (null = no view at all).
         function New-Workspace { param([string[]]$Lines)
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("dar-" + [Guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath "dar"
             New-Item -ItemType Directory -Path (Join-Path $d 'docs') -Force | Out-Null
             if ($null -ne $Lines) {
                 Set-Content -LiteralPath (Join-Path $d 'docs/docs-audit-findings.md') -Value ($Lines -join "`n") -Encoding utf8NoBOM

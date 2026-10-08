@@ -8,7 +8,7 @@ Describe 'agy-anomaly-reminder.sh' {
 
         # A workspace whose .clavity/local-anomalies.md carries $Lines entry bullets.
         function New-Workspace { param([string[]]$Lines)
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("anom-" + [Guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath "anom"
             New-Item -ItemType Directory -Path (Join-Path $d '.clavity') -Force | Out-Null
             if ($null -ne $Lines) {
                 $body = @('# Untriaged anomalies (gitignored, local)', '') + $Lines
@@ -17,7 +17,7 @@ Describe 'agy-anomaly-reminder.sh' {
             return $d
         }
         function New-CleanHome {
-            $h = Join-Path ([IO.Path]::GetTempPath()) ("anom-home-" + [Guid]::NewGuid().ToString('N'))
+            $h = New-TestTempPath "anom-home"
             New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
             return $h
         }
@@ -61,7 +61,7 @@ Describe 'agy-anomaly-reminder.sh' {
         # MEASURED: replacing Invoke-BashHook's stderr capture with the empty string left the whole suite
         # 22/22 GREEN - every stderr guard here was hollow, including the ones added one round earlier to
         # fix a vacuity finding. This row is the only thing between that and a silent regression.
-        $s = Join-Path ([IO.Path]::GetTempPath()) ("stderrctl-" + [Guid]::NewGuid().ToString('N') + ".sh")
+        $s = New-TestTempPath "stderrctl" -Suffix '.sh'
         try {
             # LF ONLY, and written explicitly rather than with Set-Content. AGY-CAPSTONE round 3, Resource
             # Vampire: Set-Content joins array elements with the OS separator, so on Windows this wrote a
@@ -274,7 +274,7 @@ Describe 'agy-anomaly-reminder.sh' {
         # `git init`, which creates a DIRECTORY, so every fixture in this suite varied in one dimension
         # and that support was never exercised. MEASURED: changing both probes to `-d` left the suite
         # 27/27 GREEN - a comment promising worktree support with nothing behind it.
-        $w = Join-Path ([IO.Path]::GetTempPath()) ("anom-wt-" + [Guid]::NewGuid().ToString('N'))
+        $w = New-TestTempPath "anom-wt"
         $h = New-CleanHome
         try {
             New-Item -ItemType Directory -Path (Join-Path $w '.clavity') -Force | Out-Null
@@ -351,7 +351,7 @@ Describe 'agy-anomaly-reminder.sh' {
     # inbox must not be able to produce the same count by accident.
     It 'resolves a cwd carrying a \u escape through the jq fallback and still counts its anomalies' {
         $e = [string][char]0xE9
-        $d = Join-Path ([IO.Path]::GetTempPath()) ("anom-$e-" + [Guid]::NewGuid().ToString('N'))
+        $d = New-TestTempPath "anom-$e"
         New-Item -ItemType Directory -Path (Join-Path $d '.clavity') -Force | Out-Null
         $lines = 1..7 | ForEach-Object { "- [defect] n$_ * a.cs:1 * 2026-07-2$($_ % 10) * task=z" }
         Set-Content (Join-Path $d '.clavity/local-anomalies.md') ((@('# Untriaged anomalies (gitignored, local)', '') + $lines) -join "`n") -Encoding ascii
