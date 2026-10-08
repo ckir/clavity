@@ -902,7 +902,7 @@ KEEP the comment line at `:90` (the new block below it repeats its sentence, so 
         }
 ```
 
-- [ ] **Step 8: Integration rows - a quota line appended during the ask is named; one written before it is not**
+- [ ] **Step 8: Integration rows - a quota line appended during the ask is named (both wording branches); one written before it is not**
 
 Verified 2026-10-08 (`AgyAskIntegrationTests.cs`): `FakeAskLs(cascadeId, replyText, idleDelay, initial, catalog?, waitPlan?)` (ctor at ~line 39) has `Action<string>? OnSend` (line 105, invoked at line 151 inside `SendUserCascadeMessage` - AFTER `AskAsync` took the log mark and BEFORE the wait returns) and `bool TrailingToolStep` (line 68: the delta then ENDS on a tool step, so `Answer` is null and a named discipline reports `TerminalTokenMissing`). Helpers used by the neighbouring rows: `StartFakeAsync(fake)`, `SetUpAgyDir(PortOf(app), out var cliLog)`, `CollectingProgress<ProgressNotificationValue>`. The existing `AskOnce` helper (line ~2084) builds its own `cliLog` and does not expose it, so these rows build the harness themselves, like the `PEER_STILL_BUSY` row at `:1212`.
 
@@ -912,11 +912,11 @@ Verified 2026-10-08 (`AgyAskIntegrationTests.cs`): `FakeAskLs(cascadeId, replyTe
     private const string QuotaSentence = "Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 24m5s.";
 
     // ROADMAP section 66. A tool-ended turn with a named discipline is exactly what flags [13b] TRUNCATED REPLY today.
-    private static async Task<(CallToolResult Result, string[] Texts)> AskToolEndedTurn(bool quotaDuringAsk, bool quotaBeforeAsk)
+    private static async Task<(CallToolResult Result, string[] Texts)> AskToolEndedTurn(bool quotaDuringAsk, bool quotaBeforeAsk, bool toolEnded = true)
     {
         var fake = new FakeAskLs("conv-1", "partial work", TimeSpan.Zero, Array.Empty<CascadeStep>(),
                                  waitPlan: new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) })
-        { TrailingToolStep = true };
+        { TrailingToolStep = toolEnded };
         await using var app = await StartFakeAsync(fake);
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
@@ -936,9 +936,20 @@ Verified 2026-10-08 (`AgyAskIntegrationTests.cs`): `FakeAskLs(cascadeId, replyTe
         var (_, texts) = await AskToolEndedTurn(quotaDuringAsk: true, quotaBeforeAsk: false);
         var block = Assert.Single(texts, t => t.StartsWith("[PEER QUOTA STOP]"));
         Assert.Contains("Resets in 24m5s", block);
+        Assert.Contains("could not generate", block);                       // the NO-ANSWER wording (the turn ended on a tool step)
         Assert.DoesNotContain(texts, t => t.StartsWith("[13b] TRUNCATED REPLY"));
         using var doc = JsonDocument.Parse(texts[0]);
         Assert.Equal(QuotaSentence, doc.RootElement.GetProperty("QuotaStop").GetString());
+    }
+
+    [Fact]
+    public async Task A_quota_stop_after_partial_prose_says_the_Answer_was_produced_before_the_stop()
+    {
+        // toolEnded: false -> the delta ends on assistant prose ("partial work"), so Answer is NOT empty: the other wording branch.
+        var (_, texts) = await AskToolEndedTurn(quotaDuringAsk: true, quotaBeforeAsk: false, toolEnded: false);
+        var block = Assert.Single(texts, t => t.StartsWith("[PEER QUOTA STOP]"));
+        Assert.Contains("The Answer above was produced before the stop", block);
+        Assert.DoesNotContain("could not generate", block);
     }
 
     [Fact]
@@ -955,7 +966,7 @@ If `AskToolEndedTurn` fails inside LS discovery rather than on the assertions (t
 
 - [ ] **Step 9: Run both suites; mutants; commit**
 
-Ls: baseline + 6 + 6 (QuotaStopLog) + 0 (projection row edited, not added). Integration: previous + 2 (the quota row and the pre-mark row).
+Ls: baseline + 6 + 6 (QuotaStopLog) + 0 (projection row edited, not added). Integration: previous + 3 (the quota row, the partial-prose row and the pre-mark row).
 Mutant A: in `AgyView`, replace `QuotaStop = QuotaStopLog.FindSince(_options.CliLogPath, logMark),` with `QuotaStop = null,` -> the new integration row RED. Mutant B: in `McpTools`, move the `else if (quotaBlock is not null)` arm to the END of the chain (after the `else if (reply13b is { AnswerTruncated: true })` arm, which is the last arm before the `if (artifactPath is null)` NO-ECHO block) -> the row RED on `DoesNotContain("[13b] TRUNCATED REPLY")`. Restore both.
 
 ```bash
@@ -1052,7 +1063,7 @@ Step 0: `SKILL.md:30` starts `- **\`waiting_for_human\`** - agy is up but has no
   nothing reached agy. Fix the name or the type.
 ```
 
-- [ ] **Step 3: CHANGELOG.md** - if the file has no `## Unreleased` heading above `## 0.10.2 - 2026-10-02`, add one; under it:
+- [ ] **Step 3: CHANGELOG.md** - if the file has no `## Unreleased` heading above `## 0.10.2 - 2026-10-02`, add one; if it ALREADY exists, merge these bullets into its existing `### Features` / `### Fixes` lists (create a list only if it is missing) - never a duplicate heading. Under it:
 
 ```markdown
 ### Features
@@ -1087,7 +1098,7 @@ git add clavity-dotnet/ROADMAP.md
 git commit -m "docs(roadmap): Branch 4 - sections 53 (wiring), 66, 71, 76 IMPLEMENTED, citing the fix commits"
 ```
 
-- [ ] **Step 3:** Final gate tally (the sum of the per-task counts; compare with the Task 0 baselines). `Clavity.Ls.Tests` = baseline + 12 (Task 1: 3, Task 2: 3, Task 5: 6 QuotaStopLog rows). `Clavity.Integration.Tests` = baseline + 27 (Task 3: 6; Task 4: 18; Task 5: 2; Task 6: 1; dry-run measured 121 -> 147 = +26 before the cancelled-gRPC row, so +27 with it; the edited `AskReplyProjectionTests` row and the schema pin add none). Run both suites once, read the COUNTS (a `--filter` that matches nothing exits 0), and report both numbers.
+- [ ] **Step 3:** Final gate tally (the sum of the per-task counts; compare with the Task 0 baselines). `Clavity.Ls.Tests` = baseline + 12 (Task 1: 3, Task 2: 3, Task 5: 6 QuotaStopLog rows). `Clavity.Integration.Tests` = baseline + 28 (Task 3: 6; Task 4: 18; Task 5: 3; Task 6: 1; dry-run measured 121 -> 147 = +26 before the cancelled-gRPC row and the partial-prose row, so +28 with them; the edited `AskReplyProjectionTests` row and the schema pin add none). Run both suites once, read the COUNTS (a `--filter` that matches nothing exits 0), and report both numbers.
 
 - [ ] **Step 4:** The orchestrator (not an executor) updates its execution index with every sha, the final counts, and the resume point = AGY-CAPSTONE over `29e47562..HEAD`.
 
@@ -1163,3 +1174,9 @@ Detached worktree at `1426c470`, per-task commits `7f68bd42 c73fb186 6c027a5f df
 - Executor anomalies recorded, not folded (tool behaviour, not plan content): bash heredocs with large embedded source fail or hang through this shell (`unexpected EOF` / 600 s empty-stdin hang) - an executor should create files with its file-writing tool, which this plan's steps already assume.
 
 Verified by the driver in the worktree after the folds (2026-10-08): the new `A_cancelled_grpc_call_still_propagates` row passes (`McpToolsRunAsyncTests` = 6/6); mutant 3 (drop the `RpcException{Cancelled}` exclusion) turns exactly `McpToolsRunAsyncTests.A_cancelled_grpc_call_still_propagates` and `AgyChannelDownTests.A_grpc_cancelled_status_is_not_reported_as_channel_down` red; `Matches("null") => true` reds only the `discipline: 7` / `artifactPath: []` cases (the `message: null` cases stay green); treating `["string","null"]` as `["string"]` reds `Null_is_accepted_only_where_the_schema_allows_it`; restored, `ArgumentPrecheckTests` + `McpToolsRunAsyncTests` = 25/25.
+
+### Round 5 agy escalation (cascade fbf2f9db, 2026-10-08; aimed at what had not been executed: Mechanism Gamer on the Task 5 rows, Cascade Analyst on the notice chain, Blindspot Auditor on the quota wording, Literal Implementer cold read, Axiom Breaker on the dispositions, Stop Arguer) - dispositions
+- `FOLDED` Mechanism Gamer (debt): the helper hardcoded `TrailingToolStep = true`, so the second wording branch ("The Answer above was produced before the stop") had no row; the helper takes `toolEnded`, a third row pins that branch, and the first row now also asserts the no-answer wording ("could not generate").
+- `FOLDED` Literal Implementer (debt): the CHANGELOG step did not say what to do when `## Unreleased` already exists; merge rule written.
+- `none`: Cascade Analyst (the notice chain handles every {QuotaStop} x {RESCUED, TerminalTokenMissing, EchoMissing, AnswerTruncated} combination), Blindspot Auditor (the docs scope detection to a clavity-launched agy and say what a hand-started one shows), Axiom Breaker ("could not find a wrong or under-evidenced disposition").
+- Stop Arguer: stop - "Tasks 0-6 have been dry-run, remaining findings are debt". Round 5 had NO blocking finding; both findings were test-completeness / wording debt, now folded. Process notes: the peer's census says "plan read fully" with no per-file line ranges (the brief asked for them) and no repo file is named as opened; its Cascade Analyst "none" is therefore a reasoned reading of the plan text, not an opened-file check - the chain itself WAS executed by the dry run (quota row and Mutant B). Counts after this fold: Integration +28 (final expected 121 -> 149), Ls +12 (419 -> 431).
