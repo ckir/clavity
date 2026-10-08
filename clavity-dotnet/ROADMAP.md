@@ -3957,6 +3957,24 @@ instead of one re-ask) that `e4e6c55d` closed. **Capstone folds:** R1 BS1 - a cu
 
 - **T1 measured 2026-10-07 (agy language server 1.3.1, Windows):** `GetConversationMetadata` for the live conversation reports ONE workspace, `file:///C:/Users/user/Development/Rust/clavity` (`Uri.LocalPath` = `C:\Users\user\Development\Rust\clavity`), and a RELATIVE write by agy (`.clavity/scratch/b22-t1/where.md`) landed under that folder - D-root holds. The conversation id the metadata call needs is the key of `GetAllCascadeTrajectories`, NOT the `CascadeId` that `agy_status` prints (they differ: `269f29bc...` vs `d7db9a5e...`). The several-workspace tie-break stays "no peer file" (not reproducible here); the Linux URI form is UNMEASURED (CI is windows-latest only).
 
+### §75 — Agy hooks misread an inbox/table the author's editor wrote differently (CRLF on Linux awk, UTF-8 BOM, BSD `date -r`) — ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (3 entries, Branch 21 test-audit and re-capstone), pre-existing, not yet planned**
+
+Three verified, pre-existing defects of one class - a hook assumes the file or the platform looks the way the shipping writer produces it:
+
+1. **CRLF under Linux awk.** `.claude/hooks/agy-verify-reminder.sh:94` (separator-row regex `/^\|[-: |]+\|$/`) never matches a CRLF line on Linux awk, so a CRLF `agy-autotrain/verify/assertions.md` reads as "no probe rows" and emits the misleading NOROWS "table separator is missing". MEASURED: Git Bash awk identical for LF/CRLF; WSL gawk 5.3.2 gives NOROWS for CRLF. The same Pending-heading shape (`/^##[ \t]+Pending[ \t]*$/`) is at `agy-autotrain/hooks/agy-curate-nudge.sh:90` - NOT measured on Linux.
+2. **UTF-8 BOM inbox gets no snapshot.** `agy-autotrain/hooks/agy-inbox-snapshot.sh:100` - the BOM is part of line 1, the `'# agy observations inbox'*` header test never matches, `hdr` stays 0 and the hook exits 0 BEFORE the destructive drain. MEASURED old (`1da7a9fe`) vs new: 0 `.bak` on LF and CRLF BOM files (plain control: 1). Reachable only by a hand edit in a BOM-writing editor; the same shape likely exists in the other inbox readers.
+3. **BSD `date -r`.** `agy-autotrain/hooks/agy-curate-nudge.sh:54` reads the snooze marker's age with GNU-only `date -r "$SNOOZE" +%s`; BSD/macOS `-r` is EPOCH SECONDS, so the 7-day snooze never silences the nudge (same class as §73, which fixed the age gate only). BSD semantics are from the man page, NOT measured here (no macOS).
+
+**Plan shape:** one branch; strip a trailing CR in the awk blocks and a leading BOM in the inbox readers, replace `date -r FILE` with the §73 approach; failing control first for each (WSL for 1, a BOM fixture for 2); item 3 stays unmeasured on a Mac, so test it with a `BASH_ENV` `date` shim as §73 did.
+
+### §76 — `PluginInstaller.Clip` can split a UTF-16 surrogate pair — ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (Branch 22 capstone R2), low debt, not yet planned**
+
+`clavity-dotnet/src/Clavity.Ls/Install/PluginInstaller.cs:37` cuts process output with `s[..200]`; a pair straddling the cut becomes one U+FFFD in an installer diagnostic (same class as the Branch 22 capstone BS1/FA1-FA4 folds, fixed elsewhere with `TextCut.Prefix`). Fix: use `TextCut.Prefix` and pin it with a row whose 200th character is the first half of a surrogate pair.
+
+### §77 — `check-roadmap-claims.ps1` verifies line COUNTS but never `:N` pointers, so section 14's evidence lines rot silently — ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (Branch 22 T10), tracked debt, not yet planned**
+
+`clavity-dotnet/ROADMAP.md` section 14's skill table cites evidence lines (`:54-56` agy-first, `:216` agy-test-audit, `:89/:92/:103` agy-capstone) that did not hold the quoted text even before the Branch 22 skill edits (capstone Seats/Rotate sat at `:177/:191` at `3013e8a2^`). Fix: either teach the checker to resolve each `file:N` pointer against a quoted anchor, or replace the pointers with anchor text. Decide at planning.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
