@@ -257,6 +257,16 @@ Describe 'fetch-clavity-ls.sh tells the user what happened' {
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # Capstone R4 (mutant: drop the `break` after the first "version" match, so the LAST version-bearing line wins). The manifest
+    # version is the top-level one, which the old sed took from the FIRST such line; a nested "version" later must not override it.
+    It 'takes the version from the FIRST line that carries one, not a later nested one' {
+        $fx = New-Fx
+        try {
+            [IO.File]::WriteAllText((Join-Path $fx.PluginRoot 'plugin.json'), "{`n  `"name`": `"clavity`",`n  `"version`": `"9.9.9`",`n  `"engines`": {`n    `"host`": { `"version`": `"1.0.0`" }`n  }`n}`n")
+            (Get-Message (Invoke-Fetch $fx 'noasset')) | Should -Match ([regex]::Escape("clavity-ls-linux-x64-9.9.9.tar.gz"))
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'fetches again when the stamp names a DIFFERENT version, and stays quiet when the stamp has a trailing newline' {
         $fx = New-Fx
         try {

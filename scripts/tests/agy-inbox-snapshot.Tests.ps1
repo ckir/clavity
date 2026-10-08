@@ -79,6 +79,16 @@ Describe 'agy-inbox-snapshot' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # Capstone R4 (mutant: drop the `$` anchor on the Pending heading regex). "## Pending items" is a different section.
+    It 'does NOT treat a "## Pending items" heading as the Pending region' {
+        $body = "# agy observations inbox (raw, project-agnostic)`n`n## Pending items`n`n- [assumption] (peer/probabilistic) a rule in some other section`n"
+        $r = New-PluginRoot $body
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
+            BakCount $r | Should -Be 0 -Because 'only a heading that is exactly "## Pending" opens the region'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'refuses to rotate when the inbox is empty' {
         $r = New-PluginRoot ''
         try {

@@ -442,28 +442,30 @@ $script:Rows = @(
         $fx.Env.BASH_ENV = ($be -replace '\\', '/')
         New-SessionStartPayload $fx } -Max 9 -Expect 'no release asset named'
     New-BudgetRow "$D/clavity-dotnet-setup.sh" 'not a plugin context' { param($fx) New-SessionStartPayload $fx } -Silent
-    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'non-curate skill' { param($fx) New-ToolPayload $fx 'Skill' @{ skill = 'dataviz' } } -Silent
-    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'UserPromptSubmit, ordinary prompt' { param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'UserPromptSubmit'; prompt = 'hi' } } -Silent
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'non-curate skill' -Max 0 { param($fx) New-ToolPayload $fx 'Skill' @{ skill = 'dataviz' } } -Silent
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'UserPromptSubmit, ordinary prompt' -Max 0 { param($fx) ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'UserPromptSubmit'; prompt = 'hi' } } -Silent
     # --- agy-inbox-snapshot.sh: the Branch 21 census paths (PreToolUse Skill + UserPromptSubmit) ---
-    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, steady state: 5 baks -> snapshot + prune 1' {
+    # PINNED AT THE MEASURED COUNTS (2026-10-08, capstone R4: forcing the bash<4.2 `date` fallback always, +2 processes on the
+    # rotating paths, stayed green under the shared ceiling of 13). Totals measured 3 / 7 / 11 including boot, r1 == r2.
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, steady state: 5 baks -> snapshot + prune 1' -Max 8 {
         param($fx) [void](Add-FxInbox $fx -Baks 5); New-ToolPayload $fx 'Skill' @{ skill = 'agy-autotrain:agy-curate' } } -Silent -Verify {
         param($fx) (Get-FxBaks $fx).Count | Should -Be 5 }
-    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, 20 baks -> snapshot + prune 16 in ONE rm' {
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, 20 baks -> snapshot + prune 16 in ONE rm' -Max 8 {
         param($fx) [void](Add-FxInbox $fx -Baks 20); New-ToolPayload $fx 'Skill' @{ skill = 'agy-autotrain:agy-curate' } } -Silent -Verify {
         param($fx) $left = Get-FxBaks $fx; $left.Count | Should -Be 5
         # IDENTITY, not count: the survivors are the four NEWEST old slots (17..20) plus the new snapshot.
         foreach ($n in 17..20) { ($left -match ('202601{0:d2}-000000' -f $n)).Count | Should -Be 1 } }
-    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate via UserPromptSubmit prompt, no baks -> first snapshot' {
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate via UserPromptSubmit prompt, no baks -> first snapshot' -Max 4 {
         param($fx) [void](Add-FxInbox $fx); ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'UserPromptSubmit'; prompt = '/agy-curate' } } -Silent -Verify {
         param($fx) (Get-FxBaks $fx).Count | Should -Be 1 }
-    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, newest bak identical -> dedup, no rotate' {
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, newest bak identical -> dedup, no rotate' -Max 4 {
         param($fx) $obs = Add-FxInbox $fx; Copy-Item -LiteralPath $obs -Destination "$obs.20260101-000000.bak"
         New-ToolPayload $fx 'Skill' @{ skill = 'agy-autotrain:agy-curate' } } -Silent -Verify {
         param($fx) (Get-FxBaks $fx).Count | Should -Be 1 }
-    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, Pending empty -> invariant 2 refuses, silent' {
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, Pending empty -> invariant 2 refuses, silent' -Max 0 {
         param($fx) [void](Add-FxInbox $fx -EmptyPending); New-ToolPayload $fx 'Skill' @{ skill = 'agy-autotrain:agy-curate' } } -Silent -Verify {
         param($fx) (Get-FxBaks $fx).Count | Should -Be 0 }
-    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'non-curate prompt (hot path, silent)' {
+    New-BudgetRow "$A/agy-inbox-snapshot.sh" 'non-curate prompt (hot path, silent)' -Max 0 {
         param($fx) [void](Add-FxInbox $fx); ConvertTo-HookPayload @{ cwd = $fx.RepoFwd; session_id = 's1'; hook_event_name = 'UserPromptSubmit'; prompt = 'hello' } } -Silent -Verify {
         param($fx) (Get-FxBaks $fx).Count | Should -Be 0 }
     New-BudgetRow "$A/migrate-inbox.sh" 'nothing to migrate' { param($fx) New-SessionStartPayload $fx } -Max 0 -Silent

@@ -683,7 +683,7 @@ agy-curate-nudge.Tests.ps1                       48,1s   38 tests   <- 29 -> 38 
   cap - see the note under ## Measured runtimes. Re-measured 2026-08-24 WARM on an
   idle CPU (cold 53,6s) after the test-audit closure added 6 tests. The count row had ALSO been stale
   since before that: it said 11 when the file held 14.
-agy-inbox-snapshot.Tests.ps1                    120,1s   37 tests   <- 36 -> 37 2026-10-08 (capstone R3: +a bullet under a LATER heading buys no snapshot); SLOW, re-measured 2026-08-24 WARM; 32 -> 36 2026-10-07 (Branch 21 Task 1: KEEP=08, same-second KEEP=1, real-tab and literal-t heading rows), time not re-measured
+agy-inbox-snapshot.Tests.ps1                    120,1s   38 tests   <- 37 -> 38 2026-10-08 (capstone R4: +"## Pending items" is not the Pending region); 36 -> 37 (capstone R3: +a bullet under a LATER heading buys no snapshot); SLOW, re-measured 2026-08-24 WARM; 32 -> 36 2026-10-07 (Branch 21 Task 1: KEEP=08, same-second KEEP=1, real-tab and literal-t heading rows), time not re-measured
   (cold 119,5s - this suite is I/O bound, so warm and cold agree). The test-audit closure added 3 It
   blocks; Pester expands them to 31 because two use -ForEach. The old row said 22. Before 2026-08-03 this
   suite was MISSING from this table entirely.
@@ -727,7 +727,7 @@ agy-seam-inject.Tests.ps1                        39,4s   36 tests   <- SLOW, re-
                                                                       been comment-only). Time had said
                                                                       18,0s and was "count 2026-08-03,
                                                                       time older" - now both are current.
-agy-shield-lib.Tests.ps1                        409,1s   55 tests   <- 54 -> 55 2026-10-08 (capstone R3: +the 30-day sweep age pinned at both find sites); SLOW, NEW 2026-08-16; 45 -> 47 2026-10-07 (Branch 21 Task 2: the ordering row became two, +1 deferred-prune row); 47 -> 54 (phase-1 capstone: +7 rows that run the helper under dash); time not re-measured. Fixture-
+agy-shield-lib.Tests.ps1                        409,1s   56 tests   <- 55 -> 56 2026-10-08 (capstone R4: +CRLF `*` shield left byte-identical, bash + dash); 54 -> 55 (capstone R3: +the 30-day sweep age pinned at both find sites); SLOW, NEW 2026-08-16; 45 -> 47 2026-10-07 (Branch 21 Task 2: the ordering row became two, +1 deferred-prune row); 47 -> 54 (phase-1 capstone: +7 rows that run the helper under dash); time not re-measured. Fixture-
                                                                       heavy: many git + bash subprocess spawns per
                                                                       row across 17 Its. Measured solo, two
                                                                       consecutive runs immediately back to back:
@@ -1090,7 +1090,7 @@ drain-lib.Tests.ps1                               4,2s   36 tests   <- FAST, re-
                                                                       COUNT 29 -> 36 on 2026-08-28 (AGY-TEST-AUDIT
                                                                       covered the output-manifest producer).
   (cold 6,1s) after the test-audit closure added 2 tests and strengthened 3.
-fetch-clavity-ls.Tests.ps1                       47,9s  23 tests   <- 10 -> 23 2026-10-07 (Branch 21 Task 8: +mktemp s64, +sha-first URL, +7 OSTYPE rows, +unsupported platform, +pretty manifest, +stamp, +C0 strip; time not re-measured); SLOW, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled; +3 rows at the test audit, time NOT re-measured)
+fetch-clavity-ls.Tests.ps1                       47,9s  24 tests   <- 23 -> 24 2026-10-08 (capstone R4: +version from the FIRST version line); 10 -> 23 2026-10-07 (Branch 21 Task 8: +mktemp s64, +sha-first URL, +7 OSTYPE rows, +unsupported platform, +pretty manifest, +stamp, +C0 strip; time not re-measured); SLOW, NEW 2026-10-02 (Branch 17, ROADMAP section 61; one run, box load uncontrolled; +3 rows at the test audit, time NOT re-measured)
 generate-cheatsheet-literals.Tests.ps1           41,6s   18 tests   <- SLOW, NEW 2026-08-16 (14e): the
                                                                       cheatsheet-literal generator's pinning
                                                                       suite. Measured solo as the sole

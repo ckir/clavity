@@ -818,6 +818,22 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             }
         }
 
+        It 'recognises a CRLF shield (a "*" line ending in CR) and leaves it byte-for-byte alone' {
+            # Capstone R4 (mutant: drop the trailing-CR alternative of the "*" match - the suite stayed green). A shield written on
+            # Windows with CRLF endings is still a correct shield; if the match misses the CR the helper appends a second "*".
+            # TWO match sites: the bash builtin case and the grep fallback every other shell takes - so the row runs under both.
+            # HONEST LIMIT (measured): MSYS grep ignores a trailing CR (`grep -qFx '*'` on a CRLF line exits 0 here), so on this host the
+            # dash iteration cannot tell the grep fallback's CR alternative from its absence; on Linux grep exits 1 for that line and the
+            # alternative is what matches (measured under WSL). The builtin-case alternative IS discriminating here (mutant red).
+            foreach ($shell in '', 'dash') {
+                $r = New-FixtureRepo -Shield "*`r`n"
+                $path = Join-Path $r '.clavity/.gitignore'
+                $before = [IO.File]::ReadAllBytes($path)
+                $null = Invoke-Shield -Root $r -Shell $shell -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+                ([IO.File]::ReadAllBytes($path) -join ',') | Should -BeExactly ($before -join ',') -Because "a CRLF '*' is already a shield: nothing to append or rewrite (shell '$shell')"
+            }
+        }
+
         It 'a failed shield write OUTSIDE a git repository is reported, not swallowed' {
             # CAPSTONE ROUND 6, and it is the worst reachable state this helper had left. Round 3 made the
             # PREPEND fallback report a failed write; the ORDINARY append - the path a fresh clone takes -
