@@ -962,7 +962,7 @@ out to have been accidentally right for a reason nobody stated. Measure before a
 **Disposition:** low priority, off the critical path. Not a fail-open. Belongs with the knowledge-storage
 design work rather than as a standalone fix, since where GROWTH lives is exactly what that work decides.
 
-### §14 — anomalies promoted at the 2026-08-13 and 2026-08-14 triages
+### §14 — anomalies promoted at the 2026-08-13 and 2026-08-14 triages — ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - all sub-items SHIPPED (§14a-e); the one known hole, the agy-curate crash window recorded in `agy-curate/SKILL.md`, is an accepted limitation (Non-goals)**
 
 All four were **verified by measurement at triage**, not accepted on reading. Each names the measurement
 so a later reader can re-check rather than re-derive. §14a–c came from the 2026-08-13 triage; §14d from
@@ -1322,7 +1322,7 @@ the directive; §6/§7 say directive ahead of path). The build follows §3b's ve
 *consults*. It does not cover implementation work (435 of 435 agent-written seams are consult payloads),
 does not retain decisions, and does not defend against a compromised agent.
 
-### §16 — Edit-verification pattern: a TRANSIENT Pester suite, not inline shell — **owner-ratified 2026-08-15**
+### §16 — Edit-verification pattern: a TRANSIENT Pester suite, not inline shell — **owner-ratified 2026-08-15** · ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - a PATTERN record, not work; its one open sub-question (does the durable subset earn a permanent gate) goes to the Branch T batch ruling**
 
 **This records a PATTERN for the next plan, not work to schedule.** It changes nothing already shipped.
 
@@ -1725,7 +1725,7 @@ priced. **Neither opening position survived.**
 same day to close a verified coverage gap. That is not a contradiction — the audit correctly tested the
 design as it then stood; this entry changes the design.
 
-### §20 — A mockable clock (`TimeProvider`) in `AgyView` — ▶ **OPEN, not scheduled**
+### §20 — A mockable clock (`TimeProvider`) in `AgyView` — ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - not built; tracked debt 7 in `docs/coverage-debt.md` is DECIDED (accepted, moved to boundary P) and boundary J stays (Non-goals)** — was: ▶ **OPEN, not scheduled**
 
 **Referred by the owner 2026-08-19**, out of the AGY-TEST-AUDIT capstone on the idle-wait limit label.
 This is a real refactor, not a hygiene tidy-up, and it is written down because two separate debts already
@@ -1745,7 +1745,7 @@ do anything in particular. Every timing-sensitive property of that loop is conse
   produced on demand. **Measured 2026-08-19: mutant M9 (drop `windowElapsed`, keep the clock) SURVIVES the
   full suite** while the other nine mutants in that sweep are each caught. A controllable clock makes that
   case constructible and **retires boundary J outright** rather than carrying it.
-- **Tracked debt 7** (same file) is the ~2s permanent suite tax from widening two `absolute_max` tests 6x
+- **Tracked debt 7** (same file; moved to the accepted-boundary ledger as **P** on 2026-10-08, when this section was closed by ruling) is the ~2s permanent suite tax from widening two `absolute_max` tests 6x
   to out-run CI jitter. With a controllable clock the margins are not needed at all — the tests stop
   waiting on wall-clock and the tax goes away, without the retry-loop whose trap is that it must never
   cover a wrong `Limit`.
@@ -2285,7 +2285,7 @@ halves in the same commit and must pass `plugin-hooks-payload.Tests.ps1`.
 
 ---
 
-### §26 — No plugin footprint is measured or published, so neither the maintainer nor a prospective installer can see the cost — ▶ **OWNER ACCEPTED 2026-09-03, spec written, SEQUENCED as Phase 6 (LAST), build DEFERRED**
+### §26 — No plugin footprint is measured or published, so neither the maintainer nor a prospective installer can see the cost — ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - not built; reverses the 2026-09-03 owner acceptance; the spec `docs/superpowers/specs/2026-09-03-plugin-footprint-analyzer-design.md` stays on disk (Non-goals)** — was: ▶ **OWNER ACCEPTED 2026-09-03, spec written, SEQUENCED as Phase 6 (LAST), build DEFERRED**
 
 > **Placement ruled 2026-09-03 (AGY-FIRST, `.clavity/seams/agyfirst-s28-30-sequencing.md`): Phase 6, last, ON ITS OWN.** It is the ONLY additive item in the sequence — every other phase repairs something already wrong — and a repair-ordered sequence finishes its repairs first. Deliberately NOT batched with §28/§30: it needs architectural design review that contained fixes do not, and grouping them merely because all three are "tooling" is the shallow similarity that dilutes a panel.
 
@@ -2834,7 +2834,7 @@ repo-wide in one pass so no file is left inconsistent with its siblings.
 
 ---
 
-### §35 — Persist every peer reply to disk; the practice existed, was never mechanised, and died silently — ▶ **PROMOTED 2026-09-05, owner-raised, tracked debt** · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 9 - the consult transport persists every peer reply (runs before Branch 8)**
+### §35 — Persist every peer reply to disk; the practice existed, was never mechanised, and died silently — ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - half-built and closed as such: the dotnet side persists every reply (§74 `ReplyCapture`, 50 kept); the classic side has no capture code and relies on the peer-written reply file the skills ask for; the fold-gate is not built because, by this section's own caveat, persistence does not force the reading (Non-goals)** — was: ▶ **PROMOTED 2026-09-05, owner-raised, tracked debt** · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 9 - the consult transport persists every peer reply (runs before Branch 8)**
 
 **The owner proposed this to earlier sessions and those agents agreed; it was never written down anywhere
 executable, so it survived only in agent memory and was lost across several memory compactions.** The
@@ -3151,7 +3151,7 @@ rewrite. Recorded here rather than silently dropped, because the rewrite is exac
 
 ---
 
-### §41 — The shield's PREPEND fallback is a non-atomic read-modify-write — ▶ **PROMOTED 2026-09-12, OWNER-RULED 2026-09-08 to defer the fix** · ▶ **OWNER ACTION [sweep-step0 2026-09-29]: deferral re-confirmed - no portable lock; a fix must arrive with a failing control**
+### §41 — The shield's PREPEND fallback is a non-atomic read-modify-write — ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - accepted limitation; the 2026-09-08 deferral becomes final for the reasons recorded below (no portable lock; a contrived four-condition edge; a fix would be unfalsifiable without a failing control) (Non-goals)** — was: ▶ **PROMOTED 2026-09-12, OWNER-RULED 2026-09-08 to defer the fix** · ▶ **OWNER ACTION [sweep-step0 2026-09-29]: deferral re-confirmed - no portable lock; a fix must arrive with a failing control**
 
 `clavity-dotnet/plugin/hooks/agy-shield-lib.sh:221-222` writes `*` to a temp file, `cat`s the existing shield
 in after it, then `mv`s the temp over the original. A human edit landing between the read and the rename is
@@ -3724,7 +3724,7 @@ nothing placed; proven non-vacuous by deleting the `|| { _note ...; exit 0; }`.
 
 ---
 
-### §65 — Pairing over ssh needs a copy/paste of a 36-character session id; and the agy-side environment variables may be retirable — ✅ **Fork 1 SHIPPED on Branch 19** (owner-approved scope after AGY-FIRST + AGY-NEGOTIATE, 2026-10-03); Forks 2 and 3 DEFERRED (see Decision below)
+### §65 — Pairing over ssh needs a copy/paste of a 36-character session id; and the agy-side environment variables may be retirable — ✅ **Fork 1 SHIPPED on Branch 19** (owner-approved scope after AGY-FIRST + AGY-NEGOTIATE, 2026-10-03); Forks 2 and 3 ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - not built; the reasons in the Decision below are kept (Non-goals)** — was: Forks 2 and 3 DEFERRED
 
 **Today (Branch 18):** with no display, `clavity-ls start` stops and says to run `clavity-ls agy <folder>`, which runs agy
 in that terminal and prints `clavity-ls start <folder> --attach <session-id>` for a SECOND ssh session - a GUID to copy
@@ -3991,6 +3991,8 @@ Three verified, pre-existing defects of one class - a hook assumes the file or t
 
 **Fix directions (none built):** (a) make the post check run at the task's COMPLETION, or have the guard record the in-flight baseline for a backgrounded ask and compare at the next consult or at session end; failing that, state in each review skill that a backgrounded ask needs the manual diff-after at completion; (b) have the briefs name a sanctioned build location outside the repository (for example a directory under the system temp folder) and say that a build elsewhere is a breach. **Blast radius:** the plugin pair (`agy-consult-guard-post.sh` and its byte-identical classic mirror, the review skills in both plugins), and `scripts/tests/agy-consult-guard.Tests.ps1` is the suite; the pair must change together and a plugin version bump follows the usual release path.
 
+**SECOND live occurrence (2026-10-08, the agy panel round on the final-sweep spec).** The brief allowed writes only under `.clavity/scratch/final-sweep-spec-panel/` and forbade creating files; the peer's closing disclosure said it "ran command wrappers (PowerShell/Python) to view file contents", and five untracked files appeared in the REPOSITORY ROOT - `all_headers.txt`, `all_numbered_headers.txt`, `headers.txt`, `py_headers.txt`, `leak.txt` (its own grep output). The driver's before/after snapshot caught them (the manual step 5 of the review skills); the consult guard was silent again, on an ask the harness had moved to the background. Deleted; no tracked file changed.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
@@ -4002,6 +4004,13 @@ Three verified, pre-existing defects of one class - a hook assumes the file or t
   mitigated). DPAPI/signing out of scope for this threat model.
 - **Migrating classic → dotnet regresses `delegate_to_antigravity`** — dotnet provides `agy_ask` (consults), not
   autonomous code-delegation. Valid only while clavity-classic stays a maintained variant (which item 1 assumes).
+- **§14 - the agy-curate crash window** (closed by ruling 2026-10-08): a crash between steps of the curate procedure, recorded in `agy-curate/SKILL.md` and deliberately not patched. Reopen if a crash is observed to lose curated content.
+- **§16 - the edit-verification pattern** (closed by ruling 2026-10-08): a recorded pattern for plans, not work. Its sub-question (a permanent gate) is ruled in Branch T.
+- **§20 - a mockable clock in `AgyView`** (closed by ruling 2026-10-08): not built; tracked debt 7 (the ~2 s suite tax of the widened absolute-max tests) is accepted permanently and boundary J stays. Reopen when `AgyView` is next refactored for another reason.
+- **§26 - a plugin footprint analyzer** (closed by ruling 2026-10-08; reverses the 2026-09-03 acceptance): an additive feature, not built before the release; the spec `docs/superpowers/specs/2026-09-03-plugin-footprint-analyzer-design.md` is kept. Reopen as a new feature.
+- **§35 - mechanised persistence of every peer reply** (closed by ruling 2026-10-08): delivered on clavity-dotnet by §74's `ReplyCapture`; clavity-classic relies on the peer-written reply file; no fold-gate (persistence does not force the reading). Reopen if a reply is lost on classic.
+- **§41 - the shield PREPEND race** (closed by ruling 2026-10-08): no portable lock exists (`flock` is absent on Git Bash and macOS); the edge needs four conditions inside a sub-millisecond window. Reopen only with a failing control that demonstrates the loss.
+- **§65 Forks 2 and 3 - retiring the agy-side endpoint variable; auto-pairing a plain `claude`** (closed by ruling 2026-10-08): not built; Fork 3 because `--mcp` cannot tell intent and a lock can be stolen or raced, Fork 2 because it needs the oldest supported agy checked first and buys only a cleanup.
 _(The former "no continuous .NET CI on `main`" limitation is resolved and has been removed: it described the
 pre-monorepo, branch-per-tool world. `.github/workflows/ci-dotnet.yml` now runs `dotnet build` + `dotnet test`
 on every push to `main`, and packaging ships via the unified `umbrella-release.yml` + `build-dotnet.yml`.)_

@@ -160,29 +160,6 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
 
 ---
 
-### 7. The 6x timing widening on the two absolute-max tests is an open owner decision
-
-- **Where:** `clavity-dotnet/tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs`, the two
-  `absolute_max` tests - `500ms/1500ms` and `1000ms/1500ms`, scaled up from `100ms/250ms` and `150ms/250ms`
-  in `bcd4125`.
-- **What it buys:** it is the mitigation for a REAL flake - `lastProbe` is null at `AgyView.cs:234` while
-  the budget check runs on the first iteration before any probe, so a pause longer than the
-  whole budget throws a null diagnostic and fails `Assert.NotNull`. At a 250ms budget that needed only a
-  quarter-second hiccup. Validated 12/12 on an idle machine after widening.
-- **What it costs:** roughly 2s of wall-clock on EVERY green suite run (measured 14s -> 16s), permanently,
-  for two tests. The capstone peer's RESOURCE VAMPIRE seat argued this scales badly if the pattern is
-  copied to the next timing-bound test, and that argument is sound.
-- **The alternative, and its trap:** restore the fast budgets and retry the ask when it exits before any
-  probe. A retry is honest ONLY for that precondition failure. It must never cover a wrong `Limit`, which
-  would be retrying until the assertion passes - a test that cannot fail. Any implementation must keep
-  those two cases visibly separate.
-- **Status:** owner deferred the decision on 2026-08-19, after the limit-label fixes, on the grounds that a
-  deterministic boundary changes what the margins must absorb. **It does not: this flake is the
-  pre-first-probe starvation case, which neither `0fb47f6` nor `1748754` touches.** Recorded here so the
-  decision is tracked rather than carried in conversation.
-
----
-
 ### 8. The AGGREGATE figures in `_partition.md` are unguarded, and have decayed three times
 
 - **Where:** `scripts/tests/_partition.md`, the `just test-scripts-fast` / `just test-scripts-slow`
@@ -681,3 +658,28 @@ here, because it needs a new registered suite and this batch's scope is the seve
   is deleted, this entry stops being true and the row returns to trusting its environment silently.
 - **Re-check trigger:** a THIRD platform (macOS), which nothing here has measured. Do not read "works on
   Windows and Linux" as "portable".
+
+### P. The 6x timing widening on the two absolute-max tests - ACCEPTED 2026-10-08 (owner, final sweep: ROADMAP §20 closed by ruling)
+
+- **Ruling:** the ~2 s suite tax is permanent; the mockable clock (§20) that would have removed it is not built. Moved here from tracked debt 7, where it read "an open owner decision".
+
+- **Where:** `clavity-dotnet/tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs`, the two
+  `absolute_max` tests - `500ms/1500ms` and `1000ms/1500ms`, scaled up from `100ms/250ms` and `150ms/250ms`
+  in `bcd4125`.
+- **What it buys:** it is the mitigation for a REAL flake - `lastProbe` is null at `AgyView.cs:234` while
+  the budget check runs on the first iteration before any probe, so a pause longer than the
+  whole budget throws a null diagnostic and fails `Assert.NotNull`. At a 250ms budget that needed only a
+  quarter-second hiccup. Validated 12/12 on an idle machine after widening.
+- **What it costs:** roughly 2s of wall-clock on EVERY green suite run (measured 14s -> 16s), permanently,
+  for two tests. The capstone peer's RESOURCE VAMPIRE seat argued this scales badly if the pattern is
+  copied to the next timing-bound test, and that argument is sound.
+- **The alternative, and its trap:** restore the fast budgets and retry the ask when it exits before any
+  probe. A retry is honest ONLY for that precondition failure. It must never cover a wrong `Limit`, which
+  would be retrying until the assertion passes - a test that cannot fail. Any implementation must keep
+  those two cases visibly separate.
+- **Status:** owner deferred the decision on 2026-08-19, after the limit-label fixes, on the grounds that a
+  deterministic boundary changes what the margins must absorb. **It does not: this flake is the
+  pre-first-probe starvation case, which neither `0fb47f6` nor `1748754` touches.** Recorded here so the
+  decision is tracked rather than carried in conversation.
+
+---

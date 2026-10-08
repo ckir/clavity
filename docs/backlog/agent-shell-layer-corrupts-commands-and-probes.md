@@ -1,6 +1,6 @@
 # Backlog stub - the agent shell layer corrupts commands, and the corruption is silent
 
-**Status:** OPEN. Promoted 2026-08-27 from `.clavity/local-anomalies.md` (8 entries consolidated). · ▶ **OWNER ACTION [sweep-step0 2026-09-29]: report upstream (rtk / Claude Code); workaround in force - write scripts with the Write tool, never a shell heredoc (new measurement at the foot of this file)**
+**Status:** ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - external (the shell tool layer, rtk / Claude Code); the owner reported it upstream to Claude Code on 2026-09-30 (foot of this file); the workaround stays in force and was re-measured on 2026-10-08: write scripts with the Write tool, never a large shell heredoc.** Was: OPEN. Promoted 2026-08-27 from `.clavity/local-anomalies.md` (8 entries consolidated). · ▶ **OWNER ACTION [sweep-step0 2026-09-29]: report upstream (rtk / Claude Code); workaround in force - write scripts with the Write tool, never a shell heredoc (new measurement at the foot of this file)**
 **Raised:** capstone rounds 18-27, 2026-08-26/27.
 **Scope:** every shell call this repository's agents make. Not a repo defect - a HARNESS defect that
 corrupts the evidence every other gate depends on.
