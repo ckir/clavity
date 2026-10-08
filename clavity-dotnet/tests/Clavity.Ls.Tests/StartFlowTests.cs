@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text;
 using Clavity.Ls;
 
 namespace Clavity.Ls.Tests;
@@ -633,5 +634,37 @@ public sealed class StartFlowTests
         var fx2 = new Fake();
         StartFlow.Agy(["sub"], fx2);
         Assert.Contains($"clavity-ls start {Launcher.ShQuote(Path.Combine(fx2.CurrentDirectory, "sub"))} --attach", fx2.Err.ToString());
+    }
+
+    // ROADMAP section 53 (wiring half). The refusal half is pinned above (A_pairing_doc_that_cannot_be_written_...);
+    // this pins the OTHER regression the pairing-doc fix removed: the materialised path must reach agy's `-i` prompt.
+    // A StartFlow that passes null compiles, launches, and agy comes up unpaired with every other row green.
+    private static string AgyTabScriptOf(Fake fx, bool windows)
+    {
+        if (!windows) return fx.Scripts.Single().Content;
+        var wt = fx.Ran.Single(c => c.FileName == "wt");
+        Assert.Equal("-EncodedCommand", wt.Arguments[5]);
+        return Encoding.Unicode.GetString(Convert.FromBase64String(wt.Arguments[6]));
+    }
+
+    // The `agy` verb is the POSIX tab entry: it writes the script through fx.WriteScript on every platform
+    // (StartFlow.cs:94), so it is exercised once, through fx.Scripts, and not under IsWindows.
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    public void The_materialised_pairing_doc_path_reaches_the_agy_tab_as_the_i_prompt(bool windows, bool agyVerb)
+    {
+        var fx = new Fake { IsWindows = windows };
+        var rc = agyVerb ? StartFlow.Agy([Repo], fx) : StartFlow.Start([Repo], fx);
+        Assert.Equal(0, rc);
+        var script = AgyTabScriptOf(fx, windows && !agyVerb);
+        var line = script.Split('\n').Single(l => l.Contains("agy --log-file ", StringComparison.Ordinal));   // Contains, not StartsWith: the Windows script is ONE line that opens with `$env:...;` assignments (Launcher.cs:126-136)
+        Assert.Contains(" -i ", line);
+        Assert.Contains("Fetch and follow the instructions at ", line);
+        // The FULL path the Fake returns for the directory StartFlow hands to MaterializePairingDoc
+        // (StartFlow.cs:315: Path.GetDirectoryName(paths.Endpoint)) - a hardcoded bare file name must not satisfy this.
+        var paths = SessionPaths.For(fx.UserProfile, fx.NewSessionId());
+        Assert.Contains(Path.Combine(Path.GetDirectoryName(paths.Endpoint)!, "agy-pairing-INSTALL.md"), line);
     }
 }
