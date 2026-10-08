@@ -3541,7 +3541,7 @@ does NOT do it: it skips a file git considers stat-clean (measured 2026-09-30).
 
 ---
 
-### §59 — Seven more hooks write stderr under an empty `PATH`; the §32b fix reached only one — ✅ **IMPLEMENTED 2026-10-08 on Branch 21 (`sweep/branch-21-census-hooks`; branch-final capstone, test-audit and merge pending) — was: PROMOTED 2026-10-02 from the anomalies conveyor (captured 2026-10-01 starting Branch 14), owner ruling at triage: tracked debt, SCHEDULED as new sweep Branch 16 (plugin pair; version bump + reinstall), before Branch 8**
+### §59 — Seven more hooks write stderr under an empty `PATH`; the §32b fix reached only one — ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-02 from the anomalies conveyor (captured 2026-10-01 starting Branch 14), owner ruling at triage: tracked debt, SCHEDULED as new sweep Branch 16 (plugin pair; version bump + reinstall), before Branch 8**
 
 **IMPLEMENTED on Branch 21.** Measured 2026-10-07, only three of the seven still wrote stderr under an empty `PATH`
 (Branch 20 had already moved the other four off `$(cat)`): `assertion-strength-reminder.sh` (its `cat` AND its
@@ -3707,7 +3707,7 @@ comment at `:110`.
 
 ---
 
-### §64 — `fetch-clavity-ls.sh`'s `mktemp -d` failure exit has no test — ✅ **IMPLEMENTED 2026-10-08 on Branch 21 (unmerged; capstone, test-audit and merge pending) — was: PROMOTED 2026-10-02 from the anomalies conveyor (AGY-TEST-AUDIT Branch 17 gap F, owner-deferred)**
+### §64 — `fetch-clavity-ls.sh`'s `mktemp -d` failure exit has no test — ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-02 from the anomalies conveyor (AGY-TEST-AUDIT Branch 17 gap F, owner-deferred)**
 
 **IMPLEMENTED on Branch 21 (`f9b110f8`).** `fetch-clavity-ls.Tests.ps1` now has the row ("notes `mktemp failed` and places NOTHING
 when mktemp exits non-zero", a fake `mktemp` that `exit 1`), and its non-vacuity proof was run: deleting the
@@ -3806,7 +3806,7 @@ errors), but nothing in this hook did, so the next upgrade goes stale the same w
 each upgrade re-registers once. Pin it with a row in the setup hook's suite: a stamp from an older version must
 trigger `agy plugin install`, a stamp from the current version must not.
 
-### §69 — Branch 21: the eight census-found hooks over the 16-process ceiling — ✅ **IMPLEMENTED 2026-10-08 on Branch 21 (`sweep/branch-21-census-hooks`; branch-final capstone, test-audit and merge pending) — was: PROMOTED 2026-10-04 (owner split of Branch 20)**
+### §69 — Branch 21: the eight census-found hooks over the 16-process ceiling — ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-04 (owner split of Branch 20)**
 
 **IMPLEMENTED on Branch 21.** Re-measured 2026-10-08 with the same census runner over the same 130 paths: `r1 == r2` on every
 row, zero runner errors, and the 20 rows that carry a hook's own designed stderr are the same 20 paths as before. Worst
@@ -3885,7 +3885,7 @@ after 0 s) right after the owner switched agy's model with `/model`; which excep
 the text was lost. Done = the model-unavailable case returns a typed status carrying its hint, any other exception
 returns a typed error with its message, and a test pins each.
 
-### §72 — the test-audit reminder's per-session debounce files are never cleaned — ✅ **IMPLEMENTED 2026-10-08 on Branch 21 (unmerged; capstone, test-audit and merge pending) — was: PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 plan panel), low debt**
+### §72 — the test-audit reminder's per-session debounce files are never cleaned — ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 plan panel), low debt**
 
 **IMPLEMENTED on Branch 21 (`340db9b8`), in a different home than first sketched - owner ruling 2026-10-07 at plan approval.**
 The sweep does not live in "an existing SessionStart hook": it rides the once-per-session create-path `find` in
@@ -3904,7 +3904,7 @@ not yet observable on an install, which still runs the pre-Branch-20 plugin). No
 inside the firing hook would spend processes on its worst path (15 of 16), so the cheap home is a sweep in an
 existing SessionStart hook that removes such files older than N days. Fits Branch 21's hook work.
 
-### §73 — `agy-curate-nudge` age nudge never fires on macOS (GNU-only `date -d`) — ✅ **IMPLEMENTED 2026-10-08 on Branch 21 (unmerged; capstone, test-audit and merge pending) — was: PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 capstone round 2)**
+### §73 — `agy-curate-nudge` age nudge never fires on macOS (GNU-only `date -d`) — ✅ **SHIPPED 2026-10-08 (Branch 21 merged to local main `01fbb727`; capstone GREEN + test-audit at `1d63ada6`; NOT released, installs come from the release branch) — was: PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 capstone round 2)**
 
 **IMPLEMENTED on Branch 21 (`c00b4d7c`).** The age gate computes the oldest entry's day number with days_from_civil in plain
 bash arithmetic and no longer calls `date -d` at all; the impossible-date rejection `date -d` used to provide is an explicit
