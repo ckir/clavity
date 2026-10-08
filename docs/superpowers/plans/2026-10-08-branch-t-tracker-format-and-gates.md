@@ -68,7 +68,7 @@ Known limits of the temp gate, recorded rather than hidden: it sees `GetTempPath
 - **No elided enumerations:** every list in a task is complete; never extend or invent one.
 - **Gates as they are:** use the exact commands below; do not add flags.
 - **Tiers:** Tasks 5 and 6 per-file edits = Sonnet (error-cost: weakened tests pass silently). Task 4's script, Tasks 1-3, 7-9 = Sonnet. The driver (Opus) runs every measurement, the normalisation apply, and all timing figures; subagents never time anything.
-- **Never** `git add -A` or `git add .`; stage explicit paths; never commit `.clavity/`. Commit trailer: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- **Never** `git add -A` or `git add .`; stage explicit paths; never commit `.clavity/`. Commit trailer: exactly the `Co-Authored-By:` line the session's current attribution reminder gives (it changes between sessions; do not copy one from this plan).
 
 ---
 
@@ -148,6 +148,12 @@ A docs-only closure cites the sha of the commit that made it true (the code comm
   `fixed-on: <date>` (and `released-in: clavity-vN` once released); `KILLED` needs `reason: <text>`; `CLOSED-BY-RULING` needs
   a `**Reopen if:**` line in the body.
 - The heading never carries a status marker (no check mark, arrow, `~~` strike-through, red circle, or status word after the title).
+
+## What the gate can and cannot see
+It checks that a cited sha EXISTS in the repository, not that it is the commit that did the work (a real but unrelated sha passes);
+that a Non-goals bullet or `**Reopen if:**` line EXISTS, not that its reasoning is sound; and that a pointer is in range (and, if
+anchored, that its quoted text is on the line), not that an un-anchored pointer still means what it did. Review and the capstone
+carry those; the gate removes the failure where nothing was recorded at all.
 - An open sub-item (a lettered paragraph, a "Fork 2") is NOT allowed inside a closed entry: it becomes its own entry titled
   "... (formerly <old id>)".
 ```
@@ -638,7 +644,49 @@ Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-roadmap-claims.Tests
 
 - [ ] **Step 1: Write the parity suite** - rows: (a) passes when the block between `<!-- tracker-format:begin -->` and `<!-- tracker-format:end -->` in each of the six skill files equals the block in `docs/tracker-format.md` (fixture: a temp tree with those 7 files); (b) exits 1 and names the file when one skill's block differs by one character; (c) exits 1 when a skill has NO block; (d) exits 1 when a block appears twice; (e) exits 1 when `docs/tracker-format.md` has no block; (f) the real-repo row (last). The script takes `-RepoRoot` like its siblings and exits 0/1/2 (2 = a required file unreadable).
 
-- [ ] **Step 2: Write the script** - read canonical block (text between the markers, trimmed of surrounding blank lines, line endings normalised to `\n`); for each of the six paths in the fixed list (spelled out in the script: `clavity-dotnet/plugin/skills/open-issues/SKILL.md`, `.../agy-capstone/SKILL.md`, `.../agy-test-audit/SKILL.md`, and the same three under `clavity-classic/plugin/skills/`), extract exactly one block, compare ordinal; print `EXCERPT-DRIFT <path>` / `EXCERPT-MISSING <path>` / `EXCERPT-DUPLICATE <path>`. The list is explicit on purpose and the suite's real-repo row also asserts that the three skill NAMES are exactly the ones that mention `local-anomalies.md` promotion: `grep -l "PROMOTE\|promoted to a tracked" ...` equals the list (a fourth skill gaining a promote step fails the row until enrolled).
+- [ ] **Step 2: Write `scripts/check-tracker-format-excerpt.ps1`** (dry-run: clean / one-character drift / missing / duplicate / canonical gone gave exit 0 / 1 / 1 / 1 / 2 with the expected `EXCERPT-*` lines):
+
+```powershell
+#!/usr/bin/env pwsh
+# The tracker-format excerpt in docs/tracker-format.md must appear, byte for byte, in the promote-step skills of BOTH plugins.
+# EXIT: 0 every copy equals the canonical block · 1 a copy is missing, duplicated or differs · 2 the canonical block cannot be read.
+[CmdletBinding()]
+param([string]$RepoRoot)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+if (-not $RepoRoot) { $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath }
+$begin = '<!-- tracker-format:begin -->'; $end = '<!-- tracker-format:end -->'
+# EXPLICIT list: the suite's real-repo row proves it equals the set of skills that carry a promote step.
+# (PowerShell variable names are CASE-INSENSITIVE: the loop variable below is $skill, never $s/$S next to another $S.)
+$skills = foreach ($plugin in 'clavity-dotnet', 'clavity-classic') { foreach ($skill in 'open-issues', 'agy-capstone', 'agy-test-audit') { "$plugin/plugin/skills/$skill/SKILL.md" } }
+
+function Get-Blocks([string]$Rel) {
+    $path = Join-Path $RepoRoot ($Rel -replace '/', [IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+    $t = [IO.File]::ReadAllText($path) -replace "`r`n", "`n"
+    $found = [System.Collections.Generic.List[string]]::new(); $i = 0
+    while (($b = $t.IndexOf($begin, $i, [StringComparison]::Ordinal)) -ge 0) {
+        $e = $t.IndexOf($end, $b, [StringComparison]::Ordinal); if ($e -lt 0) { break }
+        $found.Add($t.Substring($b + $begin.Length, $e - $b - $begin.Length).Trim()); $i = $e + $end.Length
+    }
+    return , $found.ToArray()
+}
+
+$canon = Get-Blocks 'docs/tracker-format.md'
+if ($null -eq $canon -or $canon.Count -ne 1 -or -not $canon[0]) { Write-Host 'check-tracker-format-excerpt: docs/tracker-format.md must contain exactly one non-empty excerpt block' -ForegroundColor Yellow; exit 2 }
+$bad = 0
+foreach ($rel in $skills) {
+    $b = Get-Blocks $rel
+    if ($null -eq $b)             { Write-Host "EXCERPT-MISSING    $rel (file not found)" -ForegroundColor Red; $bad++ }
+    elseif ($b.Count -eq 0)       { Write-Host "EXCERPT-MISSING    $rel" -ForegroundColor Red; $bad++ }
+    elseif ($b.Count -gt 1)       { Write-Host "EXCERPT-DUPLICATE  $rel" -ForegroundColor Red; $bad++ }
+    elseif ($b[0] -cne $canon[0]) { Write-Host "EXCERPT-DRIFT      $rel" -ForegroundColor Red; $bad++ }
+}
+if ($bad -gt 0) { Write-Host "check-tracker-format-excerpt: $bad of $(@($skills).Count) copies are wrong" -ForegroundColor Red; exit 1 }
+Write-Host "check-tracker-format-excerpt: OK - $(@($skills).Count) copies equal docs/tracker-format.md" -ForegroundColor Green
+exit 0
+```
+The suite's rows (a)-(f) from Step 1 drive it with a fixture tree built like the dry run (docs file + six `SKILL.md`); row (f), the real-repo row, also asserts that the three skill NAMES in `$skills` are exactly the skills whose text routes a deferral to a ROADMAP: `Select-String -Path clavity-dotnet/plugin/skills/*/SKILL.md -Pattern 'ROADMAP\.md'` restricted to skills that mention `local-anomalies.md` equals `open-issues, agy-capstone, agy-test-audit` (a fourth skill gaining a promote step fails the row until it is enrolled).
 
 - [ ] **Step 3: Insert the excerpt** - paste the block from `docs/tracker-format.md` (verbatim, including both marker lines) into each skill:
   - `open-issues/SKILL.md`: directly after the "1. **PROMOTE** ..." list item paragraph (ends with `which already carries the cross-cutting sections.` at ~line 207), as its own paragraph.
@@ -646,12 +694,15 @@ Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-roadmap-claims.Tests
   - `agy-capstone/SKILL.md`: directly after the paragraph ending `... a subagent REPORTS, the driver VERIFIES, the driver WRITES.` (~line 317).
   Classic gets the identical paste at the identical anchor text (the files are byte-identical today; confirm with `diff` before and after).
 
+- [ ] **Step 3b: Update the line-count claims this edit breaks (panel finding, MEASURED)** - `clavity-dotnet/ROADMAP.md:1243` claims `agy-test-audit/SKILL.md` (484 lines) and `:1244` claims `agy-capstone/SKILL.md` (542 lines); inserting the excerpt adds lines to both and Check A of `check-roadmap-claims.ps1` (and its real-repo row, and CI) goes red. Run `pwsh -NoProfile -File scripts/check-roadmap-claims.ps1`, read the `STALE` lines, and set each claimed number to the printed actual. The insertion points (after `:216`, `:89`, `:92`, `:103` in the §14 table's citations) are chosen so those line POINTERS are unaffected; the executor confirms by running Check C (Task 2) afterwards. `open-issues/SKILL.md` has no count claim (measured: only the two above).
+
 - [ ] **Step 4: Run the gates the edit can trip**
 
 ```bash
 bash scripts/check-seed-artifacts-synced.sh                     # expect: seed agent artifacts in sync
 pwsh -NoProfile -File scripts/check-agy-discipline-skills.ps1  # expect exit 0 (it pins capstone/test-audit content)
 pwsh -NoProfile -File scripts/check-tracker-format-excerpt.ps1  # expect OK
+pwsh -NoProfile -File scripts/check-roadmap-claims.ps1          # expect OK after Step 3b
 pwsh -NoProfile -c "Invoke-Pester @('scripts/tests/check-tracker-format-excerpt.Tests.ps1','scripts/tests/check-seed-artifacts-synced.Tests.ps1','scripts/tests/check-agy-discipline-skills.Tests.ps1') -Output Detailed -CI"   # Failed: 0
 ```
 Mutants: change one word inside one classic skill's block → parity row (b) red AND `check-seed-artifacts-synced` red; delete a block → row (c) red.
@@ -712,8 +763,9 @@ def status_line(token, tail, entry_lines, overrides, eid, note):
         text += ' in `%s`' % sha
     return '**Status:** %s %s - %s' % (token, date, text)
 
-# For each table row (tracker == dotnet-roadmap and line is numeric): locate the heading line by number AND assert it starts with
-# '### ' + the id; replace it with split_heading(...)[0]; insert after it  '' , status_line(...) , and, when tail is non-empty,
+# For each table row (tracker == dotnet-roadmap): locate the heading line BY ID, never by the table's line column (Tasks 2 and 3
+# and the Non-goals additions in step 1 shift lines before this runs; the line column is informational only): the unique line
+# matching '^### (~~)?' + re.escape(id-as-written) + r'[ .]' - assert exactly ONE match, else STOP with `AMBIGUOUS-HEADING <id>`; replace it with split_heading(...)[0]; insert after it  '' , status_line(...) , and, when tail is non-empty,
 # '> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ' + tail  (kept so no history is lost); then the original body.
 # Rows with line == 'NEW'  -> append the new entry (title, status line, the verbatim paragraph named in the table note) BEFORE '## Non-goals'.
 # backlog-stub rows: line 3 '**Status:** <old>' -> '**Status:** <TOKEN> ...' + a '> **Legacy status (verbatim...):** <old>' line;
@@ -927,7 +979,9 @@ BeforeAll {
         @{ File = 'check-seed-artifacts-synced.Tests.ps1'; Fragment = "'clavity-classic-hooks-json.testbak'"; Reason = 'parks a TRACKED file at a fixed name outside the swept root: a sweep deleting it would destroy the file the test restores' }
         @{ File = 'check-seed-artifacts-synced.Tests.ps1'; Fragment = "'clavity-dotnet-golden-header.testbak'"; Reason = 'same as above' }
     )
-    $script:Direct = [regex]'GetTempPath\s*\(|\$env:TEMP\b|\$env:TMP\b|\[Environment\]::GetEnvironmentVariable\(\s*[''"]TEMP'
+    # IgnoreCase: PowerShell environment-variable names are case-insensitive, so `$env:Temp` is the same hole as `$env:TEMP`
+    # (measured: no lowercase spelling exists today - 58 suites / 222 lines either way - so this closes a latent evasion).
+    $script:Direct = [regex]::new('GetTempPath\s*\(|\$env:TEMP\b|\$env:TMP\b|\[Environment\]::GetEnvironmentVariable\(\s*[''"]TEMP', 'IgnoreCase')
 }
 Describe 'test temp discipline' {
     It 'found a plausible population of suites' { $script:Suites.Count | Should -BeGreaterThan 60 }
@@ -1093,7 +1147,26 @@ Correct the spec row 26 text ("the recipe decision plus whatever measurement sho
 
 - [ ] **Step 1: Decide the install step against the repo's own conventions** - read how the other workflows install tools (`choco install ... --no-progress -y` with a retry loop at `ci-scripts.yml:112-122`; `actions/setup-dotnet@v6`). The runner here is the `ci-dotnet.yml` job's `runs-on` (read it first). Pin to an exact, at least two-weeks-old version per the repo's action-pinning style. If a first-party-or-widely-used action cannot be pinned to a verified exact version from within this repository's existing usage, STOP and report `STATE_MISMATCH: no verifiable just-install step` to the driver - the fallback is to leave `ci-dotnet.yml` unchanged and add a CI-side drift check instead: a Pester row in `check-roadmap-claims`'s neighbour suite asserting the two `dotnet test` lines in `ci-dotnet.yml` are exactly the projects the `clavity-dotnet/justfile` `test` recipe lists. (That fallback fully closes shape 2 mechanically without `just` in CI, and is the recommendation if there is any doubt.)
 - [ ] **Step 2 (only if Step 1 found a pinned install step):** replace `- run: dotnet test tests/Clavity.Ls.Tests` and `- run: dotnet test tests/Clavity.Integration.Tests` with the install step plus `- run: just test`, keeping the explanatory comment (updated). Commit; the owner pushes and the first CI run is the proof - state in the handoff that this is the one change in Branch T that only a pushed CI run verifies.
-- [ ] **Step 3 (fallback path):** write the drift-check row, red first by editing the justfile recipe temporarily to list one project, then green; commit `test(ci): ci-dotnet and the dotnet justfile run the same test projects`.
+- [ ] **Step 3 (fallback path):** create `scripts/tests/dotnet-test-parity.Tests.ps1` (register it in `test-scripts-fast`, give it a `_partition.md` row), red first by editing the justfile recipe temporarily to list one project, then green:
+```powershell
+# ci-dotnet.yml and clavity-dotnet/justfile `test` must run the same dotnet test projects (ROADMAP section 36, shape 2).
+BeforeAll {
+    $script:Root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..' '..')).ProviderPath
+    function Get-TestProjects([string]$Rel, [string]$LinePattern) {
+        $raw = [IO.File]::ReadAllLines((Join-Path $script:Root ($Rel -replace '/', [IO.Path]::DirectorySeparatorChar)))
+        @($raw | Where-Object { $_ -match $LinePattern } | ForEach-Object { [regex]::Match($_, 'dotnet test\s+(\S+)').Groups[1].Value }) | Sort-Object
+    }
+}
+Describe 'dotnet test projects: local recipe and CI agree' {
+    It 'the justfile recipe and ci-dotnet.yml run exactly the same projects' {
+        $local = Get-TestProjects 'clavity-dotnet/justfile' '^\s+dotnet test\s'
+        $ci    = Get-TestProjects '.github/workflows/ci-dotnet.yml' '^\s*-\s*run:\s*dotnet test\s'
+        $local.Count | Should -BeGreaterThan 1 -Because 'the recipe must name both Ls.Tests and Integration.Tests'
+        ($local -join ',') | Should -BeExactly ($ci -join ',')
+    }
+}
+```
+Mutant: remove the Integration line from the justfile → the row goes red. Commit `test(ci): ci-dotnet and the dotnet justfile run the same test projects`. (If Step 2 ran instead, ci-dotnet.yml calls `just test`, the `^\s*-\s*run:\s*dotnet test` pattern finds nothing, and this suite is not created.)
 
 ---
 
