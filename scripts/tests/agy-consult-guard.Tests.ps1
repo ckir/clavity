@@ -18,7 +18,7 @@ Describe 'agy-consult-guard' {
         $script:Classic = Join-Path $repoRoot 'clavity-classic/plugin/hooks'
 
         function New-GuardRepo {
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("guard-" + [Guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'guard'
             New-Item -ItemType Directory -Path $d -Force | Out-Null
             Push-Location $d
             git init -q .; git config user.email t@t; git config user.name t
@@ -432,7 +432,7 @@ Describe 'agy-consult-guard' {
         # total silence - 0 bytes, versus 410 for the control - never reaching the warning whose own
         # comment names this exact case. Silence from a guard reads as "verified clean".
         $r = New-GuardRepo
-        $blocker = Join-Path ([IO.Path]::GetTempPath()) ("guardblock-" + [Guid]::NewGuid().ToString('N'))
+        $blocker = New-TestTempPath 'guardblock'
         try {
             Set-Content $blocker 'not a directory' -Encoding ascii
             $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r
@@ -454,7 +454,7 @@ Describe 'agy-consult-guard' {
         # wording to explain the fix. A source-text assertion cannot tell a live message from prose
         # about it, so it is the wrong instrument twice over. Run the path instead.
         $r = New-GuardRepo
-        $d = Join-Path ([IO.Path]::GetTempPath()) ("degr-" + [Guid]::NewGuid().ToString('N'))
+        $d = New-TestTempPath 'degr'
         try {
             New-Item -ItemType Directory -Path $d -Force | Out-Null
             # Copy all three hooks: pre sources the lib by its OWN dirname, so the copy must be complete.
@@ -510,7 +510,7 @@ Describe 'agy-consult-guard' {
         # overwrite of the shield is exactly what this axis exists for. A mismatch is reachable
         # without any tampering: .clavity/ is a concurrent write area, so a file can vanish between
         # the glob and the hash. The fallback is now per-file.
-        $d = Join-Path ([IO.Path]::GetTempPath()) ("zip-" + [Guid]::NewGuid().ToString('N'))
+        $d = New-TestTempPath 'zip'
         try {
             New-Item -ItemType Directory -Path $d -Force | Out-Null
             $libCopy = Join-Path $d 'lib.sh'
@@ -697,7 +697,7 @@ Describe 'agy-consult-guard' {
         # guard. The exclusion is now enforced on the relative path inside the loop; the prune is
         # only a performance optimisation. This row uses a '[' in the directory name, which is legal
         # on Windows and is a glob metacharacter.
-        $base = Join-Path ([IO.Path]::GetTempPath()) ("guard[1]-" + [Guid]::NewGuid().ToString('N'))
+        $base = New-TestTempPath 'guard[1]'
         try {
             $c = Join-Path $base '.clavity'
             # .NET APIs, not the PowerShell providers: '[' is a WILDCARD to PowerShell's path
@@ -750,7 +750,7 @@ Describe 'agy-consult-guard' {
         # post both produced 'UNREADABLE', they compared EQUAL, and seams/ could change underneath a
         # consult that reported clean. The census already fell back per-file here; this function did
         # not, which was an inconsistency rather than a design.
-        $d = Join-Path ([IO.Path]::GetTempPath()) ("dd-" + [Guid]::NewGuid().ToString('N'))
+        $d = New-TestTempPath 'dd'
         try {
             New-Item -ItemType Directory -Path $d -Force | Out-Null
             $libCopy = Join-Path $d 'lib.sh'
@@ -783,7 +783,7 @@ Describe 'agy-consult-guard' {
         # was gated on sync too. MEASURED: an async consult with an unwritable TMPDIR emitted 0
         # bytes and read as a clean consult.
         $r = New-GuardRepo
-        $blocker = Join-Path ([IO.Path]::GetTempPath()) ("blk-" + [Guid]::NewGuid().ToString('N'))
+        $blocker = New-TestTempPath 'blk'
         try {
             Set-Content $blocker 'not a directory' -Encoding ascii
             $p = Payload 'Bash' 'clavity await-reply' $r
@@ -839,7 +839,7 @@ Describe 'agy-consult-guard' {
         #
         # The probe is written to disk as a POSIX script rather than built as a PowerShell
         # here-string: the here-string version failed to PARSE, taking the whole file to 0 tests.
-        $d = Join-Path ([IO.Path]::GetTempPath()) ("chunk-" + [Guid]::NewGuid().ToString('N'))
+        $d = New-TestTempPath 'chunk'
         try {
             New-Item -ItemType Directory -Path $d -Force | Out-Null
             # The files go in a SUBDIRECTORY and the probe script does not. First attempt put both

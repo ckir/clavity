@@ -11,7 +11,7 @@ Describe 'agy-inbox-snapshot' {
         # tree the snapshots land in the wrong directory and every BakCount assertion reds.
         function New-PluginRoot {
             param([string]$Body)
-            $r = Join-Path ([IO.Path]::GetTempPath()) ("ibx-" + [Guid]::NewGuid().ToString('N'))
+            $r = New-TestTempPath 'ibx'
             New-Item -ItemType Directory -Path (Join-Path $r 'knowledge') -Force | Out-Null
             New-Item -ItemType Directory -Path (Join-Path $r 'home/.clavity') -Force | Out-Null
             Set-Content -LiteralPath (Join-Path $r 'knowledge/agy-observations.md') -Value '# DECOY in the plugin tree - never read this' -Encoding ascii
@@ -329,7 +329,7 @@ Describe 'agy-inbox-snapshot' {
 
     It 'honours the .no-agy opt-out marker' {
         $r = New-PluginRoot $script:Good
-        $h = Join-Path ([IO.Path]::GetTempPath()) ("ibxhome-" + [Guid]::NewGuid().ToString('N'))
+        $h = New-TestTempPath 'ibxhome'
         New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $h '.claude/.no-agy') -Value '' -Encoding ascii
         try {
@@ -349,7 +349,7 @@ Describe 'agy-inbox-snapshot' {
         # that exports USERPROFILE without HOME therefore silently DISARMS the kill switch. MEASURED:
         # `env -u HOME bash --noprofile --norc -c` leaves HOME empty and does NOT backfill it from
         # USERPROFILE, so this is reachable and not theoretical.
-        $h = Join-Path ([IO.Path]::GetTempPath()) ("ibxhome-" + [Guid]::NewGuid().ToString('N'))
+        $h = New-TestTempPath 'ibxhome'
         New-Item -ItemType Directory -Path $h -Force | Out-Null
         $r1 = New-PluginRoot $script:Good
         $r2 = New-PluginRoot $script:Good
@@ -441,7 +441,7 @@ Describe 'agy-inbox-snapshot' {
         # at the CLOSING of the jq arm - the opposite branch. Named, not numbered, for that reason.)
         # The probe runs through the SAME harness and env as the
         # cases it guards, so it cannot pass for a different reason than they do.
-        $probe = Join-Path ([IO.Path]::GetTempPath()) ("jqprobe-" + [Guid]::NewGuid().ToString('N') + ".sh")
+        $probe = New-TestTempPath 'jqprobe' -Suffix '.sh'
         Set-Content -LiteralPath $probe -Value "command -v jq 2>/dev/null || true" -Encoding ascii -NoNewline
         try {
             $jq = Invoke-BashHook -HookPath $probe -Payload '{}' -Env $fallback
@@ -511,7 +511,7 @@ Describe 'agy-inbox-snapshot' {
         # the sweep decides the cwd marker SHOULD disarm this hook, this test reds and gets updated in
         # the same commit, which is exactly the conversation the pin exists to force.
         $r = New-PluginRoot $script:Good
-        $cwd = Join-Path ([IO.Path]::GetTempPath()) ("ibxcwd-" + [Guid]::NewGuid().ToString('N'))
+        $cwd = New-TestTempPath 'ibxcwd'
         New-Item -ItemType Directory -Path $cwd -Force | Out-Null
         try {
             Set-Content -LiteralPath (Join-Path $cwd '.no-agy') -Value '' -Encoding ascii

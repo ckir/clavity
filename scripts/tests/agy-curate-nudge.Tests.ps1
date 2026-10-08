@@ -15,7 +15,7 @@ Describe 'agy-curate-nudge.sh' {
         # content flips, because the decoy always says the other thing. -Decoy defaults to a large, very
         # stale inbox (which WOULD nudge), so a silent-expecting test reds the moment the old path returns.
         function New-NudgeEnv { param([string]$Inbox, [string]$Decoy)
-            $root = Join-Path ([IO.Path]::GetTempPath()) ("curate-nudge-" + [Guid]::NewGuid().ToString('N'))
+            $root = New-TestTempPath 'curate-nudge'
             New-Item -ItemType Directory -Path (Join-Path $root 'knowledge') -Force | Out-Null
             New-Item -ItemType Directory -Path (Join-Path $root 'home/.clavity') -Force | Out-Null
             Set-Content -LiteralPath (Join-Path $root 'home/.clavity/agy-observations.md') -Value $Inbox -NoNewline
@@ -307,7 +307,7 @@ Describe 'agy-curate-nudge.sh' {
         # ${USERPROFILE:-$HOME} (agy-curate-nudge.sh:8) but the marker was read from BARE ${HOME} (:22).
         # MEASURED: `env -u HOME bash --noprofile --norc -c` leaves HOME empty and does NOT backfill it
         # from USERPROFILE, so a parent exporting only USERPROFILE silently DISARMS the switch.
-        $h = Join-Path ([IO.Path]::GetTempPath()) ("nudgehome-" + [Guid]::NewGuid().ToString('N'))
+        $h = New-TestTempPath 'nudgehome'
         New-Item -ItemType Directory -Path $h -Force | Out-Null
         $e1 = New-NudgeEnv -Inbox $inbox
         $e2 = New-NudgeEnv -Inbox $inbox
@@ -346,7 +346,7 @@ Describe 'agy-curate-nudge.sh' {
 
 - [heuristic] (driver/probabilistic) a stale capture  ``[corpus]`` - 2020-01-01 - agy 1.0.10
 "@
-        $h = Join-Path ([IO.Path]::GetTempPath()) ("nudgehome-" + [Guid]::NewGuid().ToString('N'))
+        $h = New-TestTempPath 'nudgehome'
         New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
         $e1 = New-NudgeEnv -Inbox $inbox
         $e2 = New-NudgeEnv -Inbox $inbox
@@ -596,7 +596,7 @@ Describe 'agy-curate-nudge.sh' {
         # Year 0 is where _y goes NEGATIVE (January and February of year 0 use the previous year), the only inputs that reach the era's
         # else-branch. GNU date accepts all of these (measured), including the proleptic leap day 0000-02-29.
         foreach ($d in '0000-01-01', '0000-02-29', '0000-03-01', '0000-12-31', '0001-03-01') { $dates.Add($d) }
-        $list = Join-Path ([IO.Path]::GetTempPath()) ("dfc-" + [Guid]::NewGuid().ToString('N') + '.txt')
+        $list = New-TestTempPath 'dfc' -Suffix '.txt'
         [IO.File]::WriteAllText($list, (($dates -join "`n") + "`n"))
         $probe = @'
 eval "$(sed -n '/^_dfc()/,/^}/p' "$1")"
