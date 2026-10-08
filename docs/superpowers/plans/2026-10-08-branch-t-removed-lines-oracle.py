@@ -4,7 +4,9 @@ Usage: python -I removed_oracle.py <repo-root>   (compares the working tree with
 import subprocess, sys, re
 root = sys.argv[1]
 d = subprocess.run(['git', '-C', root, 'diff', '-U0', '--no-color'], capture_output=True, text=True, encoding='utf-8').stdout
-allowed = re.compile(r'^(### |## AT-|\*\*Status:\*\*|status:|fixed-by:|fixed-on:|reason:)')
+# ENTRY headings only (a body sub-heading such as '### The problem' must NOT be allowed to vanish): a section sign or numbered item,
+# a review-relay D/R item, an agy-autotrain AT item; plus the status line and the frontmatter keys the script rewrites.
+allowed = re.compile(r'^(### (~~)?(§\d+ |\d+\. |[DR]\d+ )|## AT-\d+ |\*\*Status:\*\*|status:|fixed-by:|fixed-on:|reason:)')
 cur = None; bad = []; removed = 0
 for l in d.split('\n'):
     if l.startswith('--- a/'): cur = l[6:]

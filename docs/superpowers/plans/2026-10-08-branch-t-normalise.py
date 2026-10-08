@@ -35,6 +35,7 @@ BULLETS = {
 }
 
 problems = []
+consumed = set()      # (tracker, id) of every table row some handler actually looked at
 # Ids contain the section sign: never let the Windows console code page mangle them on the way out (they are copied into the overrides file).
 for _s in (sys.stdout, sys.stderr): _s.reconfigure(encoding="utf-8")
 
@@ -115,7 +116,7 @@ def main():
             r = want.get(eid)
             if r is None:
                 problems.append('NOT-IN-TABLE %s %s' % (rel, eid)); new.append(l); k += 1; continue
-            seen.add(eid)
+            seen.add(eid); consumed.add((tracker, eid))
             token, note = r[3], r[4]
             if token not in TOKENS:
                 problems.append('NEEDS-RULING %s %s token=%s (%s)' % (rel, eid, token, note)); new.append(l); k += 1; continue
@@ -169,6 +170,7 @@ def main():
         for r in rows:
             if r[0] == 'dotnet-roadmap' and r[2] == 'NEW':
                 sid = r[1].split(' ')[0]
+                consumed.add((r[0], r[1]))
                 if re.search(r'^### ' + re.escape(sid) + ' ', text, re.M): continue
                 if '29b' in r[1]:
                     m = re.search(r'^(> 🔴 \*\*§29b .*(?:\n>.*)*)', orig, re.M)
@@ -193,6 +195,7 @@ def main():
     # ---------- backlog stubs ----------
     for r in rows:
         if r[0] != 'backlog-stub': continue
+        consumed.add((r[0], r[1]))
         p = os.path.join(root, 'docs', 'backlog', r[1])
         lines = rd(p).split('\n')
         t = 0
@@ -218,6 +221,7 @@ def main():
     # ---------- fix-the-tool frontmatter ----------
     for r in rows:
         if r[0] != 'fix-the-tool': continue
+        consumed.add((r[0], r[1]))
         p = os.path.join(root, 'agy-autotrain', 'docs', 'fix-the-tool-backlog', r[1])
         lines = rd(p).split('\n')
         close = lines.index('---', 1)
@@ -241,6 +245,9 @@ def main():
             add += ['reason: ' + reason]
         out[p] = '\n'.join(['---'] + keep + add + lines[close:])
 
+    # A table row that NO handler consumed (its tracker file is missing, or the tracker is not handled at all) must never pass silently.
+    for r in rows:
+        if r[3] != 'NONE' and (r[0], r[1]) not in consumed: problems.append('TABLE-ROW-UNHANDLED %s %s' % (r[0], r[1]))
     if problems:
         for x in problems: print(x)
         print('UNRESOLVED: %d - nothing written' % len(problems)); return 3
