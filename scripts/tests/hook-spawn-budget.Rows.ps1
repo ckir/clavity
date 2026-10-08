@@ -449,7 +449,13 @@ $script:Rows = @(
     # rotating paths, stayed green under the shared ceiling of 13). Totals measured 3 / 7 / 11 including boot, r1 == r2.
     New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, steady state: 5 baks -> snapshot + prune 1' -Max 8 {
         param($fx) [void](Add-FxInbox $fx -Baks 5); New-ToolPayload $fx 'Skill' @{ skill = 'agy-autotrain:agy-curate' } } -Silent -Verify {
-        param($fx) (Get-FxBaks $fx).Count | Should -Be 5 }
+        param($fx) $left = Get-FxBaks $fx; $left.Count | Should -Be 5
+        # IDENTITY, not count (test-audit B21 R1, MG-1): with ONE surplus slot a prune that deleted the wrong file - the fresh
+        # snapshot, or a newer old slot - still leaves five. Slot 01 is the OLDEST (see Add-FxInbox) and must be the one that went.
+        ($left -match '20260101-000000').Count | Should -Be 0
+        foreach ($n in 2..5) { ($left -match ('202601{0:d2}-000000' -f $n)).Count | Should -Be 1 }
+        # The new snapshot is the one name that is none of the five fixtures.
+        ($left -notmatch '202601\d\d-000000').Count | Should -Be 1 }
     New-BudgetRow "$A/agy-inbox-snapshot.sh" 'curate skill, 20 baks -> snapshot + prune 16 in ONE rm' -Max 8 {
         param($fx) [void](Add-FxInbox $fx -Baks 20); New-ToolPayload $fx 'Skill' @{ skill = 'agy-autotrain:agy-curate' } } -Silent -Verify {
         param($fx) $left = Get-FxBaks $fx; $left.Count | Should -Be 5

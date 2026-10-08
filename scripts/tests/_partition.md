@@ -683,7 +683,7 @@ agy-curate-nudge.Tests.ps1                       48,1s   38 tests   <- 29 -> 38 
   cap - see the note under ## Measured runtimes. Re-measured 2026-08-24 WARM on an
   idle CPU (cold 53,6s) after the test-audit closure added 6 tests. The count row had ALSO been stale
   since before that: it said 11 when the file held 14.
-agy-inbox-snapshot.Tests.ps1                    120,1s   38 tests   <- 37 -> 38 2026-10-08 (capstone R4: +"## Pending items" is not the Pending region); 36 -> 37 (capstone R3: +a bullet under a LATER heading buys no snapshot); SLOW, re-measured 2026-08-24 WARM; 32 -> 36 2026-10-07 (Branch 21 Task 1: KEEP=08, same-second KEEP=1, real-tab and literal-t heading rows), time not re-measured
+agy-inbox-snapshot.Tests.ps1                    120,1s   41 tests   <- 38 -> 41 2026-10-08 (test-audit B21 R1, BS-1: +3 CRLF rows - positive, "Pending items" distractor, later-heading distractor); 37 -> 38 2026-10-08 (capstone R4: +"## Pending items" is not the Pending region); 36 -> 37 (capstone R3: +a bullet under a LATER heading buys no snapshot); SLOW, re-measured 2026-08-24 WARM; 32 -> 36 2026-10-07 (Branch 21 Task 1: KEEP=08, same-second KEEP=1, real-tab and literal-t heading rows), time not re-measured
   (cold 119,5s - this suite is I/O bound, so warm and cold agree). The test-audit closure added 3 It
   blocks; Pester expands them to 31 because two use -ForEach. The old row said 22. Before 2026-08-03 this
   suite was MISSING from this table entirely.

@@ -89,6 +89,39 @@ Describe 'agy-inbox-snapshot' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # Test-audit B21 R1 (BS-1, MEASURED REGRESSION: old hook 1 .bak, Branch 21 hook 0 on this exact file). The pre-branch hook
+    # read the heading with `grep -Eq '...[ \t]*$'`, and MSYS grep tolerates a trailing CR; the builtin `[[ =~ ]]` that replaced it does
+    # not, so a CRLF inbox (a Windows editor, or a PowerShell Set-Content drain) read as "no Pending section" and the drain ran with
+    # NO snapshot. The rows write RAW BYTES: Set-Content/New-PluginRoot would normalise the line endings under test.
+    It 'snapshots an inbox saved with CRLF line endings (header, heading and bullet all end in CR)' {
+        $r = New-PluginRoot $null
+        try {
+            [IO.File]::WriteAllText((Join-Path $r 'home/.clavity/agy-observations.md'), ($script:Good -replace "`n", "`r`n"))
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
+            BakCount $r | Should -Be 1 -Because 'a CR before the newline must not hide the "## Pending" heading'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # The distractors: stripping the CR must not WIDEN either anchor (a structured-token matcher needs a near-miss that it rejects).
+    It 'does NOT treat a CRLF "## Pending items" heading as the Pending region' {
+        $r = New-PluginRoot $null
+        try {
+            $body = "# agy observations inbox (raw, project-agnostic)`n`n## Pending items`n`n- [assumption] (peer/probabilistic) a rule in some other section`n"
+            [IO.File]::WriteAllText((Join-Path $r 'home/.clavity/agy-observations.md'), ($body -replace "`n", "`r`n"))
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
+            BakCount $r | Should -Be 0
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'does NOT snapshot a CRLF inbox whose only bullet sits under a LATER heading' {
+        $r = New-PluginRoot $null
+        try {
+            $body = "# agy observations inbox (raw, project-agnostic)`n`n## Pending`n`n## Archive`n`n- [assumption] (peer/probabilistic) an archived rule`n"
+            [IO.File]::WriteAllText((Join-Path $r 'home/.clavity/agy-observations.md'), ($body -replace "`n", "`r`n"))
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
+            BakCount $r | Should -Be 0 -Because 'the CRLF Archive heading still closes the Pending region'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'refuses to rotate when the inbox is empty' {
         $r = New-PluginRoot ''
         try {

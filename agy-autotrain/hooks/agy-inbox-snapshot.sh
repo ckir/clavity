@@ -94,6 +94,9 @@ re_pending=$'^##[ \t]+Pending[ \t]*$'
 re_close=$'^#+[ \t]'
 re_bullet='^- \[[a-z-]+\]'
 while IFS= read -r line || [ -n "$line" ]; do
+  # A CRLF inbox (a Windows editor, a PowerShell drain) leaves a CR on every line, and the `$` in re_pending then never matches.
+  # The pre-branch `grep -Eq` tolerated it on MSYS; a builtin `=~` does not (test-audit B21 R1, BS-1: old hook 1 .bak, this one 0).
+  line=${line%$'\r'}
   case "$line" in '# agy observations inbox'*) hdr=1 ;; esac
   if [[ $line =~ $re_pending ]]; then p=1; pend=1; continue; fi
   if [[ $line =~ $re_close ]]; then p=0; continue; fi
