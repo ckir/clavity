@@ -3541,7 +3541,16 @@ does NOT do it: it skips a file git considers stat-clean (measured 2026-09-30).
 
 ---
 
-### §59 — Seven more hooks write stderr under an empty `PATH`; the §32b fix reached only one — ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (captured 2026-10-01 starting Branch 14), owner ruling at triage: tracked debt, SCHEDULED as new sweep Branch 16 (plugin pair; version bump + reinstall), before Branch 8**
+### §59 — Seven more hooks write stderr under an empty `PATH`; the §32b fix reached only one — ✅ **IMPLEMENTED 2026-10-08 on Branch 21 (`sweep/branch-21-census-hooks`; branch-final capstone, test-audit and merge pending) — was: PROMOTED 2026-10-02 from the anomalies conveyor (captured 2026-10-01 starting Branch 14), owner ruling at triage: tracked debt, SCHEDULED as new sweep Branch 16 (plugin pair; version bump + reinstall), before Branch 8**
+
+**IMPLEMENTED on Branch 21.** Measured 2026-10-07, only three of the seven still wrote stderr under an empty `PATH`
+(Branch 20 had already moved the other four off `$(cat)`): `assertion-strength-reminder.sh` (its `cat` AND its
+degraded-path `grep`), `agy-anomaly-dispatch-reminder.sh` and `agy-anomaly-model-notice.sh`. All three now read stdin
+with `IFS= read -r -d '' input`, and the grep became a `[[ =~ ]]` match, in both plugins (classic copies byte-identical).
+Each has an empty-`PATH` stderr row, each measured red against the unfixed hook first
+(`assertion-strength-reminder.Tests.ps1`, `agy-anomaly-dispatch-reminder.Tests.ps1`, `agy-anomaly-model-notice.Tests.ps1`),
+launched through `Invoke-BashHookEmptyPath` in `scripts/tests/BashHookHelpers.ps1` - `Invoke-BashHook` cannot reach an
+empty `PATH` because `Git\bin\bash.exe` is a wrapper that puts `/usr/bin` back. Commits `340db9b8`, `7b8612c0`.
 
 Branch 3 fixed §32b in `agy-anomaly-reminder.sh` alone: it reads its payload with the builtin
 `IFS= read -r -d '' input`, and under an empty `PATH` it now writes NOTHING to stderr and degrades loudly on
@@ -3698,7 +3707,13 @@ comment at `:110`.
 
 ---
 
-### §64 — `fetch-clavity-ls.sh`'s `mktemp -d` failure exit has no test — ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (AGY-TEST-AUDIT Branch 17 gap F, owner-deferred), not yet planned**
+### §64 — `fetch-clavity-ls.sh`'s `mktemp -d` failure exit has no test — ✅ **IMPLEMENTED 2026-10-08 on Branch 21 (unmerged; capstone, test-audit and merge pending) — was: PROMOTED 2026-10-02 from the anomalies conveyor (AGY-TEST-AUDIT Branch 17 gap F, owner-deferred)**
+
+**IMPLEMENTED on Branch 21 (`f9b110f8`).** `fetch-clavity-ls.Tests.ps1` now has the row ("notes `mktemp failed` and places NOTHING
+when mktemp exits non-zero", a fake `mktemp` that `exit 1`), and its non-vacuity proof was run: deleting the
+`|| { _note "mktemp failed"; exit 0; }` turns exactly that row red. The same task found and fixed a latent defect in the
+no-jq URL pick (the old unanchored `grep -o` matched the PREFIX of the `.sha256` URL and treated the asset's dots as
+wildcards), pinned by a fake `curl` that logs the URLs it is asked for.
 
 `clavity-dotnet/plugin/hooks/fetch-clavity-ls.sh:77` -
 `_tmp=$(mktemp -d 2>/dev/null) || { _note "mktemp failed"; exit 0; }` - has no row in
@@ -3791,7 +3806,38 @@ errors), but nothing in this hook did, so the next upgrade goes stale the same w
 each upgrade re-registers once. Pin it with a row in the setup hook's suite: a stamp from an older version must
 trigger `agy plugin install`, a stamp from the current version must not.
 
-### §69 — Branch 21: the eight census-found hooks over the 16-process ceiling — ▶ **PROMOTED 2026-10-04 (owner split of Branch 20), not yet planned**
+### §69 — Branch 21: the eight census-found hooks over the 16-process ceiling — ✅ **IMPLEMENTED 2026-10-08 on Branch 21 (`sweep/branch-21-census-hooks`; branch-final capstone, test-audit and merge pending) — was: PROMOTED 2026-10-04 (owner split of Branch 20)**
+
+**IMPLEMENTED on Branch 21.** Re-measured 2026-10-08 with the same census runner over the same 130 paths: `r1 == r2` on every
+row, zero runner errors, and the 20 rows that carry a hook's own designed stderr are the same 20 paths as before. Worst
+path per hook, TOTAL processes including the harness's 3 boot processes (ceiling 16):
+
+| hook | before | after | commit |
+|---|---|---|---|
+| `agy-inbox-snapshot` | 67 | 11 | `0d91f1b6` |
+| `agy-discipline-reaching` (+ `agy-shield-lib`) | 36 | 11, except the two named rows below | `097beca7`, `f6f752fa`, `c2d3cb57` |
+| `agy-anomaly-reminder` | 23 | 5 | `33997b30` |
+| `assertion-strength-reminder` | 21 | 14 | `340db9b8` |
+| `agy-verify-reminder` | 24 | 13 | `cc4d80a8` |
+| `docs-audit-reminder` | 22 | 3 | `d2abbf6a` |
+| `fetch-clavity-ls` | 35 | 14 | `f9b110f8` |
+| `migrate-inbox` | 17 | 11 | `df4728d0` |
+| `agy-anomaly-dispatch-reminder`, `agy-anomaly-model-notice` (section 59 only) | 11, 14 | 9, 12 | `7b8612c0` |
+
+**The one standing exception, owner-ruled 2026-10-07.** Two `agy-discipline-reaching` rows measure 17 total: the one-time
+`!`-negation shield prepend (a `mktemp` + `cat` + `mv` that rewrites the shield file) and its already-latched repeat. They are
+the only rows over 16, they are pinned as two NAMED `-Max 14` rows in the budget suite (14 beyond Pester's 2-process boot),
+and the prepend block itself stays byte-identical to its section-41 form. `$script:B21Debt` is now empty and its row is green.
+
+**Fixture-helper homes** (all in `scripts/tests/hook-spawn-budget.Rows.ps1`): `Add-FxInbox` and `Get-FxBaks` for the inbox
+snapshot, `Set-FxShield` for the shield lib. The fake `curl` is a `BASH_ENV` shell FUNCTION, not an executable on a prepended
+`PATH`: Git Bash reorders `PATH`, the real `curl` won, and the first control rows hit the live GitHub API.
+
+**What the plan got wrong, found by running it** (each fixed and pinned, none changes the plan's intent): the plan's
+negated open probe `if ! { :; } < f` swallows a failed open on an ACL-denied file, in two hooks (`agy-anomaly-reminder`, `migrate-inbox`); the
+prepend cost 14, not the plan's 12 (AGY-FIRST + AGY-NEGOTIATE + owner decision); `agy-shield-lib.sh` is also sourced by a
+skill snippet in the agent's own shell, so its fast path is gated on `BASH_VERSINFO`, not `BASH_VERSION`; the plan's "existing"
+steady-state and CRLF rows did not exist; and `Git\bin\bash.exe` cannot model an empty `PATH`.
 
 The Branch 20 census (`.clavity/scratch/hook-perf/b20-protos/scratch-b20/census-other-hooks.md`) measured 44 paths over
 the ceiling in `agy-inbox-snapshot` (up to 67 with 20 baks: one `rm` per surplus bak), `agy-discipline-reaching` (36 on a
@@ -3837,7 +3883,17 @@ after 0 s) right after the owner switched agy's model with `/model`; which excep
 the text was lost. Done = the model-unavailable case returns a typed status carrying its hint, any other exception
 returns a typed error with its message, and a test pins each.
 
-### §72 — the test-audit reminder's per-session debounce files are never cleaned — ▶ **PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 plan panel), low debt, not yet planned**
+### §72 — the test-audit reminder's per-session debounce files are never cleaned — ✅ **IMPLEMENTED 2026-10-08 on Branch 21 (unmerged; capstone, test-audit and merge pending) — was: PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 plan panel), low debt**
+
+**IMPLEMENTED on Branch 21 (`340db9b8`), in a different home than first sketched - owner ruling 2026-10-07 at plan approval.**
+The sweep does not live in "an existing SessionStart hook": it rides the once-per-session create-path `find` in
+`assertion-strength-reminder.sh`, whose `-name` group now also matches `claude-agy-test-audit-reminder.*`
+(`-mtime +30 -delete`). That `find` already runs at most once per session, on the path that just proved the directory
+writable, so widening it costs ZERO added processes. A debounce file older than 30 days belongs to a dead session; deleting
+it merely re-arms a reminder that session can no longer receive. The row pins five files at once: the stale test-audit file
+and a stale original-arm marker are swept, while a fresh test-audit file, a name with no dot-suffix and an unrelated old file
+are spared. **Residual, stated rather than claimed away:** the sweep runs only when a TEST file is first touched in a
+session, so a machine that never edits a test file never sweeps; the leak is ~41 bytes a session.
 
 `agy-test-audit-reminder.sh` (Branch 20) keeps `${TMPDIR:-/tmp}/claude-agy-test-audit-reminder.<session_id>` (one
 HEAD sha, ~41 B). The only delete is the PreCompact re-arm in `agy-anomaly-capture-reminder.sh`, for that one
@@ -3846,7 +3902,18 @@ not yet observable on an install, which still runs the pre-Branch-20 plugin). No
 inside the firing hook would spend processes on its worst path (15 of 16), so the cheap home is a sweep in an
 existing SessionStart hook that removes such files older than N days. Fits Branch 21's hook work.
 
-### §73 — `agy-curate-nudge` age nudge never fires on macOS (GNU-only `date -d`) — ▶ **PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 capstone round 2), Branch 21, not yet planned**
+### §73 — `agy-curate-nudge` age nudge never fires on macOS (GNU-only `date -d`) — ✅ **IMPLEMENTED 2026-10-08 on Branch 21 (unmerged; capstone, test-audit and merge pending) — was: PROMOTED 2026-10-06 from the anomalies conveyor (raised by the Branch 20 capstone round 2)**
+
+**IMPLEMENTED on Branch 21 (`c00b4d7c`).** The age gate computes the oldest entry's day number with days_from_civil in plain
+bash arithmetic and no longer calls `date -d` at all; the impossible-date rejection `date -d` used to provide is an explicit
+month/day range check. **Divergence, stated:** the day count is UTC where `date -d` gave local midnight, so the 30-day
+boundary can shift by up to the UTC offset - accepted for a threshold in days. Two things the plan's draft had wrong:
+the year must take `10#` too (a bare `0099` is octal and aborts the arithmetic), and the equivalence oracle compares
+`_dfc` extracted from the shipped hook against GNU `date -f` over ~2800 days, with a shifted-reference failing control.
+The BSD behaviour itself is still a platform fact read from documentation, not measured here (no macOS box).
+**Sibling captured, NOT fixed here:** the snooze check in the same hook reads the marker's age with `date -r "$SNOOZE"`,
+which is also GNU-only (BSD `-r` takes epoch seconds), so on macOS the 7-day snooze would never silence the nudge; it is on
+the anomalies conveyor (`.clavity/local-anomalies.md`, 2026-10-08) for the owner's next triage.
 
 `agy-autotrain/hooks/agy-curate-nudge.sh` computes the oldest pending entry's epoch with `date -d "$oldest" +%s`.
 BSD/macOS `date` has no `-d` date parse, so `ots` is empty and the age condition is skipped silently (the count
