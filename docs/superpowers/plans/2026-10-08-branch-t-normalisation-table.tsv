@@ -1,0 +1,121 @@
+tracker	id	line_or_file	token	note
+dotnet-roadmap	item 0	118	KILLED	
+dotnet-roadmap	item 1	397	KILLED	struck-through header
+dotnet-roadmap	item 2	419	SHIPPED	
+dotnet-roadmap	item 3	428	SHIPPED	
+dotnet-roadmap	item 4	437	KILLED	struck-through header
+dotnet-roadmap	item 5	456	SHIPPED	
+dotnet-roadmap	item 6	467	KILLED	struck-through header
+dotnet-roadmap	item 7	494	SHIPPED	
+dotnet-roadmap	item 8	556	SHIPPED	
+dotnet-roadmap	item 9	627	KILLED	struck-through header
+dotnet-roadmap	item 10	651	KILLED	struck-through header
+dotnet-roadmap	item 11	676	SHIPPED	
+dotnet-roadmap	item 12	745	SHIPPED	
+dotnet-roadmap	item 13	859	SHIPPED	
+dotnet-roadmap	§14	965	CLOSED-BY-RULING	step 0 ruling; Non-goals entry exists
+dotnet-roadmap	§15	1295	CLOSED-BY-RULING	batch ruling; Non-goals entry to ADD
+dotnet-roadmap	§16	1325	CLOSED-BY-RULING	step 0 ruling; Non-goals entry exists
+dotnet-roadmap	§17	1364	KILLED	
+dotnet-roadmap	§18	1440	SHIPPED	batch ruling: sha 11484a57
+dotnet-roadmap	§19	1673	SHIPPED	
+dotnet-roadmap	§20	1728	CLOSED-BY-RULING	step 0 ruling; Non-goals entry exists
+dotnet-roadmap	§21	1777	CLOSED-BY-RULING	batch ruling; Non-goals entry to ADD
+dotnet-roadmap	§22	2054	SHIPPED	
+dotnet-roadmap	§23	2108	SHIPPED	
+dotnet-roadmap	§24	2175	SHIPPED	
+dotnet-roadmap	§25	2235	SHIPPED	
+dotnet-roadmap	§26	2288	CLOSED-BY-RULING	step 0 ruling; Non-goals entry exists
+dotnet-roadmap	§27	2355	SHIPPED	batch ruling: via section 39/40 (cda6a6f4, e23d81ee) - confirm during normalisation
+dotnet-roadmap	§28	2430	SHIPPED	
+dotnet-roadmap	§29	2508	SHIPPED	29a only; 29b is SPLIT into its own new entry (see SPLIT rows)
+dotnet-roadmap	§30	2574	SHIPPED	
+dotnet-roadmap	§31	2695	SHIPPED	SPLIT: the .no-agy sub-decision becomes its own OPEN/SCHEDULED entry for Branch H
+dotnet-roadmap	§32	2753	SHIPPED	
+dotnet-roadmap	§33	2787	OPEN	
+dotnet-roadmap	§34	2812	SCHEDULED	Branch T task
+dotnet-roadmap	§35	2837	CLOSED-BY-RULING	step 0 ruling; Non-goals entry exists
+dotnet-roadmap	§36	2892	SCHEDULED	Branch T task
+dotnet-roadmap	§37	3015	CLOSED-BY-RULING	batch ruling; Non-goals entry to ADD
+dotnet-roadmap	§38	3064	OPEN	
+dotnet-roadmap	§39	3113	SHIPPED	
+dotnet-roadmap	§40	3135	SHIPPED	
+dotnet-roadmap	§41	3154	CLOSED-BY-RULING	step 0 ruling; Non-goals entry exists
+dotnet-roadmap	§42	3174	SHIPPED	
+dotnet-roadmap	§43	3194	SHIPPED	
+dotnet-roadmap	§44	3212	SHIPPED	
+dotnet-roadmap	§45	3227	SHIPPED	
+dotnet-roadmap	§46	3243	SHIPPED	
+dotnet-roadmap	§47	3284	SHIPPED	
+dotnet-roadmap	§48	3299	SHIPPED	
+dotnet-roadmap	§49	3313	SHIPPED	
+dotnet-roadmap	§50	3338	SHIPPED	
+dotnet-roadmap	§51	3352	SHIPPED	
+dotnet-roadmap	§52	3375	SHIPPED	
+dotnet-roadmap	§53	3391	SHIPPED	
+dotnet-roadmap	§54	3418	SHIPPED	
+dotnet-roadmap	§55	3440	SCHEDULED	Branch C
+dotnet-roadmap	§56	3463	SCHEDULED	Branch T task
+dotnet-roadmap	§57	3481	SCHEDULED	Branch H
+dotnet-roadmap	§58	3511	CLOSED-BY-RULING	batch ruling; Non-goals entry to ADD
+dotnet-roadmap	§59	3544	JUDGE	closed words ['SHIPPED'] AND open words ['SCHEDULED']
+dotnet-roadmap	§60	3581	SCHEDULED	Branch R (re-measure first)
+dotnet-roadmap	§61	3618	SCHEDULED	Branch R (re-measure first)
+dotnet-roadmap	§62	3653	SCHEDULED	Branch R (re-measure first)
+dotnet-roadmap	§63	3690	SCHEDULED	Branch R
+dotnet-roadmap	§64	3710	SHIPPED	
+dotnet-roadmap	§65	3727	SHIPPED	Forks 2/3 closed by step 0 ruling; shipped part merged 83611c01 and 4f0cb6a7
+dotnet-roadmap	§66	3770	SHIPPED	
+dotnet-roadmap	§67	3785	SCHEDULED	Branch R
+dotnet-roadmap	§68	3795	SCHEDULED	Branch R
+dotnet-roadmap	§69	3811	SHIPPED	
+dotnet-roadmap	§70	3868	SCHEDULED	Branch H
+dotnet-roadmap	§71	3879	SHIPPED	
+dotnet-roadmap	§72	3892	SHIPPED	
+dotnet-roadmap	§73	3911	SHIPPED	
+dotnet-roadmap	§74	3931	SHIPPED	
+dotnet-roadmap	§75	3964	SCHEDULED	Branch H
+dotnet-roadmap	§76	3974	SHIPPED	
+dotnet-roadmap	§77	3978	SCHEDULED	Branch T task (gate Check C)
+dotnet-roadmap	§78	3982	SCHEDULED	Branch R
+dotnet-roadmap	§79 (formerly §29b)	NEW	SCHEDULED	Branch C: re-measure; propose close if no longer reproduces
+dotnet-roadmap	§80 (formerly §31 .no-agy)	NEW	SCHEDULED	Branch H: owner ruled .no-agy makes agy-liveness-check.sh SILENT
+dotnet-roadmap	§81 (formerly item 0 step 1b)	NONE	NONE	NOT an entry: the stale line :376 is corrected in place (steps 2/1a/1b SHIPPED 2026-08-07)
+backlog-stub	agent-shell-layer-corrupts-commands-and-probes.md	3	CLOSED-BY-RULING	
+backlog-stub	agy-learn-can-silently-not-run-for-a-whole-session.md	3	KILLED	
+backlog-stub	agy-mark-accepts-a-nonexistent-sha.md	3	SHIPPED	
+backlog-stub	agy-reply-channel-truncates-and-nulls-silently.md	3	SCHEDULED	
+backlog-stub	agy-status-reports-working-for-an-idle-peer.md	3	SCHEDULED	
+backlog-stub	agyview-diagnostics-writes-are-unguarded.md	3	SCHEDULED	
+backlog-stub	cheatsheet-reaches-live-path-before-the-human-gate.md	3	SCHEDULED	
+backlog-stub	cross-project-anomalies-have-no-cross-project-home.md	3	CLOSED-BY-RULING	
+backlog-stub	curate-abort-leaves-unreviewed-content-with-only-a-warning.md	3	SHIPPED	
+backlog-stub	dependency-pins-are-never-re-resolved.md	3	KILLED	
+backlog-stub	dev-box-background-load-contaminates-every-timing-figure.md	3	JUDGE	closed words ['RESOLVED'] AND open words ['OPEN']
+backlog-stub	docs-audit-findings-are-invisible-to-git.md	3	JUDGE	closed words ['FIXED'] AND open words ['OPEN']
+backlog-stub	git-index-fatal-recurs-during-test-runs.md	3	KILLED	
+backlog-stub	golden-header-per-ask-token-optimization.md	3	SHIPPED	
+backlog-stub	installed-plugin-drifts-under-an-unchanged-version.md	3	SCHEDULED	
+backlog-stub	ls-discovery-misreports-a-busy-peer-as-exited.md	3	SCHEDULED	
+backlog-stub	peer-scratch-dir-contains-executable-session-hooks.md	3	JUDGE	no status marker found
+backlog-stub	pester-temp-dirs-orphan-on-killed-runs.md	3	SCHEDULED	
+backlog-stub	whole-tree-sandbox-copies-are-unbounded.md	3	KILLED	
+fix-the-tool	agy-look-tail-truncation.md	6	SHIPPED	merged, no release yet
+fix-the-tool	answer-null-content-only-in-truncated-activity.md	6	OPEN	Branch C re-measure (six entries)
+fix-the-tool	conversation-scoped-tools-vs-no-open-conversation.md	6	SHIPPED	plus **Released:** line from released-in:
+fix-the-tool	curate-commit-accepts-empty-stdin.md	6	OPEN	Branch C re-measure (six entries)
+fix-the-tool	curate-nudge-age-reads-drain-log-dates.md	6	SHIPPED	plus **Released:** line from released-in:
+fix-the-tool	grpc-default-max-message-size.md	6	SHIPPED	merged, no release yet
+fix-the-tool	idle-status-is-not-completion.md	6	OPEN	Branch C re-measure (six entries)
+fix-the-tool	idle-wait-false-modal.md	6	SHIPPED	plus **Released:** line from released-in:
+fix-the-tool	inbox-snapshot-misses-slash-command-path.md	6	SHIPPED	merged, no release yet
+fix-the-tool	stale-client-binary-blamed-on-the-peer.md	6	OPEN	Branch C re-measure (six entries)
+fix-the-tool	stalled-reply-recoverable-not-lost.md	6	SHIPPED	plus **Released:** line from released-in:
+fix-the-tool	terminal-step-kind-signature-not-surfaced.md	6	OPEN	Branch C re-measure (six entries)
+fix-the-tool	tool-schema-drift-surfaces-as-peer-unreachable.md	6	OPEN	Branch C re-measure (six entries)
+fix-the-tool	working-vs-stuck-step-delta.md	6	KILLED	
+review-relay	D1	7	OPEN	Branch RR start: owner decides
+review-relay	D2	18	JUDGE	paused (owner): Branch RR start - owner decides CLOSED-BY-RULING or SCHEDULED
+review-relay	R1	32	SCHEDULED	Branch RR
+agy-autotrain-roadmap	AT-2	23	SHIPPED	SHIPPED AND CLOSED 2026-08-02
+agy-autotrain-roadmap	AT-1	136	KILLED	KILLED 2026-08-06; its Part A / Part B sub-headings stay as body
