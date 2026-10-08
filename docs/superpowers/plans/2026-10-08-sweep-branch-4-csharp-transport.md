@@ -351,7 +351,8 @@ public class ArgumentPrecheckTests
         }
         catch
         {
-            await stopper.DisposeAsync();   // a failed handshake must not orphan the server task or the provider
+            try { await stopper.DisposeAsync(); }   // a failed handshake must not orphan the server task or the provider...
+            catch { /* ...and a failing cleanup must not mask the handshake exception rethrown below */ }
             throw;
         }
     }
@@ -543,7 +544,8 @@ public static class ArgumentPrecheck
         "array" => v.ValueKind == JsonValueKind.Array,
         "object" => v.ValueKind == JsonValueKind.Object,
         "number" => v.ValueKind == JsonValueKind.Number,
-        "integer" => v.ValueKind == JsonValueKind.Number && v.TryGetDecimal(out var d) && d == decimal.Truncate(d),
+        // A number too large for decimal (1e30) cannot be judged here: fail OPEN rather than reject a valid integer.
+        "integer" => v.ValueKind == JsonValueKind.Number && (!v.TryGetDecimal(out var d) || d == decimal.Truncate(d)),
         _ => true,   // a type word this code does not know: fail open
     };
 
@@ -605,6 +607,16 @@ Then add the type rows (owner ruling 2026-10-08; measured control = the SDK's ge
         Assert.Null(ArgumentPrecheck.Problem("t", schema.RootElement, Args(("n", "1.5"), ("i", "3"), ("any", "[1]"))));
         Assert.Null(ArgumentPrecheck.Problem("t", schema.RootElement, Args(("i", "3.0"))));                 // integral value, fraction digits
         Assert.Contains("must be integer, got number", ArgumentPrecheck.Problem("t", schema.RootElement, Args(("i", "3.5")))!);
+        Assert.Null(ArgumentPrecheck.Problem("t", schema.RootElement, Args(("i", "1e30"))));                // beyond decimal: fail open, not a false refusal
+    }
+
+    [Fact]
+    public void An_unknown_name_and_a_wrongly_typed_value_are_reported_together()
+    {
+        using var schema = JsonDocument.Parse(AgyAskSchema);
+        var p = ArgumentPrecheck.Problem("agy_ask", schema.RootElement, Args(("message", "[1]"), ("payload", "\"x\"")))!;
+        Assert.Contains("unknown argument 'payload'", p);
+        Assert.Contains("argument 'message' must be string, got array", p);   // the type check must not be gated on the names being clean
     }
 
     [Fact]
@@ -619,7 +631,7 @@ Then add the type rows (owner ruling 2026-10-08; measured control = the SDK's ge
         }
     }
 ```
-The control for the last row is `Without_the_filter_the_SDK_hides_the_cause_in_a_generic_sentence` (same sentence for a type error as for a name error - measured). Mutants: in `Matches` make `"string"` return `true` -> the Theory's `message` cases and the round-trip row RED; drop `parts.AddRange(wrongTypes)` -> all type rows RED while the name rows stay green; make `"null"` always match -> the `message: null` Theory case and `Null_is_accepted_only_where...` RED. (Task 4 then has 11 facts + 7 theory cases = 18 tests: control, wrong name, mistyped optional, pass-through, Problem-null, no-arguments tool, control-character, null-only-where-allowed, integer/number/untyped, round-trip wrong type, plus the 7-case Theory - and the count to expect in Step 4 is 18.)
+The control for the last row is `Without_the_filter_the_SDK_hides_the_cause_in_a_generic_sentence` (same sentence for a type error as for a name error - measured). Mutants: in `Matches` make `"string"` return `true` -> the Theory's `message` cases and the round-trip row RED; drop `parts.AddRange(wrongTypes)` -> all type rows RED while the name rows stay green; make `"null"` always match -> the `message: null` Theory case and `Null_is_accepted_only_where...` RED. (Task 4 then has 12 facts + 7 theory cases = 19 tests: control, wrong name, mistyped optional, pass-through, Problem-null, no-arguments tool, control-character, null-only-where-allowed, integer/number/untyped, name-and-type together, round-trip wrong type, plus the 7-case Theory - and the count to expect in Step 4 is 19.) One more mutant: wrap the type-check loop in `if (unknown.Count == 0)` -> `An_unknown_name_and_a_wrongly_typed_value_are_reported_together` RED.
 
 - [ ] **Step 3: Register the filter in `Program.cs`**
 
@@ -637,7 +649,7 @@ Replace the three-line chain with:
 - [ ] **Step 4: Run**
 
 Run: `dotnet build 2>&1 | grep -E "error|Build succeeded" | head -5` then `dotnet test tests/Clavity.Integration.Tests --filter "FullyQualifiedName~ArgumentPrecheckTests" 2>&1 | grep -E "Passed!|Failed!|Total tests"`
-Expected: `Total tests: 18`, all passed. If the CONTROL row fails because the SDK's text differs, quote the real text in the control and in the ROADMAP §71 close note - the control documents the SDK, it does not pass judgement on it. If `Pipe` does not resolve, add `<PackageReference Include="System.IO.Pipelines" Version="10.0.0" />` to the test project (it ships in the shared framework on net10 - this is the fallback, not the expectation).
+Expected: `Total tests: 19`, all passed. If the CONTROL row fails because the SDK's text differs, quote the real text in the control and in the ROADMAP §71 close note - the control documents the SDK, it does not pass judgement on it. If `Pipe` does not resolve, add `<PackageReference Include="System.IO.Pipelines" Version="10.0.0" />` to the test project (it ships in the shared framework on net10 - this is the fallback, not the expectation).
 
 - [ ] **Step 5: Mutants**
 
@@ -1067,7 +1079,15 @@ git commit -m "docs(roadmap): Branch 4 - sections 53 (wiring), 66, 71, 76 IMPLEM
 - Fold Auditor: `none` - all three round-1 folds confirmed right (peer opened the plan and `AgyAskIntegrationTests.cs`).
 - `FOLDED` Resource Vampire (claimed blocking): `ConnectAsync` orphaned the server task and provider when `McpClient.CreateAsync` threw - real in a failing test run; it now disposes the stopper in a `catch` and rethrows.
 - `FOLDED` Boundary Smuggler: a client key carrying a newline or escape sequence reached the refusal text (clipping to 60 chars does not remove them); `Printable` maps control characters to `?`, pinned by a row. The quota sentence cannot carry a line break (`[^\r\n]*?`); other control characters in agy's OWN log line are left as written - agy is the peer, not a client.
-- `FOLDED` State Corruptor: a half-written last line could be reported as a truncated reset ("Resets in 2"); the regex now requires a complete line (lookahead), pinned by a row that completes the line and expects the full text. The first-character UTF-8 split at the scan-window start can garble at most one character BEFORE the first complete line and cannot create or hide a match (the regex anchors on ASCII text) - `DISCARDED-BELOW-FLOOR`, guard: the pattern literal in `QuotaStopLog.cs`.
+- `FOLDED` State Corruptor: a half-written last line could be reported as a truncated reset ("Resets in 2"); the regex now requires a complete line (lookahead), pinned by a row that completes the line and expects the full text. The first-character UTF-8 split at the scan-window start can garble at most one character BEFORE the first complete line - `DISCARDED-BELOW-FLOOR`, guard: the pattern literal in `QuotaStopLog.cs`. (Round 3 corrected the first version of this line, which said the cut "cannot hide a match": a cut that lands inside `RESOURCE_EXHAUSTED` DOES hide that event. It is reachable only when more than `ScanWindow` (1 MiB) of log is written AFTER the event within one ask; the event is written as the turn ends, i.e. near the tail of the appended region (log lines of 2026-10-01 21:09:09.4 and .5), so the window always holds it in practice. Not a reason to read an unbounded region.)
 - `DISCARDED-BELOW-FLOOR` Resource Vampire (1 MiB LOH string per ask): `FindSince` reads only the bytes appended AFTER the mark, so a normal ask reads a few KB; the 1 MiB window is a ceiling for a pathological log, not a per-ask cost (`ScanWindow` guard in Step 3).
 - `REJECTED` Stop Arguer (scan on every ask is a steady tax): same measurement - the scan is bounded by the log growth during the ask, and deferring it until "the output looks anomalous" would reintroduce the silent miss §66 exists to end (a quota stop leaves NO anomalous output on the wire).
 - Process notes: the peer's JSON block used keys `verdict` / `rationale` instead of the declared ten (prose authoritative, nothing lost); it did not answer the three open questions of the brief and did not open the SDK XML. Round 2 is therefore a coverage claim for the plan text and the integration-test file only. Round 3 not run: the folds above are mechanical (a catch, a character map, a lookahead) and each is pinned by its own row; the owner may call one.
+
+### Round 3 agy escalation (cascade fbf2f9db, 2026-10-08; seats: Fold Auditor on the type check + round-2 folds, Activation Auditor, Blindspot Auditor, Protocol Pedant, Mechanism Gamer, Stop Arguer) - dispositions
+- `FOLDED` Fold Auditor FA-1 (debt): `TryGetDecimal` fails for an integer above `Decimal.MaxValue` (1e30) and the code then rejected a valid value; `integer` now fails open when the value cannot be judged, pinned by a `1e30` assertion.
+- `FOLDED` Mechanism Gamer MG-1 (debt): wrapping the type-check loop in `if (unknown.Count == 0)` left every row green; `An_unknown_name_and_a_wrongly_typed_value_are_reported_together` added.
+- `FOLDED` open question (b): the round-2 cleanup `catch` could itself throw and mask the handshake exception; the `DisposeAsync` is now wrapped so the original exception is the one rethrown.
+- `FOLDED` open question (a): my round-2 wording "cannot hide a match" was wrong as stated; corrected in place above with the real condition.
+- `none`: Activation Auditor (filter reached for every `tools/call`; unknown tools fail in the SDK's own path), Blindspot Auditor (messages and docs not misleading), Protocol Pedant (`McpTools.cs` generates only primitive and `["x","null"]` types, so `Matches` covers the subset in use; an unknown type word fails open).
+- Process notes: the peer's JSON used the declared keys this time; it answered the three open questions; it did NOT open the SDK XML (its own census) and read only the plan and `McpTools.cs`. Stop Arguer: "the review should stop" - not accepted on the peer's say-so alone: this round had four real findings, so round 4 runs on the round-3 folds.
