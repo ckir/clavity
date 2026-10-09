@@ -101,9 +101,9 @@ if ($null -ne $rmLines) {
 Test-HeadingTracker -Rel 'clavity-dotnet/ROADMAP.md' -Tracker 'dotnet-roadmap' -Kind 'roadmap' -NonGoals $nonGoals -Required `
     -HeadingRe ([regex]'^### (?:~~)?(?:§\d+ |\d+\. )') `
     -IdOf { param($l) if ($l -match '^### (?:~~)?(§\d+) ') { $Matches[1] } elseif ($l -match '^### (?:~~)?(\d+)\. ') { "item $($Matches[1])" } }
-Test-HeadingTracker -Rel 'review-relay/ROADMAP.md' -Tracker 'review-relay' -Kind 'roadmap' -NonGoals $nonGoals `
+Test-HeadingTracker -Rel 'review-relay/ROADMAP.md' -Tracker 'review-relay' -Kind 'file' -NonGoals $nonGoals `
     -HeadingRe ([regex]'^### [DR]\d+ ') -IdOf { param($l) if ($l -match '^### ([DR]\d+) ') { $Matches[1] } }
-Test-HeadingTracker -Rel 'agy-autotrain/ROADMAP.md' -Tracker 'agy-autotrain-roadmap' -Kind 'roadmap' -NonGoals $nonGoals `
+Test-HeadingTracker -Rel 'agy-autotrain/ROADMAP.md' -Tracker 'agy-autotrain-roadmap' -Kind 'file' -NonGoals $nonGoals `
     -HeadingRe ([regex]'^## AT-\d+ ') -IdOf { param($l) if ($l -match '^## (AT-\d+) ') { $Matches[1] } }
 
 # --- backlog stubs -----------------------------------------------------------------------------------
@@ -153,6 +153,8 @@ if ($isShallow) { $problems.Add('SHALLOW  this repository has no history, so cit
 if ($List) {
     foreach ($e in @($entries | Where-Object Open | Sort-Object Tracker, Id)) { Write-Host ("{0,-11} {1,-22} {2,-10} {3}" -f $e.Token, $e.Tracker, $e.Id, $e.Title) }
     Write-Host "check-tracker-status: $(@($entries | Where-Object Open).Count) open item(s) of $($entries.Count)"
+    # -List lists only entries that PARSED; an entry with no valid status line is not in $entries at all, so say so rather than let the list read as complete.
+    if ($problems.Count -gt 0) { Write-Host "check-tracker-status: WARNING - $($problems.Count) problem(s) exist, so this list may be incomplete; run without -List" -ForegroundColor Yellow }
     exit 0
 }
 if ($problems.Count -gt 0) {

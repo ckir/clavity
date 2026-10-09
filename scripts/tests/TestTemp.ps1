@@ -25,6 +25,9 @@ function Invoke-TestTempSweep {
     # Monday morning is ~60 h) keeps its scratch (panel round 1 found 24 h breaks on weekends); scratch is small, so three days of slack costs nothing.
     param([double]$MaxAgeHours = 72)
     $root = Get-TestTempRoot
+    # A root that is a junction/symlink would make Get-ChildItem list the TARGET's children, and the sweep would delete them (AGY-CAPSTONE
+    # branch T round 2). Refuse the root. (MEASURED, pwsh 7: Remove-Item -Recurse on a CHILD junction removes the link only, never its target - pinned by the test.)
+    if ((Get-Item -LiteralPath $root -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { return }
     $cut = (Get-Date).AddHours(-$MaxAgeHours)
     foreach ($c in @(Get-ChildItem -LiteralPath $root -Force -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $cut })) {
         Remove-Item -LiteralPath $c.FullName -Recurse -Force -ErrorAction SilentlyContinue

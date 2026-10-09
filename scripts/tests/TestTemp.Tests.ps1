@@ -43,6 +43,22 @@ Describe 'the shared test temp root' {
         Test-Path $old | Should -BeFalse
         Test-Path $new | Should -BeTrue
     }
+    It 'the sweep refuses a root that is a junction, and removing a child junction leaves its target intact' {
+        $target = Join-Path $TestDrive 'link-target'; New-Item -ItemType Directory $target | Out-Null
+        $victim = Join-Path $target 'victim.txt'; 'x' | Set-Content $victim
+        (Get-Item $victim).LastWriteTime = (Get-Date).AddHours(-99)
+        $savedRoot = $env:CLAVITY_TEST_TEMP_ROOT
+        try {
+            $linkRoot = Join-Path $TestDrive 'link-root'; New-Item -ItemType Junction -Path $linkRoot -Target $target | Out-Null
+            $env:CLAVITY_TEST_TEMP_ROOT = $linkRoot
+            Invoke-TestTempSweep -MaxAgeHours 24
+            Test-Path $victim | Should -BeTrue -Because 'a junction root must not be swept'
+        } finally { $env:CLAVITY_TEST_TEMP_ROOT = $savedRoot }
+        $kid = Join-Path (Get-TestTempRoot) 'kid-link'; New-Item -ItemType Junction -Path $kid -Target $target | Out-Null
+        (Get-Item $kid -Force).LastWriteTime = (Get-Date).AddHours(-99)
+        Invoke-TestTempSweep -MaxAgeHours 24
+        Test-Path $victim | Should -BeTrue -Because 'Remove-Item on a child junction must delete the link, not the target'
+    }
     It 'the sweep never touches anything OUTSIDE the root' {
         $outside = Join-Path $TestDrive 'outside'; New-Item -ItemType Directory $outside | Out-Null
         (Get-Item $outside).LastWriteTime = (Get-Date).AddHours(-99)

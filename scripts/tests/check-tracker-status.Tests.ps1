@@ -135,6 +135,12 @@ Describe 'check-tracker-status.ps1 - standalone files' {
         $f = New-TrackerRepo @{ "$d/README.md" = "no frontmatter`n"; "$d/_template.md" = "---`nstatus: OPEN`n---`n" }
         (Invoke-Gate $f.Root).Code | Should -Be 0
     }
+    It 'a CLOSED-BY-RULING item in review-relay or agy-autotrain needs a Reopen-if line (neither roadmap has a Non-goals section)' {
+        $ok = "## Open decisions`n`n### D1 - T`n`n**Status:** CLOSED-BY-RULING 2026-10-08 - accepted`n**Reopen if:** the relay changes`n"
+        (Invoke-Gate (New-TrackerRepo @{ 'review-relay/ROADMAP.md' = $ok }).Root).Code | Should -Be 0
+        $bad = "## Open decisions`n`n### D1 - T`n`n**Status:** CLOSED-BY-RULING 2026-10-08 - accepted`n"
+        $r = Invoke-Gate (New-TrackerRepo @{ 'review-relay/ROADMAP.md' = $bad }).Root; $r.Code | Should -Be 1; $r.Out | Should -Match 'NO-REOPEN.*D1'
+    }
     It 'checks review-relay D/R items and agy-autotrain AT items' {
         $f = New-TrackerRepo @{ 'review-relay/ROADMAP.md' = "## Open decisions`n`n### D1 - T`n`nno status`n" }
         $r = Invoke-Gate $f.Root; $r.Code | Should -Be 1; $r.Out | Should -Match 'NO-STATUS.*D1'
@@ -150,6 +156,13 @@ Describe 'check-tracker-status.ps1 - list mode and run errors' {
         $r.Code | Should -Be 0
         $r.Out | Should -Match 'SCHEDULED.*§1.*Open one'
         $r.Out | Should -Not -Match '§2'
+    }
+    It '-List warns that the list may be incomplete when an entry is malformed (it must not read as a complete list)' {
+        $f = New-TrackerRepo @{ $script:RM = (Roadmap "### §1 — Good`n`n**Status:** SCHEDULED 2026-10-08 - branch C`n`n### §2 — Broken`n`nno status line`n") }
+        $r = Invoke-Gate $f.Root -List
+        $r.Code | Should -Be 0
+        $r.Out | Should -Match 'SCHEDULED.*§1'
+        $r.Out | Should -Match 'WARNING - 1 problem\(s\) exist'
     }
     It '-List prints an open fix-the-tool entry by its slug (the entries have no heading; -List once crashed on them)' {
         $f = New-TrackerRepo @{ 'agy-autotrain/docs/fix-the-tool-backlog/x.md' = "---`nslug: my-slug`nstatus: SCHEDULED`n---`nbody`n" }
