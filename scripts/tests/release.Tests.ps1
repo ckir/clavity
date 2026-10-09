@@ -7,12 +7,13 @@
 # no-dangling-candidate combinations). A full successful release run needs the whole members.json /
 # plugin structure and is out of scope (see the dispatch brief).
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:ScriptsSrc = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
     $script:ReleaseScriptSrc = Join-Path $script:ScriptsSrc 'release.ps1'
     $script:ReleaseLibSrc    = Join-Path $script:ScriptsSrc 'lib' 'release-lib.ps1'
 
     function New-ReleaseScenario([scriptblock]$Extra) {
-        $dir  = Join-Path ([System.IO.Path]::GetTempPath()) ("relorc-" + [guid]::NewGuid().ToString('N'))
+        $dir  = New-TestTempPath 'relorc'
         $bare = "$dir.git"
         New-Item -ItemType Directory -Path $dir | Out-Null
         git init -q --bare $bare | Out-Null

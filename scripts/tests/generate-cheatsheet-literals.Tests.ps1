@@ -7,6 +7,7 @@
 
 Describe 'generate-cheatsheet-literals.ps1' {
     BeforeAll {
+        . (Join-Path $PSScriptRoot 'TestTemp.ps1')
         $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Gen  = Join-Path $script:RepoRoot 'scripts/generate-cheatsheet-literals.ps1'
         $script:Core = Join-Path $script:RepoRoot 'agy-autotrain/knowledge/driver-cheatsheet.core.md'
@@ -16,7 +17,7 @@ Describe 'generate-cheatsheet-literals.ps1' {
     }
 
     It 'reproduces BOTH current artifacts byte-for-byte from the current core.md (the control)' {
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("gen-" + [guid]::NewGuid().ToString('N'))
+        $tmp = New-TestTempPath 'gen'
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         try {
             $outRs = Join-Path $tmp 'driver_cheatsheet.rs'
@@ -39,7 +40,7 @@ Describe 'generate-cheatsheet-literals.ps1' {
         # green - AND SO DOES THE MUTANT with normalisation deleted. The test and its own mutation
         # control would both pass while proving nothing, which is the worst kind of green: it looks
         # correct on the machine where it was written.
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("gencrlf-" + [guid]::NewGuid().ToString('N'))
+        $tmp = New-TestTempPath 'gencrlf'
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         try {
             $fx = Join-Path $tmp 'core.md'
@@ -68,7 +69,7 @@ Describe 'generate-cheatsheet-literals.ps1' {
         # Measured on pwsh 7: Set-Content/Out-File/WriteAllText all PRESERVE LF for a SINGLE string,
         # but the ARRAY form joins with the PLATFORM newline and emits CRLF. The hazard is the array
         # form specifically, so this row pins the OUTPUT container, not just the escaped content.
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("genlf-" + [guid]::NewGuid().ToString('N'))
+        $tmp = New-TestTempPath 'genlf'
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         try {
             $outRs = Join-Path $tmp 'x.rs'; $outCs = Join-Path $tmp 'x.cs'
@@ -86,7 +87,7 @@ Describe 'generate-cheatsheet-literals.ps1' {
         # escape its OWN output: LF becomes the two characters \n, and a later backslash pass turns
         # that into \\n, which both compilers read as a literal backslash followed by n. The literal
         # then COMPILES CLEANLY and fails the pinning test with a diff no one can see at a glance.
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("genesc-" + [guid]::NewGuid().ToString('N'))
+        $tmp = New-TestTempPath 'genesc'
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         try {
             $fx = Join-Path $tmp 'core.md'
@@ -113,7 +114,7 @@ Describe 'generate-cheatsheet-literals.ps1' {
     It 'REFUSES to write when the anchor is not found EXACTLY once' {
         # A splice on a non-unique anchor deletes the span between matches. The generator must fail
         # loudly rather than mangle a source file.
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("genanch-" + [guid]::NewGuid().ToString('N'))
+        $tmp = New-TestTempPath 'genanch'
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         try {
             $outRs = Join-Path $tmp 'x.rs'; $outCs = Join-Path $tmp 'x.cs'
@@ -133,7 +134,7 @@ Describe 'generate-cheatsheet-literals.ps1' {
     # never reached. The duplicate case is the dangerous half: a splice on a non-unique anchor DELETES THE
     # SPAN BETWEEN MATCHES, which is why the guard is `-ne 1` and not `-eq 0` in the first place.
     It 'REFUSES a DUPLICATED rust anchor - the case that would delete the span between matches' {
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("gendup-" + [guid]::NewGuid().ToString('N'))
+        $tmp = New-TestTempPath 'gendup'
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         try {
             $outRs = Join-Path $tmp 'x.rs'; $outCs = Join-Path $tmp 'x.cs'
@@ -160,7 +161,7 @@ Describe 'generate-cheatsheet-literals.ps1' {
         # :103, so a row that breaks both files proves nothing about the C# guards - it never reaches them.
         # 'no literal end' is a THIRD guard (:148) that the audit did not name; it was found by reading the
         # block rather than the report, and it was equally uncovered. Sweep for siblings.
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("gencs-" + [guid]::NewGuid().ToString('N'))
+        $tmp = New-TestTempPath 'gencs'
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         try {
             $outRs = Join-Path $tmp 'x.rs'; $outCs = Join-Path $tmp 'x.cs'
@@ -218,7 +219,7 @@ Describe 'generate-cheatsheet-literals.ps1' {
         # THE FIXTURE MUST FAIL AT THE *WRITE*, NOT EARLIER. A missing or directory-shaped C# target
         # fails VALIDATION, which precedes both writes, and would prove nothing about ordering. A
         # READ-ONLY file validates fine and throws only when WriteAllText runs - the exact window.
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("genatomic-" + [guid]::NewGuid().ToString('N'))
+        $tmp = New-TestTempPath 'genatomic'
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         try {
             $outRs = Join-Path $tmp 'x.rs'; $outCs = Join-Path $tmp 'x.cs'
@@ -268,7 +269,7 @@ Describe 'generate-cheatsheet-literals.ps1' {
         # A negative assertion here would pass for the wrong reason if the fixture failed to carry a BOM
         # at all - the exact vacuity shape this audit is hunting. The twin cannot pass unless the BOM was
         # genuinely removed AND nothing else diverged.
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("genbom-" + [guid]::NewGuid().ToString('N'))
+        $tmp = New-TestTempPath 'genbom'
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         try {
             $body = "Driver text line one`nand line two`n"
@@ -298,7 +299,7 @@ Describe 'generate-cheatsheet-literals.ps1' {
         # is nothing to splice into. Without an empty-target skip the hook must Copy-Item a file that does
         # not exist, which throws under $ErrorActionPreference='Stop' and CRASHES the hook on exactly the
         # case its own test table says must PASS.
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("genskip-" + [guid]::NewGuid().ToString('N'))
+        $tmp = New-TestTempPath 'genskip'
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         try {
             $outCs = Join-Path $tmp 'x.cs'
@@ -314,7 +315,7 @@ Describe 'generate-cheatsheet-literals.ps1' {
         # The generator carries `if ($coreText.Length -eq 0) { Fail ... }` and nothing exercised it. An
         # empty core.md would otherwise splice an empty literal into both binaries and the pinning tests
         # would go red one layer away from the cause.
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("genempty-" + [guid]::NewGuid().ToString('N'))
+        $tmp = New-TestTempPath 'genempty'
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         try {
             $fx = Join-Path $tmp 'core.md'
@@ -334,7 +335,7 @@ Describe 'generate-cheatsheet-literals.ps1' {
         # The generator has a dedicated `if ($coreLines.Count -eq 1)` branch for the C# target and the
         # live core.md is multi-line, so nothing exercised it. A whole-string replace would emit either a
         # dangling + or a trailing \n the file side does not have - the exact shape this branch exists for.
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("gen1line-" + [guid]::NewGuid().ToString('N'))
+        $tmp = New-TestTempPath 'gen1line'
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         try {
             $fx = Join-Path $tmp 'core.md'
@@ -364,7 +365,7 @@ Describe 'generate-cheatsheet-literals.ps1' {
         # never looked at. It was named for a behaviour and asserted a fact about two files on disk.
         # Now it runs the generator into a temp target and asserts on THAT, exactly as the LF row above
         # does - which is the row this one should always have been modelled on.
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("genascii-" + [guid]::NewGuid().ToString('N'))
+        $tmp = New-TestTempPath 'genascii'
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         try {
             $outRs = Join-Path $tmp 'x.rs'; $outCs = Join-Path $tmp 'x.cs'
@@ -397,7 +398,7 @@ Describe 'generate-cheatsheet-literals.ps1' {
         # wrote anyway - which is the whole failure mode. So this asserts the SIDE EFFECT: the two
         # targets must be byte-for-byte unchanged. The fixture seeds them with sentinel content that
         # a real run would certainly overwrite, so "unchanged" cannot be true by coincidence.
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("gen-whatif-" + [guid]::NewGuid().ToString('N'))
+        $tmp = New-TestTempPath 'gen-whatif'
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         try {
             $outRs = Join-Path $tmp 'x.rs'; $outCs = Join-Path $tmp 'x.cs'

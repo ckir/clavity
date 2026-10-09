@@ -11,7 +11,7 @@ BeforeAll {
     $script:Asset = 'clavity-ls-linux-x64-9.9.9.tar.gz'
 
     function New-Fx {
-        $root = Join-Path ([IO.Path]::GetTempPath()) ("fcl-" + [guid]::NewGuid().ToString('N'))
+        $root = New-TestTempPath 'fcl'
         $fx = [pscustomobject]@{
             Root = $root; Data = (Join-Path $root 'data'); PluginRoot = (Join-Path $root 'plugin')
             Shim = (Join-Path $root 'shim'); Srv = (Join-Path $root 'srv')

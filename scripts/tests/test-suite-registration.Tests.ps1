@@ -29,6 +29,7 @@
 
 Describe 'test suite registration' {
     BeforeAll {
+        . (Join-Path $PSScriptRoot 'TestTemp.ps1')
         $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Justfile = Get-Content -LiteralPath (Join-Path $script:RepoRoot 'justfile') -Raw
 
@@ -246,7 +247,7 @@ foreach ($cont in $r.Containers) {
     "COUNT`t$leaf`t$($counts[$leaf])`t$($cont.Result)"
 }
 '@
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("pester-discover-" + [Guid]::NewGuid().ToString('N') + ".ps1")
+        $tmp = New-TestTempPath 'pester-discover' -Suffix '.ps1'
         Set-Content -LiteralPath $tmp -Value $childScript -Encoding utf8
         try {
             $raw = & pwsh -NoProfile -File $tmp @script:AllSuitePaths 2>&1

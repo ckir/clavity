@@ -1,4 +1,4 @@
-BeforeAll { . (Join-Path $PSScriptRoot '..' 'lib' 'release-lib.ps1') }
+BeforeAll { . (Join-Path $PSScriptRoot 'TestTemp.ps1'); . (Join-Path $PSScriptRoot '..' 'lib' 'release-lib.ps1') }
 
 Describe 'Get-BumpLevel (F7/F10)' {
     It 'any ! => breaking, regardless of type' {
@@ -26,7 +26,7 @@ Describe 'Get-BumpLevel (F7/F10)' {
 Describe 'Get-AbandonedSerials + Get-NextSerial (retracted-serial burn / ghost-tag guard)' {
     BeforeAll {
         function New-AbandonRepo {
-            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("aban-" + [guid]::NewGuid().ToString('N'))
+            $dir = New-TestTempPath 'aban'
             New-Item -ItemType Directory -Path $dir | Out-Null
             New-Item -ItemType Directory -Path (Join-Path $dir 'scripts') | Out-Null
             Push-Location $dir
@@ -178,7 +178,7 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
         # Each scenario needs a real origin remote: Get-DanglingReleaseCommits reads origin/main..HEAD,
         # and release.ps1's own precondition-0 requires `git fetch` to succeed against a real remote.
         function New-ResumeRepo {
-            $dir  = Join-Path ([System.IO.Path]::GetTempPath()) ("reslib-" + [guid]::NewGuid().ToString('N'))
+            $dir  = New-TestTempPath 'reslib'
             $bare = "$dir.git"
             New-Item -ItemType Directory -Path $dir | Out-Null
             git init -q --bare $bare | Out-Null
@@ -229,7 +229,7 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
         # origin/main is absent, for any reason. The oracle is the throw, and the second row additionally
         # asserts the SHIPPED COMMIT SURVIVES - which is the property all of this exists to protect.
         It 'origin/main absent: REFUSES rather than guessing, and says how to recover' {
-            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resnoorigin-" + [guid]::NewGuid().ToString('N'))
+            $dir = New-TestTempPath 'resnoorigin'
             $bare = "$dir.git"
             New-Item -ItemType Directory -Path $dir | Out-Null
             git init -q --bare $bare | Out-Null
@@ -357,7 +357,7 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
         # Ok=$false with a reason telling the developer the opposite of the truth, which is worse than a
         # raw failure because it reads as a clean, actionable answer a developer would act on.
         It 'origin/main absent: REPORTS the refusal as a Problem, never answering "no half-finished release"' {
-            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resnoorigin2-" + [guid]::NewGuid().ToString('N'))
+            $dir = New-TestTempPath 'resnoorigin2'
             $bare = "$dir.git"
             New-Item -ItemType Directory -Path $dir | Out-Null
             git init -q --bare $bare | Out-Null
@@ -404,7 +404,7 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
         # what an escaping throw destroys - and it asserts BOTH strings, because asserting only the count
         # would pass for any two problems at all.
         It 'dirty tree AND origin/main absent: reports BOTH problems, not just the one that threw' {
-            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("resboth-" + [guid]::NewGuid().ToString('N'))
+            $dir = New-TestTempPath 'resboth'
             $bare = "$dir.git"
             New-Item -ItemType Directory -Path $dir | Out-Null
             git init -q --bare $bare | Out-Null
@@ -495,7 +495,7 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
         # function would answer 'unknown' (which release.ps1:39 REFUSES on) instead of 'clean'. That
         # turns a legitimately resumable first release into an unresumable one. MEASURED both ways.
         It "returns 'clean' for a tip candidate that is ALSO the root commit (the short-circuit is load-bearing)" {
-            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("restiproot-" + [guid]::NewGuid().ToString('N'))
+            $dir = New-TestTempPath 'restiproot'
             $bare = "$dir.git"
             New-Item -ItemType Directory -Path $dir | Out-Null
             git init -q --bare $bare | Out-Null
