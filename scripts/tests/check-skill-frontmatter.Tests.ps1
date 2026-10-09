@@ -14,12 +14,13 @@
 # The oracle is `yq` (mikefarah v4), so this suite needs it on PATH, exactly like the gate does.
 
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:Lint = Join-Path $PSScriptRoot '..' 'check-skill-frontmatter.ps1'
     $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
     function New-Fixture {
         param([hashtable]$Skills = @{}, [switch]$NoExclusion)
-        $root = Join-Path ([System.IO.Path]::GetTempPath()) ("skillfm-" + [Guid]::NewGuid())
+        $root = New-TestTempPath 'skillfm'
         New-Item -ItemType Directory -Path $root | Out-Null
         & git -C $root init -q 2>$null | Out-Null
         if (-not $NoExclusion) { $Skills['clavity-classic/agy-mcp-bridge/SKILL.md'] = "# bridge reference, no frontmatter`n" }
@@ -156,7 +157,7 @@ Describe 'check-skill-frontmatter.ps1' {
         $r.Out | Should -Match 'alpha/SKILL\.md: frontmatter is not valid YAML'
         $r.Out | Should -Match 'beta/SKILL\.md: frontmatter is not valid YAML' -Because 'the run must continue past the first failing file'
         $r.Code | Should -Be 1
-        $nogit = Join-Path ([System.IO.Path]::GetTempPath()) ("skillfm-nogit-" + [Guid]::NewGuid())
+        $nogit = New-TestTempPath 'skillfm-nogit'
         New-Item -ItemType Directory -Path $nogit | Out-Null
         try { $r2 = Invoke-Lint -Root $nogit } finally { Remove-Item -Recurse -Force $nogit -ErrorAction SilentlyContinue }
         $r2.Out | Should -Match 'CANNOT ANSWER: git ls-files failed'
@@ -311,7 +312,7 @@ Describe 'check-skill-frontmatter.ps1' {
     }
 
     It 'CANNOT ANSWER (exit 2) outside a git repository' {
-        $script:Root = Join-Path ([System.IO.Path]::GetTempPath()) ("skillfm-nogit-" + [Guid]::NewGuid())
+        $script:Root = New-TestTempPath 'skillfm-nogit'
         New-Item -ItemType Directory -Path $script:Root | Out-Null
         $r = Invoke-Lint -Root $script:Root
         $r.Out | Should -Match 'CANNOT ANSWER: git ls-files failed'
@@ -340,7 +341,7 @@ Describe 'check-skill-frontmatter.ps1' {
         @{ Version = 'yq (https://github.com/mikefarah/yq/) version v5.0.0' }
     ) {
         $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'alpha' 'a: b') }
-        $fake = Join-Path ([System.IO.Path]::GetTempPath()) ("fakeyq-" + [Guid]::NewGuid())
+        $fake = New-TestTempPath 'fakeyq'
         New-Item -ItemType Directory -Path $fake | Out-Null
         Set-Content -LiteralPath (Join-Path $fake 'yq.cmd') -Value "@echo $Version" -Encoding ascii
         $saved = $env:PATH

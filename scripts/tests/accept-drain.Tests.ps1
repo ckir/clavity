@@ -1,12 +1,13 @@
 # scripts/tests/accept-drain.Tests.ps1
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:Accept = Join-Path $PSScriptRoot '..' 'accept-drain.ps1'
     # curate-commit STUB scripts, created ONCE here (not per-test) to avoid AV/Defender file-lock flakiness on a
     # freshly-written stub the child pwsh immediately executes (agy escalation). Each is a PATH passed to accept-drain's
     # -CurateCommitStub seam: a live [scriptblock] cannot cross a `pwsh -File` boundary (PowerShell marshals it to the
     # literal "-encodedCommand"), so the seam is a stub-script path. The 'ok' stub writes a sentinel beside the growth
     # file recording the path it received, so a test can prove curate-commit was actually invoked with the proposal.
-    $script:StubDir = Join-Path ([System.IO.Path]::GetTempPath()) ("acceptstub-" + [Guid]::NewGuid())
+    $script:StubDir = New-TestTempPath 'acceptstub'
     New-Item -ItemType Directory -Path $script:StubDir | Out-Null
     $script:StubOk       = Join-Path $script:StubDir 'ok.ps1'
     $script:StubFail     = Join-Path $script:StubDir 'fail.ps1'
@@ -35,7 +36,7 @@ Describe "accept-drain transaction (scratch repo)" {
         }
     }
     BeforeEach {
-        $script:Repo = Join-Path ([System.IO.Path]::GetTempPath()) ("accept-" + [Guid]::NewGuid())
+        $script:Repo = New-TestTempPath 'accept'
         New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs') | Out-Null
         Push-Location $script:Repo
         git init -q; git config user.email t@t; git config user.name t
@@ -43,7 +44,7 @@ Describe "accept-drain transaction (scratch repo)" {
         Set-Content 'docs/agy-golden-header.growth.md' '# GROWTH proposal'
         git add .; git commit -qm base
         Pop-Location
-        $script:InboxDir = Join-Path ([System.IO.Path]::GetTempPath()) ("abox-" + [Guid]::NewGuid())
+        $script:InboxDir = New-TestTempPath 'abox'
         New-Item -ItemType Directory -Path $script:InboxDir | Out-Null
         $script:Inbox = Join-Path $script:InboxDir 'agy-observations.md'
         Set-Content $script:Inbox @('# inbox', '', '## Pending')
