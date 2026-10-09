@@ -233,6 +233,43 @@ Describe 'FindingsStore merge/write/render' {
         (Get-Content $md -Raw) | Should -Match '<!-- doc:A.md start -->'
         (Get-Content $md -Raw) | Should -Match '<!-- doc:Gone.md start -->'
     }
+    It 'Get-FindingsSummary counts roster docs that have NO store entry as NeverAudited' {
+        $s = Read-FindingsStore $script:Json
+        Merge-DocResult -Store $s -DocPath 'A.md' -RunId 'R1' -Result @{ Outcome='CLEAN'; ClaimsInspected=3; Findings=@() } | Out-Null
+        $sum = Get-FindingsSummary -Store $s -Roster @('A.md','B.md','C.md')
+        $sum.NeverAudited | Should -Be 2
+        $sum.Unconfirmed  | Should -Be 0
+    }
+    It 'Get-FindingsSummary does not count a retired doc (in the store, off the roster) as anything' {
+        $s = Read-FindingsStore $script:Json
+        Merge-DocResult -Store $s -DocPath 'Gone.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=1; Findings=@(@{kind='X';docPath='Gone.md';docLine=1;codeRef='c';text='t'}) } | Out-Null
+        $sum = Get-FindingsSummary -Store $s -Roster @('A.md')
+        $sum.NeverAudited | Should -Be 1
+        $sum.Findings     | Should -Be 0
+    }
+    It 'Render-FindingsView renders a never-audited roster doc as an AUDIT-NEVER section' {
+        $s = Read-FindingsStore $script:Json
+        $md = Join-Path $TestDrive 'view-never.md'
+        Render-FindingsView -Store $s -Path $md -Roster @('B.md')
+        $t = Get-Content -LiteralPath $md -Raw
+        $t | Should -Match "(?m)^## B\.md — AUDIT-NEVER \(claims inspected: 0\)$"
+        $t | Should -Match '<!-- doc:B\.md start -->'
+    }
+    It 'Render-FindingsView with NO roster renders no never-audited section (no roster, nothing to be missing from)' {
+        $s = Read-FindingsStore $script:Json
+        $md = Join-Path $TestDrive 'view-never-noroster.md'
+        Render-FindingsView -Store $s -Path $md
+        (Get-Content -LiteralPath $md -Raw) | Should -Not -Match 'AUDIT-NEVER'
+    }
+    It 'a roster doc that IS in the store is rendered once, not also as never-audited' {
+        $s = Read-FindingsStore $script:Json
+        Merge-DocResult -Store $s -DocPath 'A.md' -RunId 'R1' -Result @{ Outcome='CLEAN'; ClaimsInspected=3; Findings=@() } | Out-Null
+        $md = Join-Path $TestDrive 'view-never-once.md'
+        Render-FindingsView -Store $s -Path $md -Roster @('A.md')
+        $t = Get-Content -LiteralPath $md -Raw
+        ([regex]::Matches($t, '## A\.md')).Count | Should -Be 1
+        $t | Should -Not -Match 'AUDIT-NEVER'
+    }
     It 'Get-FindingsSummary counts findings and unconfirmed docs on the roster only' {
         $s = Read-FindingsStore $script:Json
         $f = { param($d) @{kind='ACCURACY';docPath=$d;docLine=1;codeRef='x.rs:2';text='t'} }
@@ -597,6 +634,7 @@ Describe 'docs-audit orchestrator (via pwsh -File, -AuditStub seam)' {
         $view | Should -Match '<!-- doc:B\.md start -->'
         $view | Should -Not -Match 'C\.md'
         $out | Should -Match ([regex]::Escape('docs-audit: 2 open finding(s) in 2 doc(s); 0 doc(s) not confirmed by their last audit.'))
+        $out | Should -Match ([regex]::Escape('docs-audit: 0 roster doc(s) never audited.'))   # ROADMAP section 56
     }
 }
 

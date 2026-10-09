@@ -170,6 +170,17 @@ function Render-FindingsView([hashtable]$Store, [string]$Path, [string[]]$Roster
         $lines.Add("<!-- doc:$doc end -->")
         $lines.Add('')
     }
+    # Roster docs with no store entry: render them as AUDIT-NEVER so the SessionStart nudge (re_unc='^## .+ — AUDIT-') counts them with no
+    # hook change. Only when a roster was supplied (no roster means no filter: there is nothing to be missing from).
+    if ($null -ne $Roster) {
+        foreach ($doc in @($Roster | Where-Object { $_ -and -not $Store.docs.ContainsKey($_) } | Sort-Object)) {
+            $lines.Add("<!-- doc:$doc start -->")
+            $lines.Add("## $doc — AUDIT-NEVER (claims inspected: 0)")
+            $lines.Add('- (no findings)')
+            $lines.Add("<!-- doc:$doc end -->")
+            $lines.Add('')
+        }
+    }
     $tmp = $Path + ".$PID.tmp"   # PID-unique: a stale-reclaimed zombie run must not share this temp path (agy R2-F2)
     [System.IO.File]::WriteAllText($tmp, (($lines -join "`n") + "`n"))
     Move-Item -LiteralPath $tmp -Destination $Path -Force
@@ -185,7 +196,10 @@ function Get-FindingsSummary([hashtable]$Store, [string[]]$Roster) {
         if ($n -gt 0) { $findings += $n; $withFindings++ }
         if (@('CLEAN','FINDINGS') -notcontains $e['outcome']) { $unconfirmed++ }
     }
-    [pscustomobject]@{ Findings = $findings; DocsWithFindings = $withFindings; Unconfirmed = $unconfirmed }
+    # A roster doc with NO store entry has never been audited (ROADMAP section 56): invisible before, because both the view and this
+    # summary were built from the store alone.
+    $never = @($Roster | Where-Object { $_ -and -not $Store.docs.ContainsKey($_) }).Count
+    [pscustomobject]@{ Findings = $findings; DocsWithFindings = $withFindings; Unconfirmed = $unconfirmed; NeverAudited = $never }
 }
 
 function Initialize-AuditLog {

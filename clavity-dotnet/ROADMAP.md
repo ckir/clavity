@@ -3641,7 +3641,7 @@ classic has no log-scraping discovery (grep for the listening message, 2026-09-3
 
 ### §56 — A roster doc that has never been audited is invisible to the docs-audit view, summary and SessionStart nudge
 
-**Status:** SCHEDULED 2026-09-30 - scheduled - Branch T task
+**Status:** IMPLEMENTED 2026-10-09 - a never-audited roster doc renders as AUDIT-NEVER (the nudge counts it unchanged) and the summary has NeverAudited; on branch sweep/branch-t-format-and-gates, merge pending
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (sweep Branch 1 capstone round 1, deferred there), not yet planned**
 
 `scripts/docs-audit-lib.ps1` renders the view (`Render-FindingsView`, `:152`) and counts the summary
@@ -3652,7 +3652,8 @@ surfaces "N roster docs have never been audited"; the new doc reads as if it had
 
 **Fix outline:** `Get-FindingsSummary` gains a `NeverAudited` count (roster members with no store entry);
 the end-of-run line and the rendered view name them (e.g. a `## <doc> — NEVER AUDITED` section, which the
-nudge would then count with its existing `AUDIT-`-style header match, or a dedicated count). Tests: a
+nudge would then count with its existing `AUDIT-`-style header match, or a dedicated count).
+*(superseded 2026-10-08: measured, a `NEVER AUDITED` header does NOT match the nudge's `^## .+ — AUDIT-`; the section is named `AUDIT-NEVER`, which does, so the hook needed no change.)* Tests: a
 roster doc absent from the store is counted and rendered; a retired doc still is not (the §47 row).
 
 **Blast radius:** `docs-audit-lib.ps1`, `docs-audit.ps1`, the nudge hook and their suites. Shared, not a

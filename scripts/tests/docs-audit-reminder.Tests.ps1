@@ -61,6 +61,14 @@ Describe 'docs-audit-reminder.sh' {
         $j.systemMessage | Should -Match ([regex]::Escape('1 unconfirmed doc(s)'))
     }
 
+    It 'counts a never-audited roster doc (AUDIT-NEVER) as unconfirmed, with no hook change' {
+        $d = New-Workspace -Lines @($script:Header, '', "## N.md $($script:Dash) AUDIT-NEVER (claims inspected: 0)", '', '- (no findings)')
+        $r = Invoke-Hook $d
+        $r.ExitCode | Should -Be 0
+        $j = $r.StdOut | ConvertFrom-Json
+        $j.systemMessage | Should -Match ([regex]::Escape('1 unconfirmed doc(s)'))
+    }
+
     It 'counts every AUDIT-* outcome, and only in a section header' {
         # Three non-confirming outcomes, plus a finding whose TEXT mentions AUDIT-SUSPECT: the header anchor must
         # keep that bullet out of the unconfirmed count (it is one open finding, not a fourth unconfirmed doc).

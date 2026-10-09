@@ -1080,10 +1080,10 @@ check-control-bytes.Tests.ps1                    42,7s    9 tests   <- SLOW, NEW
   MEASURED at top level, two sequential runs, each its own pwsh + Pester cold start: 42,7s and 50,6s; background
   load not controlled. SLOW because the fast recipe was last measured at 480,5s against the 600s cap, so ~45s
   more would crowd it; rows 6-7 start child pwsh processes and row 8 scans every tracked *.md.
-docs-audit-reminder.Tests.ps1                    28,3s   12 tests   <- 11 -> 12 2026-10-08 (capstone R3: +hyphen near-miss header is not an unconfirmed doc); 7 -> 11 2026-10-07 (Branch 21 Task 7: +CRLF, +unterminated last line, +bullet near-misses, +unreadable view); SLOW, NEW 2026-09-30 (docs-audit nudge, sweep
+docs-audit-reminder.Tests.ps1                    28,3s   13 tests   <- 11 -> 12 2026-10-08 (capstone R3: +hyphen near-miss header is not an unconfirmed doc); 7 -> 11 2026-10-07 (Branch 21 Task 7: +CRLF, +unterminated last line, +bullet near-misses, +unreadable view); SLOW, NEW 2026-09-30 (docs-audit nudge, sweep
   Branch 1). MEASURED at top level, two sequential runs: 28,3s and 29,4s (each a cold start; background load not
   controlled). SLOW for the same fast-recipe headroom reason; every row drives Git Bash. 5 -> 7 the same day (AGY-TEST-AUDIT: the AUDIT-* count and the JSON envelope), runtime NOT re-measured.
-docs-audit.Tests.ps1                            130,0s   90 tests   <- SLOW, re-measured 2026-08-06; 85 -> 88 on
+docs-audit.Tests.ps1                            130,0s   95 tests   <- SLOW, re-measured 2026-08-06; 85 -> 88 on
   2026-09-30 (ROADMAP §47: the roster filter and Get-FindingsSummary), 88 -> 90 the same day (AGY-TEST-AUDIT: every non-confirming outcome; the -Only run keeps the full roster), runtime NOT re-measured.
 drain-knowledge.Tests.ps1                        40,5s    8 tests   <- SLOW, re-measured 2026-08-06
 drain-lib.Tests.ps1                               4,2s   36 tests   <- FAST, re-measured 2026-08-24 WARM.
