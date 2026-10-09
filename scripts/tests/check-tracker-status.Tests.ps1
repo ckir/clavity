@@ -188,9 +188,9 @@ Describe 'check-tracker-status.ps1 - a heading that looks like an entry but is m
         $r = Invoke-Gate $f.Root; $r.Code | Should -Be 1; $r.Out | Should -Match 'MALFORMED-HEADING.*§34Title'
     }
     It 'refuses a malformed review-relay and agy-autotrain heading too' {
-        $f = New-TrackerRepo @{ 'review-relay/ROADMAP.md' = "# R`n`n### D1Title`n`n**Status:** OPEN 2026-10-08 - x`n"; 'agy-autotrain/ROADMAP.md' = "# A`n`n## AT-3Title`n`n**Status:** OPEN 2026-10-08 - x`n" }
+        $f = New-TrackerRepo @{ 'review-relay/ROADMAP.md' = "# R`n`n### D1: Title`n`n**Status:** OPEN 2026-10-08 - x`n"; 'agy-autotrain/ROADMAP.md' = "# A`n`n## AT-3Title`n`n**Status:** OPEN 2026-10-08 - x`n" }
         $r = Invoke-Gate $f.Root; $r.Code | Should -Be 1
-        $r.Out | Should -Match 'MALFORMED-HEADING.*D1Title'
+        $r.Out | Should -Match 'MALFORMED-HEADING.*D1: Title'
         $r.Out | Should -Match 'MALFORMED-HEADING.*AT-3Title'
     }
     It 'refuses a heading with extra whitespace (double space, or a space after the strike-through marker)' {
@@ -206,6 +206,10 @@ Describe 'check-tracker-status.ps1 - a heading that looks like an entry but is m
     It 'refuses a numbered heading whose dot is not followed by a space' {
         $f = New-TrackerRepo @{ $script:RM = (Roadmap "### 12.Title`n`n**Status:** OPEN 2026-10-08 - x`n") }
         $r = Invoke-Gate $f.Root; $r.Code | Should -Be 1; $r.Out | Should -Match 'MALFORMED-HEADING.*12\.Title'
+    }
+    It 'does NOT flag an id-like prose heading in review-relay (### R2D2 Architecture)' {
+        $f = New-TrackerRepo @{ 'review-relay/ROADMAP.md' = "# R`n`n### R2D2 Architecture`n`n### D1 - Real`n`n**Status:** OPEN 2026-10-08 - x`n" }
+        $r = Invoke-Gate $f.Root; $r.Code | Should -Be 0 -Because "output was:`n$($r.Out)"
     }
     It 'does NOT flag an ordinary sub-heading, or a malformed-looking heading inside a code fence' {
         $f = New-TrackerRepo @{ $script:RM = (Roadmap "### Stretch (not planned)`n`n### Acceptance`n`n### 2026 Goals`n`n### 1.1 Intro`n`n``````text`n### §9x not an entry`n```````n`n### §1 - T`n`n**Status:** OPEN 2026-10-08 - x`n") }

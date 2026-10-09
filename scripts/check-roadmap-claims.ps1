@@ -242,7 +242,7 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
 # un-anchored pointer that is still in range but now points at the wrong line reads GREEN; a pure range check
 # cannot see content drift (agy and the driver agreed, 2026-10-08). New pointers should be anchored.
 # NOT CHECKABLE (counted, never failed): a bare name with no '/', or a path that is not a tracked file.
-$ptrRe  = [regex]'`(?<path>[A-Za-z0-9_./-]+\.[A-Za-z0-9]+):(?<a>\d+)(?:-(?<b>\d+))?`(?:\s+\("(?<anchor>[^"]+)"\))?'
+$ptrRe  = [regex]'`(?<path>[A-Za-z0-9_./-]+\.[A-Za-z0-9]+):(?<a>\d+)(?:-(?<b>\d+))?`(?:\s*\("(?<anchor>[^"]+)"\))?'
 $fence  = $false; $unchecked = 0; $uncheckedNames = [System.Collections.Generic.List[string]]::new()
 for ($i = 0; $i -lt $lines.Count; $i++) {
     if ($lines[$i] -match '^\s*```') { $fence = -not $fence; continue }
@@ -265,7 +265,7 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
             continue
         }
         # ACCEPTED RESIDUALS: an anchor with spaces inside the paren, `file:10` ( "x" ), or missing its OPENING quote, `file:10`(foo"), is not flagged - a parenthetical after a pointer after a pointer is ordinary prose, e.g. the (N lines) claims check A reads.
-        # An anchor that was ATTEMPTED (` ("` right after the pointer, with or without spaces BEFORE the paren, none inside it) but did not parse - a quote inside it, or an empty one - would
+        # An anchor that was ATTEMPTED (` ("` right after the pointer, with or without spaces BEFORE the paren, none inside it; an unspaced `file:10`("x") IS a valid anchor and is checked) but did not parse - a quote inside it, or an empty one - would
         # otherwise fall back silently to an un-anchored pointer and lose the content check it was written to get (AGY-TEST-AUDIT branch T).
         if (-not $m.Groups['anchor'].Success -and $lines[$i].Substring($m.Index + $m.Length) -match '^\s*\("') {
             $problems += "MALFORMED-ANCHOR  ROADMAP:$($i+1)  ``$rel`:$a$(if ($b -ne $a) { "-$b" }) has an anchor that is not one non-empty quoted string without an inner quote - the content check did not run"

@@ -464,10 +464,13 @@ Describe 'check-roadmap-claims.ps1 - a malformed anchor' {
         $r = Invoke-Claims $f.Root $f.Roadmap
         $r.Code | Should -Be 0 -Because "a parenthetical with spaces inside is prose, not an attempted anchor; output was:`n$($r.Out)"
     }
-    It 'refuses an anchor with no space between the pointer and the parenthesis' {
-        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2``(`"beta`") text.`n"
-        $r = Invoke-Claims $f.Root $f.Roadmap
-        $r.Code | Should -Be 1 -Because "output was:`n$($r.Out)"; $r.Out | Should -Match 'MALFORMED-ANCHOR'
+    It 'treats an unspaced pointer(quote) as a real anchor: accepted when the text is on the line, ANCHOR-MISS when it is not' {
+        $ok = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2``(`"beta`") text.`n"
+        $r = Invoke-Claims $ok.Root $ok.Roadmap
+        $r.Code | Should -Be 0 -Because "output was:`n$($r.Out)"
+        $bad = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2``(`"gamma`") text.`n"
+        $r2 = Invoke-Claims $bad.Root $bad.Roadmap
+        $r2.Code | Should -Be 1; $r2.Out | Should -Match 'ANCHOR-MISS.*gamma'
     }
     It 'refuses an empty anchor, and still accepts a well-formed one beside it' {
         $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2`` (`"`") text.`n"
