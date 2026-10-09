@@ -20,7 +20,9 @@ and absent from a fresh clone by design), the
 
 ## AT-2 - Durability for the *accumulated* observations inbox (the one artifact with no recovery path)
 
-**Status:** [x] **SHIPPED AND CLOSED 2026-08-02** - capstone GREEN over `6d79bee..a0b2d7b`, recorded in
+**Status:** SHIPPED 2026-08-02 - merged to main in `a0b2d7b`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** [x] **SHIPPED AND CLOSED 2026-08-02** - capstone GREEN over `6d79bee..a0b2d7b`, recorded in
+
 `docs/agy-capstone-ledger.md`. Verified 2026-08-06: the deliverable `agy-autotrain/hooks/agy-inbox-snapshot.sh`
 ships, is registered, and carries a 22-test suite (`scripts/tests/agy-inbox-snapshot.Tests.ps1`, slow half).
 The last commit to touch it, `a0b2d7b`, is the very tip that capstone reviewed.
@@ -133,7 +135,9 @@ somewhere already version-controlled, rather than by teaching this plugin to man
 
 ## AT-1 - Context-pollution hardening for `agy-curate`'s GROWTH region
 
-**Status:** ~~open~~ -> **KILLED 2026-08-06 (both parts)** * **Opened:** 2026-07-17 *
+**Status:** KILLED 2026-08-06 - will not be done - open -> KILLED 2026-08-06 (both parts) * Opened: 2026-07-17
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ~~open~~ -> **KILLED 2026-08-06 (both parts)** * **Opened:** 2026-07-17 *
+
 **last-triaged: 2026-08-06** (open-work reconsideration sweep, Phase 1 Task 3)
 
 **Part A - KILLED on clause 1 and clause 2 of the disposition bar.** Measured 2026-08-06:

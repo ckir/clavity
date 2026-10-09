@@ -3,7 +3,7 @@ slug: curate-commit-accepts-empty-stdin
 variant: clavity-dotnet
 observed: 2026-08-17
 source-inbox-entry: "not an inbox entry - found by accident during the 2026-08-17 drain and verified"
-status: open
+status: SCHEDULED
 ---
 
 # `curate-commit` accepts EMPTY stdin and publishes an empty GROWTH region, exit 0

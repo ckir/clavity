@@ -98,14 +98,15 @@ Describe 'hook spawn budget' {
     }
 
     It 'agy-consult-recovery.sh costs the same with 1 seam and with 1000 (the cost must not scale with the seam count)' -Tag 'scaling' {
-        $one = New-HookFixture; $big = New-HookFixture
+        $one = $null; $big = $null
         try {
+            $one = New-HookFixture; $big = New-HookFixture
             Add-FxSeams $one 'agy-capstone-r1-x.md'
             Add-FxSeams $big (1..1000 | ForEach-Object { if ($_ % 2) { "agy-capstone-r$_-x.md" } else { "loose-$_.md" } })
             $hook = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-consult-recovery.sh'
             $a = Measure-BashHookProcesses -HookPath $hook -Payload (New-SessionStartPayload $one) -Env $one.Env -WorkingDirectory $one.Repo
             $b = Measure-BashHookProcesses -HookPath $hook -Payload (New-SessionStartPayload $big) -Env $big.Env -WorkingDirectory $big.Repo
             $b.Spawned | Should -Be $a.Spawned -Because 'a per-seam process (a stat, a git call, an ls of each file) makes SessionStart cost grow with the seam directory, which reached 1031 files in this repo'
-        } finally { Remove-Item -LiteralPath $one.Root, $big.Root -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { if ($one) { Remove-TestPath $one.Root }; if ($big) { Remove-TestPath $big.Root } }
     }
 }

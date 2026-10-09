@@ -1,6 +1,8 @@
 # Backlog stub - a capture discipline silently did not run for an entire session
 
-**Status:** OPEN. Promoted 2026-08-27 from `.clavity/local-anomalies.md`. · 🚫 **KILLED by the owner [sweep-step0 2026-09-29]: agent compliance, not a missing mechanism - SessionStart and PreCompact reminders already exist**
+**Status:** KILLED 2026-09-29 - will not be done - OPEN. Promoted 2026-08-27 from .clavity/local-anomalies.md. · KILLED by the owner [sweep-step0 2026-
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** OPEN. Promoted 2026-08-27 from `.clavity/local-anomalies.md`. · 🚫 **KILLED by the owner [sweep-step0 2026-09-29]: agent compliance, not a missing mechanism - SessionStart and PreCompact reminders already exist**
+
 **Raised:** 2026-08-25.
 
 ## The observation

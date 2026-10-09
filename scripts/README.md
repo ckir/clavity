@@ -24,6 +24,8 @@ directly.
 |---|---|---|
 | `check-control-bytes.ps1` | Fail if a TRACKED `*.md` carries a C0 control byte (other than TAB, LF, CR) or DEL - usually a backslash escape a tool interpreted (ROADMAP §49). Scans bytes, not git's text/binary call; fails closed outside a git repo | `just check-control-bytes` |
 | `check-doc-stubs.ps1` | Fail if a doc deliberately reduced to a pointer stub has been re-fattened into a duplicate copy | `just check-doc-stubs` |
+| `check-tracker-format-excerpt.ps1` | Fail if the tracker-format excerpt in `docs/tracker-format.md` differs from, or is missing or duplicated in, any of the six promote-step skill copies (`open-issues`, `agy-capstone`, `agy-test-audit` x both plugins) | `just check-tracker-format-excerpt` |
+| `check-tracker-status.ps1` | Enforce `docs/tracker-format.md`: every ROADMAP section, backlog stub, fix-the-tool entry and the review-relay / agy-autotrain ROADMAP items has one valid `**Status:**` line with its evidence (`-List` prints the open items) | `just check-tracker-status` |
 | `check-member-docs.ps1` | Fail if any member is missing a required user-facing doc, or ships a CHANGELOG the release machinery can't inject into | `just check-member-docs` |
 | `check-user-facing-docs.ps1` | Fail if `docs/user-facing-docs.txt` lists a nonexistent or do-not-touch doc; warn if a user-facing-shaped doc is missing from the list | `just check-user-facing-docs` |
 | `check-installer-ascii.ps1` | Assert every `.ps1` in the Windows PowerShell 5.1 (end-user installer) domain is pure ASCII | `just check-installer-ascii` |
@@ -74,7 +76,7 @@ because the check is worth re-running by hand when that area changes.
 | Script | Purpose | Run via |
 |---|---|---|
 | `check-rulings-recorded.ps1` | Assert each named `ROADMAP.md` entry carries an `OWNER RULING (` block. Written for the steps-0-1 plan after its first verifier - an inline `awk` one-liner - FAILED SILENTLY on the last of four entries: it bounded each section by scanning to the next `#### ` heading, but the entry after `§17b` is `### §18`, so the bound never matched, the loop ran to EOF, and it printed nothing. **No output read as "not ruled" to a human and as success to a pipeline.** Matching is case-SENSITIVE (`-cnotmatch`) on purpose: PowerShell's `-match` is case-insensitive, which had certified `§14f` as ruled because its prose says "needs an owner ruling, not a fix" | `pwsh -File scripts/check-rulings-recorded.ps1` |
-| `check-roadmap-claims.ps1` | Verify the ROADMAP's own mechanically checkable claims: every `` `path` (N lines) `` claim matches the tracked file it names (an ambiguous claim resolving to two tracked files with different counts is an error, not a coin flip), and every backticked 7-40 hex sha on a line carrying a closure token actually exists | run directly, no `just` recipe; read-only |
+| `check-roadmap-claims.ps1` | Verify the ROADMAP's own mechanically checkable claims: every `` `path` (N lines) `` claim matches the tracked file it names (an ambiguous claim resolving to two tracked files with different counts is an error, not a coin flip), and every backticked 7-40 hex sha on a line carrying a closure token actually exists, and every backticked `path/with/slash:N` pointer is inside its file (an anchored `file:N` ("text") pointer must still hold its text) | run directly, no `just` recipe; read-only |
 
 ## Subdirectories
 

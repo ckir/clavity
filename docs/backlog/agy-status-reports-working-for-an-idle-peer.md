@@ -1,6 +1,8 @@
 # Backlog stub - `agy_status` reports `working` for a peer that is idle at its prompt
 
-**Status:** OPEN. Promoted 2026-08-31 from `.clavity/local-anomalies.md`. · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep Branch 4 (Branch 5 if re-measurement puts the cause in AgyView)**
+**Status:** SCHEDULED 2026-09-29 - scheduled - see the legacy status below
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** OPEN. Promoted 2026-08-31 from `.clavity/local-anomalies.md`. · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep Branch 4 (Branch 5 if re-measurement puts the cause in AgyView)**
+
 **Raised:** 2026-08-30, during an AGY-FIRST consult before proposing sequencing approaches.
 
 ## The fact

@@ -175,7 +175,7 @@ Describe 'agy-ledger-lib.sh' {
 
         function New-LedgerRepo {
             param([string]$LedgerBody, [string]$Discipline = 'agy-capstone', [string]$RawBody, [switch]$Crlf)
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("aglfx-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'aglfx'
             New-Item -ItemType Directory -Force -Path $d | Out-Null
             [void]$script:Fixtures.Add($d)   # FIXTURE HYGIENE
             & git -C $d init -q
@@ -217,7 +217,7 @@ Describe 'agy-ledger-lib.sh' {
                     "agy_ledger_lookup `"`$PWD`" '$Discipline' '$Sha'`n" +
                     "printf ' rc=%s' `"`$?`"`n"
             [IO.File]::WriteAllText($driver, ($text -replace "`r`n", "`n"))
-            $outF = Join-Path ([IO.Path]::GetTempPath()) ("agl-" + [guid]::NewGuid().ToString('N') + ".out")
+            $outF = New-TestTempPath 'agl' -Suffix '.out'
             $errF = "$outF.err"
             try {
                 $p = Start-Process -FilePath $script:Bash -ArgumentList @('run-lookup.sh') -WorkingDirectory $Cwd `

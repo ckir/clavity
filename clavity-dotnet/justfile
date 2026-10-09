@@ -9,9 +9,11 @@ default:
 lint:
     dotnet build
 
-# Unit + integration tests (ci-dotnet: `dotnet test tests/Clavity.Ls.Tests`).
+# Unit + integration tests - the SAME two projects ci-dotnet.yml runs (it calls this recipe).
+# Clavity.Live.Acceptance is DELIBERATELY not here: it needs a live agy peer and is owner-run only (ROADMAP section 36).
 test:
     dotnet test tests/Clavity.Ls.Tests
+    dotnet test tests/Clavity.Integration.Tests
 
 # Build.
 build:

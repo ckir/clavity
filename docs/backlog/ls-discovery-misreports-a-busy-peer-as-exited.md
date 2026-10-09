@@ -1,6 +1,8 @@
 # Backlog stub — LS discovery misreports a BUSY peer as "starting or exited"
 
-**Status:** 🔴 **OPEN.** Reporting defect, not a logic defect — the loop already computes everything the
+**Status:** OPEN 2026-08-12 - not yet scheduled
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** 🔴 **OPEN.** Reporting defect, not a logic defect — the loop already computes everything the
+
 fix needs.
 **Raised:** 2026-08-12, during an AGY-CAPSTONE round. A consult failed `channel_down` mid-review; the
 operator ran `/mcp` reconnect on the strength of the message and the channel came back.

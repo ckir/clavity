@@ -38,6 +38,7 @@ BeforeDiscovery {
 }
 
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
     $script:Lint     = Join-Path $script:RepoRoot 'scripts/check-agy-discipline-skills.ps1'
 
@@ -83,7 +84,7 @@ BeforeAll {
     $script:TempDirs = [System.Collections.Generic.List[string]]::new()
 
     function New-ScratchRoot {
-        $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ("agyskilltest-" + [guid]::NewGuid())
+        $scratch = New-TestTempPath 'agyskilltest'
         $script:TempDirs.Add($scratch)
         # FOUR, not three. The 13b discipline-mandate check runs over adversarial-panel-review too, so a
         # scratch root without it makes EVERY rejection test below fail on a MISSING sibling rather than
@@ -115,7 +116,7 @@ BeforeAll {
     #   -Checker <text> that text written as the checker, for a registry mutated on purpose
     function New-TempLinter {
         param([string]$Source, [string]$Checker = 'real')
-        $dir = Join-Path ([IO.Path]::GetTempPath()) ("lintdir-" + [guid]::NewGuid().ToString('N'))
+        $dir = New-TestTempPath 'lintdir'
         $script:TempDirs.Add($dir)
         New-Item -ItemType Directory -Path $dir | Out-Null
         $lint = Join-Path $dir 'lint-copy.ps1'
@@ -908,14 +909,15 @@ Describe 'check-agy-discipline-skills' {
             $realSrc.Contains($needle) | Should -BeTrue -Because 'the mutation target line must match the real linter verbatim'
             $mutated = $realSrc.Replace($needle, "`$skills = @('agy-first', 'agy-capstone', 'agy-test-audit', 'phantom-unmapped')")
             $mutated | Should -Not -Be $realSrc -Because 'the phantom-skill injection into $skills must take effect; if the source array formatting changed, update the injection regex'
-            $tmpLint = New-TempLinter -Source $mutated -Checker real
-
-            $scratch = New-ScratchRoot
-            $pdir = Join-Path $scratch 'clavity-dotnet/plugin/skills/phantom-unmapped'
-            New-Item -ItemType Directory -Force -Path $pdir | Out-Null
-            Set-Content -Path (Join-Path $pdir 'SKILL.md') -Value $script:PhantomSkill -NoNewline -Encoding utf8
-
+            $scratch = $null; $tmpLint = $null
             try {
+                $tmpLint = New-TempLinter -Source $mutated -Checker real
+
+                $scratch = New-ScratchRoot
+                $pdir = Join-Path $scratch 'clavity-dotnet/plugin/skills/phantom-unmapped'
+                New-Item -ItemType Directory -Force -Path $pdir | Out-Null
+                Set-Content -Path (Join-Path $pdir 'SKILL.md') -Value $script:PhantomSkill -NoNewline -Encoding utf8
+
                 $guardOut = & $tmpLint -Root $scratch 2>&1
                 $LASTEXITCODE | Should -Be 1
                 $text = Get-LintText $guardOut
@@ -929,8 +931,8 @@ Describe 'check-agy-discipline-skills' {
                 $text | Should -Not -Match 'names no sanctioned scratch directory'
                 $text | Should -Not -Match 'missing the anti-wrap-up clause'
             } finally {
-                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
-                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+                if ($tmpLint) { Remove-TestPath (Split-Path -Parent $tmpLint) }
+                Remove-TestPath $scratch
             }
         }
     }
@@ -994,15 +996,16 @@ Describe 'check-agy-discipline-skills' {
             # no fixture built under -Root can move it. Until this row the branch was exercised only BY
             # ACCIDENT, as one of the eleven diagnostics the F3 fixture used to emit; repairing that
             # fixture's isolation removed the accident, so this row is what keeps the branch covered.
-            $scratch = New-ScratchRoot
-            $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker none
+            $scratch = $null; $tmpLint = $null
             try {
+                $scratch = New-ScratchRoot
+                $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker none
                 $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match 'names a checker that is not there'
             } finally {
-                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
-                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+                if ($tmpLint) { Remove-TestPath (Split-Path -Parent $tmpLint) }
+                Remove-TestPath $scratch
             }
         }
 
@@ -1015,9 +1018,10 @@ Describe 'check-agy-discipline-skills' {
             $py = Get-Content -Raw (Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py')
             $py.Contains('"agy-test-audit":') | Should -BeTrue -Because 'the registry entry must be present to be renamed away'
             $noEntry = $py.Replace('"agy-test-audit":', '"agy-test-audit-RENAMED":')
-            $scratch = New-ScratchRoot
-            $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $noEntry
+            $scratch = $null; $tmpLint = $null
             try {
+                $scratch = New-ScratchRoot
+                $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $noEntry
                 $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 # ANCHORED TO THE RULE'S OWN, SKILL-SCOPED DIAGNOSTIC. AGY-TEST-AUDIT section 30, branch census:
@@ -1029,8 +1033,8 @@ Describe 'check-agy-discipline-skills' {
                 $out | Should -Match ([regex]::Escape("clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md : scripts/check-peer-reply-citations.py declares no SCHEMAS entry for 'agy-test-audit'")) -Because 'the RULE must tell the skill its entry is missing; the roster summary is a different check'
                 $out | Should -Not -Match 'names a checker that is not there' -Because 'the registry must be PRESENT for this row to reach the entry check'
             } finally {
-                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
-                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+                if ($tmpLint) { Remove-TestPath (Split-Path -Parent $tmpLint) }
+                Remove-TestPath $scratch
             }
         }
     }
@@ -1073,15 +1077,16 @@ Describe 'check-agy-discipline-skills' {
             $extra = $py.Replace($anchor, "    `"agy-negotiate`":  [`"seat`", `"file`", `"quoted_line`"],`n$anchor")
             $extra | Should -Not -Be $py -Because 'the phantom registry entry must take effect'
 
-            $scratch = New-ScratchRoot
-            $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $extra
+            $scratch = $null; $tmpLint = $null
             try {
+                $scratch = New-ScratchRoot
+                $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $extra
                 $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match 'declares SCHEMAS entries this linter never checks: agy-negotiate'
             } finally {
-                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
-                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+                if ($tmpLint) { Remove-TestPath (Split-Path -Parent $tmpLint) }
+                Remove-TestPath $scratch
             }
         }
 
@@ -1096,15 +1101,16 @@ Describe 'check-agy-discipline-skills' {
             $mutated = $realSrc.Replace($needle, "`$disciplineNames = `$skills + @('adversarial-panel-review', 'agy-phantom')")
             $mutated | Should -Not -Be $realSrc -Because 'the phantom roster name must take effect'
 
-            $scratch = New-ScratchRoot
-            $tmpLint = New-TempLinter -Source $mutated -Checker real
+            $scratch = $null; $tmpLint = $null
             try {
+                $scratch = New-ScratchRoot
+                $tmpLint = New-TempLinter -Source $mutated -Checker real
                 $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match 'declares no SCHEMAS entry for: agy-phantom'
             } finally {
-                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
-                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+                if ($tmpLint) { Remove-TestPath (Split-Path -Parent $tmpLint) }
+                Remove-TestPath $scratch
             }
         }
 
@@ -1128,16 +1134,17 @@ Describe 'check-agy-discipline-skills' {
             $realSrc.Contains($needle) | Should -BeTrue -Because 'the roster line must match the real linter verbatim'
             $mutated = $realSrc.Replace($needle, "`$disciplineNames = `$skills + @('adversarial-panel-review', 'agy-phantom')")
 
-            $scratch = New-ScratchRoot
-            $tmpLint = New-TempLinter -Source $mutated -Checker $smuggled
+            $scratch = $null; $tmpLint = $null
             try {
+                $scratch = New-ScratchRoot
+                $tmpLint = New-TempLinter -Source $mutated -Checker $smuggled
                 $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match 'declares no SCHEMAS entry for: agy-phantom' -Because 'a name that appears only in the docstring is NOT registered, and the reconciliation must say so'
                 $out | Should -Not -Match 'could not locate' -Because 'the SCHEMAS block is present and parseable in this fixture; this row must isolate the smuggle from the block-not-found branch'
             } finally {
-                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
-                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+                if ($tmpLint) { Remove-TestPath (Split-Path -Parent $tmpLint) }
+                Remove-TestPath $scratch
             }
         }
 
@@ -1150,17 +1157,18 @@ Describe 'check-agy-discipline-skills' {
             $py.Contains('SCHEMAS = {') | Should -BeTrue -Because 'the block opener must be present to be removed'
             $noBlock = $py.Replace('SCHEMAS = {', 'SCHEMAS = dict(')
 
-            $scratch = New-ScratchRoot
-            # AND IT MUST NOT HIDE THE CHECKS THAT DO NOT NEED THE REGISTRY. AGY-CAPSTONE section 30 round 3:
-            # this branch used to `continue`, skipping every later check for the skill - the ledger check
-            # included - so a skill with an unreadable registry AND a missing ledger path reported only the
-            # first. Strip the capstone's ledger path too, and require its diagnostic as well.
-            $cap = & $script:SkillPath $scratch 'agy-capstone'
-            $capRaw = Get-Content -Raw $cap
-            $capRaw.Contains('docs/agy-capstone-ledger.md') | Should -BeTrue -Because 'the ledger path must be present to be removed'
-            Set-Content -Path $cap -Value $capRaw.Replace('docs/agy-capstone-ledger.md', '') -NoNewline -Encoding utf8
-            $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $noBlock
+            $scratch = $null; $tmpLint = $null
             try {
+                $scratch = New-ScratchRoot
+                # AND IT MUST NOT HIDE THE CHECKS THAT DO NOT NEED THE REGISTRY. AGY-CAPSTONE section 30 round 3:
+                # this branch used to `continue`, skipping every later check for the skill - the ledger check
+                # included - so a skill with an unreadable registry AND a missing ledger path reported only the
+                # first. Strip the capstone's ledger path too, and require its diagnostic as well.
+                $cap = & $script:SkillPath $scratch 'agy-capstone'
+                $capRaw = Get-Content -Raw $cap
+                $capRaw.Contains('docs/agy-capstone-ledger.md') | Should -BeTrue -Because 'the ledger path must be present to be removed'
+                Set-Content -Path $cap -Value $capRaw.Replace('docs/agy-capstone-ledger.md', '') -NoNewline -Encoding utf8
+                $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $noBlock
                 $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match "did not find exactly ONE 'SCHEMAS = \{' assignment"
@@ -1180,8 +1188,8 @@ Describe 'check-agy-discipline-skills' {
                 $out | Should -Not -Match 'declares no SCHEMAS entry for:' -Because 'the block-not-found branch suppresses the second diagnostic deliberately; four phantom mismatches would bury the real cause'
                 $out | Should -Match ([regex]::Escape("never names 'docs/agy-capstone-ledger.md'")) -Because 'an unreadable registry must suppress only the checks that NEED it, never the ledger check after them'
             } finally {
-                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
-                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+                if ($tmpLint) { Remove-TestPath (Split-Path -Parent $tmpLint) }
+                Remove-TestPath $scratch
             }
         }
 
@@ -1218,16 +1226,17 @@ Example of a registry row:
             $withDecoy = $drifted.Replace($docLine, $docLine + $decoy)
             $withDecoy | Should -Not -Be $drifted -Because 'the decoy injection must take effect'
 
-            $scratch = New-ScratchRoot
-            $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $withDecoy
+            $scratch = $null; $tmpLint = $null
             try {
+                $scratch = New-ScratchRoot
+                $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $withDecoy
                 $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match 'key list does not match SCHEMAS' -Because 'the drifted REAL entry must be the one read, not the decoy above it'
                 $out | Should -Match 'smuggled' -Because 'the diagnostic must name the keys from the REAL entry, which is how this row distinguishes the two sources'
             } finally {
-                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
-                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+                if ($tmpLint) { Remove-TestPath (Split-Path -Parent $tmpLint) }
+                Remove-TestPath $scratch
             }
         }
 
@@ -1246,15 +1255,16 @@ Example of a registry row:
             $indented = $py -replace '(?m)^\}', '    }'
             $indented | Should -Not -Be $py -Because 'the indent must take effect'
 
-            $scratch = New-ScratchRoot
-            $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $indented
+            $scratch = $null; $tmpLint = $null
             try {
+                $scratch = New-ScratchRoot
+                $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $indented
                 $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 0 -Because 'an indented closing brace is valid Python and must not break the registry read'
                 $out | Should -Not -Match 'exactly ONE'
             } finally {
-                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
-                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+                if ($tmpLint) { Remove-TestPath (Split-Path -Parent $tmpLint) }
+                Remove-TestPath $scratch
             }
         }
 
@@ -1284,16 +1294,17 @@ SCHEMAS = {
             $twoBlocks = $py.Replace($docLine, $docLine + $decoy)
             ([regex]::Matches($twoBlocks, '(?m)^SCHEMAS\s*=\s*\{')).Count | Should -Be 2 -Because 'the decoy must actually add a second assignment, or this row proves nothing'
 
-            $scratch = New-ScratchRoot
-            $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $twoBlocks
+            $scratch = $null; $tmpLint = $null
             try {
+                $scratch = New-ScratchRoot
+                $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $twoBlocks
                 $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match 'exactly ONE' -Because 'an ambiguous registry must be refused, not guessed at'
                 $out | Should -Match 'DUPLICATED' -Because 'the diagnostic must name duplication as a cause; "could not locate" sent the reader looking for a missing block that is present twice'
             } finally {
-                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
-                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+                if ($tmpLint) { Remove-TestPath (Split-Path -Parent $tmpLint) }
+                Remove-TestPath $scratch
             }
         }
 
@@ -1427,7 +1438,7 @@ Describe 'AGY-NEGOTIATE is pinned across all four disciplines' {
         # clavity-classic/target at 2.6G and .git at 95M. A whole-tree copy inside a Pester test
         # thrashes the disk, hits file locks on live build artifacts, and turns a string-replacement
         # test into the slowest thing in the suite. The linter takes -Root, so give it a minimal tree.
-        $sandbox = Join-Path ([System.IO.Path]::GetTempPath()) ("negpin-" + [guid]::NewGuid().ToString('N'))
+        $sandbox = New-TestTempPath 'negpin'
         try {
             foreach ($d in @('agy-first','agy-capstone','agy-test-audit','adversarial-panel-review')) {
                 $dest = Join-Path $sandbox "clavity-dotnet/plugin/skills/$d"

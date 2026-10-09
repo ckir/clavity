@@ -20,12 +20,12 @@ Describe 'agy-anomaly-dispatch-reminder.sh' {
         $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')
 
         function New-CleanHome {
-            $h = Join-Path ([IO.Path]::GetTempPath()) ("anom-disp-home-" + [Guid]::NewGuid().ToString('N'))
+            $h = New-TestTempPath "anom-disp-home"
             New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
             return $h
         }
         function New-Workspace {
-            $w = Join-Path ([IO.Path]::GetTempPath()) ("anom-disp-ws-" + [Guid]::NewGuid().ToString('N'))
+            $w = New-TestTempPath "anom-disp-ws"
             New-Item -ItemType Directory -Path $w -Force | Out-Null
             return $w
         }
@@ -51,65 +51,71 @@ Describe 'agy-anomaly-dispatch-reminder.sh' {
     # measured on a sibling hook, a broken walk produced silence indistinguishable from a working
     # kill-switch, and only the control went red.
     It 'is SILENT when .no-agy is at the repo root and cwd is a subdirectory' {
-        $repo = New-TempRepo; $h = New-CleanHome
+        $repo = $null; $h = $null
         try {
+            $repo = New-TempRepo; $h = New-CleanHome
             $sub = Join-Path $repo 'src'
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload $sub) -Env @{ HOME = $h }
             $r.StdOut   | Should -BeNullOrEmpty -Because 'an opt-out at the repo root must suppress this hook from a subdirectory'
             $r.ExitCode | Should -Be 0 -Because 'exit 2 is BLOCKING for PreToolUse - it would halt every dispatch'
-        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $repo, $h }
     }
     It 'DOES deliver from that same subdirectory when .no-agy is absent (positive control)' {
-        $repo = New-TempRepo; $h = New-CleanHome
+        $repo = $null; $h = $null
         try {
+            $repo = New-TempRepo; $h = New-CleanHome
             $sub = Join-Path $repo 'src'
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload $sub) -Env @{ HOME = $h }
             (Get-Ctx $r) | Should -Match ([regex]::Escape($script:DispatchMsg)) -Because 'without the opt-out it must still deliver - otherwise the silence test proves nothing'
-        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $repo, $h }
     }
     It 'honours a root .no-agy from a subdirectory on the DEGRADED (no jq) path too' {
         # This path used to test "./.no-agy" - the PROCESS cwd, not the session workspace - so it could
         # not honour any workspace opt-out at all when the two differ. Nothing covered it.
-        $repo = New-TempRepo; $h = New-CleanHome
+        $repo = $null; $h = $null
         try {
+            $repo = New-TempRepo; $h = New-CleanHome
             $sub = Join-Path $repo 'src'
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload $sub) -Env @{ PATH = $script:NoJqPath; HOME = $h }
             $r.StdOut   | Should -BeNullOrEmpty -Because 'the degraded path must honour the same root opt-out as the jq path'
             $r.ExitCode | Should -Be 0 -Because 'every path in this PreToolUse hook must fail open'
-        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $repo, $h }
     }
     It 'DOES deliver from that subdirectory without .no-agy when jq is absent (degraded positive control)' {
-        $repo = New-TempRepo; $h = New-CleanHome
+        $repo = $null; $h = $null
         try {
+            $repo = New-TempRepo; $h = New-CleanHome
             $sub = Join-Path $repo 'src'
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload $sub) -Env @{ PATH = $script:NoJqPath; HOME = $h }
             (Get-Ctx $r) | Should -Match ([regex]::Escape($script:DispatchMsg)) -Because 'the degraded path must still deliver without an opt-out'
-        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $repo, $h }
     }
 
     It 'emits hookSpecificOutput with hookEventName PreToolUse' {
-        $w = New-Workspace; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace; $h = New-CleanHome
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $j = $r.StdOut | ConvertFrom-Json
             $j.hookSpecificOutput.hookEventName | Should -BeExactly 'PreToolUse'
             $j.PSObject.Properties.Name | Should -Not -Contain 'systemMessage'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'delivers the dispatch directive WHOLE' {
-        $w = New-Workspace; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace; $h = New-CleanHome
             Get-Ctx (Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }) |
                 Should -Match ([regex]::Escape($script:DispatchMsg))
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'carries BOTH halves - instruct-the-subagent AND verify-on-return' {
@@ -117,12 +123,13 @@ Describe 'agy-anomaly-dispatch-reminder.sh' {
         # have instructed the subagent to produce the heading the driver is then told to look for, so the
         # driver checks, finds nothing, and correctly concludes "no anomalies" - from a question that was
         # never asked. Pinned separately from the whole-string assertion so the failure NAMES which half.
-        $w = New-Workspace; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace; $h = New-CleanHome
             $ctx = Get-Ctx (Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h })
             $ctx | Should -Match ([regex]::Escape('ask the subagent to report anything wrong it notices that is NOT its task'))
             $ctx | Should -Match ([regex]::Escape('VERIFY each claimed anomaly by measurement and APPEND the verified ones'))
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'carries NO FILES allow-list and no implementer-dispatch obligation' {
@@ -131,13 +138,14 @@ Describe 'agy-anomaly-dispatch-reminder.sh' {
         # anomaly clause and the FILES clause are separable, and only the latter is excluded here.
         # NEGATIVE assertion - passes on a clean baseline by construction. Its non-vacuity is proven by a
         # landed mutation, recorded in the plan for this task.
-        $w = New-Workspace; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace; $h = New-CleanHome
             $ctx = Get-Ctx (Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h })
             $ctx | Should -Not -BeNullOrEmpty -Because 'a silent hook would satisfy both negatives below vacuously'
             $ctx | Should -Not -Match 'FILES'
             $ctx | Should -Not -Match 'git status --short'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'exits 0 on every failure mode' -ForEach @(
@@ -199,34 +207,37 @@ Describe 'agy-anomaly-dispatch-reminder.sh' {
         # The anti-drift guard. THE NON-EMPTY ASSERTIONS ARE NOT DECORATION: equality alone is satisfied
         # when BOTH paths emit nothing, and measured on this change's sibling suite, that made it the one
         # test of ten that passed green against a hook that did not exist yet.
-        $w = New-Workspace; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace; $h = New-CleanHome
             $withJq = Get-Ctx (Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h })
             $noJq   = Get-Ctx (Invoke-BashHook -HookPath $script:Hook -Payload '{"cwd":"."}' -Env @{ PATH = $script:NoJqPath; HOME = $h })
             $withJq | Should -Not -BeNullOrEmpty -Because 'two silent paths are trivially identical'
             $noJq   | Should -Not -BeNullOrEmpty -Because 'two silent paths are trivially identical'
             $noJq | Should -BeExactly $withJq
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'is SILENT under a WORKSPACE .no-agy' {
-        $w = New-Workspace; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace; $h = New-CleanHome
             New-Item -ItemType File -Path (Join-Path $w '.no-agy') -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'is SILENT under a GLOBAL .no-agy' {
-        $w = New-Workspace; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace; $h = New-CleanHome
             New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'is SILENT under a GLOBAL .no-agy even when jq is absent' {
@@ -240,8 +251,9 @@ Describe 'agy-anomaly-dispatch-reminder.sh' {
     }
 
     It 'emits a directive free of backtick, apostrophe, double quote and backslash' {
-        $w = New-Workspace; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace; $h = New-CleanHome
             $ctx = Get-Ctx (Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h })
             $ctx | Should -Not -BeNullOrEmpty -Because 'an empty directive would pass every byte scan below'
             $bytes = [Text.Encoding]::UTF8.GetBytes($ctx)
@@ -250,7 +262,7 @@ Describe 'agy-anomaly-dispatch-reminder.sh' {
             @($bytes | Where-Object { $_ -eq 0x22 }).Count | Should -Be 0 -Because 'double quote'
             @($bytes | Where-Object { $_ -eq 0x5C }).Count | Should -Be 0 -Because 'backslash'
             @($bytes | Where-Object { $_ -gt 127 }).Count  | Should -Be 0 -Because 'non-ASCII'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     # ROADMAP section 59. FAILING CONTROL, measured 2026-10-08 with this launcher against the unfixed hook: line 36 writes

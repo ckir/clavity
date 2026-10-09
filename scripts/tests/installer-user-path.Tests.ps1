@@ -20,6 +20,7 @@
 #   from InitializeSetup: it installs nothing, creates no app directory and no uninstall entry, and the row
 #   asserts the user's real PATH is byte-identical before and after.
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
     $script:Include  = Join-Path $script:RepoRoot 'installer/_shared/user-path.iss'
     $script:Iscc = @(Get-ChildItem -Path "$env:ProgramFiles\Inno Setup *\ISCC.exe", "${env:ProgramFiles(x86)}\Inno Setup *\ISCC.exe" -ErrorAction SilentlyContinue |
@@ -79,7 +80,7 @@ Describe 'installer user PATH handling' {
 
     Context 'behavioural - the include, compiled by ISCC and run' {
         BeforeAll {
-            $script:Work = Join-Path ([IO.Path]::GetTempPath()) ("userpath-" + [guid]::NewGuid().ToString('N'))
+            $script:Work = New-TestTempPath 'userpath'
             $script:RegKey = 'Software\ClavityUserPathProbe-' + [guid]::NewGuid().ToString('N')
             $script:Dir = 'C:\Tools\Programs\clavity-dotnet'
             $script:Out = Join-Path $script:Work 'out.txt'

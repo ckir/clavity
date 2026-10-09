@@ -2,6 +2,7 @@
 # Pins the peer-reply citation checker: the DISCIPLINE declares the schema, the checker owns the
 # declaration, and citations resolve by QUOTED TEXT rather than by line number.
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
     $script:Checker  = Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py'
     if (-not (Test-Path -LiteralPath $script:Checker -PathType Leaf)) {
@@ -35,7 +36,7 @@ BeforeAll {
 
     $script:Made = [System.Collections.Generic.List[string]]::new()
     function New-Reply { param([string]$Json)
-        $p = Join-Path ([IO.Path]::GetTempPath()) ("reply-" + [guid]::NewGuid() + ".json")
+        $p = New-TestTempPath 'reply' -Suffix '.json'
         [IO.File]::WriteAllText($p, $Json); $script:Made.Add($p); $p
     }
 }
@@ -297,7 +298,7 @@ if len(vals) != 1:
     raise SystemExit("expected exactly ONE DASHES assignment, found %d" % len(vals))
 print(",".join(str(ord(c)) for c in ast.literal_eval(vals[0])))
 '@
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("dashpin-" + [guid]::NewGuid() + ".py")
+        $tmp = New-TestTempPath 'dashpin' -Suffix '.py'
         [IO.File]::WriteAllText($tmp, $prog); $script:Made.Add($tmp)
         $out = ((& $script:Py $tmp $checker 2>&1) -join '').Trim()
         $LASTEXITCODE | Should -Be 0 -Because "the extractor must run; it said: $out"

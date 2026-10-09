@@ -24,7 +24,7 @@ BeforeAll {
     function New-Fixture {
         # NB: never name a local $home — it aliases the read-only automatic $HOME (PowerShell vars are
         # case-insensitive) and throws "Cannot overwrite variable HOME".
-        $base = Join-Path ([IO.Path]::GetTempPath()) ("mi-" + [Guid]::NewGuid().ToString('N'))
+        $base = New-TestTempPath 'mi'
         $lad  = Join-Path $base 'lad'
         $hm   = Join-Path $base 'home'
         $knowledge = Join-Path $lad 'Programs/agy-autotrain/plugins/agy-autotrain/knowledge'

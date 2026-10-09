@@ -9,7 +9,7 @@ Describe 'agy-liveness-check.sh' {
         # Build a fixture config-dir (the CLAUDE_CONFIG_DIR the hook reads as the USER-scope settings home)
         # with an enabledPlugins map. $Enabled = $true|$false|$null (no key) | 'nofile' (no settings.json).
         function New-ConfigFixture { param($Enabled)
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-cfg-" + [Guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'sp-d-cfg'
             New-Item -ItemType Directory -Path $d -Force | Out-Null
             if ('nofile' -ne $Enabled) {
                 $ep = @{}
@@ -21,7 +21,7 @@ Describe 'agy-liveness-check.sh' {
         }
         # An empty HOME fixture so the hook's `$HOME/.claude/.no-agy` global check never hits the host.
         function New-CleanHome {
-            $h = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-home-" + [Guid]::NewGuid().ToString('N'))
+            $h = New-TestTempPath 'sp-d-home'
             New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
             return $h
         }
@@ -38,13 +38,14 @@ Describe 'agy-liveness-check.sh' {
     }
 
     It 'is SILENT (exit 0, no output at all) when superpowers is enabled' {
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $cfg = $null; $h = $null
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
             $r.StdErr   | Should -BeNullOrEmpty -Because 'ROADMAP section 31: this hook must never write to stderr again - stderr plus a non-zero exit is what rendered a routine notice as a red hook error'
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h }
     }
     It 'stays SILENT on stderr when PATH carries no external tools at all' {
         # ANOMALY TRIAGE 2026-09-12. MEASURED before the fix, with bash invoked by ABSOLUTE path so the
@@ -71,10 +72,11 @@ Describe 'agy-liveness-check.sh' {
             Set-ItResult -Skipped -Because 'the raw MSYS shell is not present; the wrapper always restores /usr/bin, so the empty-PATH case cannot be reproduced through it'
             return
         }
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
-        $w = Join-Path ([IO.Path]::GetTempPath()) ("lv-nopath-" + [guid]::NewGuid().ToString('N'))
+        $cfg = $null; $h = $null
+        $w = New-TestTempPath 'lv-nopath'
         New-Item -ItemType Directory -Path $w -Force | Out-Null
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             $posix = { param($p) ($p -replace '\\', '/') -replace '^([A-Za-z]):', '/$1' }
             $pf  = Join-Path $w 'payload.json'; Set-Content -LiteralPath $pf -Value (Payload) -NoNewline -Encoding ascii
             $sh  = Join-Path $w 'run.sh'
@@ -87,49 +89,53 @@ Describe 'agy-liveness-check.sh' {
             $p.ExitCode | Should -Be 0 -Because 'a hook that cannot reach its tools must still fail open'
             (Get-Item -LiteralPath $out).Length | Should -BeGreaterThan 0 -Because 'the hook must still run and answer, or an empty stderr proves only that nothing happened'
             (Get-Content -LiteralPath $err -Raw) | Should -BeNullOrEmpty -Because 'an unredirected external command turns a working hook into a red hook error'
-        } finally { Remove-Item $cfg,$h,$w -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h, $w }
     }
     It 'ADVISES (systemMessage + exit 0) when superpowers is disabled' {
-        $cfg = New-ConfigFixture $false; $h = New-CleanHome
+        $cfg = $null; $h = $null
         try {
+            $cfg = New-ConfigFixture $false; $h = New-CleanHome
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match 'superpowers not detected'
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h }
     }
     It 'ADVISES when no settings files exist at all' {
-        $cfg = New-ConfigFixture 'nofile'; $h = New-CleanHome
+        $cfg = $null; $h = $null
         try {
+            $cfg = New-ConfigFixture 'nofile'; $h = New-CleanHome
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.ExitCode | Should -Be 0
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h }
     }
     It 'honors the settings hierarchy: project-local disable overrides user enable -> ADVISES' {
-        $cfg = New-ConfigFixture $true          # user scope: enabled
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = $null; $h = $null
+        $proj = New-TestTempPath 'sp-d-proj'
         New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
         @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $false } } | ConvertTo-Json -Depth 5 |
             Set-Content (Join-Path $proj '.claude/settings.local.json') -Encoding ascii
-        $h = New-CleanHome
         try {
+            $cfg = New-ConfigFixture $true          # user scope: enabled
+            $h = New-CleanHome
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
             $r.ExitCode | Should -Be 0
-        } finally { Remove-Item $cfg,$proj,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $proj, $h }
     }
     It 'honors the hierarchy: project-local enable overrides user disable -> SILENT' {
-        $cfg = New-ConfigFixture $false         # user scope: disabled
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = $null; $h = $null
+        $proj = New-TestTempPath 'sp-d-proj'
         New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
         @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true } } | ConvertTo-Json -Depth 5 |
             Set-Content (Join-Path $proj '.claude/settings.local.json') -Encoding ascii
-        $h = New-CleanHome
         try {
+            $cfg = New-ConfigFixture $false         # user scope: disabled
+            $h = New-CleanHome
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
             $r.ExitCode | Should -Be 0
-        } finally { Remove-Item $cfg,$proj,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $proj, $h }
     }
     It 'ADVISES on a corrupt (unreadable) settings.json (never fail-open)' {
-        $cfg = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-corrupt-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = New-TestTempPath 'sp-d-corrupt'
         New-Item -ItemType Directory -Path $cfg -Force | Out-Null
         '{ this is not json' | Set-Content (Join-Path $cfg 'settings.json') -Encoding ascii
         $h = New-CleanHome
@@ -139,8 +145,9 @@ Describe 'agy-liveness-check.sh' {
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
     It 'reports .no-agy in cwd to the MODEL ONLY, and does NOT also emit the superpowers/jq notice' {
-        $repo = New-TempRepo; $cfg = New-ConfigFixture $false; $h = New-CleanHome  # superpowers disabled too
+        $repo = $null; $cfg = $null; $h = $null
         try {
+            $repo = New-TempRepo; $cfg = New-ConfigFixture $false; $h = New-CleanHome  # superpowers disabled too
             New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
             $cwd = ($repo -replace '\\','/')
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $cwd) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
@@ -158,25 +165,27 @@ Describe 'agy-liveness-check.sh' {
             $j = $r.StdOut | ConvertFrom-Json
             $j.PSObject.Properties.Name | Should -Not -Contain 'systemMessage' -Because 'a state the owner chose demands no action, and a boot notice that demands nothing trains them to ignore the ones that do'
             $j.hookSpecificOutput.additionalContext | Should -Match 'suppressed by \.no-agy' -Because 'the model must still be able to answer "why are the disciplines not firing" with the exact path'
-        } finally { Remove-Item $repo,$cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $repo, $cfg, $h }
     }
     It 'announces a global $HOME/.claude/.no-agy' {
-        $cfg = New-ConfigFixture $true
-        $h = New-CleanHome
-        New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
+        $cfg = $null; $h = $null
         try {
+            $cfg = New-ConfigFixture $true
+            $h = New-CleanHome
+            New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match 'suppressed by .no-agy'
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h }
     }
     # --- .no-agy at the REPO ROOT, session cwd in a SUBDIRECTORY ---------------------------------
     # This hook exists to say LOUDLY and TRUTHFULLY why the disciplines are off, so naming a path that
     # does not exist is a defect in the one hook meant to prevent confusion. Every other test here
     # forward-slashes cwd; these feed the raw backslashed shape the real payload carries.
     It 'names the ROOT .no-agy path when suppressed from a subdirectory (still, in the model half)' {
-        $repo = New-TempRepo; $cfg = New-ConfigFixture $false; $h = New-CleanHome
+        $repo = $null; $cfg = $null; $h = $null
         try {
+            $repo = New-TempRepo; $cfg = New-ConfigFixture $false; $h = New-CleanHome
             $sub = Join-Path $repo 'src'
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
@@ -185,24 +194,26 @@ Describe 'agy-liveness-check.sh' {
             $r.ExitCode | Should -Be 0 -Because 'SessionStart announces and stops - it must NOT exit 0 silently'
             $r.StdOut   | Should -Match 'suppressed by \.no-agy' -Because 'a root opt-out must suppress it from a subdirectory'
             $r.StdOut   | Should -Not -Match 'src[\\/]\.no-agy' -Because 'it must name the file that actually exists, not the cwd candidate'
-        } finally { Remove-Item $repo,$cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $repo, $cfg, $h }
     }
     It 'still ADVISES from that same subdirectory when .no-agy is absent (positive control)' {
-        $repo = New-TempRepo; $cfg = New-ConfigFixture $false; $h = New-CleanHome
+        $repo = $null; $cfg = $null; $h = $null
         try {
+            $repo = New-TempRepo; $cfg = New-ConfigFixture $false; $h = New-CleanHome
             $sub = Join-Path $repo 'src'
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             $payload = '{"cwd":"' + ($sub -replace '\\', '\\') + '","source":"startup","hook_event_name":"SessionStart"}'
             $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.StdOut | Should -Not -Match 'suppressed by \.no-agy' -Because 'without the opt-out nothing may claim suppression - otherwise the test above proves nothing'
             $r.StdOut | Should -Match 'superpowers'               -Because 'it must still deliver its real advisory'
-        } finally { Remove-Item $repo,$cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $repo, $cfg, $h }
     }
     It 'no-jq: announces the ROOT .no-agy from a subdirectory, not the literal ./.no-agy' {
         # The degraded path tested "./.no-agy" - the PROCESS cwd - and announced that literal string as the
         # suppressing path whether or not any such file existed. Nothing covered it.
-        $repo = New-TempRepo; $h = New-CleanHome
+        $repo = $null; $h = $null
         try {
+            $repo = New-TempRepo; $h = New-CleanHome
             $sub = Join-Path $repo 'src'
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
@@ -212,17 +223,18 @@ Describe 'agy-liveness-check.sh' {
             $r.StdOut   | Should -Match 'suppressed by \.no-agy' -Because 'the degraded path must honour the same root opt-out'
             $r.StdOut   | Should -Not -Match 'missing jq'        -Because 'one announce, not two - the kill-switch wins'
             $r.StdOut   | Should -Not -Match '\./\.no-agy'       -Because 'it must name the real file, not the process-cwd placeholder'
-        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $repo, $h }
     }
     It 'no-jq: still warns about jq from that subdirectory when .no-agy is absent (degraded control)' {
-        $repo = New-TempRepo; $h = New-CleanHome
+        $repo = $null; $h = $null
         try {
+            $repo = New-TempRepo; $h = New-CleanHome
             $sub = Join-Path $repo 'src'
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             $payload = '{"cwd":"' + ($sub -replace '\\', '\\') + '","source":"startup","hook_event_name":"SessionStart"}'
             $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ PATH = $script:NoJqPath; HOME = $h }
             $r.StdOut | Should -Match 'missing jq' -Because 'without the opt-out the degraded path must still warn'
-        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $repo, $h }
     }
 
     It 'emits ONE jq-missing warning (systemMessage, exit 0) when jq is absent' {
@@ -259,8 +271,9 @@ Describe 'agy-liveness-check.sh' {
     }
 
     It 'REPORTS a personal registration of a shipped hook name (user scope)' {
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $cfg = $null; $h = $null
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             $s = Join-Path $cfg 'settings.json'
             @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true }
                hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-liveness-check.sh"' } ) } ) }
@@ -268,12 +281,13 @@ Describe 'agy-liveness-check.sh' {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match 'agy-liveness-check'
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h }
     }
 
     It 'STILL reports ownership when .no-agy is present (constraint 5)' {
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $cfg = $null; $h = $null
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             $s = Join-Path $cfg 'settings.json'
             @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true }
                hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-liveness-check.sh"' } ) } ) }
@@ -292,17 +306,18 @@ Describe 'agy-liveness-check.sh' {
             $j.systemMessage | Should -Match 'agy-liveness-check' -Because 'a gate the policed party can switch off is not a gate'
             $j.systemMessage | Should -Not -Match 'suppressed by \.no-agy' -Because 'the override earns the screen; the chosen state that hid it does not'
             $j.hookSpecificOutput.additionalContext | Should -Match 'suppressed by \.no-agy'
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h }
     }
 
     It 'is SILENT about ownership when no personal registration exists' {
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $cfg = $null; $h = $null
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
             $r.StdErr   | Should -BeNullOrEmpty -Because 'ROADMAP section 31: this hook must never write to stderr again - stderr plus a non-zero exit is what rendered a routine notice as a red hook error'
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h }
     }
 
     It 'reports the unreadable settings file BUT continues the sweep' {
@@ -311,8 +326,8 @@ Describe 'agy-liveness-check.sh' {
         # them the other way round: the collision was found on iteration 1 and the corrupt file was last,
         # so `continue` and `break` behaved identically and the mutation left the suite green. A guard
         # whose removal leaves the suite green is not a guard.
-        $cfg  = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-cfg-"  + [Guid]::NewGuid().ToString('N'))
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $cfg  = New-TestTempPath 'sp-d-cfg'
+        $proj = New-TestTempPath 'sp-d-proj'
         $h = New-CleanHome
         try {
             New-Item -ItemType Directory -Path $cfg -Force | Out-Null
@@ -330,7 +345,7 @@ Describe 'agy-liveness-check.sh' {
     It 'reports a settings file holding TWO JSON documents as unreadable (Branch 20, owner ruling Q1)' {
         # `jq -e .` and `jq -s` accept a document STREAM, so this file passed silently before Branch 20, while
         # Claude Code itself rejects it. One `try fromjson` per file now reports it like any corrupt file.
-        $cfg = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-cfg-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = New-TestTempPath 'sp-d-cfg'
         $h = New-CleanHome
         try {
             New-Item -ItemType Directory -Path $cfg -Force | Out-Null
@@ -342,37 +357,40 @@ Describe 'agy-liveness-check.sh' {
     }
 
     It 'stays silent when the settings file has no hooks node at all' {
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $cfg = $null; $h = $null
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.StdOut | Should -Not -Match 'schema unrecognised'
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h }
     }
 
     It 'REPORTS a duplicate registered at PROJECT scope' {
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = $null; $h = $null
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
             @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-seam-inject.sh"' } ) } ) } } |
                 ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match 'agy-seam-inject'
-        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h, $proj }
     }
 
     It 'REPORTS a duplicate registered in settings.local.json' {
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = $null; $h = $null
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
             @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-after-reminder.sh"' } ) } ) } } |
                 ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.local.json') -Encoding ascii
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match 'agy-after-reminder'
-        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h, $proj }
     }
 
     It 'REPORTS a hook wired from .clavity/ (settings.local.json, a Windows backslash path)' {
@@ -380,9 +398,10 @@ Describe 'agy-liveness-check.sh' {
         # probes under .clavity/scratch/ were live SessionStart hooks in settings.local.json. .clavity/scratch/
         # is the directory every review-only brief hands the agy peer as its write area, so a hook wired from
         # there executes whatever the peer may have written.
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = $null; $h = $null
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
             @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "C:\repo\.clavity\scratch\probe\abs-probe.sh"' } ) } ) } } |
                 ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.local.json') -Encoding ascii
@@ -391,12 +410,13 @@ Describe 'agy-liveness-check.sh' {
             $j = $r.StdOut | ConvertFrom-Json
             $j.systemMessage | Should -Match 'run from \.clavity/' -Because 'a hook wired into the peer write area is an ACTIONABLE FAULT, so it earns the owner''s screen'
             $j.systemMessage | Should -Match 'settings\.local\.json' -Because 'the note must name the file to fix'
-        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h, $proj }
     }
 
     It 'REPORTS a .clavity/ wiring at USER scope even under .no-agy (constraint 5)' {
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $cfg = $null; $h = $null
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true }
                hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "$CLAUDE_PROJECT_DIR/.clavity/scratch/x/probe.sh"' } ) } ) }
             } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $cfg 'settings.json') -Encoding ascii
@@ -405,14 +425,15 @@ Describe 'agy-liveness-check.sh' {
             $r.ExitCode | Should -Be 0
             $j = $r.StdOut | ConvertFrom-Json
             $j.systemMessage | Should -Match 'run from \.clavity/' -Because 'the kill-switch must not hide a wiring into the peer write area'
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h }
     }
 
     It 'REPORTS a hook that cds into .clavity with NO trailing slash (capstone Branch 2 R1)' {
         # `cd .clavity && bash hook.sh` runs hook.sh from the peer write area; a regex that demanded a slash
         # after `.clavity` let it through (measured).
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $cfg = $null; $h = $null
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true }
                hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='cd .clavity && bash hook.sh' } ) } ) }
             } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $cfg 'settings.json') -Encoding ascii
@@ -420,7 +441,7 @@ Describe 'agy-liveness-check.sh' {
             $r.ExitCode | Should -Be 0
             $j = $r.StdOut | ConvertFrom-Json
             $j.systemMessage | Should -Match 'run from \.clavity/' -Because 'a bare cd into the peer write area is the same fault'
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h }
     }
 
     It 'is SILENT for a command that only LOOKS like .clavity/: <Cmd>' -ForEach @(
@@ -431,21 +452,23 @@ Describe 'agy-liveness-check.sh' {
     ) {
         # Near-misses: no leading dot; a sibling directory name; `.clavity` inside a longer segment. A check
         # that fires on these cries wolf on every start, which trains the owner to stop reading the notice.
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $cfg = $null; $h = $null
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true }
                hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command=$Cmd } ) } ) }
             } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $cfg 'settings.json') -Encoding ascii
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty -Because "a near-miss must not be reported: [$Cmd]"
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h }
     }
 
     It 'finds a PROJECT-scope duplicate when cwd is a SUBDIRECTORY' {
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = $null; $h = $null
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
             $sub = Join-Path $proj 'src/deep'; New-Item -ItemType Directory -Path $sub -Force | Out-Null
             @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-seam-inject.sh"' } ) } ) } } |
@@ -454,13 +477,14 @@ Describe 'agy-liveness-check.sh' {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload -Cwd $sub) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match 'agy-seam-inject'
-        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h, $proj }
     }
 
     It 'says SCHEMA UNRECOGNISED (not "unreadable") when .hooks parses but is the wrong shape' {
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = $null; $h = $null
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
             # Valid JSON, but .hooks is a STRING where the check expects an object of event arrays.
             '{ "hooks": "not-an-object" }' | Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
@@ -474,16 +498,17 @@ Describe 'agy-liveness-check.sh' {
             $r.StdOut   | Should -Match 'schema unrecognised'
             $r.StdOut   | Should -Not -Match 'settings unreadable'
             $r.StdOut   | Should -Match 'agy-seam-inject'
-        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h, $proj }
     }
 
     It 'is SILENT when commands are present but contain no script-name token at all' {
         # Exercises the empty-token-list path: entries and commands both exist, but nothing matches
         # [a-z0-9._-]+\.sh, so the extracted name list is empty. Must stay silent rather than reporting
         # anything, and must not be mistaken for the fail-closed schema case (cmd_count is non-zero).
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = $null; $h = $null
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
             '{ "hooks": { "SessionStart": [ { "hooks": [ { "type": "command", "command": "echo hello" } ] } ] } }' |
                 Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
@@ -491,31 +516,33 @@ Describe 'agy-liveness-check.sh' {
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
             $r.StdErr   | Should -BeNullOrEmpty -Because 'ROADMAP section 31: this hook must never write to stderr again - stderr plus a non-zero exit is what rendered a routine notice as a red hook error'
-        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h, $proj }
     }
 
     It 'says SCHEMA UNRECOGNISED when hook entries exist but NONE carries a command field' {
         # Host schema drift (capstone R2-F2). The settings schema belongs to Claude Code, not to us. If
         # it renamed .command, jq would yield an empty blob, exit 0, and the check would report no
         # collisions -- indistinguishable from a genuinely clean machine. Fail closed, not open.
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = $null; $h = $null
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
             '{ "hooks": { "SessionStart": [ { "hooks": [ { "type": "other" } ] } ] } }' |
                 Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match "none carries a 'command' field"
-        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h, $proj }
     }
 
     It 'STILL reports a real collision when only SOME entries lack a command field' {
         # The guard above must not fire on a merely MIXED shape -- an entry without a command is normal.
         # This is the exact edge a naive version of that guard breaks, so it is pinned separately.
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
-        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = $null; $h = $null
+        $proj = New-TestTempPath 'sp-d-proj'
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
             '{ "hooks": { "SessionStart": [ { "hooks": [ { "type": "other" }, { "type": "command", "command": "bash agy-seam-inject.sh" } ] } ] } }' |
                 Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
@@ -523,26 +550,28 @@ Describe 'agy-liveness-check.sh' {
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match 'agy-seam-inject\.sh is shipped by this plugin'
             $r.StdOut   | Should -Not -Match "none carries a 'command' field"
-        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h, $proj }
     }
 
     It 'says SHIPPED-HOOK LIST UNREADABLE when its own hooks.json will not parse' {
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
-        $fake = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-plug-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = $null; $h = $null
+        $fake = New-TestTempPath 'sp-d-plug'
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path $fake -Force | Out-Null
             Copy-Item $script:Hook (Join-Path $fake 'agy-liveness-check.sh')
             '{ "hooks": { ,,,' | Set-Content (Join-Path $fake 'hooks.json') -Encoding ascii
             $r = Invoke-BashHook -HookPath (Join-Path $fake 'agy-liveness-check.sh') -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match 'shipped-hook list unreadable'
-        } finally { Remove-Item $cfg,$h,$fake -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h, $fake }
     }
 
     It 'derives the shipped list at RUNTIME - a hook added to hooks.json is picked up with no test edit' {
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
-        $fake = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-plug-" + [Guid]::NewGuid().ToString('N'))
+        $cfg = $null; $h = $null
+        $fake = New-TestTempPath 'sp-d-plug'
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             New-Item -ItemType Directory -Path $fake -Force | Out-Null
             Copy-Item $script:Hook (Join-Path $fake 'agy-liveness-check.sh')
             # A hook name that appears NOWHERE in the test file's expectations or the real plugin.
@@ -555,7 +584,7 @@ Describe 'agy-liveness-check.sh' {
             $r = Invoke-BashHook -HookPath (Join-Path $fake 'agy-liveness-check.sh') -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match 'agy-invented-for-this-test'
-        } finally { Remove-Item $cfg,$h,$fake -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h, $fake }
     }
 
     # --- Token matching, not substring matching (capstone R1-F4). The check compares whole script-name
@@ -564,35 +593,38 @@ Describe 'agy-liveness-check.sh' {
     # third pins the false-negative that a case-insensitive filesystem would otherwise hide.
 
     It 'is SILENT about a personal hook whose name is UNRELATED to any shipped one' {
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $cfg = $null; $h = $null
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             $r = Invoke-WithPersonalHook 'my-custom-hook.sh' $cfg $h
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
             $r.StdErr   | Should -BeNullOrEmpty -Because 'ROADMAP section 31: this hook must never write to stderr again - stderr plus a non-zero exit is what rendered a routine notice as a red hook error'
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h }
     }
 
     It 'does NOT flag a rename whose name merely CONTAINS a shipped name' {
         # The README tells operators to rename-and-trim rather than delete. Substring matching flagged
         # my-agy-seam-inject.sh as a collision, i.e. it punished the documented escape hatch.
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $cfg = $null; $h = $null
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             $r = Invoke-WithPersonalHook 'my-agy-seam-inject.sh' $cfg $h
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
             $r.StdErr   | Should -BeNullOrEmpty -Because 'ROADMAP section 31: this hook must never write to stderr again - stderr plus a non-zero exit is what rendered a routine notice as a red hook error'
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h }
     }
 
     It 'REPORTS a collision that differs only in CASE' {
         # Windows and macOS resolve AGY-SEAM-INJECT.SH and agy-seam-inject.sh to the SAME file, so the
         # host double-fires. A case-sensitive match stayed silent on the operator's own platform.
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $cfg = $null; $h = $null
         try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
             $r = Invoke-WithPersonalHook 'AGY-SEAM-INJECT.SH' $cfg $h
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match 'agy-seam-inject\.sh is shipped by this plugin'
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $cfg, $h }
     }
 }

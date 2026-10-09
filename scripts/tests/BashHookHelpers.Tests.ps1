@@ -2,7 +2,7 @@ Describe 'BashHookHelpers (harness validation)' {
     BeforeAll {
         . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
         # A throwaway probe hook that echoes the env it sees + writes to stderr and exits 2.
-        $script:probeDir = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-probe-" + [Guid]::NewGuid().ToString('N'))
+        $script:probeDir = New-TestTempPath "sp-d-probe"
         New-Item -ItemType Directory -Path $script:probeDir -Force | Out-Null
         $script:probe = Join-Path $script:probeDir 'probe.sh'
         @(
@@ -30,7 +30,7 @@ Describe 'BashHookHelpers (harness validation)' {
         # env-passed config dir RESOLVES on the filesystem (`[ -f "$CLAUDE_CONFIG_DIR/settings.json" ]` +
         # jq reading it), which Cygwin/Git-Bash handles transparently for Windows-form paths. Assert that
         # real guarantee (filesystem resolution), NOT a path-string format.
-        $cfg2 = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-cfg-" + [Guid]::NewGuid().ToString('N'))
+        $cfg2 = New-TestTempPath "sp-d-cfg"
         New-Item -ItemType File -Path (Join-Path $cfg2 'marker') -Force | Out-Null
         try {
             $r = Invoke-BashHook -HookPath $script:probe -Env @{ CLAUDE_CONFIG_DIR = $cfg2 }
@@ -38,7 +38,7 @@ Describe 'BashHookHelpers (harness validation)' {
         } finally { Remove-Item -LiteralPath $cfg2 -Recurse -Force -ErrorAction SilentlyContinue }
     }
     It 'isolates HOME to an absolute fixture dir (MSYS passthrough)' {
-        $home2 = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-home-" + [Guid]::NewGuid().ToString('N'))
+        $home2 = New-TestTempPath "sp-d-home"
         New-Item -ItemType Directory -Path (Join-Path $home2 '.claude') -Force | Out-Null
         New-Item -ItemType File -Path (Join-Path $home2 '.claude/marker') -Force | Out-Null
         try {
@@ -119,7 +119,7 @@ Describe 'BashHookHelpers (harness validation)' {
 
     Context 'Measure-BashHookProcesses (Job Object process counter)' {
         BeforeAll {
-            $script:countDir = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-count-" + [Guid]::NewGuid().ToString('N'))
+            $script:countDir = New-TestTempPath "sp-d-count"
             New-Item -ItemType Directory -Path $script:countDir -Force | Out-Null
             $script:builtinsOnly = Join-Path $script:countDir 'builtins.sh'
             $script:oneExternal  = Join-Path $script:countDir 'external.sh'

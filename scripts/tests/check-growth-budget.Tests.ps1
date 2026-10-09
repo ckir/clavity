@@ -1,12 +1,13 @@
 # scripts/tests/check-growth-budget.Tests.ps1
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:Script = Join-Path $PSScriptRoot '..' 'check-growth-budget.ps1'
     $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
 }
 
 Describe "check-growth-budget.ps1 (SEED + GROWTH <= combined cap)" {
     BeforeEach {
-        $script:Repo = Join-Path ([System.IO.Path]::GetTempPath()) ("growthbudget-" + [Guid]::NewGuid())
+        $script:Repo = New-TestTempPath 'growthbudget'
         New-Item -ItemType Directory -Path (Join-Path $script:Repo 'seed') | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs') | Out-Null
         $script:Seed = Join-Path $script:Repo 'seed/golden-header.md'
@@ -91,7 +92,7 @@ Describe "check-growth-budget.ps1 (SEED + GROWTH <= combined cap)" {
             $script:Fixtures = New-Object System.Collections.ArrayList   # FIXTURE HYGIENE
             function New-BudgetFixture {
                 param([switch]$NoSeed, [switch]$EmptySeed, [switch]$NoGrowth, [switch]$EmptyGrowth, [int]$GrowthBytes = 100)
-                $d = Join-Path ([IO.Path]::GetTempPath()) ("gb-" + [guid]::NewGuid().ToString('N'))
+                $d = New-TestTempPath 'gb'
                 [void]$script:Fixtures.Add($d)   # FIXTURE HYGIENE
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'seed') | Out-Null
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'docs') | Out-Null

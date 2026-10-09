@@ -1,11 +1,12 @@
 # scripts/tests/abort-drain.Tests.ps1
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:Abort = Join-Path $PSScriptRoot '..' 'abort-drain.ps1'
 }
 
 Describe "abort-drain transaction (scratch repo)" {
     BeforeEach {
-        $script:Repo = Join-Path ([System.IO.Path]::GetTempPath()) ("abort-" + [Guid]::NewGuid())
+        $script:Repo = New-TestTempPath 'abort'
         New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs') | Out-Null
         Push-Location $script:Repo
         git init -q; git config user.email t@t; git config user.name t
@@ -13,7 +14,7 @@ Describe "abort-drain transaction (scratch repo)" {
         Set-Content 'docs/agy-drain-log.md' '# agy drain log'
         git add .; git commit -qm base
         Pop-Location
-        $script:InboxDir = Join-Path ([System.IO.Path]::GetTempPath()) ("abox-" + [Guid]::NewGuid())
+        $script:InboxDir = New-TestTempPath 'abox'
         New-Item -ItemType Directory -Path $script:InboxDir | Out-Null
         $script:Inbox = Join-Path $script:InboxDir 'agy-observations.md'
         Set-Content $script:Inbox @('# inbox', '', '## Pending')
@@ -47,7 +48,7 @@ Describe "abort-drain transaction (scratch repo)" {
     }
 
     It "hard-fails (exit 1) and RETAINS staging when the git revert fails" {
-        $notRepo = Join-Path ([System.IO.Path]::GetTempPath()) ("notrepo-" + [Guid]::NewGuid())
+        $notRepo = New-TestTempPath 'notrepo'
         New-Item -ItemType Directory -Path $notRepo | Out-Null
         try {
             & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $notRepo

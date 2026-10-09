@@ -13,7 +13,7 @@ Describe 'agy-verify-reminder.sh' {
         # The fake keeps the version deterministic: the REAL agy's output floats with its install.
         function New-VerifyFx {
             param([string]$DotnetCell = 'PASS 9.9.9', [string]$AgyOut = 'agy 9.9.9', [string]$DirName = 'repo')
-            $root = Join-Path ([IO.Path]::GetTempPath()) ('avr-' + [Guid]::NewGuid().ToString('N'))
+            $root = New-TestTempPath "avr"
             $cwd = Join-Path $root $DirName
             New-Item -ItemType Directory -Force -Path (Join-Path $cwd 'agy-autotrain/verify'), (Join-Path $root 'fakebin') | Out-Null
             @('| id | dotnet | classic |', '|----|--------|---------|', "| A1 | $DotnetCell | N/A |") |

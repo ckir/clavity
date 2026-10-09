@@ -277,6 +277,7 @@ function Invoke-Main {
         $skipNote = if ($Continue) { " ($resumeSkipped already-confirmed doc(s) skipped by -Continue)" } else { '' }
         $sum = Get-FindingsSummary -Store (Read-FindingsStore $findingsJson) -Roster $roster
         Write-Host "docs-audit: $($sum.Findings) open finding(s) in $($sum.DocsWithFindings) doc(s); $($sum.Unconfirmed) doc(s) not confirmed by their last audit."
+        Write-Host "docs-audit: $($sum.NeverAudited) roster doc(s) never audited."
         Write-Host "docs-audit: done (run $runId). $(@($docs).Count) docs audited$skipNote. See docs/docs-audit-findings.md + docs/docs-audit-log.md." -ForegroundColor Green
         exit 0
     } finally {

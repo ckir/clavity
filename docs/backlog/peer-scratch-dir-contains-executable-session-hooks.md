@@ -1,6 +1,8 @@
 # Backlog stub - the scratch directory handed to the peer contains code this machine executes
 
-**Status:** CLOSED 2026-09-30 on sweep Branch 2 - Option 3 was REPLACED by an owner ruling after AGY-FIRST: agy-liveness-check.sh now reports any hook command in the three settings files that runs from .clavity/ (`741e5c04`). See `## Closure 2026-09-30` at the foot.
+**Status:** SHIPPED 2026-09-30 - merged to main in `741e5c04`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** CLOSED 2026-09-30 on sweep Branch 2 - Option 3 was REPLACED by an owner ruling after AGY-FIRST: agy-liveness-check.sh now reports any hook command in the three settings files that runs from .clavity/ (`741e5c04`). See `## Closure 2026-09-30` at the foot.
+
 Earlier status: PARTIALLY CLOSED 2026-08-31 - the three hooks are un-wired (owner instruction). The · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep Branch 2 - Option 3, census the executable bit in the scratch zone**
 remaining scope is the durable question in `## What is still open`, not the original exposure.
 Promoted 2026-08-31 from `.clavity/local-anomalies.md`.

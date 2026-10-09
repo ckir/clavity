@@ -259,6 +259,26 @@ Describe 'check-roadmap-claims.ps1 - inputs it does not control' {
         $r.Code | Should -Be 2 -Because "an unreadable input is 'cannot check', not 'a claim is false'; output was:`n$($r.Out)"
         $r.Out  | Should -Not -Match 'UnauthorizedAccessException|Access to the path'
     }
+    It 'exits 2 - NOT 1 - when the repo root is not a git repository' {
+        $nogit = Join-Path $TestDrive ("nogit-" + [Guid]::NewGuid().ToString('N')); $null = New-Item -ItemType Directory -Path $nogit
+        $rm = Join-Path $nogit 'ROADMAP.md'; [IO.File]::WriteAllText($rm, "placeholder`n")
+        $r = Invoke-Claims $nogit $rm
+        $r.Code | Should -Be 2 -Because "a tree that cannot be listed is 'cannot check', not 'a claim is false'; output was:`n$($r.Out)"
+        $r.Out  | Should -Match 'is not a git repository'
+    }
+    It 'exits 2 - NOT 1 - when git is not on PATH' {
+        $f = New-ClaimRepo -Roadmap "placeholder`n"
+        $pwshExe = (Get-Command pwsh).Source
+        $emptyDir = Join-Path $TestDrive ("nopath-" + [Guid]::NewGuid().ToString('N')); $null = New-Item -ItemType Directory -Path $emptyDir
+        $savedPath = $env:PATH
+        try {
+            $env:PATH = $emptyDir   # the child inherits a PATH with no git; pwsh itself is launched by absolute path
+            $out = & $pwshExe -NoProfile -File $script:Script -RepoRoot $f.Root -RoadmapPath $f.Roadmap 2>&1 | Out-String
+            $code = $LASTEXITCODE
+        } finally { $env:PATH = $savedPath }
+        $code | Should -Be 2 -Because "a missing git is 'cannot check', not 'a claim is false'; output was:`n$out"
+        $out  | Should -Match 'git is not on PATH'
+    }
 
     It 'says UNREADABLE - not a crash - when a claimed file is exclusively LOCKED' {
         # AGY-CAPSTONE round 7. The drift detector was given this guard in round 3; this sibling was
@@ -385,11 +405,78 @@ Describe 'check-roadmap-claims.ps1 - sha notations the document actually uses' {
     }
 }
 
+Describe 'check-roadmap-claims.ps1 - the path:N pointer half (Check C)' {
+    It 'passes a pointer inside the file' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n2`n3`n" } -Roadmap "See ``skills/a/SKILL.md:3``.`n"
+        (Invoke-Claims $f.Root $f.Roadmap).Code | Should -Be 0
+    }
+    It 'fails a pointer past the end of the file and says OUT-OF-RANGE' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n2`n3`n" } -Roadmap "See ``skills/a/SKILL.md:4``.`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap; $r.Code | Should -Be 1; $r.Out | Should -Match 'OUT-OF-RANGE.*SKILL\.md:4'
+    }
+    It 'checks BOTH ends of a range' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n2`n3`n" } -Roadmap "See ``skills/a/SKILL.md:2-9``.`n"
+        (Invoke-Claims $f.Root $f.Roadmap).Code | Should -Be 1
+    }
+    It 'verifies an ANCHORED pointer: the quoted text must be on line N' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`ngamma`n" } -Roadmap "See ``skills/a/SKILL.md:2`` (`"beta`").`n"
+        (Invoke-Claims $f.Root $f.Roadmap).Code | Should -Be 0
+        $g = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`ngamma`n" } -Roadmap "See ``skills/a/SKILL.md:3`` (`"beta`").`n"
+        $r = Invoke-Claims $g.Root $g.Roadmap; $r.Code | Should -Be 1; $r.Out | Should -Match 'ANCHOR-MISS.*beta'
+    }
+    It 'verifies an anchored RANGE: the text may sit anywhere inside N..M' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`ngamma`n" } -Roadmap "See ``skills/a/SKILL.md:1-2`` (`"beta`").`n"
+        (Invoke-Claims $f.Root $f.Roadmap).Code | Should -Be 0
+    }
+    It 'does not check a pointer whose path is a bare name or not tracked, and counts it as unchecked' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n" } -Roadmap "See ``SKILL.md:99`` and ``elsewhere/x.cs:7``.`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap; $r.Code | Should -Be 0; $r.Out | Should -Match '2 pointer\(s\) not checkable'
+    }
+    It 'NAMES a pointer that matches no tracked file, so a misspelt path is visible (and does not name a bare name)' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n" } -Roadmap "See ``skils/a/SKILL.md:5`` and ``SKILL.md:99``.`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap; $r.Code | Should -Be 0
+        $r.Out | Should -Match 'matches no tracked file\): ROADMAP:\d+ skils/a/SKILL\.md'
+        $r.Out | Should -Not -Match 'no tracked file\): ROADMAP:\d+ SKILL\.md'
+    }
+    It 'ignores a pointer inside a fenced code block' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n" } -Roadmap "``````text`n``skills/a/SKILL.md:50```n```````n"
+        (Invoke-Claims $f.Root $f.Roadmap).Code | Should -Be 0
+    }
+}
+
 Describe 'check-roadmap-claims.ps1 - the real repository' {
     It 'passes on the committed ROADMAP' {
         # RED until Task 4 reconciles the four stale headers. That is deliberate: this row is the
         # oracle that the reconcile actually happened, rather than a claim that it did.
         $r = Invoke-Claims $script:RepoRoot (Join-Path $script:RepoRoot 'clavity-dotnet' 'ROADMAP.md')
         $r.Code | Should -Be 0 -Because "the real ROADMAP must satisfy its own checkable claims; output was:`n$($r.Out)"
+    }
+}
+
+Describe 'check-roadmap-claims.ps1 - a malformed anchor' {
+    It 'refuses an anchor with a quote inside it, instead of silently dropping the content check' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2`` (`"be`"ta`") text.`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap
+        $r.Code | Should -Be 1 -Because "output was:`n$($r.Out)"; $r.Out | Should -Match 'MALFORMED-ANCHOR'
+    }
+    It 'does NOT flag ordinary prose that follows a pointer and starts with a spaced quote' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2`` ( `"the big class`" was refactored) text.`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap
+        $r.Code | Should -Be 0 -Because "a parenthetical with spaces inside is prose, not an attempted anchor; output was:`n$($r.Out)"
+    }
+    It 'treats an unspaced pointer(quote) as a real anchor: accepted when the text is on the line, ANCHOR-MISS when it is not' {
+        $ok = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2``(`"beta`") text.`n"
+        $r = Invoke-Claims $ok.Root $ok.Roadmap
+        $r.Code | Should -Be 0 -Because "output was:`n$($r.Out)"
+        $bad = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2``(`"gamma`") text.`n"
+        $r2 = Invoke-Claims $bad.Root $bad.Roadmap
+        $r2.Code | Should -Be 1; $r2.Out | Should -Match 'ANCHOR-MISS.*gamma'
+    }
+    It 'refuses an empty anchor, and still accepts a well-formed one beside it' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2`` (`"`") text.`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap
+        $r.Code | Should -Be 1; $r.Out | Should -Match 'MALFORMED-ANCHOR'
+        $ok = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2`` (`"beta`") text, and prose (`"not an anchor`") elsewhere.`n"
+        (Invoke-Claims $ok.Root $ok.Roadmap).Code | Should -Be 0
     }
 }

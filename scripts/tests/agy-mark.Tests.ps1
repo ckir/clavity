@@ -27,7 +27,7 @@ Describe 'agy-mark.sh' {
 
         function New-MarkFixture {
             param([string]$Shield = "*`n")
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("markfx-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'markfx'
             New-Item -ItemType Directory -Force -Path $d | Out-Null
             [void]$script:Fixtures.Add($d)   # FIXTURE HYGIENE
             & git -C $d init -q; & git -C $d config user.email t@t.t; & git -C $d config user.name t
@@ -40,7 +40,7 @@ Describe 'agy-mark.sh' {
         }
         function Invoke-Mark {
             param([string]$Cwd, [string[]]$MarkArgs, [string]$SessionId = '')
-            $outF = Join-Path ([IO.Path]::GetTempPath()) ("mk-" + [guid]::NewGuid().ToString('N') + ".out")
+            $outF = New-TestTempPath 'mk' -Suffix '.out'
             $errF = "$outF.err"
             $prev = $env:AGY_SESSION_ID; $env:AGY_SESSION_ID = $SessionId
             try {
@@ -83,7 +83,7 @@ Describe 'agy-mark.sh' {
             $backslashMark = $script:Mark -replace '/', '\'
             $backslashMark | Should -Not -Match '/' -Because 'the fixture must really be backslash-only, or this row proves nothing'
 
-            $outF = Join-Path ([IO.Path]::GetTempPath()) ("mkbs-" + [guid]::NewGuid().ToString('N') + ".out")
+            $outF = New-TestTempPath 'mkbs' -Suffix '.out'
             $errF = "$outF.err"
             try {
                 $p = Start-Process -FilePath $script:Bash -ArgumentList @($backslashMark, 'head', 'agy-first', $sha) `
@@ -166,7 +166,7 @@ Describe 'agy-mark.sh' {
             # ROADMAP section 27 keeps agy-mark.sh git-optional, and the section 51 owner ruling keeps it so:
             # no repository, or no git on PATH, means no check - not a refusal. Both make the same rev-parse
             # probe fail, so this one row pins both.
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("marknogit-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'marknogit'
             New-Item -ItemType Directory -Force -Path (Join-Path $d '.clavity') | Out-Null
             [void]$script:Fixtures.Add($d)   # FIXTURE HYGIENE
             [IO.File]::WriteAllText((Join-Path $d '.clavity/.gitignore'), "*`n")
@@ -319,10 +319,10 @@ Describe 'agy-mark.sh' {
             # so the previous version of this obligation was unreachable: _log_lost lived inside the log
             # branch and was never called. The line is now built before anything can refuse.
             $d = New-MarkFixture
-            $isolated = Join-Path ([IO.Path]::GetTempPath()) ("iso3-" + [guid]::NewGuid().ToString('N'))
+            $isolated = New-TestTempPath 'iso3'
             New-Item -ItemType Directory -Force -Path $isolated | Out-Null
             Copy-Item -LiteralPath ($script:Mark -replace '/','\') -Destination (Join-Path $isolated 'agy-mark.sh')
-            $errF = Join-Path ([IO.Path]::GetTempPath()) ("iso3-" + [guid]::NewGuid().ToString('N') + ".err")
+            $errF = New-TestTempPath 'iso3' -Suffix '.err'
             $proc = Start-Process -FilePath $script:Bash -ArgumentList @(((Join-Path $isolated 'agy-mark.sh') -replace '\\','/'), 'log','agy-first','SKIPPED-UNREACHABLE','deadbeef') `
                 -WorkingDirectory $d -RedirectStandardOutput "$errF.out" -RedirectStandardError $errF -NoNewWindow -Wait -PassThru
             # ASSERT THE EXIT CODE, not only stderr. Panel R13: without -PassThru the code was
@@ -415,7 +415,7 @@ Describe 'agy-mark.sh' {
                 'st=$(printf ''UNVERIFIED-ACCEPTED\n2026-08-29T00:00:00Z  agy-capstone  WAIVED  HEAD=abc123  via-status'')',
                 ('bash "' + $markPath + '" log agy-capstone "$st" abc123 "$txt"')
             ) -join "`n"
-            $sf = Join-Path ([IO.Path]::GetTempPath()) ("mklog-" + [guid]::NewGuid().ToString('N') + ".sh")
+            $sf = New-TestTempPath 'mklog' -Suffix '.sh'
             [IO.File]::WriteAllText($sf, ($snippet -replace "`r`n", "`n") + "`n")
             try {
                 $p = Start-Process -FilePath $script:Bash -ArgumentList @(($sf -replace '\\', '/')) `
@@ -474,7 +474,7 @@ Describe 'agy-mark.sh' {
             $d = New-MarkFixture
             $markPath = $script:Mark
             $snippet = 'bash "' + $markPath + '" log agy-first SKIPPED-UNREACHABLE "" "some finding"'
-            $sf = Join-Path ([IO.Path]::GetTempPath()) ("mkempty-" + [guid]::NewGuid().ToString('N') + ".sh")
+            $sf = New-TestTempPath 'mkempty' -Suffix '.sh'
             [IO.File]::WriteAllText($sf, $snippet + "`n")
             try {
                 $p = Start-Process -FilePath $script:Bash -ArgumentList @(($sf -replace '\\', '/')) `
@@ -582,10 +582,10 @@ Describe 'agy-mark.sh' {
     Context 'exit codes and failure direction' {
         It 'exits 1 and writes NOTHING when the helper cannot be loaded' {
             $d = New-MarkFixture
-            $isolated = Join-Path ([IO.Path]::GetTempPath()) ("iso-" + [guid]::NewGuid().ToString('N'))
+            $isolated = New-TestTempPath 'iso'
             New-Item -ItemType Directory -Force -Path $isolated | Out-Null
             Copy-Item -LiteralPath ($script:Mark -replace '/','\') -Destination (Join-Path $isolated 'agy-mark.sh')
-            $outF = Join-Path ([IO.Path]::GetTempPath()) ("iso-" + [guid]::NewGuid().ToString('N') + ".out")
+            $outF = New-TestTempPath 'iso' -Suffix '.out'
             $p = Start-Process -FilePath $script:Bash -ArgumentList @(((Join-Path $isolated 'agy-mark.sh') -replace '\\','/'), 'head','agy-first','deadbeef') `
                     -WorkingDirectory $d -RedirectStandardOutput $outF -RedirectStandardError "$outF.err" -NoNewWindow -Wait -PassThru
             $p.ExitCode | Should -Be 1 -Because 'head fails CLOSED: an absent marker makes the discipline re-fire, which is safe'
@@ -598,10 +598,10 @@ Describe 'agy-mark.sh' {
             # destroys a record with nothing to recreate it. Emitting only the payload leaves the
             # operator holding a log line with no idea why it never reached disk.
             $d = New-MarkFixture
-            $isolated = Join-Path ([IO.Path]::GetTempPath()) ("iso2-" + [guid]::NewGuid().ToString('N'))
+            $isolated = New-TestTempPath 'iso2'
             New-Item -ItemType Directory -Force -Path $isolated | Out-Null
             Copy-Item -LiteralPath ($script:Mark -replace '/','\') -Destination (Join-Path $isolated 'agy-mark.sh')
-            $errF = Join-Path ([IO.Path]::GetTempPath()) ("iso2-" + [guid]::NewGuid().ToString('N') + ".err")
+            $errF = New-TestTempPath 'iso2' -Suffix '.err'
             $proc = Start-Process -FilePath $script:Bash -ArgumentList @(((Join-Path $isolated 'agy-mark.sh') -replace '\\','/'), 'log','agy-first','SKIPPED-UNREACHABLE','deadbeef') `
                 -WorkingDirectory $d -RedirectStandardOutput "$errF.out" -RedirectStandardError $errF -NoNewWindow -Wait -PassThru
             # ASSERT THE EXIT CODE, not only stderr. Panel R13: without -PassThru the code was

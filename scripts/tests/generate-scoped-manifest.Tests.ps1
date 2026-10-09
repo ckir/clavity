@@ -1,5 +1,6 @@
 Describe 'generate-scoped-manifest pluginName' {
     BeforeAll {
+        . (Join-Path $PSScriptRoot 'TestTemp.ps1')
         $script:gen  = Join-Path $PSScriptRoot '..' 'generate-scoped-manifest.ps1'
         $script:mem  = Join-Path $TestDrive 'members-pluginName.json'   # never the tracked tree (ROADMAP §50)
         @'
@@ -10,7 +11,7 @@ Describe 'generate-scoped-manifest pluginName' {
 '@ | Set-Content -Path $script:mem -Encoding utf8
     }
     It 'emits pluginName as the plugin identity and source when present' {
-        $out = Join-Path $env:TEMP "scoped-dotnet-$PID.json"
+        $out = New-TestTempPath 'scoped-dotnet' -Suffix '.json'
         & $script:gen -MemberName 'clavity-dotnet' -MembersJsonPath $script:mem -OutFile $out | Out-Null
         $m = Get-Content $out -Raw | ConvertFrom-Json
         $m.name              | Should -Be 'clavity-dotnet'      # OUTER = marketplaceName, unchanged
@@ -18,7 +19,7 @@ Describe 'generate-scoped-manifest pluginName' {
         $m.plugins[0].source | Should -Be './plugins/clavity'   # staging dir = pluginName
     }
     It 'falls back to name as identity when pluginName absent' {
-        $out = Join-Path $env:TEMP "scoped-ghidrust-$PID.json"
+        $out = New-TestTempPath 'scoped-ghidrust' -Suffix '.json'
         & $script:gen -MemberName 'ghidrust' -MembersJsonPath $script:mem -OutFile $out | Out-Null
         $m = Get-Content $out -Raw | ConvertFrom-Json
         $m.plugins[0].name   | Should -Be 'ghidrust'

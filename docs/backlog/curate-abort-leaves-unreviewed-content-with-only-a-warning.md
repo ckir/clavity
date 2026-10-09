@@ -1,6 +1,8 @@
 # Backlog stub — the agy-curate abort path protects the working tree with an unenforced warning
 
-**Status:** ✅ **BUILT — 2026-08-12.** `scripts/check-curate-in-progress.ps1` +
+**Status:** SHIPPED 2026-08-12 - merged to main in `e340fbbc`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **BUILT — 2026-08-12.** `scripts/check-curate-in-progress.ps1` +
+
 `scripts/tests/check-curate-in-progress.Tests.ps1`, wired at `lefthook.yml` `pre-commit`, armed by
 `agy-autotrain/skills/agy-curate/SKILL.md` "STEP ZERO" and cleared by its "Finish" step.
 **Raised:** 2026-08-12, AGY-CAPSTONE round 7 (F4).

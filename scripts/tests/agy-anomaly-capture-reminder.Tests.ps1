@@ -23,12 +23,12 @@ Describe 'agy-anomaly-capture-reminder.sh' {
         # An empty HOME so a REAL ~/.claude/.no-agy on the dev box cannot silence the hook and hand us a
         # false green. Absolute paths only - MSYS mangles a relative HOME.
         function New-CleanHome {
-            $h = Join-Path ([IO.Path]::GetTempPath()) ("anom-cap-home-" + [Guid]::NewGuid().ToString('N'))
+            $h = New-TestTempPath "anom-cap-home"
             New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
             return $h
         }
         function New-Workspace {
-            $w = Join-Path ([IO.Path]::GetTempPath()) ("anom-cap-ws-" + [Guid]::NewGuid().ToString('N'))
+            $w = New-TestTempPath "anom-cap-ws"
             New-Item -ItemType Directory -Path $w -Force | Out-Null
             return $w
         }
@@ -80,22 +80,24 @@ Describe 'agy-anomaly-capture-reminder.sh' {
     }
 
     It 'emits a top-level systemMessage and NOT hookSpecificOutput' {
-        $w = New-Workspace; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace; $h = New-CleanHome
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $j = $r.StdOut | ConvertFrom-Json
             $j.systemMessage      | Should -Not -BeNullOrEmpty
             $j.PSObject.Properties.Name | Should -Not -Contain 'hookSpecificOutput' -Because 'hookSpecificOutput is invalid for PreCompact and the runtime rejects the whole payload'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'delivers the capture directive WHOLE' {
-        $w = New-Workspace; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace; $h = New-CleanHome
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
             ($r.StdOut | ConvertFrom-Json).systemMessage | Should -Match ([regex]::Escape($script:CaptureMsg))
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'states the verification bar and the in-scope exclusion' {
@@ -103,12 +105,13 @@ Describe 'agy-anomaly-capture-reminder.sh' {
         # context pressure the model logs IN-FLIGHT, IN-SCOPE work as an anomaly without meeting the bar.
         # These two clauses are the mitigation, pinned separately so a future reword cannot drop them
         # while still matching some other part of the message.
-        $w = New-Workspace; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace; $h = New-CleanHome
             $m = (Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }).StdOut | ConvertFrom-Json
             $m.systemMessage | Should -Match ([regex]::Escape('anything you have not verified by measurement'))
             $m.systemMessage | Should -Match ([regex]::Escape('an error in the work you are actively doing'))
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'still DELIVERS the JSON envelope when jq is absent' {
@@ -132,14 +135,15 @@ Describe 'agy-anomaly-capture-reminder.sh' {
         # $null, and this was the ONE test in the suite that passed green against a hook that did not
         # exist. An anti-drift guard that certifies two channels as consistent because neither says
         # anything is the same invisible zero the rest of this file exists to reject.
-        $w = New-Workspace; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace; $h = New-CleanHome
             $withJq = ((Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }).StdOut | ConvertFrom-Json).systemMessage
             $noJq   = ((Invoke-BashHook -HookPath $script:Hook -Payload '{"cwd":"."}' -Env @{ PATH = $script:NoJqPath; HOME = $h }).StdOut | ConvertFrom-Json).systemMessage
             $withJq | Should -Not -BeNullOrEmpty -Because 'two silent paths are trivially identical'
             $noJq   | Should -Not -BeNullOrEmpty -Because 'two silent paths are trivially identical'
             $noJq | Should -BeExactly $withJq
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'delivers the SAME UserPromptSubmit envelope with and without jq' {
@@ -176,23 +180,25 @@ Describe 'agy-anomaly-capture-reminder.sh' {
     }
 
     It 'is SILENT under a WORKSPACE .no-agy' {
-        $w = New-Workspace; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace; $h = New-CleanHome
             New-Item -ItemType File -Path (Join-Path $w '.no-agy') -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'is SILENT under a GLOBAL .no-agy' {
-        $w = New-Workspace; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace; $h = New-CleanHome
             New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'is SILENT under a GLOBAL .no-agy even when jq is absent' {
@@ -212,44 +218,48 @@ Describe 'agy-anomaly-capture-reminder.sh' {
     # measured on a sibling hook, a broken walk produced silence indistinguishable from a working
     # kill-switch, and only the control went red.
     It 'is SILENT when .no-agy is at the repo root and cwd is a subdirectory' {
-        $repo = New-TempRepo; $h = New-CleanHome
+        $repo = $null; $h = $null
         try {
+            $repo = New-TempRepo; $h = New-CleanHome
             $sub = Join-Path $repo 'src'
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload $sub) -Env @{ HOME = $h }
             $r.StdOut | Should -BeNullOrEmpty -Because 'an opt-out at the repo root must suppress this hook from a subdirectory'
-        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $repo, $h }
     }
     It 'DOES deliver from that same subdirectory when .no-agy is absent (positive control)' {
-        $repo = New-TempRepo; $h = New-CleanHome
+        $repo = $null; $h = $null
         try {
+            $repo = New-TempRepo; $h = New-CleanHome
             $sub = Join-Path $repo 'src'
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload $sub) -Env @{ HOME = $h }
             ($r.StdOut | ConvertFrom-Json).systemMessage | Should -BeExactly $script:CaptureMsg -Because 'without the opt-out it must still deliver - otherwise the silence test proves nothing'
-        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $repo, $h }
     }
     It 'honours a root .no-agy from a subdirectory on the DEGRADED (no jq) path too' {
         # This path used to test "./.no-agy" - the PROCESS cwd, not the session workspace - so it could
         # not honour any workspace opt-out at all when the two differ. Nothing covered it.
-        $repo = New-TempRepo; $h = New-CleanHome
+        $repo = $null; $h = $null
         try {
+            $repo = New-TempRepo; $h = New-CleanHome
             $sub = Join-Path $repo 'src'
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload $sub) -Env @{ PATH = $script:NoJqPath; HOME = $h }
             $r.StdOut | Should -BeNullOrEmpty -Because 'the degraded path must honour the same root opt-out as the jq path'
-        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $repo, $h }
     }
     It 'DOES deliver from that subdirectory without .no-agy when jq is absent (degraded positive control)' {
-        $repo = New-TempRepo; $h = New-CleanHome
+        $repo = $null; $h = $null
         try {
+            $repo = New-TempRepo; $h = New-CleanHome
             $sub = Join-Path $repo 'src'
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload $sub) -Env @{ PATH = $script:NoJqPath; HOME = $h }
             ($r.StdOut | ConvertFrom-Json).systemMessage | Should -BeExactly $script:CaptureMsg -Because 'the degraded path must still deliver without an opt-out'
-        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $repo, $h }
     }
 
     It 'exits 0 and still delivers on a malformed payload' {
@@ -267,8 +277,9 @@ Describe 'agy-anomaly-capture-reminder.sh' {
         # Backtick and apostrophe are bash quoting hazards (a backtick in a double-quoted string is
         # command substitution). Double quote and backslash would break the hand-built JSON envelope on
         # the jq-absent path, which has no escaping machinery.
-        $w = New-Workspace; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace; $h = New-CleanHome
             $m = ((Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }).StdOut | ConvertFrom-Json).systemMessage
             $bytes = [Text.Encoding]::UTF8.GetBytes($m)
             @($bytes | Where-Object { $_ -eq 0x60 }).Count | Should -Be 0 -Because 'backtick'
@@ -276,7 +287,7 @@ Describe 'agy-anomaly-capture-reminder.sh' {
             @($bytes | Where-Object { $_ -eq 0x22 }).Count | Should -Be 0 -Because 'double quote'
             @($bytes | Where-Object { $_ -eq 0x5C }).Count | Should -Be 0 -Because 'backslash'
             @($bytes | Where-Object { $_ -gt 127 }).Count  | Should -Be 0 -Because 'non-ASCII'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'emits the compaction wording and a systemMessage envelope when invoked as PreCompact' {

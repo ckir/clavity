@@ -1,6 +1,8 @@
 # Backlog stub - a generated findings view is gitignored, so its findings reach nobody
 
-**Status:** OPEN. Promoted 2026-08-27 from `.clavity/local-anomalies.md`. · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`81f4527f`, summary `c368d703`) - a repo SessionStart nudge (`.claude/hooks/docs-audit-reminder.sh`) counts open findings from the rendered view, and `just docs-audit` prints a summary; both artifacts stay gitignored (owner ruling 2026-09-30)**
+**Status:** SHIPPED 2026-09-30 - merged to main in `81f4527f`
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** OPEN. Promoted 2026-08-27 from `.clavity/local-anomalies.md`. · ✅ **FIXED 2026-09-30 on sweep Branch 1 (`81f4527f`, summary `c368d703`) - a repo SessionStart nudge (`.claude/hooks/docs-audit-reminder.sh`) counts open findings from the rendered view, and `just docs-audit` prints a summary; both artifacts stay gitignored (owner ruling 2026-09-30)**
+
 **Raised:** 2026-08-27.
 
 ## The observation

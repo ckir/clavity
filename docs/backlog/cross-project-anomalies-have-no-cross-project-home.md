@@ -1,6 +1,10 @@
 # Backlog stub — the anomaly channel is repo-local, so a CROSS-PROJECT finding is invisible everywhere else
 
-**Status:** ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - not built: an additive capability; the conveyor works per repository and no user-visible defect results; this stub keeps the idea.** Was: 🔴 **OPEN.** Promoted from `.clavity/local-anomalies.md` at the 2026-08-25 triage. · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 12 - a user-level capture file the SessionStart hook also counts (runs before Branch 8)**
+**Status:** CLOSED-BY-RULING 2026-10-08 - closed by ruling, see Reopen if below
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **CLOSED BY RULING 2026-10-08 (owner, final sweep `docs/superpowers/specs/2026-10-08-final-sweep-sequence-design.md`) - not built: an additive capability; the conveyor works per repository and no user-visible defect results; this stub keeps the idea.** Was: 🔴 **OPEN.** Promoted from `.clavity/local-anomalies.md` at the 2026-08-25 triage. · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 12 - a user-level capture file the SessionStart hook also counts (runs before Branch 8)**
+
+
+**Reopen if:** a defect that spans two repositories costs a session to rediscover
 **Raised:** 2026-08-19, alongside the dependency-pin captures that demonstrate it.
 
 ## The defect

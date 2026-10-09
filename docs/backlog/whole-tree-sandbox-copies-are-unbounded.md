@@ -1,6 +1,8 @@
 # Backlog stub - a whole-tree sandbox copy takes ~40 minutes and caused a real incident
 
-**Status:** OPEN. Promoted 2026-08-27 from `.clavity/local-anomalies.md`. · 🚫 **KILLED by the owner [sweep-step0 2026-09-29]: no tool here makes whole-tree copies now; the rule stands - copy via `git ls-files` or `git worktree`, never the whole tree**
+**Status:** KILLED 2026-09-29 - will not be done - OPEN. Promoted 2026-08-27 from .clavity/local-anomalies.md. · KILLED by the owner [sweep-step0 2026-
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** OPEN. Promoted 2026-08-27 from `.clavity/local-anomalies.md`. · 🚫 **KILLED by the owner [sweep-step0 2026-09-29]: no tool here makes whole-tree copies now; the rule stands - copy via `git ls-files` or `git worktree`, never the whole tree**
+
 **Raised:** 2026-08-26.
 
 ## The measurement

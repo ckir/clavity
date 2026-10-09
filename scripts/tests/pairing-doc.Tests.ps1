@@ -26,7 +26,7 @@ BeforeAll {
             foreach ($n in $names) { [Environment]::SetEnvironmentVariable($n, $saved[$n]) }
         }
     }
-    function New-Tmp { (New-Item -ItemType Directory -Path (Join-Path ([IO.Path]::GetTempPath()) ("pd-" + [guid]::NewGuid().ToString('N')))).FullName }
+    function New-Tmp { (New-Item -ItemType Directory -Path (New-TestTempPath 'pd')).FullName }
 }
 
 Describe 'agy-pairing-INSTALL.md - the publish step' {

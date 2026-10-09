@@ -33,7 +33,7 @@ Describe 'AGY-ANOMALIES contract stamp' {
             Join-Path $script:RepoRoot "$Driver/plugin/hooks/$Name"
         }
         function New-CleanHome {
-            $h = Join-Path ([IO.Path]::GetTempPath()) ("anom-stamp-home-" + [Guid]::NewGuid().ToString('N'))
+            $h = New-TestTempPath "anom-stamp-home"
             New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
             return $h
         }
@@ -79,8 +79,9 @@ Describe 'AGY-ANOMALIES contract stamp' {
     }
 
     It 'the dispatch reminder EMITS the stamp at the head of its message' {
-        $w = New-TempRepo; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-TempRepo; $h = New-CleanHome
             $r = Invoke-BashHook -HookPath (Hook-Path 'clavity-dotnet' 'agy-anomaly-dispatch-reminder.sh') `
                                  -Payload (@{ cwd = ($w -replace '\\','/'); tool_name = 'Agent' } | ConvertTo-Json -Compress) `
                                  -Env @{ HOME = $h }
@@ -88,12 +89,13 @@ Describe 'AGY-ANOMALIES contract stamp' {
             $msg = Get-Emitted $r
             $msg | Should -Not -BeNullOrEmpty -Because 'a silent hook would satisfy the match below vacuously'
             $msg | Should -Match ('^' + [regex]::Escape($script:Stamp))
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'the capture reminder EMITS the stamp at the head of its message' {
-        $w = New-TempRepo; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-TempRepo; $h = New-CleanHome
             $r = Invoke-BashHook -HookPath (Hook-Path 'clavity-dotnet' 'agy-anomaly-capture-reminder.sh') `
                                  -Payload (@{ cwd = ($w -replace '\\','/'); trigger = 'manual' } | ConvertTo-Json -Compress) `
                                  -Env @{ HOME = $h }
@@ -101,12 +103,13 @@ Describe 'AGY-ANOMALIES contract stamp' {
             $msg = Get-Emitted $r
             $msg | Should -Not -BeNullOrEmpty -Because 'a silent hook would satisfy the match below vacuously'
             $msg | Should -Match ('^' + [regex]::Escape($script:Stamp))
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'the model notice EMITS the stamp at the head of its message' {
-        $w = New-RepoWithEntries 2; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-RepoWithEntries 2; $h = New-CleanHome
             $r = Invoke-BashHook -HookPath (Hook-Path 'clavity-dotnet' 'agy-anomaly-model-notice.sh') `
                                  -Payload (@{ cwd = ($w -replace '\\','/'); source = 'startup' } | ConvertTo-Json -Compress) `
                                  -Env @{ HOME = $h }
@@ -114,7 +117,7 @@ Describe 'AGY-ANOMALIES contract stamp' {
             $msg = Get-Emitted $r
             $msg | Should -Not -BeNullOrEmpty -Because 'this hook is SILENT with no entries - an empty message here means the fixture failed, not that the stamp is absent'
             $msg | Should -Match ('^' + [regex]::Escape($script:Stamp))
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'both drivers ship the three hooks byte-identically, stamp included' -ForEach @(

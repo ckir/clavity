@@ -101,7 +101,7 @@ negative oracle has to do to be trusted.**
 
 - 🔴 **When neither can be established, say `UNVERIFIED` in the stamp — never "confirmed still open".**
   If the reproduction needs state you cannot reach (a live peer, a >4 MB payload, a timing race), the
-  `status:` field still reads `open` — that enum is `open | fixed | wont-fix` and has no fourth value, so
+  `status:` field still reads `OPEN` — the closed set (`docs/tracker-format.md`) has no "unverified" value, so
   do **not** invent one. What must change is the **`last-triaged:` stamp**, which records *how much
   evidence there is*, not what the status is:
 
@@ -271,15 +271,16 @@ the gate FAIL until it is enrolled there, so the failure mode is "loudly over-ch
 **So: after fixing anything under a plugin's `hooks/` or `skills/`, run that gate.** And note it needs
 `jq`; without it the script exits 2 loudly rather than passing vacuously.
 
-## 10. The `wont-fix` disposition
+## 10. The `KILLED` disposition (formerly `wont-fix`)
 
-`_template.md:6` permits `open | fixed | wont-fix`, and **no entry uses `wont-fix` today** — which is
-precisely why it is documented here: a future author has no example to copy.
+`_template.md` permits `OPEN | SCHEDULED | IMPLEMENTED | SHIPPED | CLOSED-BY-RULING | KILLED`; since the
+2026-10-08 normalisation `working-vs-stuck-step-delta.md` is the worked example of `KILLED` (its `reason:` key
+plus the disposition paragraph in the body).
 
-`wont-fix` records a **deliberate architectural refusal**, not an unreproducible entry (that is
-[§4](#4-un-reproduced-is-not-fixed)) and not a deferral (that stays `open`). Use it when the mitigation the
+`KILLED` records a **deliberate architectural refusal**, not an unreproducible entry (that is
+[§4](#4-un-reproduced-is-not-fixed)) and not a deferral (that stays `OPEN` or `SCHEDULED`). Use it when the mitigation the
 entry asks for is one the project has decided not to make. **The reason goes in the entry body**, stated
-so that a reader who disagrees can find the argument and reopen it — a `wont-fix` with no recorded reason
+so that a reader who disagrees can find the argument and reopen it — a `KILLED` with no recorded reason
 is indistinguishable from an entry someone got tired of.
 
 ## 11. `ROADMAP.md` is forward-looking; `CHANGELOG.md` is release history

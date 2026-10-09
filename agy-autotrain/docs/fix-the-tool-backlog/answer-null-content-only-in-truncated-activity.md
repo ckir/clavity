@@ -3,7 +3,7 @@ slug: answer-null-content-only-in-truncated-activity
 variant: clavity-dotnet
 observed: 2026-08-15
 source-inbox-entry: "- [anti-pattern] (driver/deterministic) A consult protocol with NO FAILOVER loses completed work"
-status: open
+status: SCHEDULED
 ---
 
 # `agy_ask` returns `Answer: null` while the reply text survives only as a truncated Activity summary

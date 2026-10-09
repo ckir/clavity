@@ -8,7 +8,7 @@ Describe 'docs-audit-reminder.sh' {
 
         # A workspace whose docs/docs-audit-findings.md carries $Lines (null = no view at all).
         function New-Workspace { param([string[]]$Lines)
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("dar-" + [Guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath "dar"
             New-Item -ItemType Directory -Path (Join-Path $d 'docs') -Force | Out-Null
             if ($null -ne $Lines) {
                 Set-Content -LiteralPath (Join-Path $d 'docs/docs-audit-findings.md') -Value ($Lines -join "`n") -Encoding utf8NoBOM
@@ -55,6 +55,14 @@ Describe 'docs-audit-reminder.sh' {
 
     It 'counts a doc whose audit did not confirm' {
         $d = New-Workspace -Lines @($script:Header, '', "## X.md $($script:Dash) AUDIT-TIMEOUT (claims inspected: 0)", '', '- (no findings)')
+        $r = Invoke-Hook $d
+        $r.ExitCode | Should -Be 0
+        $j = $r.StdOut | ConvertFrom-Json
+        $j.systemMessage | Should -Match ([regex]::Escape('1 unconfirmed doc(s)'))
+    }
+
+    It 'counts a never-audited roster doc (AUDIT-NEVER) as unconfirmed, with no hook change' {
+        $d = New-Workspace -Lines @($script:Header, '', "## N.md $($script:Dash) AUDIT-NEVER (claims inspected: 0)", '', '- (no findings)')
         $r = Invoke-Hook $d
         $r.ExitCode | Should -Be 0
         $j = $r.StdOut | ConvertFrom-Json

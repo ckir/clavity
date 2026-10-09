@@ -1,6 +1,7 @@
 #Requires -Modules Pester
 
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
     $script:Script   = Join-Path $script:RepoRoot 'scripts/check-knowledge-store.ps1'
 
@@ -8,7 +9,7 @@ BeforeAll {
     # against a git baseline, so it cannot be exercised at all without a repo whose history the test
     # controls - and a failure path that cannot be exercised is indistinguishable from a vacuous one.
     function New-StoreFixture {
-        $d = Join-Path ([System.IO.Path]::GetTempPath()) ("clavity-store-" + [guid]::NewGuid().ToString('N'))
+        $d = New-TestTempPath 'clavity-store'
         New-Item -ItemType Directory -Path (Join-Path $d 'rules') -Force | Out-Null
         Set-Content -NoNewline -Path (Join-Path $d 'rules/alpha.md') -Value "# alpha`n`n- ALPHA RULE.`n"
         Set-Content -NoNewline -Path (Join-Path $d 'rules/beta.md')  -Value "# beta`n`n- BETA RULE.`n"
@@ -139,7 +140,7 @@ Describe 'check-knowledge-store' {
         # A second commit, so a shallow clone genuinely truncates something.
         Set-Content -NoNewline -Path (Join-Path $d 'rules/alpha.md') -Value "# alpha`n`n- ALPHA REVISED.`n"
         & git -C $d add -A 2>$null; & git -C $d commit -q -m second 2>$null
-        $sh = Join-Path ([System.IO.Path]::GetTempPath()) ("clavity-shallow-" + [guid]::NewGuid().ToString('N'))
+        $sh = New-TestTempPath 'clavity-shallow'
         & git -c core.autocrlf=false clone -q --depth 1 "file://$($d -replace '\\','/')" $sh 2>$null
         $out = & pwsh -NoProfile -File $script:Script -RepoRoot $sh -StoreDir 'rules' 2>&1 | Out-String
         $LASTEXITCODE | Should -Be 1
@@ -153,7 +154,7 @@ Describe 'check-knowledge-store' {
         $d = New-StoreFixture
         Set-Content -NoNewline -Path (Join-Path $d 'rules/alpha.md') -Value "# alpha`n`n- ALPHA REVISED.`n"
         & git -C $d add -A 2>$null; & git -C $d commit -q -m second 2>$null
-        $fu = Join-Path ([System.IO.Path]::GetTempPath()) ("clavity-full-" + [guid]::NewGuid().ToString('N'))
+        $fu = New-TestTempPath 'clavity-full'
         & git -c core.autocrlf=false clone -q $d $fu 2>$null
         $out = & pwsh -NoProfile -File $script:Script -RepoRoot $fu -StoreDir 'rules' 2>&1 | Out-String
         $LASTEXITCODE | Should -Be 0
@@ -325,7 +326,7 @@ Describe 'check-knowledge-store' {
     }
 
     It 'SKIPS cleanly when there is no store directory at all' {
-        $d = Join-Path ([System.IO.Path]::GetTempPath()) ("clavity-nostore-" + [guid]::NewGuid().ToString('N'))
+        $d = New-TestTempPath 'clavity-nostore'
         New-Item -ItemType Directory -Path $d -Force | Out-Null
         $out = Invoke-Check $d
         $LASTEXITCODE | Should -Be 0

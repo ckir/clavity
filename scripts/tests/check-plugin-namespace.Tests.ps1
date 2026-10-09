@@ -1,10 +1,11 @@
 Describe 'check-plugin-namespace' {
     BeforeAll {
+        . (Join-Path $PSScriptRoot 'TestTemp.ps1')
         $script:gate = Join-Path $PSScriptRoot '..' 'check-plugin-namespace.ps1'
         # Build a CLEAN renamed fixture (a temp $Root), so the unit tests do not depend on the live
         # repo's phase-in-progress state (the real-repo green check lives in Phase 7, after docs).
         function New-CleanFixture {
-            $t = Join-Path $env:TEMP "ns-clean-$PID-$(Get-Random)"
+            $t = New-TestTempPath 'ns-clean'
             New-Item -ItemType Directory -Force -Path (Join-Path $t 'build') | Out-Null
             @'
 { "members": [

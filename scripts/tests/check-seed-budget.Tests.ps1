@@ -1,11 +1,12 @@
 # scripts/tests/check-seed-budget.Tests.ps1
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:Script = Join-Path $PSScriptRoot '..' 'check-seed-budget.ps1'
 }
 
 Describe "check-seed-budget.ps1" {
     BeforeEach {
-        $script:Tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("seedbudget-" + [Guid]::NewGuid())
+        $script:Tmp = New-TestTempPath 'seedbudget'
         New-Item -ItemType Directory -Path $script:Tmp | Out-Null
         $script:Seed = Join-Path $script:Tmp 'golden-header.md'
     }

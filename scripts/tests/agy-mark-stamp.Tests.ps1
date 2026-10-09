@@ -7,7 +7,7 @@ BeforeAll {
     $script:Bash = Get-GitBashOrThrow
 
     function New-Repo {
-        $d = Join-Path ([System.IO.Path]::GetTempPath()) ("mstamp-" + [guid]::NewGuid().ToString('N'))
+        $d = New-TestTempPath 'mstamp'
         New-Item -ItemType Directory -Path $d | Out-Null
         Push-Location $d
         git init -q 2>&1 | Out-Null

@@ -1,6 +1,9 @@
 # Shared Pester helpers for driving the shipped bash hooks with synthetic payloads.
 # Dot-source from a *.Tests.ps1 BeforeAll: . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
 
+# Null-safe cleanup shared by every suite (Remove-TestPath); see TestTemp.ps1.
+. (Join-Path $PSScriptRoot 'TestTemp.ps1')
+
 function Get-GitBashOrThrow {
     # Claude Code runs plugin hooks with Git Bash on Windows; pin it explicitly. `Get-Command bash` is
     # NON-DETERMINISTIC: locally it resolves to WSL's C:\WINDOWS\System32\bash.exe (own filesystem, cannot
@@ -21,7 +24,7 @@ function Get-GitBashOrThrow {
 function New-TempRepo {
     # A throwaway git repo so a hook's `git -C "$cwd" rev-parse HEAD` has a real HEAD without touching
     # the real repo. Returns the dir path (Windows form); callers forward-slash it for the payload cwd.
-    $dir = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-" + [Guid]::NewGuid().ToString('N'))
+    $dir = New-TestTempPath 'sp-d'
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
     & git -C $dir init -q
     & git -C $dir -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= commit --allow-empty -qm init
@@ -172,9 +175,9 @@ function Invoke-JobCountedBash {
         [string[]]$Arguments = @(),
         [string]$Payload = '{}',
         [hashtable]$Env = @{},
-        [string]$WorkingDirectory = [IO.Path]::GetTempPath()
+        [string]$WorkingDirectory = (Get-TestTempRoot)
     )
-    $tmp = Join-Path ([IO.Path]::GetTempPath()) ('jobcount-' + [Guid]::NewGuid().ToString('N'))
+    $tmp = New-TestTempPath 'jobcount'
     New-Item -ItemType Directory -Path $tmp | Out-Null
     try {
         $sq = { param($s) "'" + ($s -replace "'", "'\''") + "'" }
@@ -237,14 +240,14 @@ function Measure-BashHookProcesses {
         [string]$Payload = '{}',
         [hashtable]$Env = @{},
         [string[]]$Arguments = @(),
-        [string]$WorkingDirectory = [IO.Path]::GetTempPath()
+        [string]$WorkingDirectory = (Get-TestTempRoot)
     )
     if (-not (Test-Path -LiteralPath $HookPath)) {
         throw "Measure-BashHookProcesses: the hook '$HookPath' does not exist - a count of a missing script is bash's error path, not the hook"
     }
     $bash = Get-GitBashCoreOrThrow
     if (-not $script:BashBootProcesses) {
-        $empty = Join-Path ([IO.Path]::GetTempPath()) ('jobcount-empty-' + [Guid]::NewGuid().ToString('N') + '.sh')
+        $empty = New-TestTempPath 'jobcount-empty' -Suffix '.sh'
         Set-Content -LiteralPath $empty -Value ':' -Encoding ascii
         try { $script:BashBootProcesses = (Invoke-JobCountedBash -Bash $bash -ScriptPath $empty).Total }
         finally { Remove-Item -LiteralPath $empty -Force -ErrorAction SilentlyContinue }

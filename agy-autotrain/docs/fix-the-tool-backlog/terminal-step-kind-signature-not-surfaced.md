@@ -3,7 +3,7 @@ slug: terminal-step-kind-signature-not-surfaced
 variant: both
 observed: 2026-08-10
 source-inbox-entry: "A PEER CASCADE THAT ENDS ON A REPEATED IDENTICAL STEP-KIND WITH NO OUTPUT"
-status: open
+status: SCHEDULED
 ---
 
 # An impaired channel and an overrun are indistinguishable, though the step trajectory separates them

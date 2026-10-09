@@ -11,7 +11,7 @@ BeforeAll {
         # A work repo (the CI checkout) with remote `origin` = a local bare repo, a fake `gh` on PATH, and one
         # commit tagged t1 whose plugin manifest says $Version.
         param([string]$Version = '1.2.3')
-        $root = Join-Path ([IO.Path]::GetTempPath()) ("arc-" + [guid]::NewGuid().ToString('N'))
+        $root = New-TestTempPath 'arc'
         $work = Join-Path $root 'work'; $bare = Join-Path $root 'origin.git'; $shim = Join-Path $root 'shim'
         New-Item -ItemType Directory -Path $work, $shim | Out-Null
         & git init -q --bare $bare

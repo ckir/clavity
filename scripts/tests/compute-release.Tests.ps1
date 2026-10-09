@@ -1,8 +1,9 @@
 # Pester v5. Each test builds a throwaway git repo so the engine runs against real git.
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:Engine = Join-Path $PSScriptRoot '..' 'compute-release.ps1'
     function New-TempRepo {
-        $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("rel-" + [guid]::NewGuid().ToString('N'))
+        $dir = New-TestTempPath 'rel'
         New-Item -ItemType Directory -Path $dir | Out-Null
         Push-Location $dir
         git init -q; git config user.email t@t; git config user.name t

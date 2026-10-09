@@ -180,7 +180,7 @@ Describe 'agy-test-audit-reminder.sh' {
         # Branch 20 debounce: the hook keeps per-(session, HEAD) state under TMPDIR. Every row here runs with
         # session_id 'default', so give the suite its own TMPDIR and clear the state before each row.
         $script:savedTmpdir = [Environment]::GetEnvironmentVariable('TMPDIR')
-        $script:suiteTmp = Join-Path ([IO.Path]::GetTempPath()) ('tar-tmp-' + [Guid]::NewGuid().ToString('N'))
+        $script:suiteTmp = New-TestTempPath 'tar-tmp'
         New-Item -ItemType Directory -Path $script:suiteTmp | Out-Null
         $env:TMPDIR = ($script:suiteTmp -replace '\\', '/')
     }
@@ -562,8 +562,8 @@ Describe 'agy-test-audit-reminder debounce (once per session and HEAD; Branch 20
         $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Hook = Join-Path $repoRoot 'clavity-dotnet/plugin/hooks/agy-test-audit-reminder.sh'
         $script:Capture = Join-Path $repoRoot 'clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh'
-        $script:DTmp = Join-Path ([IO.Path]::GetTempPath()) ('tar-dbn-' + [Guid]::NewGuid().ToString('N'))
-        $script:DHome = Join-Path ([IO.Path]::GetTempPath()) ('tar-dbh-' + [Guid]::NewGuid().ToString('N'))
+        $script:DTmp = New-TestTempPath 'tar-dbn'
+        $script:DHome = New-TestTempPath 'tar-dbh'
         New-Item -ItemType Directory -Path $script:DTmp, (Join-Path $script:DHome '.claude') -Force | Out-Null
         function New-DebounceRepo {
             # The FIRES shape the suite's New-FiredRepo builds: one executable commit at HEAD, capstone marker on it.

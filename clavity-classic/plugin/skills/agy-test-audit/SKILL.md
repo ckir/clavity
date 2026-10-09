@@ -255,6 +255,10 @@ vocabulary; it is not a code dependency on the panel skill.
    the suite passed with no hook on disk because `bash`'s "No such file or directory" error contains the
    filename, and the matcher matched that.
 
+<!-- tracker-format:begin -->
+**Writing a tracker entry** (full rules: `docs/tracker-format.md`): the heading is the TITLE ONLY; the next non-blank line is `**Status:** <TOKEN> <YYYY-MM-DD> - <one line>`. TOKEN is one of OPEN, SCHEDULED, IMPLEMENTED (open) or SHIPPED (cite a commit sha), CLOSED-BY-RULING (a ROADMAP entry needs a Non-goals bullet; a stub needs a `**Reopen if:**` line), KILLED (state why). Never put a status in the heading; an open sub-item gets its own entry. `just check-tracker-status` enforces this.
+<!-- tracker-format:end -->
+
 **Every payload MUST carry THREE to FOUR OPEN QUESTIONS the peer answers in its own words** - never a
 checkbox, never a yes/no, and never a question whose expected answer is stated in the payload. One
 question is not enough: it lets the peer answer the easiest and stop. Draw them from these four shapes,

@@ -70,7 +70,7 @@ BeforeAll {
     $script:TmpDirOriginal   = if ($script:TmpDirWasPresent) { $env:TMPDIR } else { $null }
 
     function New-IsolatedHome {
-        $h = Join-Path ([IO.Path]::GetTempPath()) ("asrt-" + [guid]::NewGuid().ToString('N'))
+        $h = New-TestTempPath "asrt"
         New-Item -ItemType Directory -Force -Path $h | Out-Null
         $env:TMPDIR = $h
         return $h

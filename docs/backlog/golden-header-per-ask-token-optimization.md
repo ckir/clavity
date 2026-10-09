@@ -1,6 +1,8 @@
 # Backlog stub — golden-header per-ask token optimization
 
-**Status:** ✅ **RESOLVED / OBSOLETE — closed 2026-08-06. Superseded by the audience split, in BOTH drivers.**
+**Status:** KILLED 2026-08-06 - will not be done - RESOLVED / OBSOLETE — closed 2026-08-06. Superseded by the audience split, in BOTH drivers.
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** ✅ **RESOLVED / OBSOLETE — closed 2026-08-06. Superseded by the audience split, in BOTH drivers.**
+
 **Raised:** 2026-07-11 (token-efficiency audit of the agy-knowledge-delivery design).
 **Original scope:** cross-cutting — `clavity-dotnet` + `clavity-classic` (the shared golden-header injection).
 

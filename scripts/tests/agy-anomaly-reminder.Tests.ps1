@@ -8,7 +8,7 @@ Describe 'agy-anomaly-reminder.sh' {
 
         # A workspace whose .clavity/local-anomalies.md carries $Lines entry bullets.
         function New-Workspace { param([string[]]$Lines)
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("anom-" + [Guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath "anom"
             New-Item -ItemType Directory -Path (Join-Path $d '.clavity') -Force | Out-Null
             if ($null -ne $Lines) {
                 $body = @('# Untriaged anomalies (gitignored, local)', '') + $Lines
@@ -17,7 +17,7 @@ Describe 'agy-anomaly-reminder.sh' {
             return $d
         }
         function New-CleanHome {
-            $h = Join-Path ([IO.Path]::GetTempPath()) ("anom-home-" + [Guid]::NewGuid().ToString('N'))
+            $h = New-TestTempPath "anom-home"
             New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
             return $h
         }
@@ -61,7 +61,7 @@ Describe 'agy-anomaly-reminder.sh' {
         # MEASURED: replacing Invoke-BashHook's stderr capture with the empty string left the whole suite
         # 22/22 GREEN - every stderr guard here was hollow, including the ones added one round earlier to
         # fix a vacuity finding. This row is the only thing between that and a silent regression.
-        $s = Join-Path ([IO.Path]::GetTempPath()) ("stderrctl-" + [Guid]::NewGuid().ToString('N') + ".sh")
+        $s = New-TestTempPath "stderrctl" -Suffix '.sh'
         try {
             # LF ONLY, and written explicitly rather than with Set-Content. AGY-CAPSTONE round 3, Resource
             # Vampire: Set-Content joins array elements with the OS separator, so on Windows this wrote a
@@ -82,41 +82,45 @@ Describe 'agy-anomaly-reminder.sh' {
     # measured on this hook's own model-addressed sibling, a broken walk produced silence that was
     # indistinguishable from a working kill-switch, and only the control went red.
     It 'is SILENT when .no-agy is at the repo root and cwd is a subdirectory' {
-        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWithAnomaly; $h = New-CleanHome
             New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
             $x = Invoke-Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ HOME = $h }
             $x.StdOut   | Should -BeNullOrEmpty -Because 'an opt-out at the repo root must suppress this hook from a subdirectory'
             $x.ExitCode | Should -Be 0
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
     It 'DOES report from that same subdirectory when .no-agy is absent (positive control)' {
         # Also pins that the walk finds the anomalies file at the ROOT while running from a subdirectory,
         # which is the behaviour the header comment promises and the whole reason the root is resolved.
-        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWithAnomaly; $h = New-CleanHome
             $x = Invoke-Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ HOME = $h }
             $x.StdOut   | Should -Match 'AGY-ANOMALIES' -Because 'without the opt-out it must still report - otherwise the silence test proves nothing'
             $x.ExitCode | Should -Be 0 -Because 'SessionStart routes the owner notice via the JSON envelope on stdout at exit 0'
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
     It 'honours a root .no-agy from a subdirectory on the DEGRADED (no jq) path too' {
         # This path used to test "./.no-agy" - the PROCESS cwd, not the session workspace - so it could
         # not honour any workspace opt-out at all when the two differ. Nothing covered it.
-        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWithAnomaly; $h = New-CleanHome
             New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
             $x = Invoke-Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ PATH = $script:NoJqPath; HOME = $h }
             $x.StdOut   | Should -BeNullOrEmpty -Because 'the degraded path must honour the same root opt-out as the jq path'
             $x.ExitCode | Should -Be 0
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
     It 'DOES warn from that subdirectory without .no-agy when jq is absent (degraded positive control)' {
-        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWithAnomaly; $h = New-CleanHome
             $x = Invoke-Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ PATH = $script:NoJqPath; HOME = $h }
             $x.StdOut | Should -Match 'guard inactive: missing jq' -Because 'without the opt-out the degraded path must still announce itself'
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
 
     # --- ROADMAP section 32a: a FILE cwd. Claude Code sends a directory, but the payload is not ours, and
@@ -124,32 +128,35 @@ Describe 'agy-anomaly-reminder.sh' {
     # kill-switch probes became <file>/.no-agy and missed; on the degraded path nothing else stopped the
     # notice, and on the jq path the same miss also hid the root's anomalies file.
     It 'honours a root .no-agy when cwd is a FILE, on the DEGRADED (no jq) path (section 32a)' {
-        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWithAnomaly; $h = New-CleanHome
             New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
             $f = Join-Path $r 'afile.txt'; Set-Content -LiteralPath $f -Value 'x' -Encoding ascii
             $x = Invoke-Hook -Payload (RawPayload $f) -Env @{ PATH = $script:NoJqPath; HOME = $h }
             $x.StdOut   | Should -BeNullOrEmpty -Because 'a file cwd must resolve to its directory, so the root opt-out still fires'
             $x.ExitCode | Should -Be 0
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
     It 'REPORTS the root anomalies when cwd is a FILE, on the jq path (section 32a)' {
-        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWithAnomaly; $h = New-CleanHome
             $f = Join-Path $r 'afile.txt'; Set-Content -LiteralPath $f -Value 'x' -Encoding ascii
             $x = Invoke-Hook -Payload (RawPayload $f) -Env @{ HOME = $h }
             $x.StdOut   | Should -Match '1 untriaged' -Because 'a file cwd must reach the repo root, where the anomalies file lives'
             $x.ExitCode | Should -Be 0
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
     It 'honours a root .no-agy when cwd is a FILE, on the jq path (pairs the REPORTS row above)' {
-        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWithAnomaly; $h = New-CleanHome
             New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
             $f = Join-Path $r 'afile.txt'; Set-Content -LiteralPath $f -Value 'x' -Encoding ascii
             $x = Invoke-Hook -Payload (RawPayload $f) -Env @{ HOME = $h }
             $x.StdOut | Should -BeNullOrEmpty -Because 'the same repo that reports above must go silent under its root opt-out'
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
 
     # --- ROADMAP section 32b: an EMPTY PATH. Invoke-BashHook cannot reach this: Get-GitBashOrThrow returns
@@ -197,29 +204,31 @@ Describe 'agy-anomaly-reminder.sh' {
     # would depend on how many entries happen to be untriaged today. Both the PowerShell location and
     # [Environment]::CurrentDirectory are set, because a native child inherits the latter.
     It 'falls back to the PROCESS directory when the payload is not JSON at all' {
-        $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
+        $w = $null; $h = $null
         $prevLoc = Get-Location; $prevEnv = [Environment]::CurrentDirectory
         try {
+            $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
             Set-Location $w; [Environment]::CurrentDirectory = $w
             $r = Invoke-Hook -Payload 'this is not json at all' -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '1 untriaged' -Because 'a malformed payload must fall back to the process directory, where the fixture lives'
         } finally {
             Set-Location $prevLoc; [Environment]::CurrentDirectory = $prevEnv
-            Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-TestPath $w, $h
         }
     }
     It 'falls back to the PROCESS directory when the payload OMITS cwd entirely' {
-        $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
+        $w = $null; $h = $null
         $prevLoc = Get-Location; $prevEnv = [Environment]::CurrentDirectory
         try {
+            $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
             Set-Location $w; [Environment]::CurrentDirectory = $w
             $r = Invoke-Hook -Payload '{"source":"startup"}' -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '1 untriaged' -Because 'the jq default // "." must supply the dot when the cwd key is absent'
         } finally {
             Set-Location $prevLoc; [Environment]::CurrentDirectory = $prevEnv
-            Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-TestPath $w, $h
         }
     }
 
@@ -237,9 +246,10 @@ Describe 'agy-anomaly-reminder.sh' {
         # The observable difference is the KILL-SWITCH. With the fallback, cwd_path is "." and a .no-agy
         # in the process directory silences the hook; without it, cwd_path is empty, the probe degrades to
         # "/.no-agy", and the hook warns instead.
-        $w = New-Workspace $null; $h = New-CleanHome
+        $w = $null; $h = $null
         $prevLoc = Get-Location; $prevEnv = [Environment]::CurrentDirectory
         try {
+            $w = New-Workspace $null; $h = New-CleanHome
             Set-Location $w; [Environment]::CurrentDirectory = $w
 
             # CONTROL FIRST, and it is the load-bearing half: with no .no-agy the same call MUST warn, or
@@ -253,7 +263,7 @@ Describe 'agy-anomaly-reminder.sh' {
             $r.ExitCode | Should -Be 0
         } finally {
             Set-Location $prevLoc; [Environment]::CurrentDirectory = $prevEnv
-            Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-TestPath $w, $h
         }
     }
 
@@ -264,7 +274,7 @@ Describe 'agy-anomaly-reminder.sh' {
         # `git init`, which creates a DIRECTORY, so every fixture in this suite varied in one dimension
         # and that support was never exercised. MEASURED: changing both probes to `-d` left the suite
         # 27/27 GREEN - a comment promising worktree support with nothing behind it.
-        $w = Join-Path ([IO.Path]::GetTempPath()) ("anom-wt-" + [Guid]::NewGuid().ToString('N'))
+        $w = New-TestTempPath "anom-wt"
         $h = New-CleanHome
         try {
             New-Item -ItemType Directory -Path (Join-Path $w '.clavity') -Force | Out-Null
@@ -293,42 +303,46 @@ Describe 'agy-anomaly-reminder.sh' {
     # The positive controls already above ('DOES report from that same subdirectory...') are what make
     # these two meaningful: they prove the identical fixture DOES report when the opt-out is absent.
     It 'is SILENT when .no-agy is in the SUBDIRECTORY the session runs from and the root is unmarked' {
-        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWithAnomaly; $h = New-CleanHome
             New-Item -ItemType File -Path (Join-Path $r 'src/.no-agy') -Force | Out-Null
             (Test-Path (Join-Path $r '.no-agy')) | Should -BeFalse -Because 'the ROOT must stay unmarked, or this passes through the OTHER half of the kill-switch and proves nothing'
             $x = Invoke-Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ HOME = $h }
             $x.StdOut   | Should -BeNullOrEmpty
             $x.ExitCode | Should -Be 0
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
     It 'honours a SUBDIRECTORY .no-agy on the DEGRADED (no jq) path too, root unmarked' {
-        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        $r = $null; $h = $null
         try {
+            $r = New-RepoWithAnomaly; $h = New-CleanHome
             New-Item -ItemType File -Path (Join-Path $r 'src/.no-agy') -Force | Out-Null
             (Test-Path (Join-Path $r '.no-agy')) | Should -BeFalse -Because 'the ROOT must stay unmarked, or this passes through the OTHER half of the kill-switch and proves nothing'
             $x = Invoke-Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ PATH = $script:NoJqPath; HOME = $h }
             $x.StdOut   | Should -BeNullOrEmpty
             $x.ExitCode | Should -Be 0
-        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $r, $h }
     }
 
     It 'is SILENT (exit 0) when the anomalies file does not exist' {
-        $w = New-Workspace $null; $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace $null; $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'is SILENT when the file exists but holds no entries' {
-        $w = New-Workspace @(); $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(); $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     # BRANCH 21 (Task 4). cwd is now read from the RAW payload with a regex; a value carrying a JSON escape the raw read cannot
@@ -337,7 +351,7 @@ Describe 'agy-anomaly-reminder.sh' {
     # inbox must not be able to produce the same count by accident.
     It 'resolves a cwd carrying a \u escape through the jq fallback and still counts its anomalies' {
         $e = [string][char]0xE9
-        $d = Join-Path ([IO.Path]::GetTempPath()) ("anom-$e-" + [Guid]::NewGuid().ToString('N'))
+        $d = New-TestTempPath "anom-$e"
         New-Item -ItemType Directory -Path (Join-Path $d '.clavity') -Force | Out-Null
         $lines = 1..7 | ForEach-Object { "- [defect] n$_ * a.cs:1 * 2026-07-2$($_ % 10) * task=z" }
         Set-Content (Join-Path $d '.clavity/local-anomalies.md') ((@('# Untriaged anomalies (gitignored, local)', '') + $lines) -join "`n") -Encoding ascii
@@ -353,59 +367,63 @@ Describe 'agy-anomaly-reminder.sh' {
     }
 
     It 'reads the oldest date from the field before task=, even when the fact and the task both contain " * "' {
-        $w = New-Workspace @(
-            '- [defect] the fact has a * star * here * src/a.cs:1 * 2026-09-10 * task=left * right',
-            '- [tool] 2024-01-01 appears in the prose only * n/a * 2026-08-03 * task=y',
-            '- [defect] task= is the FIRST field so there is no date * 2026-01-01'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                '- [defect] the fact has a * star * here * src/a.cs:1 * 2026-09-10 * task=left * right',
+                '- [tool] 2024-01-01 appears in the prose only * n/a * 2026-08-03 * task=y',
+                '- [defect] task= is the FIRST field so there is no date * 2026-01-01'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.StdOut | Should -Match '3 untriaged \(oldest 2026-08-03\)' -Because 'a date in the prose, a "task=" first field or a star inside the fact or task must not change the answer'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'REPORTS the count and demands triage when entries exist' {
-        $w = New-Workspace @(
-            '- [defect] ParseLatest never checks the pid pair matches * LsDiscovery.cs:94 * 2026-07-30 * task=capstone',
-            '- [tool] just test-scripts exceeds the 600s tool cap * n/a * 2026-08-01 * task=phase-b'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                '- [defect] ParseLatest never checks the pid pair matches * LsDiscovery.cs:94 * 2026-07-30 * task=capstone',
+                '- [tool] just test-scripts exceeds the 600s tool cap * n/a * 2026-08-01 * task=phase-b'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '2 untriaged'
             $r.StdOut   | Should -Match 'promote'
             $r.StdOut   | Should -Match 'delete'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'names the OLDEST entry date, not the newest' {
-        $w = New-Workspace @(
-            '- [tool] newer thing * n/a * 2026-08-01 * task=x',
-            '- [defect] older thing * a.cs:1 * 2026-07-14 * task=y'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                '- [tool] newer thing * n/a * 2026-08-01 * task=x',
+                '- [defect] older thing * a.cs:1 * 2026-07-14 * task=y'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.StdOut | Should -Match '2026-07-14'
             $r.StdOut | Should -Not -Match '2026-08-01'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'counts ONLY entry bullets, not prose or headings in the file' {
-        $w = New-Workspace @(
-            'Some explanatory prose that is not an entry.',
-            '## A heading',
-            '- not an entry because it has no bracketed type',
-            '- [defect] the only real entry * a.cs:1 * 2026-07-20 * task=z'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                'Some explanatory prose that is not an entry.',
+                '## A heading',
+                '- not an entry because it has no bracketed type',
+                '- [defect] the only real entry * a.cs:1 * 2026-07-20 * task=z'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '1 untriaged'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'does NOT count a bracketed type that appears MID-SENTENCE in prose' {
@@ -414,37 +432,40 @@ Describe 'agy-anomaly-reminder.sh' {
         # The anchor cannot be dropped by simply deleting the caret, because 'grep -c '- \[...'' makes
         # grep parse the pattern as OPTIONS and exit 2, which the unreadable-file branch turns into a
         # loud failure; the silent form is 'grep -c -- '- \[...'', and that is what this row pins.
-        $w = New-Workspace @(
-            'The count regex once matched a - [defect] mention written inside prose.',
-            '- [defect] the only real entry * a.cs:1 * 2026-07-20 * task=z'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                'The count regex once matched a - [defect] mention written inside prose.',
+                '- [defect] the only real entry * a.cs:1 * 2026-07-20 * task=z'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '1 untriaged'
             $r.StdOut   | Should -Not -Match '2 untriaged' -Because 'a mid-sentence bracketed type is prose, not an entry'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'is SILENT under a workspace .no-agy kill-switch' {
-        $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
             New-Item -ItemType File -Path (Join-Path $w '.no-agy') -Force | Out-Null
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'is SILENT under a global $HOME/.claude/.no-agy kill-switch' {
-        $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
             New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'warns ONCE (exit 0, one JSON line) when jq is absent rather than failing silently' {
@@ -470,8 +491,9 @@ Describe 'agy-anomaly-reminder.sh' {
     It 'finds the file at the repo ROOT when cwd is a SUBDIRECTORY' {
         # A capturing session cd'd into a subdirectory writes to the repo root. If this hook looked only at
         # the payload cwd it would report zero while a real anomaly sat captured and invisible.
-        $repo = New-TempRepo; $h = New-CleanHome
+        $repo = $null; $h = $null
         try {
+            $repo = New-TempRepo; $h = New-CleanHome
             New-Item -ItemType Directory -Path (Join-Path $repo '.clavity') -Force | Out-Null
             Set-Content (Join-Path $repo '.clavity/local-anomalies.md') "# Untriaged anomalies`n`n- [defect] y * a.cs:1 * 2026-07-20 * task=z" -Encoding ascii
             $sub = Join-Path $repo 'scripts/deep'
@@ -479,7 +501,7 @@ Describe 'agy-anomaly-reminder.sh' {
             $r = Invoke-Hook -Payload (Payload $sub) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '1 untriaged'
-        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $repo, $h }
     }
 
     It 'finds the file under the payload cwd when it is NOT at the git root' {
@@ -487,8 +509,9 @@ Describe 'agy-anomaly-reminder.sh' {
         # ROOT has no anomalies file, but the payload cwd (a subdirectory) does. Reachable when a capturing
         # session without git on PATH used its $PWD fallback while cd'd into a subdirectory. A fixture
         # where root and cwd coincide would pass with or without the fallback and prove nothing.
-        $repo = New-TempRepo; $h = New-CleanHome
+        $repo = $null; $h = $null
         try {
+            $repo = New-TempRepo; $h = New-CleanHome
             $sub = Join-Path $repo 'scripts/deep'
             New-Item -ItemType Directory -Path (Join-Path $sub '.clavity') -Force | Out-Null
             Set-Content (Join-Path $sub '.clavity/local-anomalies.md') "# Untriaged anomalies`n`n- [defect] y * a.cs:1 * 2026-07-20 * task=z" -Encoding ascii
@@ -496,33 +519,35 @@ Describe 'agy-anomaly-reminder.sh' {
             $r = Invoke-Hook -Payload (Payload $sub) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '1 untriaged'
-        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $repo, $h }
     }
 
     It 'counts an entry whose type is Title-Case or multi-word' {
         # A sloppy type is still a real anomaly. A stricter [a-z] pattern would count these as zero and
         # silently discard exactly what the hook exists to surface.
-        $w = New-Workspace @(
-            '- [Defect] title-cased type * a.cs:1 * 2026-07-20 * task=z',
-            '- [tool misbehavior] multi-word type * n/a * 2026-07-21 * task=z'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                '- [Defect] title-cased type * a.cs:1 * 2026-07-20 * task=z',
+                '- [tool misbehavior] multi-word type * n/a * 2026-07-21 * task=z'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '2 untriaged'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'reads the date from its FIELD, ignoring a date written in the prose' {
         # Scanning the whole line for an ISO date would pick the prose date and report an age that is a lie.
-        $w = New-Workspace @('- [defect] API truncates messages from 2024-01-01 format * a.cs:1 * 2026-08-01 * task=z')
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @('- [defect] API truncates messages from 2024-01-01 format * a.cs:1 * 2026-08-01 * task=z')
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.StdOut | Should -Match '2026-08-01'
             $r.StdOut | Should -Not -Match '2024-01-01'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'still reads the date when the task field itself contains a separator' {
@@ -533,18 +558,19 @@ Describe 'agy-anomaly-reminder.sh' {
         # it newer, the other entry supplies the same "oldest" either way and the test passes against the
         # broken form -- which is exactly how the first version of this test was vacuous. The second entry
         # also keeps a ' * ' in its FACT, proving that case stayed safe.
-        $w = New-Workspace @(
-            '- [defect] x * a.cs:1 * 2026-07-11 * task=investigating * timeout',
-            '- [tool] a * b thing * n/a * 2026-08-01 * task=z'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                '- [defect] x * a.cs:1 * 2026-07-11 * task=investigating * timeout',
+                '- [tool] a * b thing * n/a * 2026-08-01 * task=z'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '2 untriaged'
             $r.StdOut   | Should -Match '2026-07-11'
             $r.StdOut   | Should -Not -Match '2026-08-01'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'extracts the date by ANCHORING on task=, not by counting to a fixed field' {
@@ -555,18 +581,19 @@ Describe 'agy-anomaly-reminder.sh' {
         #
         # Here the OLDER date sits at field 4 and the NEWER one at field 3, so `print $3` yields the
         # newer date plus a non-date ('n/a') that the ISO filter drops, and the reported oldest flips.
-        $w = New-Workspace @(
-            '- [defect] x * a.cs:1 * 2026-08-01 * task=z',
-            '- [tool] a * b thing * n/a * 2026-07-05 * task=y'
-        )
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @(
+                '- [defect] x * a.cs:1 * 2026-08-01 * task=z',
+                '- [tool] a * b thing * n/a * 2026-07-05 * task=y'
+            )
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '2 untriaged'
             $r.StdOut   | Should -Match '2026-07-05' -Because 'the date is the field BEFORE task=, wherever that lands'
             $r.StdOut   | Should -Not -Match '2026-08-01'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'wraps the date as "(oldest <date>)" rather than emitting it bare' {
@@ -574,13 +601,14 @@ Describe 'agy-anomaly-reminder.sh' {
         # agy-anomaly-reminder.sh:169 is invisible to them -- MEASURED, rewriting it to `oldest=" $oldest"`
         # left the suite 29/29 GREEN. The wrapper is what makes the number legible to a reader; without
         # it the notice reads "3 untriaged 2026-07-14 in ...", which parses as a fourth count.
-        $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-14 * task=z')
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-14 * task=z')
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '\(oldest 2026-07-14\)'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'OMITS the oldest clause entirely when no entry carries a parseable date' {
@@ -591,14 +619,15 @@ Describe 'agy-anomaly-reminder.sh' {
         #
         # An entry with no task= field is the reachable shape: the awk anchor finds nothing to print, so
         # the date comes back empty even though the entry itself is counted.
-        $w = New-Workspace @('- [defect] x with no task field * a.cs:1 * 2026-07-14')
-        $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @('- [defect] x with no task field * a.cs:1 * 2026-07-14')
+            $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match '1 untriaged in ' -Because 'the count is followed directly by "in", with no clause between'
             $r.StdOut   | Should -Not -Match 'oldest'
-        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $w, $h }
     }
 
     It 'is SILENT when jq is absent AND .no-agy is set' {
@@ -617,8 +646,9 @@ Describe 'agy-anomaly-reminder.sh' {
     It 'REPORTS an unreadable anomalies file rather than counting zero' {
         # A present-but-unreadable file must not read as "no anomalies" -- that is the same silent zero
         # the jq guard exists to prevent. Skipped on hosts where chmod cannot actually deny read.
-        $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
+        $w = $null; $h = $null
         try {
+            $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
             $f = Join-Path $w '.clavity/local-anomalies.md'
             & icacls $f /deny "$($env:USERNAME):(R)" 2>&1 | Out-Null
             # Probe readability from the BASH process the hook actually runs in, NOT from PowerShell.
@@ -649,8 +679,9 @@ Describe 'agy-anomaly-reminder.sh' {
             $j.hookSpecificOutput.hookEventName     | Should -Be 'SessionStart'
             $j.hookSpecificOutput.additionalContext | Should -Match 'cannot be read'
         } finally {
-            & icacls (Join-Path $w '.clavity/local-anomalies.md') /remove:d "$($env:USERNAME)" 2>&1 | Out-Null
-            Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue
+            # $w is $null when New-Workspace itself threw: Join-Path would then throw inside this finally and skip the cleanup of $h.
+            if ($w) { & icacls (Join-Path $w '.clavity/local-anomalies.md') /remove:d "$($env:USERNAME)" 2>&1 | Out-Null }
+            Remove-TestPath $w, $h
         }
     }
 
@@ -666,12 +697,13 @@ Describe 'agy-anomaly-reminder.sh' {
         # error, and without the StdOut match this test would pass on a hook that says NOTHING at all.
         # (This comment said "all three" until AGY-CAPSTONE round 4 - round 3 removed the local stderr
         # assertion as dead code once the wrapper covered it, and left the comment describing it.)
-        $d = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
+        $d = $null; $h = $null
         try {
+            $d = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $d) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0 -Because 'a non-zero SessionStart hook is rendered to the owner as a hook ERROR'
             $r.StdOut   | Should -Match 'AGY-ANOMALIES' -Because 'the notice must still be emitted, or the two assertions above are vacuous'
-        } finally { Remove-Item $d,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $d, $h }
     }
 
     It 'emits an envelope carrying BOTH the owner surface and the model surface' {
@@ -684,14 +716,15 @@ Describe 'agy-anomaly-reminder.sh' {
         # hookEventName is pinned to SessionStart because the hook is registered under FOUR matchers
         # (startup, resume, clear, compact) that are `source` values of ONE event - naming any of those
         # as the event would be rejected as a schema violation and the owner would see a validation dump.
-        $d = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
+        $d = $null; $h = $null
         try {
+            $d = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
             $r = Invoke-Hook -Payload (Payload $d) -Env @{ HOME = $h }
             $j = $r.StdOut | ConvertFrom-Json      # throws, and so fails, if the envelope is malformed
             $j.systemMessage                        | Should -Match 'AGY-ANOMALIES'
             $j.hookSpecificOutput.hookEventName     | Should -Be 'SessionStart'
             $j.hookSpecificOutput.additionalContext | Should -Match 'AGY-ANOMALIES'
-        } finally { Remove-Item $d,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-TestPath $d, $h }
     }
 
     It 'ships as pure ASCII' {

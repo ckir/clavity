@@ -1,12 +1,13 @@
 # scripts/tests/drain-lib.Tests.ps1
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     # Dot-source the PARAMETER-LESS lib: no param block → no $InboxPath clobber, no main to run (F-P1).
     . (Join-Path $PSScriptRoot '..' 'drain-lib.ps1')
 }
 
 Describe "drain-lib primitives" {
     BeforeEach {
-        $script:Work = Join-Path ([System.IO.Path]::GetTempPath()) ("drain-" + [Guid]::NewGuid())
+        $script:Work = New-TestTempPath 'drain'
         New-Item -ItemType Directory -Path $script:Work | Out-Null
         $script:Inbox = Join-Path $script:Work 'agy-observations.md'
     }

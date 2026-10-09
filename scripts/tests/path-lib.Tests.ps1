@@ -3,11 +3,11 @@
 # THE ROOT-SHAPE MATRIX LIVES HERE, not in the four gate suites - each of those needs only one integration
 # row proving it calls this function. Spreading the matrix across four gates would run the same assertions
 # four times through four child-process spawns for no extra coverage.
-BeforeAll { . (Join-Path $PSScriptRoot '..' 'lib' 'path-lib.ps1') }
+BeforeAll { . (Join-Path $PSScriptRoot 'TestTemp.ps1'); . (Join-Path $PSScriptRoot '..' 'lib' 'path-lib.ps1') }
 
 Describe 'Get-RootRelativePath' {
     BeforeEach {
-        $script:Parent = Join-Path ([IO.Path]::GetTempPath()) ("s28-" + [guid]::NewGuid().ToString('N'))
+        $script:Parent = New-TestTempPath 's28'
         $script:Root   = Join-Path $script:Parent 'a-very-long-directory-name-that-gets-shortened'
         New-Item -ItemType Directory -Force -Path (Join-Path $script:Root 'installer') | Out-Null
         New-Item -ItemType File -Force -Path (Join-Path $script:Root 'installer/probe.ps1') | Out-Null
@@ -175,7 +175,7 @@ Describe 'Get-RootRelativePath' {
 
 Describe 'New-RootRelativePathResolver' {
     BeforeEach {
-        $script:FParent = Join-Path ([IO.Path]::GetTempPath()) ("s28f-" + [guid]::NewGuid().ToString('N'))
+        $script:FParent = New-TestTempPath 's28f'
         New-Item -ItemType Directory -Force -Path (Join-Path $script:FParent 'rootA/one') | Out-Null
         New-Item -ItemType Directory -Force -Path (Join-Path $script:FParent 'rootB/two') | Out-Null
         $script:RootA = Join-Path $script:FParent 'rootA'

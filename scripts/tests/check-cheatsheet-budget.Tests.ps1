@@ -1,5 +1,6 @@
 # scripts/tests/check-cheatsheet-budget.Tests.ps1
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:Script   = Join-Path $PSScriptRoot '..' 'check-cheatsheet-budget.ps1'
     $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
     $script:Canonical = Join-Path $script:RepoRoot 'agy-autotrain/knowledge/driver-cheatsheet.core.md'
@@ -7,7 +8,7 @@ BeforeAll {
 
 Describe "check-cheatsheet-budget.ps1" {
     BeforeEach {
-        $script:Tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("cheatbudget-" + [Guid]::NewGuid())
+        $script:Tmp = New-TestTempPath 'cheatbudget'
         New-Item -ItemType Directory -Path $script:Tmp | Out-Null
         $script:File = Join-Path $script:Tmp 'driver-cheatsheet.core.md'
     }

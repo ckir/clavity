@@ -2,6 +2,7 @@
 # CP1252 mangling in the Windows PowerShell 5.1 domain, and nothing pinned any of its behaviour.
 Describe 'check-installer-ascii.ps1' {
     BeforeAll {
+        . (Join-Path $PSScriptRoot 'TestTemp.ps1')
         $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Gate     = Join-Path $script:RepoRoot 'scripts/check-installer-ascii.ps1'
         Test-Path -LiteralPath $script:Gate | Should -BeTrue
@@ -22,7 +23,7 @@ Describe 'check-installer-ascii.ps1' {
         # TWO OFFENDERS, NOT ONE (AGY-TEST-AUDIT section 28, round 2). MEASURED: with a `break` after the first
         # report line - a truncated report that hides every later offender - a one-offender fixture stayed
         # GREEN. Distinct byte counts (1 and 2) make each line identify its own file.
-        $root = Join-Path ([IO.Path]::GetTempPath()) ("s28ib-" + [guid]::NewGuid().ToString('N'))
+        $root = New-TestTempPath 's28ib'
         try {
             New-Item -ItemType Directory -Force -Path (Join-Path $root 'installer/sub') | Out-Null
             [IO.File]::WriteAllBytes((Join-Path $root 'installer/offender.ps1'),
@@ -44,7 +45,7 @@ Describe 'check-installer-ascii.ps1' {
     It 'FAILS with exit 1 when the 5.1 domain is EMPTY, rather than passing having checked nothing' {
         # A root that exists but holds neither installer/ nor the registration suite - what a wrong -RepoRoot
         # looks like. Without the check, the loop runs zero times and the gate prints OK for zero files.
-        $root = Join-Path ([IO.Path]::GetTempPath()) ("s28ie-" + [guid]::NewGuid().ToString('N'))
+        $root = New-TestTempPath 's28ie'
         try {
             New-Item -ItemType Directory -Force -Path $root | Out-Null
             $out = & pwsh -NoProfile -File $script:Gate -RepoRoot $root 2>&1 | Out-String
@@ -55,7 +56,7 @@ Describe 'check-installer-ascii.ps1' {
     }
 
     It 'reports the correct relative path when -RepoRoot is an 8.3 SHORT path' {
-        $parent = Join-Path ([IO.Path]::GetTempPath()) ("s28ia-" + [guid]::NewGuid().ToString('N'))
+        $parent = New-TestTempPath 's28ia'
         $root   = Join-Path $parent 'a-very-long-directory-name-that-gets-shortened'
         New-Item -ItemType Directory -Force -Path (Join-Path $root 'installer') | Out-Null
         # A file the gate must FLAG - $rel is only emitted on failure, so a clean fixture proves nothing.

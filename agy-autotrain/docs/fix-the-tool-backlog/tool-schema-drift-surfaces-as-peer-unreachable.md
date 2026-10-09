@@ -3,7 +3,7 @@ slug: tool-schema-drift-surfaces-as-peer-unreachable
 variant: both
 observed: 2026-08-21
 source-inbox-entry: "A peer tool that errors on EVERY call while sibling tools on the same"
-status: open
+status: SCHEDULED
 ---
 
 # An input-validation rejection is surfaced as a generic channel failure, so schema drift is diagnosed as an outage

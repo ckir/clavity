@@ -14,7 +14,7 @@ Describe 'agy-consult-recovery guard prologue' {
     }
   }
   It 'emits NOTHING in a repo with no .clavity directory (31b zero-footprint gate)' {
-    $tmp = Join-Path ([IO.Path]::GetTempPath()) ("cr-" + [guid]::NewGuid())
+    $tmp = New-TestTempPath 'cr'
     New-Item -ItemType Directory -Path $tmp | Out-Null
     & git -C $tmp init -q
     $out = Invoke-Hook $tmp
@@ -23,7 +23,7 @@ Describe 'agy-consult-recovery guard prologue' {
     Remove-Item -Recurse -Force $tmp
   }
   It 'exits 0 and emits NOTHING when .clavity exists but .clavity/seams is absent' {
-    $tmp = Join-Path ([IO.Path]::GetTempPath()) ("cr-" + [guid]::NewGuid())
+    $tmp = New-TestTempPath 'cr'
     New-Item -ItemType Directory -Path $tmp | Out-Null
     & git -C $tmp init -q
     New-Item -ItemType Directory -Path (Join-Path $tmp '.clavity') | Out-Null
@@ -33,7 +33,7 @@ Describe 'agy-consult-recovery guard prologue' {
     Remove-Item -Recurse -Force $tmp
   }
   It 'is suppressed by a workspace .no-agy' {
-    $tmp = Join-Path ([IO.Path]::GetTempPath()) ("cr-" + [guid]::NewGuid())
+    $tmp = New-TestTempPath 'cr'
     New-Item -ItemType Directory -Path $tmp | Out-Null
     & git -C $tmp init -q
     New-Item -ItemType Directory -Path (Join-Path $tmp '.clavity\seams') -Force | Out-Null
@@ -50,7 +50,7 @@ Describe 'agy-consult-recovery candidate model' {
     . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
     $script:bash = Get-GitBashOrThrow
     $script:hook = Join-Path $PSScriptRoot '..\..\clavity-dotnet\plugin\hooks\agy-consult-recovery.sh'
-    function New-Repo { $t = Join-Path ([IO.Path]::GetTempPath()) ("cr-" + [guid]::NewGuid()); New-Item -ItemType Directory $t | Out-Null; & git -C $t init -q; & git -C $t commit -q --allow-empty -m init; New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null; New-Item -ItemType Directory (Join-Path $t '.clavity\agy-marks') -Force | Out-Null; $t }
+    function New-Repo { $t = New-TestTempPath 'cr'; New-Item -ItemType Directory $t | Out-Null; & git -C $t init -q; & git -C $t commit -q --allow-empty -m init; New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null; New-Item -ItemType Directory (Join-Path $t '.clavity\agy-marks') -Force | Out-Null; $t }
     function Seam($repo,$name,$body='body'){ Set-Content (Join-Path $repo ".clavity\seams\$name") $body }
     function Marker($repo,$tok,$sha='0000000000000000000000000000000000000000'){ Set-Content (Join-Path $repo ".clavity\agy-marks\$tok.head") $sha -NoNewline }
     function Run($repo){ (@{cwd=$repo;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & $script:bash $script:hook 2>$null }
@@ -114,7 +114,7 @@ Describe 'agy-consult-recovery output vocabulary' {
     . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
     $script:bash = Get-GitBashOrThrow
     $script:hook = Join-Path $PSScriptRoot '..\..\clavity-dotnet\plugin\hooks\agy-consult-recovery.sh'
-    function New-Repo { $t = Join-Path ([IO.Path]::GetTempPath()) ("cr-" + [guid]::NewGuid()); New-Item -ItemType Directory $t | Out-Null; & git -C $t init -q; & git -C $t commit -q --allow-empty -m init; New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null; New-Item -ItemType Directory (Join-Path $t '.clavity\agy-marks') -Force | Out-Null; $t }
+    function New-Repo { $t = New-TestTempPath 'cr'; New-Item -ItemType Directory $t | Out-Null; & git -C $t init -q; & git -C $t commit -q --allow-empty -m init; New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null; New-Item -ItemType Directory (Join-Path $t '.clavity\agy-marks') -Force | Out-Null; $t }
     function Seam($repo,$name){ Set-Content (Join-Path $repo ".clavity\seams\$name") 'body' }
     function Run($repo){ (@{cwd=$repo;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & $script:bash $script:hook 2>$null }
   }
@@ -206,7 +206,7 @@ Describe 'agy-consult-recovery section-7 matrix (representative fixtures; each r
     . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
     $script:bash = Get-GitBashOrThrow
     $script:hook = Join-Path $PSScriptRoot '..\..\clavity-dotnet\plugin\hooks\agy-consult-recovery.sh'
-    function New-Repo { $t = Join-Path ([IO.Path]::GetTempPath()) ("cr-" + [guid]::NewGuid()); New-Item -ItemType Directory $t | Out-Null; & git -C $t init -q; & git -C $t commit -q --allow-empty -m init; New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null; New-Item -ItemType Directory (Join-Path $t '.clavity\agy-marks') -Force | Out-Null; $t }
+    function New-Repo { $t = New-TestTempPath 'cr'; New-Item -ItemType Directory $t | Out-Null; & git -C $t init -q; & git -C $t commit -q --allow-empty -m init; New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null; New-Item -ItemType Directory (Join-Path $t '.clavity\agy-marks') -Force | Out-Null; $t }
     function Seam($repo,$name){ Set-Content (Join-Path $repo ".clavity\seams\$name") 'body' }
     function Marker($repo,$tok,$sha='0000000000000000000000000000000000000000'){ Set-Content (Join-Path $repo ".clavity\agy-marks\$tok.head") $sha -NoNewline }
     function Run($repo){ (@{cwd=$repo;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & $script:bash $script:hook 2>$null }
@@ -299,8 +299,8 @@ Describe 'agy-consult-recovery test-audit coverage (verified gaps 2026-09-14)' {
     . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
     $script:bash = Get-GitBashOrThrow
     $script:hook = Join-Path $PSScriptRoot '..\..\clavity-dotnet\plugin\hooks\agy-consult-recovery.sh'
-    function New-Repo { $t = Join-Path ([IO.Path]::GetTempPath()) ("cr-" + [guid]::NewGuid()); New-Item -ItemType Directory $t | Out-Null; & git -C $t init -q; & git -C $t commit -q --allow-empty -m init; New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null; New-Item -ItemType Directory (Join-Path $t '.clavity\agy-marks') -Force | Out-Null; $t }
-    function New-RepoNoCommit { $t = Join-Path ([IO.Path]::GetTempPath()) ("cr-" + [guid]::NewGuid()); New-Item -ItemType Directory $t | Out-Null; & git -C $t init -q; New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null; New-Item -ItemType Directory (Join-Path $t '.clavity\agy-marks') -Force | Out-Null; $t }
+    function New-Repo { $t = New-TestTempPath 'cr'; New-Item -ItemType Directory $t | Out-Null; & git -C $t init -q; & git -C $t commit -q --allow-empty -m init; New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null; New-Item -ItemType Directory (Join-Path $t '.clavity\agy-marks') -Force | Out-Null; $t }
+    function New-RepoNoCommit { $t = New-TestTempPath 'cr'; New-Item -ItemType Directory $t | Out-Null; & git -C $t init -q; New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null; New-Item -ItemType Directory (Join-Path $t '.clavity\agy-marks') -Force | Out-Null; $t }
     function Seam($repo,$name,$body='body'){ Set-Content (Join-Path $repo ".clavity\seams\$name") $body }
     function Marker($repo,$tok,$sha='0000000000000000000000000000000000000000'){ Set-Content (Join-Path $repo ".clavity\agy-marks\$tok.head") $sha -NoNewline }
     function Run($repo){ (@{cwd=$repo;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & $script:bash $script:hook 2>$null }
@@ -355,7 +355,7 @@ Describe 'agy-consult-recovery test-audit coverage (verified gaps 2026-09-14)' {
   It 'G8: a GLOBAL $HOME/.claude/.no-agy suppresses the hook (distinct from the workspace .no-agy gate)' {
     # Mutant: change line 28 to read a different path (or delete the gate) -> the hook emits despite the global kill-switch -> reds. Only the WORKSPACE .no-agy was previously covered.
     $r = New-Repo; Seam $r 'agy-capstone-r5-x.md'
-    $fakehome = Join-Path ([IO.Path]::GetTempPath()) ("cr-home-" + [guid]::NewGuid())
+    $fakehome = New-TestTempPath 'cr-home'
     New-Item -ItemType Directory (Join-Path $fakehome '.claude') -Force | Out-Null
     Set-Content (Join-Path $fakehome '.claude\.no-agy') ''
     $out = (@{cwd=$r;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & $script:bash -c 'HOME="$2" exec bash "$1"' _ $script:hook $fakehome 2>$null
@@ -364,7 +364,7 @@ Describe 'agy-consult-recovery test-audit coverage (verified gaps 2026-09-14)' {
   }
   It 'non-git: a directory with NO .git up-tree emits NOTHING even with .clavity/seams present (pins the line-43 gate)' {
     # Mutant: remove `[ -e "$root/.git" ] || exit 0` -> a non-git dir with .clavity reaches enumeration and emits -> reds. Peer prose-only finding; verified reachable.
-    $t = Join-Path ([IO.Path]::GetTempPath()) ("cr-nogit-" + [guid]::NewGuid())
+    $t = New-TestTempPath 'cr-nogit'
     New-Item -ItemType Directory (Join-Path $t '.clavity\seams') -Force | Out-Null
     Seam $t 'agy-capstone-r5-x.md'
     (Run $t) | Should -BeNullOrEmpty
@@ -374,7 +374,7 @@ Describe 'agy-consult-recovery test-audit coverage (verified gaps 2026-09-14)' {
     # MEASURED before the fix: the lib sourced fine, _mrel stayed empty, _marker became "$root/" - a directory
     # that exists and is usually NEWER than the seam - so every seam read as concluded and the hook went silent.
     # The repo root is made newer than the seam below because the failure mode relies on exactly that.
-    $hd = Join-Path ([IO.Path]::GetTempPath()) ("cr-hooks-" + [guid]::NewGuid())
+    $hd = New-TestTempPath 'cr-hooks'
     Copy-Item -Recurse (Split-Path -Parent $script:hook) $hd
     Set-Content (Join-Path $hd 'agy-marker-lib.sh') '# defines nothing'
     $r = New-Repo; Seam $r 'agy-capstone-r1-x.md'

@@ -1,10 +1,11 @@
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:Checker = Join-Path (Split-Path -Parent $PSScriptRoot) 'check-capstone-new-code.ps1'
 
     # A throwaway git repo. NEVER run these fixtures against the clavity repo itself: a control run
     # in-repo gives a FALSE PASS because the real tree already satisfies most shapes under test.
     function New-Repo {
-        $d = Join-Path ([System.IO.Path]::GetTempPath()) ("ccnc-" + [guid]::NewGuid().ToString('N'))
+        $d = New-TestTempPath 'ccnc'
         New-Item -ItemType Directory -Path $d | Out-Null
         Push-Location $d
         git init -q 2>&1 | Out-Null
@@ -837,7 +838,7 @@ Describe 'check-capstone-new-code' {
         # Simulated with a shim named ast-grep that exits non-zero, placed FIRST on PATH. That is the
         # honest simulation of a grammar bump: the binary exists, runs, and fails.
         $r = New-Repo
-        $shim = Join-Path ([System.IO.Path]::GetTempPath()) ("agshim-" + [guid]::NewGuid().ToString('N'))
+        $shim = New-TestTempPath 'agshim'
         try {
             New-Item -ItemType Directory -Path $shim -Force | Out-Null
             Set-Content -Path (Join-Path $shim 'ast-grep.cmd') -Value @('@echo off', 'exit /b 8')

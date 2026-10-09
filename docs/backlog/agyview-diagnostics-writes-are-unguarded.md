@@ -1,6 +1,8 @@
 # Backlog stub — `AgyView` writes to the operator Diagnostics sink unguarded, and a throwing sink fails the ask
 
-**Status:** 🔴 **OPEN.** Verified by measurement 2026-08-20; line re-verified at the 2026-08-25 triage.
+**Status:** OPEN 2026-08-25 - not yet scheduled
+> **Legacy status (verbatim, before the 2026-10-08 normalisation):** 🔴 **OPEN.** Verified by measurement 2026-08-20; line re-verified at the 2026-08-25 triage.
+
 **Raised:** AGY-CAPSTONE R3 fold on step 2 (`13b`). Promoted from `.clavity/local-anomalies.md`.
 
 ## The defect

@@ -3,13 +3,14 @@ slug: <kebab-case-unique-slug>
 variant: <clavity-dotnet | clavity-classic | both>
 observed: <YYYY-MM-DD>
 source-inbox-entry: "<verbatim first ~12 words of the agy-observations bullet>"
-status: open        # open | fixed-in-repo | released | wont-fix
-# On `fixed-in-repo` or `released`, ALSO add:  fixed-by: <sha, sha>   fixed-on: <YYYY-MM-DD>
-# On `released`, ALSO add:  released-in: <release tag or sha range>
+status: OPEN        # OPEN | SCHEDULED | IMPLEMENTED | SHIPPED | CLOSED-BY-RULING | KILLED   (docs/tracker-format.md; enforced by `just check-tracker-status`)
+# On SHIPPED, ALSO add:  fixed-by: <sha, sha>   fixed-on: <YYYY-MM-DD>   (every sha must exist in the repository)
+# Once a release carries the fix, ALSO add:  released-in: <release tag, e.g. clavity-v17>
+# On KILLED, ALSO add:  reason: <at least 12 characters>.  On CLOSED-BY-RULING, add a `**Reopen if:** ...` line in the body.
 #
-# `fixed-in-repo` vs `released` is the distinction this enum exists to force, and it is MEASURABLE, not a
-# judgement call: an item is `released` when its fix commits are ANCESTORS OF THE LATEST RELEASE TAG, and
-# `fixed-in-repo` when they are not. Check it, do not infer it from a commit date - a commit can predate
+# SHIPPED with vs without `released-in:` is the distinction the old `released` / `fixed-in-repo` values forced, and it is
+# MEASURABLE, not a judgement call: an item carries `released-in:` when its fix commits are ANCESTORS OF THE LATEST RELEASE TAG,
+# and merely SHIPPED (no `released-in:`) when they are not. Check it, do not infer it from a commit date - a commit can predate
 # the last release and still not be in it:
 #     git merge-base --is-ancestor <fix-sha> "$(git tag --sort=-creatordate | head -1)"
 # The old single `fixed` value conflated the two, and the conflation was REACHABLE: on 2026-08-11 the
