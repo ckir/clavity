@@ -9,7 +9,7 @@ agy-facing guidance lives in the root `CLAUDE.md` (read
 [`plugin/knowledge/agy-assumptions.md`](plugin/knowledge/agy-assumptions.md) first); the LS-specific
 wire assumptions are in [`../docs/agy-ls-assumptions.md`](../docs/agy-ls-assumptions.md).
 
-Dev (run from this folder, `clavity-dotnet/`): `dotnet build`, `dotnet test tests/Clavity.Ls.Tests`.
+Dev (run from this folder, `clavity-dotnet/`): `dotnet build`, `just test` (both test projects - `Clavity.Ls.Tests` and `Clavity.Integration.Tests` - exactly what CI runs).
 
 For what shipped when, read `CHANGELOG.md` and `ROADMAP.md` — they are generated/maintained and stay
 current. (A hand-written "recent session notes" section used to live here; it stopped being recent nine
