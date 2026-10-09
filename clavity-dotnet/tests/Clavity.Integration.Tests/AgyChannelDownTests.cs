@@ -339,6 +339,27 @@ public class AgyChannelDownTests
         finally { Directory.Delete(dir, true); }
     }
 
+    [Fact]
+    public async Task Boot_race_resolved_but_unanswered_reports_a_busy_peer_with_a_retry_hint()
+    {
+        // Backlog ls-discovery-misreports-a-busy-peer-as-exited: every poll reaches the LS and gets
+        // DeadlineExceeded. The report must say the peer is alive and busy (LsUnanswered), not "starting or exited".
+        var fake = new FakeChannelDownLs("conv-1", StatusCode.DeadlineExceeded, throwOnDiscovery: true);
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var json = await McpTools.AgyStatus(ViewFor(cliLog));
+            using var doc = JsonDocument.Parse(json);
+            Assert.Equal("channel_down", doc.RootElement.GetProperty("State").GetString());
+            Assert.Equal("LsUnanswered", doc.RootElement.GetProperty("Diagnostic").GetProperty("StatusCode").GetString());
+            var hint = doc.RootElement.GetProperty("Hint").GetString()!;
+            Assert.Contains("RETRY", hint);
+            Assert.DoesNotContain("shut down or restarted", hint);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     // Boot-race fake: a TRANSIENT death on the first discovery poll (the LS has bound the port but its gRPC
     // service is not ready yet -> Unavailable), then reachable-but-EMPTY forever (the LS is up, waiting for the
     // human to start a conversation). Drives the capstone-R3 "flapping" regression.

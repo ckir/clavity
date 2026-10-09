@@ -82,6 +82,32 @@ public class ChannelDownTests
     }
 
     [Fact]
+    public void A_peer_that_was_reached_but_did_not_answer_is_diagnosed_as_busy_and_told_to_retry()
+    {
+        // Backlog ls-discovery-misreports-a-busy-peer-as-exited: the endpoint resolved and every poll hit
+        // DeadlineExceeded, so the peer is alive. The hint must lead with retry and must NOT claim a shutdown.
+        var d = ChannelDown.Diagnose(new LsDiscoveryException("peer busy") { PeerReachedButUnanswered = true });
+        var hint = ChannelDown.Hint(d);
+
+        Assert.Equal(ChannelDown.LsUnanswered, d.StatusCode);
+        Assert.Contains("RETRY", hint);
+        Assert.DoesNotContain("shut down or restarted", hint);
+        Assert.Equal(ChannelDown.Status, ChannelDown.StatusFor(d)); // status stays channel_down (compatibility)
+    }
+
+    [Fact]
+    public void A_discovery_failure_without_the_unanswered_flag_is_still_a_shutdown_or_not_started()
+    {
+        // Distractor for the row above: the SAME exception type without the flag keeps the old diagnosis.
+        var d = ChannelDown.Diagnose(new LsDiscoveryException("not reachable"));
+        var hint = ChannelDown.Hint(d);
+
+        Assert.Equal("LsDiscovery", d.StatusCode);
+        Assert.Contains("shut down or restarted", hint);
+        Assert.DoesNotContain("RETRY", hint);
+    }
+
+    [Fact]
     public void Every_hint_names_the_status_code_and_detail_it_was_given()
     {
         // Distractor case: a fault we have not special-cased must still surface its real diagnostic

@@ -1606,6 +1606,42 @@ public class AgyAskIntegrationTests
         finally { Directory.Delete(dir, true); }
     }
 
+    private sealed class ThrowingWriter : StringWriter
+    {
+        public override void WriteLine(string? value) => throw new IOException("diagnostics sink is full");
+    }
+
+    [Fact]
+    public async Task AskAsync_survives_a_diagnostics_sink_that_throws()
+    {
+        // Backlog agyview-diagnostics-writes-are-unguarded: the Diagnostics write is advisory and must never
+        // fail the ask it describes. Same scenario as the trajectory-model row, but with a sink that throws.
+        var initial = new[]
+        {
+            new CascadeStep
+            {
+                Kind = 15,
+                Metadata = new CortexStepMetadata { GeneratorModel = 1016 },
+                UserInput = new CascadeUserInput { Text = "prior assistant turn" },
+            },
+        };
+        var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), initial);
+
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Diagnostics = new ThrowingWriter() });
+            await view.AskAsync("please do X");
+
+            Assert.Equal(1016, fake.LastSentModel);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public async Task AskAsync_sends_the_conversations_own_model_from_the_trajectory()
     {

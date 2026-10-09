@@ -10,6 +10,10 @@ public static class ChannelDown
 {
     public const string Status = "channel_down";
 
+    /// <summary>Diagnostic code for "the endpoint resolved but the peer did not answer in time" (a busy peer).
+    /// It keeps the channel_down status (compatibility) but gets its own hint: retry, do not restart.</summary>
+    public const string LsUnanswered = "LsUnanswered";
+
     /// <summary>True if the exception is a channel death we should diagnose. Excludes a caller-cancel
     /// (RpcException StatusCode.Cancelled — F6). The AgyModelUnavailableException-wrapper clause is added in the
     /// F3 fold.</summary>
@@ -26,6 +30,7 @@ public static class ChannelDown
         RpcException rpc => new ChannelDiagnostic(rpc.StatusCode.ToString(), DetailOf(rpc)),
         { InnerException: RpcException rpc } => new ChannelDiagnostic(rpc.StatusCode.ToString(), DetailOf(rpc)),
         ObjectDisposedException => new ChannelDiagnostic("ObjectDisposed", ex.Message),
+        LsDiscoveryException { PeerReachedButUnanswered: true } => new ChannelDiagnostic(LsUnanswered, ex.Message),
         LsDiscoveryException => new ChannelDiagnostic("LsDiscovery", ex.Message),
         _ => new ChannelDiagnostic(ex.GetType().Name, ex.Message),
     };
@@ -79,6 +84,11 @@ public static class ChannelDown
     public static string Hint(ChannelDiagnostic d)
     {
         var prefix = $"clavity-ls -> agy channel call failed ([{d.StatusCode}] {d.Detail}). ";
+        if (d.StatusCode == LsUnanswered)
+            return prefix + "agy's language server was reached but did not answer inside the budget: it is most " +
+                "likely BUSY mid-turn, not down. RETRY the call - the endpoint is re-resolved on every call, so " +
+                "there is nothing to reconnect. Only if repeated retries keep failing should you restart the " +
+                "Claude Code session (or the clavity-ls MCP server).";
         return Classify(d) switch
         {
             // ResourceExhausted covers TWO causes and the code cannot tell them apart from the status alone:

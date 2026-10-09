@@ -30,6 +30,11 @@ public sealed record LsEndpoint(int GrpcPort, int HttpPort, int Pid);
 public sealed class LsDiscoveryException : Exception
 {
     public LsDiscoveryException(string message) : base(message) { }
+
+    /// <summary>True when the endpoint WAS resolved and every conclusive poll ended in DeadlineExceeded: the
+    /// peer is alive but did not answer inside the budget (busy mid-turn). The operator's action is to retry,
+    /// not to restart anything (backlog: ls-discovery-misreports-a-busy-peer-as-exited).</summary>
+    public bool PeerReachedButUnanswered { get; init; }
 }
 
 /// <summary>
