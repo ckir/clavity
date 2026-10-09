@@ -264,10 +264,10 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
             $problems += "OUT-OF-RANGE  ROADMAP:$($i+1)  ``$rel`:$a$(if ($b -ne $a) { "-$b" }) points outside $($hits[0]) ($($fl.Count) lines)"
             continue
         }
-        # ACCEPTED RESIDUAL: an anchor missing its OPENING quote, `file:10`(foo"), is not flagged - a bare parenthetical after a pointer is ordinary prose, e.g. the (N lines) claims check A reads.
-        # An anchor that was ATTEMPTED (` ("` right after the pointer, with or without spaces around the paren) but did not parse - a quote inside it, or an empty one - would
+        # ACCEPTED RESIDUALS: an anchor with spaces inside the paren, `file:10` ( "x" ), or missing its OPENING quote, `file:10`(foo"), is not flagged - a parenthetical after a pointer after a pointer is ordinary prose, e.g. the (N lines) claims check A reads.
+        # An anchor that was ATTEMPTED (` ("` right after the pointer, with or without spaces BEFORE the paren, none inside it) but did not parse - a quote inside it, or an empty one - would
         # otherwise fall back silently to an un-anchored pointer and lose the content check it was written to get (AGY-TEST-AUDIT branch T).
-        if (-not $m.Groups['anchor'].Success -and $lines[$i].Substring($m.Index + $m.Length) -match '^\s*\(\s*"') {
+        if (-not $m.Groups['anchor'].Success -and $lines[$i].Substring($m.Index + $m.Length) -match '^\s*\("') {
             $problems += "MALFORMED-ANCHOR  ROADMAP:$($i+1)  ``$rel`:$a$(if ($b -ne $a) { "-$b" }) has an anchor that is not one non-empty quoted string without an inner quote - the content check did not run"
             continue
         }

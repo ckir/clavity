@@ -459,10 +459,10 @@ Describe 'check-roadmap-claims.ps1 - a malformed anchor' {
         $r = Invoke-Claims $f.Root $f.Roadmap
         $r.Code | Should -Be 1 -Because "output was:`n$($r.Out)"; $r.Out | Should -Match 'MALFORMED-ANCHOR'
     }
-    It 'refuses an anchor with spaces inside the parenthesis, which the strict parser also drops' {
-        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2`` ( `"beta`" ) text.`n"
+    It 'does NOT flag ordinary prose that follows a pointer and starts with a spaced quote' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2`` ( `"the big class`" was refactored) text.`n"
         $r = Invoke-Claims $f.Root $f.Roadmap
-        $r.Code | Should -Be 1 -Because "output was:`n$($r.Out)"; $r.Out | Should -Match 'MALFORMED-ANCHOR'
+        $r.Code | Should -Be 0 -Because "a parenthetical with spaces inside is prose, not an attempted anchor; output was:`n$($r.Out)"
     }
     It 'refuses an anchor with no space between the pointer and the parenthesis' {
         $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2``(`"beta`") text.`n"

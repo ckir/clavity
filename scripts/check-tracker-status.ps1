@@ -99,16 +99,16 @@ if ($null -ne $rmLines) {
     $ng = [array]::FindIndex($rmLines, [Predicate[string]] { param($l) $l -like '## Non-goals*' })
     if ($ng -ge 0) { $nonGoals = @($rmLines[$ng..($rmLines.Count - 1)] | Where-Object { $_ -like '- **`*' -or $_ -like '- **§*' -or $_ -like '- **item *' -or $_ -like '- **AT-*' -or $_ -like '- **D*' -or $_ -like '- **R*' }) }
 }
-# LooseRe is a TRIPWIRE, not a parser: it flags a heading that opens like an entry (the section sign, a number WITH its dot, [DR]<n>, AT-<n>, tolerating spaces and tildes) but fails the strict shape.
+# LooseRe is a TRIPWIRE, not a parser: it flags a heading that opens like an entry (the section sign, a number WITH its dot but not a dotted outline number like 1.1, [DR]<n>, AT-<n>; tolerating spaces after the hashes and any tildes) but fails the strict shape.
 # It deliberately does NOT forgive a typo inside the sigil itself (### D-12, ### 12 Title): that cannot be told from ordinary prose such as '### 2026 Goals', so widening further trades a missed typo for a red build
-# on valid docs (AGY-CAPSTONE branch T rounds 4-6). Accepted residual: an entry whose sigil is itself misspelt is skipped.
+# on valid docs (AGY-CAPSTONE branch T rounds 4-6). Accepted residuals: an entry whose sigil is itself misspelt or space-split (D 12, AT 3) is skipped, and so is one at the wrong heading level (## §1).
 Test-HeadingTracker -Rel 'clavity-dotnet/ROADMAP.md' -Tracker 'dotnet-roadmap' -Kind 'roadmap' -NonGoals $nonGoals -Required `
-    -HeadingRe ([regex]'^### (?:~~)?(?:§\d+ |\d+\. )') -LooseRe ([regex]'^###\s*~*\s*(?:§|\d+\.)') `
+    -HeadingRe ([regex]'^### (?:~~)?(?:§\d+ |\d+\. )') -LooseRe ([regex]'^###\s*~*\s*(?:§|\d+\.(?!\d))') `
     -IdOf { param($l) if ($l -match '^### (?:~~)?(§\d+) ') { $Matches[1] } elseif ($l -match '^### (?:~~)?(\d+)\. ') { "item $($Matches[1])" } }
 Test-HeadingTracker -Rel 'review-relay/ROADMAP.md' -Tracker 'review-relay' -Kind 'file' -NonGoals $nonGoals `
-    -HeadingRe ([regex]'^### [DR]\d+ ') -LooseRe ([regex]'^###\s*[DR]\s*\d') -IdOf { param($l) if ($l -match '^### ([DR]\d+) ') { $Matches[1] } }
+    -HeadingRe ([regex]'^### [DR]\d+ ') -LooseRe ([regex]'^###\s*[DR]\d') -IdOf { param($l) if ($l -match '^### ([DR]\d+) ') { $Matches[1] } }
 Test-HeadingTracker -Rel 'agy-autotrain/ROADMAP.md' -Tracker 'agy-autotrain-roadmap' -Kind 'file' -NonGoals $nonGoals `
-    -HeadingRe ([regex]'^## AT-\d+ ') -LooseRe ([regex]'^##\s*AT[-\s_]*\d') -IdOf { param($l) if ($l -match '^## (AT-\d+) ') { $Matches[1] } }
+    -HeadingRe ([regex]'^## AT-\d+ ') -LooseRe ([regex]'^##\s*AT-\d') -IdOf { param($l) if ($l -match '^## (AT-\d+) ') { $Matches[1] } }
 
 # --- backlog stubs -----------------------------------------------------------------------------------
 $stubDir = Join-Path $RepoRoot 'docs' 'backlog'
