@@ -27,6 +27,30 @@ public class LsDiscoveryTests
         Assert.Equal(30728, ep.Pid);
     }
 
+    // ROADMAP s55: a glog line whose thread-id field is missing must NOT have the timestamp fraction
+    // read as the pid. The control for this row is the same line WITH the field (RealPair -> pid 30728).
+    [Fact]
+    public void ParseLatest_rejects_a_line_with_no_thread_id_field_instead_of_reading_the_timestamp_fraction_as_pid()
+    {
+        var log =
+            "I0731 11:43:49.288076 server.go:560] Language server listening on random port at 56311 for HTTPS (gRPC)\n" +
+            "I0731 11:43:49.288080 server.go:568] Language server listening on random port at 56312 for HTTP\n";
+
+        Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(log));
+    }
+
+    // ROADMAP s55: the glog header must sit IMMEDIATELY before the pid, so a crafted fragment elsewhere on
+    // the line cannot supply a pid/port pair. The prefix tolerance (PrefixedPair) must be unaffected.
+    [Fact]
+    public void ParseLatest_does_not_take_a_pid_from_text_that_is_not_a_glog_header()
+    {
+        var log =
+            "999 x] Language server listening on random port at 56311 for HTTPS (gRPC)\n" +
+            "999 x] Language server listening on random port at 56312 for HTTP\n";
+
+        Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(log));
+    }
+
     [Fact]
     public void ParseLatest_http_port_is_the_higher_of_the_adjacent_pair()
     {
@@ -132,7 +156,7 @@ public class LsDiscoveryTests
         // surface as LsDiscoveryException (the contract callers catch), never as a raw OverflowException.
         // NOTE: capping the pattern's digit count does NOT fix this — a capped group slides along the run and
         // silently captures a wrong value, so the parse stays uncapped and the conversion is guarded instead.
-        var log = "I0627 05:26:29.288076 30728 some.go:123] echo 99999999999999999999 fake] " +
+        var log = "I0627 05:26:29.288076 99999999999999999999 some.go:123] " +
                   "Language server listening on random port at 888 for HTTPS (gRPC)\n";
 
         var ex = Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(log));
@@ -148,10 +172,10 @@ public class LsDiscoveryTests
         // so the client would talk to the WRONG workspace. Kills two mutants at once: dropping the pid
         // cross-check, and collapsing the forward scan to the single adjacent line.
         var log =
-            "100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
-            "200 server.go:517] Language server listening on random port at 2000 for HTTPS (gRPC)\n" +
-            "100 server.go:525] Language server listening on random port at 1001 for HTTP\n" +
-            "200 server.go:525] Language server listening on random port at 2001 for HTTP\n";
+            "I0627 05:26:29.000000 100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
+            "I0627 05:26:29.000000 200 server.go:517] Language server listening on random port at 2000 for HTTPS (gRPC)\n" +
+            "I0627 05:26:29.000000 100 server.go:525] Language server listening on random port at 1001 for HTTP\n" +
+            "I0627 05:26:29.000000 200 server.go:525] Language server listening on random port at 2001 for HTTP\n";
 
         var ep = LsDiscovery.ParseLatest(log);
 
@@ -166,8 +190,8 @@ public class LsDiscoveryTests
         // Covers the HTTP-line parse path specifically. The existing overflow test only exercises the gRPC
         // line, so reverting JUST the HTTP-side guard to a raw int.Parse would otherwise keep every test green.
         var log =
-            "38 server.go:560] Language server listening on random port at 56311 for HTTPS (gRPC)\n" +
-            "38 server.go:568] Language server listening on random port at 99999999999999999999 for HTTP\n";
+            "I0627 05:26:29.000000 38 server.go:560] Language server listening on random port at 56311 for HTTPS (gRPC)\n" +
+            "I0627 05:26:29.000000 38 server.go:568] Language server listening on random port at 99999999999999999999 for HTTP\n";
 
         var ex = Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(log));
         // Assert the FIELD, not just the generic wording: the pid path throws the same "not a usable number"
@@ -181,9 +205,9 @@ public class LsDiscoveryTests
         // The id check runs on lines belonging to OTHER sessions. An unusable number on a line we are merely
         // SKIPPING must not abort a scan that would otherwise succeed — the valid line follows it.
         var log =
-            "100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
-            "99999999999999999999 server.go:525] Language server listening on random port at 5000 for HTTP\n" +
-            "100 server.go:525] Language server listening on random port at 1001 for HTTP\n";
+            "I0627 05:26:29.000000 100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
+            "I0627 05:26:29.000000 99999999999999999999 server.go:525] Language server listening on random port at 5000 for HTTP\n" +
+            "I0627 05:26:29.000000 100 server.go:525] Language server listening on random port at 1001 for HTTP\n";
 
         var ep = LsDiscovery.ParseLatest(log);
 
@@ -199,8 +223,8 @@ public class LsDiscoveryTests
         // not a contract. If the ids ever drift, discovery must still work rather than hard-fail; treating an
         // observed log detail as guaranteed is precisely what caused the outage this whole change fixes.
         var log =
-            "100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
-            "101 server.go:525] Language server listening on random port at 1001 for HTTP\n";
+            "I0627 05:26:29.000000 100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
+            "I0627 05:26:29.000000 101 server.go:525] Language server listening on random port at 1001 for HTTP\n";
 
         var ep = LsDiscovery.ParseLatest(log);
 
@@ -216,8 +240,8 @@ public class LsDiscoveryTests
         // log pairs session 100's gRPC port with session 200's HTTP port, and that chimera passes the listening
         // check (200 is alive), so the client silently talks to the WRONG workspace instead of erroring.
         var log =
-            "100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
-            "200 server.go:525] Language server listening on random port at 2000 for HTTP\n";
+            "I0627 05:26:29.000000 100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
+            "I0627 05:26:29.000000 200 server.go:525] Language server listening on random port at 2000 for HTTP\n";
 
         var ex = Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(log));
         Assert.Contains("not its adjacent partner", ex.Message);
@@ -231,8 +255,8 @@ public class LsDiscoveryTests
         // yields a gap. Hard-failing a healthy session on that OS-level race would recreate the outage class this
         // file exists to prevent, so a same-id pair must resolve even when the ports are not adjacent.
         var log =
-            "100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
-            "100 server.go:525] Language server listening on random port at 1007 for HTTP\n";
+            "I0627 05:26:29.000000 100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
+            "I0627 05:26:29.000000 100 server.go:525] Language server listening on random port at 1007 for HTTP\n";
 
         var ep = LsDiscovery.ParseLatest(log);
 
@@ -247,9 +271,9 @@ public class LsDiscoveryTests
         // the gRPC port. A later HTTP line in the same log belongs to some other session, so remembering the last
         // candidate instead of the first would pair with it and then fail the adjacency guard on a healthy session.
         var log =
-            "100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
-            "101 server.go:525] Language server listening on random port at 1001 for HTTP\n" +
-            "102 server.go:525] Language server listening on random port at 2000 for HTTP\n";
+            "I0627 05:26:29.000000 100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
+            "I0627 05:26:29.000000 101 server.go:525] Language server listening on random port at 1001 for HTTP\n" +
+            "I0627 05:26:29.000000 102 server.go:525] Language server listening on random port at 2000 for HTTP\n";
 
         var ep = LsDiscovery.ParseLatest(log);
 
@@ -264,9 +288,9 @@ public class LsDiscoveryTests
         // across a restart, so an older session's same-id HTTP line above the newest gRPC line must not be taken:
         // it names the dead session's port, not this one's.
         var log =
-            "100 server.go:525] Language server listening on random port at 900 for HTTP\n" +
-            "100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
-            "100 server.go:525] Language server listening on random port at 1001 for HTTP\n";
+            "I0627 05:26:29.000000 100 server.go:525] Language server listening on random port at 900 for HTTP\n" +
+            "I0627 05:26:29.000000 100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
+            "I0627 05:26:29.000000 100 server.go:525] Language server listening on random port at 1001 for HTTP\n";
 
         var ep = LsDiscovery.ParseLatest(log);
 

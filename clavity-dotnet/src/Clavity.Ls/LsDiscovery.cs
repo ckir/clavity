@@ -59,13 +59,15 @@ public static class LsDiscovery
     // — which silently broke a pattern anchored on the glog severity token and took the whole channel
     // down while agy itself was healthy and listening. Anchor on the distinctive MESSAGE BODY instead;
     // the glog tail is still required because that is where the pid comes from. Leftmost-match lands on
-    // the real pid: "\S+\]" cannot span whitespace, so a timestamp fragment can never satisfy it.
+    // the real pid. The pid must sit IMMEDIATELY after a full glog header (severity+date, time with
+    // fraction): without that, a line whose thread-id field is missing would read the timestamp's
+    // fractional seconds as the pid (ROADMAP s55). The header is required, the text BEFORE it is not.
     private static readonly Regex GrpcLine = new(
-        @"(?<pid>\d+)\s+\S+\]\s+Language server listening on random port at (?<port>\d+) for HTTPS \(gRPC\)\s*$",
+        @"[IWEF]\d{4} \d\d:\d\d:\d\d\.\d+\s+(?<pid>\d+)\s+\S+\]\s+Language server listening on random port at (?<port>\d+) for HTTPS \(gRPC\)\s*$",
         RegexOptions.Compiled);
 
     private static readonly Regex HttpLine = new(
-        @"(?<pid>\d+)\s+\S+\]\s+Language server listening on random port at (?<port>\d+) for HTTP\s*$",
+        @"[IWEF]\d{4} \d\d:\d\d:\d\d\.\d+\s+(?<pid>\d+)\s+\S+\]\s+Language server listening on random port at (?<port>\d+) for HTTP\s*$",
         RegexOptions.Compiled);
 
     /// <summary>
