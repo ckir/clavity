@@ -459,6 +459,11 @@ Describe 'check-roadmap-claims.ps1 - a malformed anchor' {
         $r = Invoke-Claims $f.Root $f.Roadmap
         $r.Code | Should -Be 1 -Because "output was:`n$($r.Out)"; $r.Out | Should -Match 'MALFORMED-ANCHOR'
     }
+    It 'refuses an anchor with spaces inside the parenthesis, which the strict parser also drops' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2`` ( `"beta`" ) text.`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap
+        $r.Code | Should -Be 1 -Because "output was:`n$($r.Out)"; $r.Out | Should -Match 'MALFORMED-ANCHOR'
+    }
     It 'refuses an empty anchor, and still accepts a well-formed one beside it' {
         $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2`` (`"`") text.`n"
         $r = Invoke-Claims $f.Root $f.Roadmap

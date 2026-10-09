@@ -100,12 +100,12 @@ if ($null -ne $rmLines) {
     if ($ng -ge 0) { $nonGoals = @($rmLines[$ng..($rmLines.Count - 1)] | Where-Object { $_ -like '- **`*' -or $_ -like '- **§*' -or $_ -like '- **item *' -or $_ -like '- **AT-*' -or $_ -like '- **D*' -or $_ -like '- **R*' }) }
 }
 Test-HeadingTracker -Rel 'clavity-dotnet/ROADMAP.md' -Tracker 'dotnet-roadmap' -Kind 'roadmap' -NonGoals $nonGoals -Required `
-    -HeadingRe ([regex]'^### (?:~~)?(?:§\d+ |\d+\. )') -LooseRe ([regex]'^### (?:~~)?(?:§|\d+[.\s])') `
+    -HeadingRe ([regex]'^### (?:~~)?(?:§\d+ |\d+\. )') -LooseRe ([regex]'^###\s+(?:~~\s*)?(?:§|\d+[.\s])') `
     -IdOf { param($l) if ($l -match '^### (?:~~)?(§\d+) ') { $Matches[1] } elseif ($l -match '^### (?:~~)?(\d+)\. ') { "item $($Matches[1])" } }
 Test-HeadingTracker -Rel 'review-relay/ROADMAP.md' -Tracker 'review-relay' -Kind 'file' -NonGoals $nonGoals `
-    -HeadingRe ([regex]'^### [DR]\d+ ') -LooseRe ([regex]'^### [DR]\d') -IdOf { param($l) if ($l -match '^### ([DR]\d+) ') { $Matches[1] } }
+    -HeadingRe ([regex]'^### [DR]\d+ ') -LooseRe ([regex]'^###\s+[DR]\d') -IdOf { param($l) if ($l -match '^### ([DR]\d+) ') { $Matches[1] } }
 Test-HeadingTracker -Rel 'agy-autotrain/ROADMAP.md' -Tracker 'agy-autotrain-roadmap' -Kind 'file' -NonGoals $nonGoals `
-    -HeadingRe ([regex]'^## AT-\d+ ') -LooseRe ([regex]'^## AT-') -IdOf { param($l) if ($l -match '^## (AT-\d+) ') { $Matches[1] } }
+    -HeadingRe ([regex]'^## AT-\d+ ') -LooseRe ([regex]'^##\s+AT-') -IdOf { param($l) if ($l -match '^## (AT-\d+) ') { $Matches[1] } }
 
 # --- backlog stubs -----------------------------------------------------------------------------------
 $stubDir = Join-Path $RepoRoot 'docs' 'backlog'

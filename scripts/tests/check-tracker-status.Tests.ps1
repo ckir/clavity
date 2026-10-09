@@ -193,6 +193,12 @@ Describe 'check-tracker-status.ps1 - a heading that looks like an entry but is m
         $r.Out | Should -Match 'MALFORMED-HEADING.*D1Title'
         $r.Out | Should -Match 'MALFORMED-HEADING.*AT-3Title'
     }
+    It 'refuses a heading with extra whitespace (double space, or a space after the strike-through marker)' {
+        $f = New-TrackerRepo @{ $script:RM = (Roadmap "###  §34 Title`n`n**Status:** OPEN 2026-10-08 - x`n`n### ~~ §35 Other`n`n**Status:** OPEN 2026-10-08 - x`n") }
+        $r = Invoke-Gate $f.Root; $r.Code | Should -Be 1
+        $r.Out | Should -Match 'MALFORMED-HEADING.*§34 Title'
+        $r.Out | Should -Match 'MALFORMED-HEADING.*§35 Other'
+    }
     It 'does NOT flag an ordinary sub-heading, or a malformed-looking heading inside a code fence' {
         $f = New-TrackerRepo @{ $script:RM = (Roadmap "### Stretch (not planned)`n`n### Acceptance`n`n``````text`n### §9x not an entry`n```````n`n### §1 - T`n`n**Status:** OPEN 2026-10-08 - x`n") }
         $r = Invoke-Gate $f.Root; $r.Code | Should -Be 0 -Because "output was:`n$($r.Out)"
