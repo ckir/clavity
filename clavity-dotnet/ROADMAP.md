@@ -3010,7 +3010,7 @@ recovery possible — it does not force the reading. Any scoping that claims oth
 
 ### §36 — Orphaned tests: three runners keep three disagreeing ledgers, and two of them assert coverage they do not provide
 
-**Status:** SCHEDULED 2026-09-29 - scheduled - Branch T task
+**Status:** IMPLEMENTED 2026-10-09 - the dotnet recipe runs both projects like CI; exemptions recorded; the full redesign is closed by ruling (Non-goals); merge pending
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-05, owner-raised, tracked debt** · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 10 - the full redesign, one of the two recorded proposals, including the three `test-scripts*` recipes decision (runs before Branch 8)**
 
 **Owner's statement of the problem:** *"The repo has a task runner and CI. The agent implements tests.
@@ -3131,6 +3131,9 @@ the justfile lists, the CI YAMLs and the prose are parallel accounting books tha
 local/CI gap is *"the inevitable structural consequence of letting CI and local tools define their own
 separate lists"*. **Scope any implementation against that framing, not against "add the test to the
 runner".**
+
+
+**Closure, final sweep 2026-10-08 (the small closure; owner ruling "§36 small closure").** Re-measured: (a) shape 1 (the Python bridge's tests) is closed - `just classic::pytest` is run by `.github/workflows/ci-classic.yml` (the step added 2026-09-05). (b) Shape 2 is closed: `clavity-dotnet/justfile` `test` now runs BOTH `tests/Clavity.Ls.Tests` and `tests/Clavity.Integration.Tests`, exactly what `ci-dotnet.yml` runs (measured: `just dotnet::test` Passed 433 + 151, exit 0); the comment above the recipe no longer overstates it. (c) `clavity-dotnet/tests/Clavity.Live.Acceptance` stays a NAMED exemption - it needs a live agy peer and is owner-run only. (d) Three Python files under `clavity-classic/agy-mcp-bridge/` collect ZERO tests - `test_client.py`, `test_isolation.py`, `tests/test_hooked_commit.py` (measured 2026-10-09: `uv run pytest --collect-only -q <file>` prints `no tests collected`); they are not orphaned tests, they are scripts or helpers with a test-shaped name. (e) The three `test-scripts*` recipes decision: `test-scripts-fast` / `-slow` stay explicit lists (the partition is measured, `scripts/tests/_partition.md`), `test-scripts` stays the glob over `scripts/tests`; `test-suite-registration.Tests.ps1` is the census gate that keeps the lists honest. The full redesign (directory partitioning, a census gate for every runner, CI as a dumb executor of the justfile) is NOT built - see the `§36` bullet under "Non-goals / accepted limitations".
 
 ---
 
@@ -4289,6 +4292,7 @@ Split out of §31 on 2026-10-08. The original sentence, verbatim from §31's hea
 - **§21 - whether the anti-wrap-up clause is sufficient** (closed by ruling 2026-10-08): the clause stays as necessary; isolating it is a quota-costing experiment. Reopen if a report is displaced despite the clause.
 - **§37 - release notes from commit subjects** (closed by ruling 2026-10-08): the convention stays. Reopen on a reader complaint.
 - **§58 - older clones keep CRLF until refreshed** (closed by ruling 2026-10-08): measured 2026-10-08, this clone shows only the two declared CRLF exceptions in `git ls-files --eol`; the refresh procedure stays documented. Reopen if a fresh clone shows CRLF blobs.
+- **§36 - the full orphaned-tests redesign** (closed by ruling 2026-10-08): not built; the recipe fix, the exemptions and the census gate above are the closure. Reopen if a suite is found unregistered by hand, or CI and the local recipes diverge again.
 _(The former "no continuous .NET CI on `main`" limitation is resolved and has been removed: it described the
 pre-monorepo, branch-per-tool world. `.github/workflows/ci-dotnet.yml` now runs `dotnet build` + `dotnet test`
 on every push to `main`, and packaging ships via the unified `umbrella-release.yml` + `build-dotnet.yml`.)_
