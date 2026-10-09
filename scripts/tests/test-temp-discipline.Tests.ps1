@@ -11,6 +11,7 @@ BeforeAll {
     $script:Exempt = @(
         @{ File = 'check-seed-artifacts-synced.Tests.ps1'; Line = "`$bak = Join-Path ([IO.Path]::GetTempPath()) 'clavity-classic-hooks-json.testbak'"; Reason = 'parks a TRACKED file at a fixed name outside the swept root: a sweep deleting it would destroy the file the test restores' }
         @{ File = 'check-seed-artifacts-synced.Tests.ps1'; Line = "`$bak = Join-Path ([IO.Path]::GetTempPath()) 'clavity-dotnet-golden-header.testbak'"; Reason = 'same as above' }
+        @{ File = 'agy-shield-lib.Tests.ps1'; Line = '$script:MarkerDir = [IO.Path]::GetTempPath()'; Reason = 'the SYSTEM temp directory is the subject under test: the shield library writes its markers into ${TMPDIR:-/tmp}, and the suite snapshots and diffs exactly that directory to clean up what it caused' }
     )
     # IgnoreCase: PowerShell environment-variable names are case-insensitive, so `$env:Temp` is the same hole as `$env:TEMP`
     # (measured: no lowercase spelling exists today - 58 suites / 222 lines either way - so this closes a latent evasion).

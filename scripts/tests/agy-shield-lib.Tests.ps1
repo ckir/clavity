@@ -89,7 +89,7 @@ Describe 'agy-shield-lib.sh' {
             # handed to it to /tmp/, so an -Env override is dead on this platform.
             $Body = $Body -replace '"k1"', ('"k-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N') + '"')
             $script = ". '$libSh'`n$Body`n"
-            $sf = Join-Path ([IO.Path]::GetTempPath()) ("shield-" + [guid]::NewGuid().ToString('N') + ".sh")
+            $sf = New-TestTempPath 'shield' -Suffix '.sh'
             [IO.File]::WriteAllText($sf, ($script -replace "`r`n", "`n"))
             $outF = "$sf.out"; $errF = "$sf.err"
             $prev = @{}
@@ -118,7 +118,7 @@ Describe 'agy-shield-lib.sh' {
         # A throwaway git repo with NO root .gitignore, so the negation leak is observable.
         function New-FixtureRepo {
             param([string]$Shield, [switch]$NoClavityDir, [string[]]$Track = @())
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("shieldfx-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'shieldfx'
             New-Item -ItemType Directory -Force -Path $d | Out-Null
             [void]$script:Fixtures.Add($d)   # registered on creation - see FIXTURE HYGIENE
             & git -C $d init -q
@@ -300,8 +300,8 @@ Describe 'agy-shield-lib.sh' {
         It 'creates the prepend temp file INSIDE .clavity, on the same filesystem as the shield it renames onto' {
             $r = New-FixtureRepo -Shield "!local-anomalies.md`n"
             $tag = [guid]::NewGuid().ToString('N')
-            $log = Join-Path ([IO.Path]::GetTempPath()) "mktemp-$tag.log"
-            $shim = Join-Path ([IO.Path]::GetTempPath()) "mktemp-$tag.sh"
+            $log = Join-Path (Get-TestTempRoot) "mktemp-$tag.log"
+            $shim = Join-Path (Get-TestTempRoot) "mktemp-$tag.sh"
             [IO.File]::WriteAllText($shim, "mktemp() { printf '%s\n' `"`$1`" >> '$($log -replace '\\','/')'; command mktemp `"`$@`"; }`n")
             try {
                 $null = Invoke-Shield -Root $r -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' -Env @{ BASH_ENV = ($shim -replace '\\','/') }
@@ -399,7 +399,7 @@ Describe 'agy-shield-lib.sh' {
         }
 
         It 'outside a git work tree: the text fallback runs and NOTHING is reported' {
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("shieldbare-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'shieldbare'
             New-Item -ItemType Directory -Force -Path $d | Out-Null
             $r = ($d -replace '\\', '/')
             $res = Invoke-Shield -Root $r -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
@@ -872,7 +872,7 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             # a REGULAR file would be swallowed silently, which is the case the row exists for. With a
             # regular read-only file the predicate is TRUE, the mutant does NOT report, and the row reds.
             # The fixture now discriminates the thing it claims to.
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("shieldnr-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'shieldnr'
             New-Item -ItemType Directory -Force -Path (Join-Path $d '.clavity') | Out-Null
             [void]$script:Fixtures.Add($d)
             $shieldPath = Join-Path $d '.clavity/.gitignore'
