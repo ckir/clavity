@@ -3618,7 +3618,7 @@ not a plugin pair.
 
 ### §55 — LsDiscovery's un-anchored log patterns read a timestamp fraction as the pid when the glog thread field is missing
 
-**Status:** SCHEDULED 2026-09-30 - scheduled - Branch C
+**Status:** IMPLEMENTED 2026-10-09 - LsDiscovery requires the full glog header immediately before the pid (`1d39dd86`, failing control first: the header-less line is refused) on branch sweep/branch-c-csharp-ls; merge pending
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (capstone F1 at `8d00a56`, left open for an owner decision; AGY-TEST-AUDIT gap PP-1), owner-ruled low priority, not yet planned**
 
 `clavity-dotnet/src/Clavity.Ls/LsDiscovery.cs:63-69` (`GrpcLine`, `HttpLine`) are deliberately NOT anchored
@@ -4250,7 +4250,7 @@ Three verified, pre-existing defects of one class - a hook assumes the file or t
 
 ### §79 — The 13b completeness false-flag whose cause is not determined (formerly §29b)
 
-**Status:** SCHEDULED 2026-10-08 - scheduled - Branch C: re-measure; propose close if no longer reproduces
+**Status:** SHIPPED 2026-10-09 - re-measured at the start of Branch C: the two undetermined causes were driver errors fixed by §29a (`573914d` the token, `b98315f` the bracket) and the escaped-echo false flag by §74 (`17244343`, `SemanticEcho`); no reproducing case remains (owner delegated, AGY-FIRST aligned)
 
 Split out of §29 on 2026-10-08 so an open sub-item does not hide inside a shipped section. The original paragraph, verbatim:
 

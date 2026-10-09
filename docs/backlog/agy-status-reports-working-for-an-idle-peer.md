@@ -1,7 +1,11 @@
 # Backlog stub - `agy_status` reports `working` for a peer that is idle at its prompt
 
-**Status:** SCHEDULED 2026-09-29 - scheduled - see the legacy status below
+**Status:** CLOSED-BY-RULING 2026-10-09 - closed by ruling at the start of Branch C, see Reopen if below
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** OPEN. Promoted 2026-08-31 from `.clavity/local-anomalies.md`. · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep Branch 4 (Branch 5 if re-measurement puts the cause in AgyView)**
+
+**Ruling 2026-10-09 (owner delegated, AGY-FIRST aligned):** the state does not come from the last step kind, so the proposed fix has nothing to change. `agy_status` asks the LS (`LsClient.ProbeIdleAsync`, 300 ms deadline, `AgyView.ProbeDeadlineMs`) and `AskReply.cs:21-23` records the measured cause of a long `working` with an unchanged step count: background tasks (shell commands that never exited) keep the peer working until they end. The 2026-08-30 observation was not re-measured against that cause and has not recurred in the later sessions that polled the status.
+
+**Reopen if:** two `agy_status` polls minutes apart report `working` with an unchanged `TotalSteps` while the agy tab is at its prompt AND agy's task list shows no running background task - then capture the probe timing (the 300 ms clamp returns `working`) before changing either side.
 
 **Raised:** 2026-08-30, during an AGY-FIRST consult before proposing sequencing approaches.
 
