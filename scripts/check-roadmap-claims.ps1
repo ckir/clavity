@@ -264,9 +264,9 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
             $problems += "OUT-OF-RANGE  ROADMAP:$($i+1)  ``$rel`:$a$(if ($b -ne $a) { "-$b" }) points outside $($hits[0]) ($($fl.Count) lines)"
             continue
         }
-        # An anchor that was ATTEMPTED (` ("` right after the pointer, spaces allowed inside the paren) but did not parse - a quote inside it, or an empty one - would
+        # An anchor that was ATTEMPTED (` ("` right after the pointer, with or without spaces around the paren) but did not parse - a quote inside it, or an empty one - would
         # otherwise fall back silently to an un-anchored pointer and lose the content check it was written to get (AGY-TEST-AUDIT branch T).
-        if (-not $m.Groups['anchor'].Success -and $lines[$i].Substring($m.Index + $m.Length) -match '^\s+\(\s*"') {
+        if (-not $m.Groups['anchor'].Success -and $lines[$i].Substring($m.Index + $m.Length) -match '^\s*\(\s*"') {
             $problems += "MALFORMED-ANCHOR  ROADMAP:$($i+1)  ``$rel`:$a$(if ($b -ne $a) { "-$b" }) has an anchor that is not one non-empty quoted string without an inner quote - the content check did not run"
             continue
         }
