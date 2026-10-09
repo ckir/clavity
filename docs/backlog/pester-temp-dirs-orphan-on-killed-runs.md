@@ -1,6 +1,6 @@
 # Backlog stub — Pester temp directories orphan permanently when a run is killed
 
-**Status:** IMPLEMENTED 2026-10-09 - one shared swept temp root for every suite (TestTemp.ps1, 72 h sweep once per run), a gate that forbids direct temp use outside named exemptions, and a killed-run restore for parked tracked files; merge pending
+**Status:** SHIPPED 2026-10-09 - one shared swept temp root for every suite (TestTemp.ps1, 72 h sweep once per run), a gate that forbids direct temp use outside named exemptions, and a killed-run restore for parked tracked files (merged `241b3f31`)
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** 🔴 **OPEN.** Verified by measurement, repo-wide, pre-existing.
 
 **Raised:** 2026-08-12, AGY-CAPSTONE round 3. The peer raised it against one suite; measuring it properly

@@ -2924,7 +2924,7 @@ does NOT satisfy `VERDICT:`.
 
 ### §34 — Nine hook test files allocate temp resources OUTSIDE the `try`, so a failed allocation leaks every earlier one
 
-**Status:** IMPLEMENTED 2026-10-09 - every two-or-more-allocation-before-try site converted (Remove-TestPath + in-try allocation) on branch sweep/branch-t-format-and-gates; merge pending
+**Status:** SHIPPED 2026-10-09 - every two-or-more-allocation-before-try site converted (Remove-TestPath + in-try allocation) on branch sweep/branch-t-format-and-gates (merged `241b3f31`)
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-04, tracked debt**
 
 The shape is `$r = New-RepoWithAnomaly; $h = New-CleanHome` followed by
@@ -3010,7 +3010,7 @@ recovery possible — it does not force the reading. Any scoping that claims oth
 
 ### §36 — Orphaned tests: three runners keep three disagreeing ledgers, and two of them assert coverage they do not provide
 
-**Status:** IMPLEMENTED 2026-10-09 - the dotnet recipe runs both projects like CI; exemptions recorded; the full redesign is closed by ruling (Non-goals); merge pending
+**Status:** SHIPPED 2026-10-09 - the dotnet recipe runs both projects like CI; exemptions recorded; the full redesign is closed by ruling (Non-goals) (merged `241b3f31`)
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-05, owner-raised, tracked debt** · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 10 - the full redesign, one of the two recorded proposals, including the three `test-scripts*` recipes decision (runs before Branch 8)**
 
 **Owner's statement of the problem:** *"The repo has a task runner and CI. The agent implements tests.
@@ -3644,7 +3644,7 @@ classic has no log-scraping discovery (grep for the listening message, 2026-09-3
 
 ### §56 — A roster doc that has never been audited is invisible to the docs-audit view, summary and SessionStart nudge
 
-**Status:** IMPLEMENTED 2026-10-09 - a never-audited roster doc renders as AUDIT-NEVER (the nudge counts it unchanged) and the summary has NeverAudited; on branch sweep/branch-t-format-and-gates, merge pending
+**Status:** SHIPPED 2026-10-09 - a never-audited roster doc renders as AUDIT-NEVER (the nudge counts it unchanged) and the summary has NeverAudited; on branch sweep/branch-t-format-and-gates (merged `241b3f31`)
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (sweep Branch 1 capstone round 1, deferred there), not yet planned**
 
 `scripts/docs-audit-lib.ps1` renders the view (`Render-FindingsView`, `:152`) and counts the summary
@@ -4226,7 +4226,7 @@ Three verified, pre-existing defects of one class - a hook assumes the file or t
 
 ### §77 — `check-roadmap-claims.ps1` verifies line COUNTS but never `:N` pointers, so section 14's evidence lines rot silently
 
-**Status:** IMPLEMENTED 2026-10-09 - Check C built on branch sweep/branch-t-format-and-gates (`633e3bf3`); merge pending
+**Status:** SHIPPED 2026-10-09 - Check C built on branch sweep/branch-t-format-and-gates (`633e3bf3`) (merged `241b3f31`)
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (Branch 22 T10), tracked debt, not yet planned**
 
 `clavity-dotnet/ROADMAP.md` section 14's skill table cites evidence lines (`:54-56` agy-first, `:216` agy-test-audit, `:89/:92/:103` agy-capstone) that did not hold the quoted text even before the Branch 22 skill edits (capstone Seats/Rotate sat at `:177/:191` at `3013e8a2^`). Fix: either teach the checker to resolve each `file:N` pointer against a quoted anchor, or replace the pointers with anchor text. Decide at planning.
