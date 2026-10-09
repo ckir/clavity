@@ -2,6 +2,9 @@ Describe 'check-seed-artifacts-synced.sh' {
     BeforeAll {
         . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
         $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        # A killed run between `Move-Item $f $bak` and its `finally` leaves a TRACKED file missing with its only copy parked in the system temp: put it back first.
+        Restore-KilledRunBackup -Backup (Get-ParkedFilePath 'clavity-classic-hooks-json.testbak') -Target (Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/hooks.json')
+        Restore-KilledRunBackup -Backup (Get-ParkedFilePath 'clavity-dotnet-golden-header.testbak') -Target (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/seed/golden-header.md')
         $script:Script   = Join-Path $script:RepoRoot 'scripts/check-seed-artifacts-synced.sh'
         # ...\Git\usr\bin carries diff/sed but NOT jq (verified: the hook jq-missing tests rely on this),
         # so pointing PATH here reproduces "jq absent" deterministically. Git Bash is invoked by ABSOLUTE
@@ -101,7 +104,7 @@ Describe 'check-seed-artifacts-synced.sh' {
         # Park the backup OUTSIDE the plugin trees: a *.bak beside the original is itself discovered and
         # reported as classic-only, which is noise this assertion should not have to tolerate.
         $f   = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/hooks.json'
-        $bak = Join-Path ([IO.Path]::GetTempPath()) 'clavity-classic-hooks-json.testbak'
+        $bak = Get-ParkedFilePath 'clavity-classic-hooks-json.testbak'
         Move-Item $f $bak -Force
         try {
             $r = Invoke-SeedSync
@@ -165,7 +168,7 @@ Describe 'check-seed-artifacts-synced.sh' {
         # false-pass without the explicit existence guard. Park the file OUTSIDE the plugin trees so the
         # skills/knowledge walk does not also report it.
         $f   = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/seed/golden-header.md'
-        $bak = Join-Path ([IO.Path]::GetTempPath()) 'clavity-dotnet-golden-header.testbak'
+        $bak = Get-ParkedFilePath 'clavity-dotnet-golden-header.testbak'
         Move-Item $f $bak -Force
         try {
             $r = Invoke-SeedSync

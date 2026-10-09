@@ -71,3 +71,29 @@ Describe 'the once-per-run sweep flag' {
         }
     }
 }
+
+Describe 'Restore-KilledRunBackup' {
+    It 'restores the backup when the tracked target is MISSING (a killed run)' {
+        $b = Join-Path $TestDrive 'a.bak'; $t = Join-Path $TestDrive 'a.json'
+        'BACKUP' | Set-Content $b
+        Restore-KilledRunBackup -Backup $b -Target $t 3>$null
+        (Get-Content $t -Raw).Trim() | Should -Be 'BACKUP'
+        Test-Path $b | Should -BeFalse
+    }
+    It 'NEVER moves a stale backup over a target that exists, and deletes the stale backup' {
+        $b = Join-Path $TestDrive 'b.bak'; $t = Join-Path $TestDrive 'b.json'
+        'STALE' | Set-Content $b; 'CURRENT' | Set-Content $t
+        Restore-KilledRunBackup -Backup $b -Target $t 3>$null
+        (Get-Content $t -Raw).Trim() | Should -Be 'CURRENT'
+        Test-Path $b | Should -BeFalse
+    }
+    It 'does nothing when there is no backup' {
+        $t = Join-Path $TestDrive 'c.json'; 'KEEP' | Set-Content $t
+        { Restore-KilledRunBackup -Backup (Join-Path $TestDrive 'none.bak') -Target $t } | Should -Not -Throw
+        (Get-Content $t -Raw).Trim() | Should -Be 'KEEP'
+    }
+    It 'Get-ParkedFilePath lives in the SYSTEM temp, not the swept root' {
+        (Get-ParkedFilePath 'x.testbak') | Should -Be (Join-Path ([IO.Path]::GetTempPath()) 'x.testbak')
+        (Get-ParkedFilePath 'x.testbak') | Should -Not -BeLike ((Get-TestTempRoot) + '*')
+    }
+}

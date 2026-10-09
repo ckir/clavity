@@ -33,3 +33,24 @@ function Invoke-TestTempSweep {
 # Once per RUN, at dot-source time. A `$script:` flag would reset for every suite file (Pester gives each its own script scope), so ~58 sweeps per run
 # (panel round 3); an environment flag is inherited by child processes and lives for the whole run.
 if (-not $env:CLAVITY_TEST_TEMP_SWEPT) { $env:CLAVITY_TEST_TEMP_SWEPT = '1'; try { Invoke-TestTempSweep } catch { } }
+
+function Get-ParkedFilePath {
+    # Where a test parks a TRACKED file it temporarily moves away. Deliberately NOT under the swept root: a sweep that deleted the parked
+    # copy would destroy the only copy of a tracked file (the backup must outlive the 72 h sweep window of a paused run).
+    param([Parameter(Mandatory)][string]$Name)
+    Join-Path ([IO.Path]::GetTempPath()) $Name
+}
+function Restore-KilledRunBackup {
+    # A test that parks a tracked file at a fixed backup path and restores it in `finally` leaves the TRACKED file MISSING if the run is killed
+    # in between. Call at suite start. Restore ONLY when the target is missing; if the target exists the backup is stale and must never be moved
+    # over newer content - it is deleted instead.
+    param([Parameter(Mandatory)][string]$Backup, [Parameter(Mandatory)][string]$Target)
+    if (-not (Test-Path -LiteralPath $Backup -PathType Leaf)) { return }
+    if (-not (Test-Path -LiteralPath $Target)) {
+        Move-Item -LiteralPath $Backup -Destination $Target -Force
+        Write-Warning "RESTORED-FROM-KILLED-RUN $Target (from $Backup)"
+    } else {
+        Remove-Item -LiteralPath $Backup -Force -ErrorAction SilentlyContinue
+        Write-Warning "STALE-BACKUP-IGNORED $Backup (the target exists; the backup was deleted)"
+    }
+}
