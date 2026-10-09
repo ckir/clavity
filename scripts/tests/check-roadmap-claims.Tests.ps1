@@ -412,6 +412,12 @@ Describe 'check-roadmap-claims.ps1 - the path:N pointer half (Check C)' {
         $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n" } -Roadmap "See ``SKILL.md:99`` and ``elsewhere/x.cs:7``.`n"
         $r = Invoke-Claims $f.Root $f.Roadmap; $r.Code | Should -Be 0; $r.Out | Should -Match '2 pointer\(s\) not checkable'
     }
+    It 'NAMES a pointer that matches no tracked file, so a misspelt path is visible (and does not name a bare name)' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n" } -Roadmap "See ``skils/a/SKILL.md:5`` and ``SKILL.md:99``.`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap; $r.Code | Should -Be 0
+        $r.Out | Should -Match 'matches no tracked file\): ROADMAP:\d+ skils/a/SKILL\.md'
+        $r.Out | Should -Not -Match 'no tracked file\): ROADMAP:\d+ SKILL\.md'
+    }
     It 'ignores a pointer inside a fenced code block' {
         $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n" } -Roadmap "``````text`n``skills/a/SKILL.md:50```n```````n"
         (Invoke-Claims $f.Root $f.Roadmap).Code | Should -Be 0

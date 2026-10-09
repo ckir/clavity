@@ -243,7 +243,7 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
 # cannot see content drift (agy and the driver agreed, 2026-10-08). New pointers should be anchored.
 # NOT CHECKABLE (counted, never failed): a bare name with no '/', or a path that is not a tracked file.
 $ptrRe  = [regex]'`(?<path>[A-Za-z0-9_./-]+\.[A-Za-z0-9]+):(?<a>\d+)(?:-(?<b>\d+))?`(?:\s+\("(?<anchor>[^"]+)"\))?'
-$fence  = $false; $unchecked = 0
+$fence  = $false; $unchecked = 0; $uncheckedNames = [System.Collections.Generic.List[string]]::new()
 for ($i = 0; $i -lt $lines.Count; $i++) {
     if ($lines[$i] -match '^\s*```') { $fence = -not $fence; continue }
     if ($fence) { continue }
@@ -255,7 +255,9 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
         if ($m.Groups['b'].Success -and -not [int]::TryParse($m.Groups['b'].Value, [ref]$b)) { $unchecked++; continue }
         if ($rel -notmatch '/') { $unchecked++; continue }
         $hits = @($tracked | Where-Object { $_ -eq $rel -or $_.EndsWith("/$rel", [StringComparison]::OrdinalIgnoreCase) })
-        if ($hits.Count -ne 1) { $unchecked++; continue }
+        # A typo in a path is indistinguishable from a legitimately untracked file, so NAME every pointer that matched no
+        # tracked file below (several matches is the two-plugins case, not a typo) - the count alone would hide a misspelt one (AGY-CAPSTONE branch T round 1).
+        if ($hits.Count -ne 1) { $unchecked++; if ($hits.Count -eq 0) { $uncheckedNames.Add("ROADMAP:$($i+1) $rel") }; continue }
         $hp = Join-Path $RepoRoot ($hits[0] -replace '/', [IO.Path]::DirectorySeparatorChar)
         try { $fl = [IO.File]::ReadAllLines($hp) } catch { $unchecked++; continue }
         if ($a -lt 1 -or $b -lt $a -or $b -gt $fl.Count) {
@@ -301,5 +303,6 @@ if ($problems.Count -gt 0) {
     Write-Host "check-roadmap-claims: $summary in $RoadmapPath" -ForegroundColor Red
     exit 1
 }
+foreach ($u in $uncheckedNames) { Write-Host "  not checkable (matches no tracked file): $u" -ForegroundColor DarkGray }
 Write-Host "check-roadmap-claims: OK - every line-count claim, closure sha and checkable path:N pointer in $RoadmapPath holds ($unchecked pointer(s) not checkable)" -ForegroundColor Green
 exit 0

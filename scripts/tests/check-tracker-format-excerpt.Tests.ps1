@@ -71,12 +71,12 @@ Describe 'check-tracker-format-excerpt.ps1 - the real repository' {
     It 'enrols exactly the skills that route a deferral to a ROADMAP (a fourth one fails this row until enrolled)' {
         # Enrolment is explicit (the three skills whose text routes a finding to a tracker), and two facts keep it honest:
         # (1) exactly those three carry the block; (2) no OTHER skill both names the conveyor and a ROADMAP without carrying it.
-        $skillRoot = Join-Path $script:RepoRoot 'clavity-dotnet' 'plugin' 'skills'
+        $skillRoot = foreach ($plugin in 'clavity-dotnet', 'clavity-classic') { Join-Path $script:RepoRoot $plugin 'plugin' 'skills' }
         $withBlock = foreach ($d in Get-ChildItem -LiteralPath $skillRoot -Directory) {
             $f = Join-Path $d.FullName 'SKILL.md'
             if ((Test-Path -LiteralPath $f -PathType Leaf) -and ([IO.File]::ReadAllText($f) -match 'tracker-format:begin')) { $d.Name }
         }
-        (@($withBlock) | Sort-Object) -join ',' | Should -BeExactly 'agy-capstone,agy-test-audit,open-issues'
+        (@($withBlock) | Sort-Object -Unique) -join ',' | Should -BeExactly 'agy-capstone,agy-test-audit,open-issues'
         $lacking = foreach ($d in Get-ChildItem -LiteralPath $skillRoot -Directory) {
             $f = Join-Path $d.FullName 'SKILL.md'
             if (-not (Test-Path -LiteralPath $f -PathType Leaf)) { continue }
