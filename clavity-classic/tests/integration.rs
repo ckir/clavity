@@ -789,3 +789,30 @@ fn no_authorization_header_when_no_secret_is_set() {
         "no request may carry an Authorization header without a secret, got: {seen:?}"
     );
 }
+
+/// Backlog curate-commit-accepts-empty-stdin (mirrors the .NET `CurateCommit_refuses_empty_or_blank_input...`):
+/// `curate-commit < /dev/null` once truncated the live GROWTH region to 0 bytes and exited 0.
+#[test]
+fn curate_commit_refuses_empty_stdin_and_leaves_growth_untouched() {
+    use std::process::Stdio;
+    let dir = std::env::temp_dir().join(format!("clavity-cc-empty-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let growth = dir.join("golden-header.growth.md");
+    std::fs::write(&growth, "PRE-EXISTING GROWTH THAT MUST NOT VANISH\n").unwrap();
+
+    let out = clavity()
+        .arg("curate-commit")
+        .env("CLAVITY_GOLDEN_HEADER", &dir)
+        .stdin(Stdio::null())
+        .output()
+        .expect("run clavity curate-commit");
+
+    assert_eq!(out.status.code(), Some(1), "empty stdin is bad input");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("nothing written"));
+    assert_eq!(
+        std::fs::read_to_string(&growth).unwrap(),
+        "PRE-EXISTING GROWTH THAT MUST NOT VANISH\n"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

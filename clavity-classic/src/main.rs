@@ -719,6 +719,12 @@ fn curate_commit() -> i32 {
             return 1;
         }
     };
+    // Empty (or blank) input is bad input, never a request to wipe the region: `curate-commit < /dev/null`
+    // once truncated the live GROWTH region to 0 bytes and exited 0. Mirrors the .NET twin in CliVerbs.cs.
+    if content.trim().is_empty() {
+        eprintln!("clavity curate-commit: stdin is empty; nothing written.");
+        return 1;
+    }
     // Mojibake tripwire - see the .NET twin in CliVerbs.cs for the full rationale. A heuristic over known
     // corruption families, NOT a blanket non-ASCII rejection: curate-commit is a faithful byte transport
     // by contract, and rejecting all non-ASCII would break the property that makes the raw-byte publish
