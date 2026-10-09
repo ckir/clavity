@@ -264,6 +264,12 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
             $problems += "OUT-OF-RANGE  ROADMAP:$($i+1)  ``$rel`:$a$(if ($b -ne $a) { "-$b" }) points outside $($hits[0]) ($($fl.Count) lines)"
             continue
         }
+        # An anchor that was ATTEMPTED (` ("` right after the pointer) but did not parse - a quote inside it, or an empty one - would
+        # otherwise fall back silently to an un-anchored pointer and lose the content check it was written to get (AGY-TEST-AUDIT branch T).
+        if (-not $m.Groups['anchor'].Success -and $lines[$i].Substring($m.Index + $m.Length) -match '^\s+\("') {
+            $problems += "MALFORMED-ANCHOR  ROADMAP:$($i+1)  ``$rel`:$a$(if ($b -ne $a) { "-$b" }) has an anchor that is not one non-empty quoted string without an inner quote - the content check did not run"
+            continue
+        }
         if ($m.Groups['anchor'].Success) {
             $needle = $m.Groups['anchor'].Value
             $found = $false
@@ -293,7 +299,7 @@ if ($problems.Count -gt 0) {
     # entire product of check B, so the one outcome that half exists to produce was the one mislabelled.
     # The full token set, and which bucket each belongs to - keep this list complete:
     #   FALSE (checked, and wrong): STALE, PHANTOM, OUT-OF-RANGE, ANCHOR-MISS
-    #   NOT CHECKED:                UNPARSEABLE, UNRESOLVED, UNREADABLE, AMBIGUOUS, SHALLOW
+    #   NOT CHECKED:                UNPARSEABLE, UNRESOLVED, UNREADABLE, AMBIGUOUS, SHALLOW, MALFORMED-ANCHOR
     $falseTokens = @('STALE', 'PHANTOM', 'OUT-OF-RANGE', 'ANCHOR-MISS')
     $stale = @($problems | Where-Object { $falseTokens -contains (($_ -split '\s+')[0]) }).Count
     $other = $problems.Count - $stale

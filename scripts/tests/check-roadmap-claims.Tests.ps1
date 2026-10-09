@@ -452,3 +452,18 @@ Describe 'check-roadmap-claims.ps1 - the real repository' {
         $r.Code | Should -Be 0 -Because "the real ROADMAP must satisfy its own checkable claims; output was:`n$($r.Out)"
     }
 }
+
+Describe 'check-roadmap-claims.ps1 - a malformed anchor' {
+    It 'refuses an anchor with a quote inside it, instead of silently dropping the content check' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2`` (`"be`"ta`") text.`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap
+        $r.Code | Should -Be 1 -Because "output was:`n$($r.Out)"; $r.Out | Should -Match 'MALFORMED-ANCHOR'
+    }
+    It 'refuses an empty anchor, and still accepts a well-formed one beside it' {
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2`` (`"`") text.`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap
+        $r.Code | Should -Be 1; $r.Out | Should -Match 'MALFORMED-ANCHOR'
+        $ok = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "alpha`nbeta`n" } -Roadmap "Entry. ``skills/a/SKILL.md:2`` (`"beta`") text, and prose (`"not an anchor`") elsewhere.`n"
+        (Invoke-Claims $ok.Root $ok.Roadmap).Code | Should -Be 0
+    }
+}

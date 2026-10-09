@@ -69,12 +69,13 @@ function Test-Entry {
 }
 
 function Test-HeadingTracker {
-    param([string]$Rel, [string]$Tracker, [regex]$HeadingRe, [scriptblock]$IdOf, [string[]]$NonGoals, [string]$Kind, [switch]$Required)
+    param([string]$Rel, [string]$Tracker, [regex]$HeadingRe, [scriptblock]$IdOf, [string[]]$NonGoals, [string]$Kind, [regex]$LooseRe, [switch]$Required)
     $lines = Read-Lines $Rel -Required:$Required; if ($null -eq $lines) { return }
     $fence = $false; $idx = @()
     for ($i = 0; $i -lt $lines.Count; $i++) {
         if ($lines[$i] -match '^\s*```') { $fence = -not $fence; continue }
         if (-not $fence -and $HeadingRe.IsMatch($lines[$i])) { $idx += $i }
+        elseif (-not $fence -and $LooseRe -and $LooseRe.IsMatch($lines[$i])) { $problems.Add("MALFORMED-HEADING  $Rel`:$($i + 1)  looks like an entry heading but does not match the strict shape, so the gate would skip it: '$($lines[$i])'") }
         elseif (-not $fence -and $lines[$i] -match '^## Non-goals') { $idx += $i }   # a section boundary, not an entry
     }
     foreach ($k in 0..([Math]::Max($idx.Count - 1, 0))) {
@@ -99,12 +100,12 @@ if ($null -ne $rmLines) {
     if ($ng -ge 0) { $nonGoals = @($rmLines[$ng..($rmLines.Count - 1)] | Where-Object { $_ -like '- **`*' -or $_ -like '- **§*' -or $_ -like '- **item *' -or $_ -like '- **AT-*' -or $_ -like '- **D*' -or $_ -like '- **R*' }) }
 }
 Test-HeadingTracker -Rel 'clavity-dotnet/ROADMAP.md' -Tracker 'dotnet-roadmap' -Kind 'roadmap' -NonGoals $nonGoals -Required `
-    -HeadingRe ([regex]'^### (?:~~)?(?:§\d+ |\d+\. )') `
+    -HeadingRe ([regex]'^### (?:~~)?(?:§\d+ |\d+\. )') -LooseRe ([regex]'^### (?:~~)?(?:§|\d+[.\s])') `
     -IdOf { param($l) if ($l -match '^### (?:~~)?(§\d+) ') { $Matches[1] } elseif ($l -match '^### (?:~~)?(\d+)\. ') { "item $($Matches[1])" } }
 Test-HeadingTracker -Rel 'review-relay/ROADMAP.md' -Tracker 'review-relay' -Kind 'file' -NonGoals $nonGoals `
-    -HeadingRe ([regex]'^### [DR]\d+ ') -IdOf { param($l) if ($l -match '^### ([DR]\d+) ') { $Matches[1] } }
+    -HeadingRe ([regex]'^### [DR]\d+ ') -LooseRe ([regex]'^### [DR]\d') -IdOf { param($l) if ($l -match '^### ([DR]\d+) ') { $Matches[1] } }
 Test-HeadingTracker -Rel 'agy-autotrain/ROADMAP.md' -Tracker 'agy-autotrain-roadmap' -Kind 'file' -NonGoals $nonGoals `
-    -HeadingRe ([regex]'^## AT-\d+ ') -IdOf { param($l) if ($l -match '^## (AT-\d+) ') { $Matches[1] } }
+    -HeadingRe ([regex]'^## AT-\d+ ') -LooseRe ([regex]'^## AT-') -IdOf { param($l) if ($l -match '^## (AT-\d+) ') { $Matches[1] } }
 
 # --- backlog stubs -----------------------------------------------------------------------------------
 $stubDir = Join-Path $RepoRoot 'docs' 'backlog'

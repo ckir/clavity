@@ -985,7 +985,7 @@ check-plugin-drift.Tests.ps1                    56-80s   18 tests   <- SLOW, NEW
                                                                       one, and the prefix arithmetic between
                                                                       them misaligned. TIME not re-measured.
 check-plugin-namespace.Tests.ps1                 27,2s    8 tests   <- SLOW, re-measured 2026-08-06
-check-roadmap-claims.Tests.ps1                  54-55s   38 tests   <- SLOW, NEW 2026-08-31. Two runs,
+check-roadmap-claims.Tests.ps1                  54-55s   40 tests   <- SLOW, NEW 2026-08-31. Two runs,
                                                                       backgrounded on an idle box: 51,0s
                                                                       cold / 38,4s warm at 8 rows. RE-
                                                                       MEASURED 2026-09-01 at 12 rows:
@@ -1168,7 +1168,7 @@ clavity-install.Tests.ps1                         7,9s   12 tests   <- SLOW, ADD
                                                                       row for weeks and nothing noticed -
                                                                       found twice, independently, before the
                                                                       blind spot itself was closed.
-check-tracker-status.Tests.ps1                UNMEASURED  29 tests   <- SLOW, NEW 2026-10-08 (a child pwsh per row, ~3.5s each: ~90-110s contended; SLOW on purpose - the fast half is cap-adjacent. The driver measures it idle at the Task 10 gates.)
+check-tracker-status.Tests.ps1                UNMEASURED  32 tests   <- SLOW, NEW 2026-10-08 (a child pwsh per row, ~3.5s each: ~90-110s contended; SLOW on purpose - the fast half is cap-adjacent. The driver measures it idle at the Task 10 gates.)
 check-tracker-format-excerpt.Tests.ps1       UNMEASURED  9 tests    <- SLOW, NEW 2026-10-08 (a child pwsh per row, ~2s each; the driver measures it idle at the Task 10 gates.)
 TestTemp.Tests.ps1                         UNMEASURED  16 tests   <- FAST, NEW 2026-10-08 (in-process, sub-second rows: Remove-TestPath, the shared temp root, the sweep, its once-per-run flag, the killed-run backup restore)
 test-temp-discipline.Tests.ps1             UNMEASURED  4 tests    <- FAST, NEW 2026-10-08 (in-process scan of ~76 suite files, a few seconds)

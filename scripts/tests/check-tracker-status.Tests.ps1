@@ -182,6 +182,23 @@ Describe 'check-tracker-status.ps1 - list mode and run errors' {
     }
 }
 
+Describe 'check-tracker-status.ps1 - a heading that looks like an entry but is malformed' {
+    It 'refuses a ROADMAP heading with no space after the section number, instead of skipping it' {
+        $f = New-TrackerRepo @{ $script:RM = (Roadmap "### §34Title`n`n**Status:** OPEN 2026-10-08 - x`n") }
+        $r = Invoke-Gate $f.Root; $r.Code | Should -Be 1; $r.Out | Should -Match 'MALFORMED-HEADING.*§34Title'
+    }
+    It 'refuses a malformed review-relay and agy-autotrain heading too' {
+        $f = New-TrackerRepo @{ 'review-relay/ROADMAP.md' = "# R`n`n### D1Title`n`n**Status:** OPEN 2026-10-08 - x`n"; 'agy-autotrain/ROADMAP.md' = "# A`n`n## AT-3Title`n`n**Status:** OPEN 2026-10-08 - x`n" }
+        $r = Invoke-Gate $f.Root; $r.Code | Should -Be 1
+        $r.Out | Should -Match 'MALFORMED-HEADING.*D1Title'
+        $r.Out | Should -Match 'MALFORMED-HEADING.*AT-3Title'
+    }
+    It 'does NOT flag an ordinary sub-heading, or a malformed-looking heading inside a code fence' {
+        $f = New-TrackerRepo @{ $script:RM = (Roadmap "### Stretch (not planned)`n`n### Acceptance`n`n``````text`n### §9x not an entry`n```````n`n### §1 - T`n`n**Status:** OPEN 2026-10-08 - x`n") }
+        $r = Invoke-Gate $f.Root; $r.Code | Should -Be 0 -Because "output was:`n$($r.Out)"
+    }
+}
+
 Describe 'check-tracker-status.ps1 - the real repository' {
     It 'passes on the committed trackers, sees them all, and -List runs' {
         $r = Invoke-Gate $script:RepoRoot
