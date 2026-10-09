@@ -360,6 +360,73 @@ public class AgyChannelDownTests
         finally { Directory.Delete(dir, true); }
     }
 
+    // A listening probe that says "open" for the first N polls and "closed" afterwards: the peer's port vanished
+    // mid-boot-race (agy exited; LsDiscovery then throws on every later poll).
+    private sealed class PortOpenThenClosed(int openPolls) : IListeningPorts
+    {
+        private int _calls;
+        public bool IsListening(int port) => System.Threading.Interlocked.Increment(ref _calls) <= openPolls;
+    }
+
+    [Fact]
+    public async Task Boot_race_unanswered_then_port_gone_reports_a_dead_peer_not_a_busy_one()
+    {
+        // Capstone Branch C R1: poll 1 reaches the LS and times out (DeadlineExceeded -> sawUnanswered), then the port
+        // stops listening (agy exited) and every later poll is a discovery miss. The deadline must report the peer as
+        // GONE (LsDiscovery), not as busy (LsUnanswered): a discovery miss is conclusive and must clear the stale flag.
+        var fake = new FakeChannelDownLs("conv-1", StatusCode.DeadlineExceeded, throwOnDiscovery: true);
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            }, new PortOpenThenClosed(1));
+            var json = await McpTools.AgyStatus(view);
+            using var doc = JsonDocument.Parse(json);
+            Assert.Equal("channel_down", doc.RootElement.GetProperty("State").GetString());
+            Assert.Equal("LsDiscovery", doc.RootElement.GetProperty("Diagnostic").GetProperty("StatusCode").GetString());
+            Assert.DoesNotContain("busy", doc.RootElement.GetProperty("Diagnostic").GetProperty("Detail").GetString());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task Boot_race_reached_empty_then_port_gone_reports_channel_down_not_waiting_for_human()
+    {
+        // Capstone Branch C R1 (pre-existing twin of the R2 latch): poll 1 reaches the LS EMPTY (reachedLsButEmpty),
+        // then the port stops listening. The deadline must NOT tell the operator to wait for the human on a peer that
+        // has exited; a discovery miss after a reach is as conclusive as a death.
+        await using var app = await StartAsync(new FakeReachedEmptyForeverLs());
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            }, new PortOpenThenClosed(1));
+            var json = await McpTools.AgyStatus(view);
+            using var doc = JsonDocument.Parse(json);
+            // channel_down AgyStatus shape ("State"); the waiting_for_human envelope has a lowercase "status" instead.
+            Assert.Equal("channel_down", doc.RootElement.GetProperty("State").GetString());
+            Assert.False(doc.RootElement.TryGetProperty("status", out _));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // Boot-race fake: reachable, but no conversation, on every poll.
+    private sealed class FakeReachedEmptyForeverLs : LanguageServerService.LanguageServerServiceBase
+    {
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context) =>
+            Task.FromResult(new GetAllCascadeTrajectoriesResponse());
+    }
+
     // Boot-race fake: a TRANSIENT death on the first discovery poll (the LS has bound the port but its gRPC
     // service is not ready yet -> Unavailable), then reachable-but-EMPTY forever (the LS is up, waiting for the
     // human to start a conversation). Drives the capstone-R3 "flapping" regression.

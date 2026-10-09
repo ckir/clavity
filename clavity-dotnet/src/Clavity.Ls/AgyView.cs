@@ -609,8 +609,12 @@ public sealed class AgyView
                 sawChannelDeath = false;
                 sawUnanswered = false;
             }
-            catch (LsDiscoveryException) { }  // log/port not ready, or port not listening yet.
-            catch (IOException) { }           // cli.log not present yet.
+            // A discovery miss (port not listening, log absent) is conclusive about the MOST RECENT poll: the peer is
+            // not there. It must clear a stale "reached but unanswered" or "reached but empty" from an earlier poll,
+            // else a peer that exited mid-boot-race is reported as busy / waiting-for-human (capstone Branch C R1).
+            // Before any reach both flags are already false, so this is a no-op during a normal boot.
+            catch (LsDiscoveryException) { sawUnanswered = false; reachedLsButEmpty = false; }  // log/port not ready, or port not listening (any more).
+            catch (IOException) { sawUnanswered = false; reachedLsButEmpty = false; }           // cli.log not present (any more).
             // A CSRF/auth refusal is DEFINITIVE, not a transient boot-race miss: retrying every poll until the
             // deadline only delays a wrong "not reachable" verdict, and folding it into sawChannelDeath hides the
             // real status. Let it propagate so ChannelDown reports auth_failed (endpoint stale/missing), not
@@ -781,6 +785,7 @@ public sealed class AgyView
     private void Diag(string line)
     {
         try { _options.Diagnostics.WriteLine(line); }
-        catch (Exception) { /* advisory only */ }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or UnauthorizedAccessException or NotSupportedException)
+        { /* advisory only: a full disk, a closed stream, a read-only sink */ }
     }
 }

@@ -3631,6 +3631,9 @@ thread-id field is absent: `I0731 11:43:49.288076 server.go:560] Language server
 
 **Reachability:** real glog output always carries the thread id, so a live agy does not produce the bad
 shape today; the exposure is a malformed or crafted log line, and a log-format change in a future agy.
+**Accepted residual (capstone Branch C R1, 2026-10-09):** a crafted line that carries a FULL glog header still supplies
+a pid/port pair, because the pattern stays prefix-tolerant by design (no `^`). The log is agy's own file under the
+user's home; whoever can write it already owns the machine. Anchoring would re-break the 1.1.9 prefix case.
 
 **Fix outline:** require the glog header shape `[IWEF]\d{4} \d\d:\d\d:\d\d\.\d+\s+` IMMEDIATELY before the
 pid while keeping the prefix tolerance (no `^`), and correct the comment. It is a guard change: a failing
