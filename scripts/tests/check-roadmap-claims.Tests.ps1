@@ -259,6 +259,26 @@ Describe 'check-roadmap-claims.ps1 - inputs it does not control' {
         $r.Code | Should -Be 2 -Because "an unreadable input is 'cannot check', not 'a claim is false'; output was:`n$($r.Out)"
         $r.Out  | Should -Not -Match 'UnauthorizedAccessException|Access to the path'
     }
+    It 'exits 2 - NOT 1 - when the repo root is not a git repository' {
+        $nogit = Join-Path $TestDrive ("nogit-" + [Guid]::NewGuid().ToString('N')); $null = New-Item -ItemType Directory -Path $nogit
+        $rm = Join-Path $nogit 'ROADMAP.md'; [IO.File]::WriteAllText($rm, "placeholder`n")
+        $r = Invoke-Claims $nogit $rm
+        $r.Code | Should -Be 2 -Because "a tree that cannot be listed is 'cannot check', not 'a claim is false'; output was:`n$($r.Out)"
+        $r.Out  | Should -Match 'is not a git repository'
+    }
+    It 'exits 2 - NOT 1 - when git is not on PATH' {
+        $f = New-ClaimRepo -Roadmap "placeholder`n"
+        $pwshExe = (Get-Command pwsh).Source
+        $emptyDir = Join-Path $TestDrive ("nopath-" + [Guid]::NewGuid().ToString('N')); $null = New-Item -ItemType Directory -Path $emptyDir
+        $savedPath = $env:PATH
+        try {
+            $env:PATH = $emptyDir   # the child inherits a PATH with no git; pwsh itself is launched by absolute path
+            $out = & $pwshExe -NoProfile -File $script:Script -RepoRoot $f.Root -RoadmapPath $f.Roadmap 2>&1 | Out-String
+            $code = $LASTEXITCODE
+        } finally { $env:PATH = $savedPath }
+        $code | Should -Be 2 -Because "a missing git is 'cannot check', not 'a claim is false'; output was:`n$out"
+        $out  | Should -Match 'git is not on PATH'
+    }
 
     It 'says UNREADABLE - not a crash - when a claimed file is exclusively LOCKED' {
         # AGY-CAPSTONE round 7. The drift detector was given this guard in round 3; this sibling was

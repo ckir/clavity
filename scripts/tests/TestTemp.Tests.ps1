@@ -65,8 +65,18 @@ Describe 'the shared test temp root' {
         Invoke-TestTempSweep -MaxAgeHours 24
         Test-Path $outside | Should -BeTrue
     }
-    It 'the sweep tolerates a child it cannot delete' {
-        { Invoke-TestTempSweep -MaxAgeHours 0 } | Should -Not -Throw
+    It 'the sweep tolerates a child it cannot delete, and still removes the deletable ones' {
+        $root = Get-TestTempRoot
+        $locked = Join-Path $root 'locked-child'; New-Item -ItemType Directory $locked | Out-Null
+        $held = Join-Path $locked 'held.txt'; 'x' | Set-Content $held
+        $free = Join-Path $root 'free-child'; New-Item -ItemType Directory $free | Out-Null
+        foreach ($d in $locked, $free) { (Get-Item $d).LastWriteTime = (Get-Date).AddHours(-99) }
+        $fs = [IO.File]::Open($held, 'Open', 'Read', 'None')   # exclusive handle: Windows cannot delete it, so the sweep's Remove-Item fails on this child
+        try {
+            { Invoke-TestTempSweep -MaxAgeHours 24 } | Should -Not -Throw
+            Test-Path $held | Should -BeTrue -Because 'the locked child must survive (proves the delete really failed)'
+            Test-Path $free | Should -BeFalse -Because 'one undeletable child must not stop the sweep reaching the others'
+        } finally { $fs.Dispose() }
     }
 }
 Describe 'the once-per-run sweep flag' {

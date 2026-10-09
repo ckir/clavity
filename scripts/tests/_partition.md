@@ -985,7 +985,7 @@ check-plugin-drift.Tests.ps1                    56-80s   18 tests   <- SLOW, NEW
                                                                       one, and the prefix arithmetic between
                                                                       them misaligned. TIME not re-measured.
 check-plugin-namespace.Tests.ps1                 27,2s    8 tests   <- SLOW, re-measured 2026-08-06
-check-roadmap-claims.Tests.ps1                  54-55s   36 tests   <- SLOW, NEW 2026-08-31. Two runs,
+check-roadmap-claims.Tests.ps1                  54-55s   38 tests   <- SLOW, NEW 2026-08-31. Two runs,
                                                                       backgrounded on an idle box: 51,0s
                                                                       cold / 38,4s warm at 8 rows. RE-
                                                                       MEASURED 2026-09-01 at 12 rows:
