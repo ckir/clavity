@@ -1,4 +1,5 @@
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:Script   = Join-Path $PSScriptRoot '..' 'check-injected-context.ps1'
     $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
 }
@@ -88,7 +89,7 @@ Describe 'check-injected-context.ps1' {
             # pass for the wrong reason: the BOM alone would have failed it, so it never tested the
             # em-dash at all. Every fixture below uses a BOM-less encoder so each row tests what it names.
             $script:NoBom = New-Object System.Text.UTF8Encoding($false)
-            function New-TmpFile { Join-Path ([IO.Path]::GetTempPath()) ("ic-" + [guid]::NewGuid().ToString('N') + '.md') }
+            function New-TmpFile { New-TestTempPath 'ic' -Suffix '.md' }
         }
 
         It 'reads bytes, not decoded text - a BOM-less em-dash is caught' {
@@ -284,7 +285,7 @@ Describe 'check-injected-context.ps1' {
             #
             # The 'corpus is non-trivial' row above cannot catch this: it runs against the real repository
             # root, which is not under a pruned name.
-            $base = Join-Path ([IO.Path]::GetTempPath()) ("target/icp-" + [guid]::NewGuid().ToString('N'))
+            $base = New-TestTempPath 'target/icp'
             New-Item -ItemType Directory -Force -Path (Join-Path $base 'scripts') | Out-Null
             Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $base 'scripts')
             Set-Content -LiteralPath (Join-Path $base 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
@@ -591,7 +592,7 @@ jq -nc --arg m "[TAG] $msg" '{}'
             # no count can defeat it: any implementation that skips even one expanded path fails the
             # iteration where that path is the missing one.
             for ($miss = 0; $miss -lt $script:TwinPluginRoots.Count; $miss++) {
-                $d = Join-Path ([IO.Path]::GetTempPath()) ("icx-" + [guid]::NewGuid().ToString('N'))
+                $d = New-TestTempPath 'icx'
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
                 Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
                 foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
@@ -620,7 +621,7 @@ jq -nc --arg m "[TAG] $msg" '{}'
             # THE CONTROL IS THE FIRST HALF OF THIS ROW, and it is what makes the second half mean anything:
             # the fixture differs only by the ABSENCE of a .gitignore, so a filter that simply stopped
             # reporting build output would fail here rather than pass quietly.
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("icg-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'icg'
             try {
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
                 Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
@@ -653,7 +654,7 @@ jq -nc --arg m "[TAG] $msg" '{}'
             # reachable under test. Deleting that throw left the whole suite green, which is a real
             # coverage gap and not a consequence of the empty array.
             $saved = $script:AnomalyBlocklist
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("icb-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'icb'
             try {
                 $script:AnomalyBlocklist = @(@{ Path = 'seed/blocked.md'; Invariant = 'encoding' })
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
@@ -787,7 +788,7 @@ jq -nc --arg m "[TAG] $msg" '{}'
 
             $script:MakeFixture = {
                 param([hashtable]$Files)   # relative path -> content
-                $d = Join-Path ([IO.Path]::GetTempPath()) ("icv-" + [guid]::NewGuid().ToString('N'))
+                $d = New-TestTempPath 'icv'
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
                 # The ignorelist is COPIED - Get-IgnoreGlobs throws without it, and its globs are what the
                 # fixtures exercise. The exemptions file is WRITTEN EMPTY rather than copied: the real one
@@ -936,7 +937,7 @@ jq -nc --arg m "[TAG] $msg" '{}'
             . $script:Script -RepoRoot $script:RepoRoot
             $script:NewGateFixture = {
                 param([switch]$WithViolation)
-                $d = Join-Path ([IO.Path]::GetTempPath()) ("icc-" + [guid]::NewGuid().ToString('N'))
+                $d = New-TestTempPath 'icc'
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
                 Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
                 Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
@@ -981,7 +982,7 @@ jq -nc --arg m "[TAG] $msg" '{}'
             # before discovery even reached the domain roots. Reachable - Temp or a user directory can
             # legitimately contain one - and it fails the gate LOUDLY on correct content, which sends the
             # operator hunting a file that is not missing.
-            $base = Join-Path ([IO.Path]::GetTempPath()) ("r8[1]-" + [guid]::NewGuid().ToString('N'))
+            $base = New-TestTempPath 'r8[1]'
             try {
                 New-Item -ItemType Directory -Force -Path (Join-Path $base 'scripts') | Out-Null
                 Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $base 'scripts')
@@ -998,7 +999,7 @@ jq -nc --arg m "[TAG] $msg" '{}'
             # That answered a DIFFERENT system: candidacy governs backticked text INSIDE a file, pruning
             # governs which files enter the corpus at all. Measured - a .git file carrying a BOM produced
             # a real encoding violation, so it was audited all along. The peer was right and I was wrong.
-            $base = Join-Path ([IO.Path]::GetTempPath()) ("r8g-" + [guid]::NewGuid().ToString('N'))
+            $base = New-TestTempPath 'r8g'
             try {
                 New-Item -ItemType Directory -Force -Path (Join-Path $base 'scripts') | Out-Null
                 Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $base 'scripts')
@@ -1061,7 +1062,7 @@ jq -nc --arg m "[TAG] $msg" '{}'
             # These rows assert the property at the GATE, not at the suite: the file must be in the corpus
             # AND must produce a violation. A row that only checked corpus membership would pass against a
             # gate that collected the file and then audited nothing.
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("icb10-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'icb10'
             try {
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
                 Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
@@ -1091,7 +1092,7 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
             # waiver line while ignoring it - MEASURED, pasting the gate's own suggested waiver produced the
             # identical violation on the next run. A gate that tells you how to proceed and then refuses is
             # worse than one that offers nothing: it costs a debugging session to learn the advice was false.
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("icw-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'icw'
             try {
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
                 Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
@@ -1115,7 +1116,7 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
             # RUN IN A JOB WITH A TIMEOUT, deliberately. If this guard regresses the walk does not fail, it
             # HANGS, and a hang inside Pester wedges the whole suite instead of reddening one row. The
             # timeout converts a regression back into an ordinary failure.
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("icj-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'icj'
             $j = $null
             try {
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
@@ -1156,7 +1157,7 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
             # Unlike the two walk-level guards (which need a filesystem race or a permission-denied
             # directory and are documented as unpinned), this one IS portably testable: a junction needs
             # no elevation.
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("icx-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'icx'
             try {
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
                 Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
@@ -1189,7 +1190,7 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
             #
             # REPORTED, NEVER SKIPPED. Skipping would mark a file the gate never read as passing, which is
             # the fail-open this gate exists to catch.
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("icu-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'icu'
             $fs = $null
             try {
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
@@ -1212,7 +1213,7 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
             # An unwaivable violation was itself a folded defect (build-output, capstone round 12), so a new
             # invariant that could not be waived would re-make it. Note the consequence, which is deliberate:
             # waiving this one waives the file ENTIRELY, because no invariant can run on bytes nobody can read.
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("icuw-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'icuw'
             $fs = $null
             try {
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
@@ -1246,7 +1247,7 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
             # a domain root was then fully audited. MEASURED - four binary artifacts, four encoding
             # failures, on a machine that had merely run a build. Auditing binaries is noise; skipping
             # them silently is the bypass. Naming the directory is neither.
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("icbo-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'icbo'
             try {
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
                 Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
@@ -1272,7 +1273,7 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
             # while this suite stays green, because the gate still fails and still names the path.
             # THE ASSERTION HERE IS THE IDENTITY OF THE INVARIANT, not merely that something was reported
             # - which is the only form that can catch a fix regressing back into the round-18 message.
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("icnc-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'icnc'
             try {
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
                 Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
@@ -1381,7 +1382,7 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
             # THE BLOCK IS UNREACHABLE WITHOUT A VIOLATION. A clean-tree run prints none of this text,
             # so an assertion against a clean run passes against every implementation including the
             # unfixed one.
-            $script:Fx = Join-Path ([IO.Path]::GetTempPath()) ("ctx13a-" + [guid]::NewGuid().ToString('N'))
+            $script:Fx = New-TestTempPath 'ctx13a'
             New-Item -ItemType Directory -Force -Path (Join-Path $script:Fx 'scripts') | Out-Null
             Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $script:Fx 'scripts')
             Set-Content -LiteralPath (Join-Path $script:Fx 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
@@ -1432,7 +1433,7 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
             'clavity-dotnet/plugin', 'clavity-classic/plugin', 'clavity-classic/agy_skills',
             'clavity-classic/agy-mcp-bridge', 'seed', 'agy-autotrain', 'commonmemory', 'review-relay'
         )   # ghidrust/plugin + ghidrust/skill removed 2026-09-14 (ghidrust full retirement).
-        $parent = Join-Path ([IO.Path]::GetTempPath()) ("s28ic-" + [guid]::NewGuid().ToString('N'))
+        $parent = New-TestTempPath 's28ic'
         $root   = Join-Path $parent 'a-very-long-directory-name-that-gets-shortened'
         New-Item -ItemType Directory -Force -Path (Join-Path $root 'scripts') | Out-Null
         Set-Content -LiteralPath (Join-Path $root 'scripts/injected-context-ignore.txt') -Value '# empty ignorelist'
@@ -1489,7 +1490,7 @@ Describe 'ConvertTo-GateRepoRoot (ROADMAP §42)' {
             Set-ItResult -Skipped -Because 'no free drive letter'
             return
         }
-        $tree = Join-Path ([System.IO.Path]::GetTempPath()) ("gate-driveroot-" + [guid]::NewGuid().ToString('N'))
+        $tree = New-TestTempPath 'gate-driveroot'
         $first = $script:DomainRoots[0]
         $mapped = $false
         $pushed = $false
@@ -1528,7 +1529,7 @@ Describe 'reference resolution follows the git index (ROADMAP §54)' {
     BeforeEach {
         $script:TrackedSetRoot = $null; $script:TrackedFiles = $null; $script:RefIndexRoot = $null
         $script:TrackedFallbackRoots.Clear()
-        $d = Join-Path ([System.IO.Path]::GetTempPath()) ("gate-index-" + [guid]::NewGuid().ToString('N'))
+        $d = New-TestTempPath 'gate-index'
         New-Item -ItemType Directory -Force -Path (Join-Path $d 'tracked'), (Join-Path $d 'untracked'), (Join-Path $d 'ignored') | Out-Null
         Set-Content -LiteralPath (Join-Path $d 'tracked/a.md') -Value 'a'
         Set-Content -LiteralPath (Join-Path $d 'untracked/b.md') -Value 'b'
@@ -1571,7 +1572,7 @@ Describe 'reference resolution follows the git index (ROADMAP §54)' {
         (Resolve-Reference -Token 'tracked/a.md' -RepoRoot $script:D -FromFile 'a.md').Outcome | Should -Be 'ok'
     }
     It 'outside a git work tree it falls back to the working tree, and says so' {
-        $d2 = Join-Path ([System.IO.Path]::GetTempPath()) ("gate-nogit-" + [guid]::NewGuid().ToString('N'))
+        $d2 = New-TestTempPath 'gate-nogit'
         try {
             New-Item -ItemType Directory -Force -Path (Join-Path $d2 'x') | Out-Null
             Set-Content -LiteralPath (Join-Path $d2 'x/y.md') -Value 'y'

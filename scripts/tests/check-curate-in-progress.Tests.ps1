@@ -9,6 +9,7 @@
 # exercise a code path production never uses - and it hid a defect that only appears under the real
 # invocation shape. Staging through git is the only way these rows test what actually runs.
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:Script   = Join-Path $PSScriptRoot '..' 'check-curate-in-progress.ps1'
     $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
     $script:Pinned   = @(
@@ -71,7 +72,7 @@ BeforeAll {
 
 Describe 'check-curate-in-progress.ps1' {
     BeforeEach {
-        $script:Tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("curatemark-" + [Guid]::NewGuid())
+        $script:Tmp = New-TestTempPath 'curatemark'
         New-Item -ItemType Directory -Path (Join-Path $script:Tmp '.clavity') -Force | Out-Null
         git -C $script:Tmp init -q 2>&1 | Out-Null
         $script:Marker = Join-Path $script:Tmp '.clavity/curate-in-progress'
@@ -140,7 +141,7 @@ Describe 'check-curate-in-progress.ps1' {
         # "$Tmp/plain-directory" and the guard correctly exited 0, because git RESOLVES UPWARD and found
         # the fixture repo one level above - so the row was asserting fail-closed against a directory
         # that was, in fact, perfectly readable. The control was not creating the condition it named.
-        $notARepo = Join-Path ([System.IO.Path]::GetTempPath()) ("notarepo-" + [Guid]::NewGuid())
+        $notARepo = New-TestTempPath 'notarepo'
         New-Item -ItemType Directory -Force -Path $notARepo | Out-Null
         try {
             # ASSERT THE PRECONDITION. If this directory turns out to be inside a repository after all,

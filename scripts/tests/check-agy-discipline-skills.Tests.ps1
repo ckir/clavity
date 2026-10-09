@@ -84,7 +84,7 @@ BeforeAll {
     $script:TempDirs = [System.Collections.Generic.List[string]]::new()
 
     function New-ScratchRoot {
-        $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ("agyskilltest-" + [guid]::NewGuid())
+        $scratch = New-TestTempPath 'agyskilltest'
         $script:TempDirs.Add($scratch)
         # FOUR, not three. The 13b discipline-mandate check runs over adversarial-panel-review too, so a
         # scratch root without it makes EVERY rejection test below fail on a MISSING sibling rather than
@@ -116,7 +116,7 @@ BeforeAll {
     #   -Checker <text> that text written as the checker, for a registry mutated on purpose
     function New-TempLinter {
         param([string]$Source, [string]$Checker = 'real')
-        $dir = Join-Path ([IO.Path]::GetTempPath()) ("lintdir-" + [guid]::NewGuid().ToString('N'))
+        $dir = New-TestTempPath 'lintdir'
         $script:TempDirs.Add($dir)
         New-Item -ItemType Directory -Path $dir | Out-Null
         $lint = Join-Path $dir 'lint-copy.ps1'
@@ -1438,7 +1438,7 @@ Describe 'AGY-NEGOTIATE is pinned across all four disciplines' {
         # clavity-classic/target at 2.6G and .git at 95M. A whole-tree copy inside a Pester test
         # thrashes the disk, hits file locks on live build artifacts, and turns a string-replacement
         # test into the slowest thing in the suite. The linter takes -Root, so give it a minimal tree.
-        $sandbox = Join-Path ([System.IO.Path]::GetTempPath()) ("negpin-" + [guid]::NewGuid().ToString('N'))
+        $sandbox = New-TestTempPath 'negpin'
         try {
             foreach ($d in @('agy-first','agy-capstone','agy-test-audit','adversarial-panel-review')) {
                 $dest = Join-Path $sandbox "clavity-dotnet/plugin/skills/$d"

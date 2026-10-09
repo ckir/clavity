@@ -1,11 +1,12 @@
 # scripts/tests/check-core-integrity.Tests.ps1
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:Script = Join-Path $PSScriptRoot '..' 'check-core-integrity.ps1'
 }
 
 Describe "check-core-integrity.ps1 (protected-files-unchanged gate)" {
     BeforeEach {
-        $script:Repo = Join-Path ([System.IO.Path]::GetTempPath()) ("coreintegrity-" + [Guid]::NewGuid())
+        $script:Repo = New-TestTempPath 'coreintegrity'
         New-Item -ItemType Directory -Path $script:Repo | Out-Null
         Push-Location $script:Repo
         git init -q | Out-Null; git config user.email t@t | Out-Null; git config user.name t | Out-Null
@@ -40,7 +41,7 @@ Describe "check-core-integrity.ps1 (protected-files-unchanged gate)" {
     }
 
     It "hard-fails (exit 1) when 'git' cannot run (not a repo)" {
-        $notRepo = Join-Path ([System.IO.Path]::GetTempPath()) ("notrepo-" + [Guid]::NewGuid())
+        $notRepo = New-TestTempPath 'notrepo'
         New-Item -ItemType Directory -Path $notRepo | Out-Null
         try {
             Set-Content -Path (Join-Path $notRepo 'protected.md') -Value 'x'

@@ -8,6 +8,7 @@
 # rows are about one question: is the declaration present, and does it name this exact file?
 
 BeforeAll {
+    . (Join-Path $PSScriptRoot 'TestTemp.ps1')
     $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
     $script:Script   = Join-Path $script:RepoRoot 'scripts/check-dangling-consumers.ps1'
 
@@ -17,7 +18,7 @@ BeforeAll {
     $script:Marker = [char]64 + 'produces'
 
     function New-Tree {
-        $d = Join-Path ([System.IO.Path]::GetTempPath()) ("clv-dangling-" + [guid]::NewGuid().ToString('N'))
+        $d = New-TestTempPath 'clv-dangling'
         New-Item -ItemType Directory -Path (Join-Path $d 'clavity-dotnet/src/Clavity.Ls') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $d 'clavity-classic/src') -Force | Out-Null
         $d
@@ -26,7 +27,7 @@ BeforeAll {
     # fixture's ABSOLUTE path carries that segment while the tree itself is healthy. New-Tree above is its
     # paired clean-path control: the two differ in the checkout path and in nothing else.
     function New-TreeUnder([string]$Segment) {
-        $outer = Join-Path ([System.IO.Path]::GetTempPath()) ("clv-dangling-" + [guid]::NewGuid().ToString('N'))
+        $outer = New-TestTempPath 'clv-dangling'
         $d = Join-Path (Join-Path $outer $Segment) 'repo'
         New-Item -ItemType Directory -Path (Join-Path $d 'clavity-dotnet/src/Clavity.Ls') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $d 'clavity-classic/src') -Force | Out-Null
@@ -425,7 +426,7 @@ Describe 'check-dangling-consumers' {
     # pwsh, so the rows cost milliseconds.
     Context 'the section 28 guards can FAIL' {
         BeforeAll {
-            $script:G = Join-Path ([IO.Path]::GetTempPath()) ("s28g-" + [guid]::NewGuid().ToString('N'))
+            $script:G = New-TestTempPath 's28g'
             New-Item -ItemType Directory -Force -Path $script:G | Out-Null
             function New-Fixture([string]$Name, [string[]]$Lines) {
                 $p = Join-Path $script:G $Name

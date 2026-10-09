@@ -5,6 +5,7 @@
 
 Describe 'check-cheatsheet-parity.ps1' {
     BeforeAll {
+        . (Join-Path $PSScriptRoot 'TestTemp.ps1')
         $script:Fixtures = New-Object System.Collections.ArrayList   # FIXTURE HYGIENE
         $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Core = 'agy-autotrain/knowledge/driver-cheatsheet.core.md'
@@ -14,7 +15,7 @@ Describe 'check-cheatsheet-parity.ps1' {
         # Build a repo whose three pinned paths are committed and self-consistent, with both scripts in
         # place. Returns the repo root.
         function New-ParityRepo {
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("parityfx-" + [guid]::NewGuid().ToString('N'))
+            $d = New-TestTempPath 'parityfx'
             New-Item -ItemType Directory -Force -Path $d | Out-Null
             [void]$script:Fixtures.Add($d)
             & git -C $d init -q
@@ -38,7 +39,7 @@ Describe 'check-cheatsheet-parity.ps1' {
         # Run the hook IN a fixture repo and return its exit code plus merged output.
         function Invoke-Parity {
             param([string]$Repo)
-            $outF = Join-Path ([IO.Path]::GetTempPath()) ("par-" + [guid]::NewGuid().ToString('N') + ".out")
+            $outF = New-TestTempPath 'par' -Suffix '.out'
             [void]$script:Fixtures.Add($outF)
             $p = Start-Process -FilePath 'pwsh' `
                     -ArgumentList @('-NoProfile','-File', (Join-Path $Repo 'scripts/check-cheatsheet-parity.ps1')) `
