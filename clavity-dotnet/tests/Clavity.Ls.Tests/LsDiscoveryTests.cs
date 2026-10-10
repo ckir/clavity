@@ -340,7 +340,41 @@ public class LsDiscoveryTests
     public void DiscoverActive_throws_when_port_not_listening_stale_log()
     {
         // The latest line is present, but the session has exited → port absent from the listening set.
-        Assert.Throws<LsDiscoveryException>(
+        var ex = Assert.Throws<LsDiscoveryException>(
             () => LsDiscovery.DiscoverActive(RealPair, new FakeListeningPorts()));
+        // This is the ONE conclusive discovery miss (the peer exited); AgyView's boot race keys on the flag.
+        Assert.True(ex.PortNotListening);
+    }
+
+    [Fact]
+    public void ParseLatest_failures_do_not_carry_the_port_not_listening_flag()
+    {
+        // Distractor for the row above: an unparsable log says nothing about the peer, so the flag stays false.
+        var ex = Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(""));
+        Assert.False(ex.PortNotListening);
+    }
+
+    [Fact]
+    public void ReadCliLogText_reads_a_log_that_a_live_agy_holds_open_for_writing()
+    {
+        // Capstone Branch C R5: the load-bearing assumption behind ReadCliLogText (a live agy keeps cli.log open for
+        // writing, so the reader must share ReadWrite) had no pin. Windows enforces FileShare; on other OSes the
+        // control below cannot fail, so the row proves nothing there and is skipped rather than passing vacuously.
+        if (!OperatingSystem.IsWindows()) return;
+
+        var path = Path.Combine(Path.GetTempPath(), "clavity-cli-log-" + Guid.NewGuid().ToString("N") + ".log");
+        File.WriteAllText(path, RealPair);
+        try
+        {
+            // The "agy": holds the file open for WRITING, letting others read.
+            using var agy = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.Read);
+
+            // Failing control in the same process: the naive read (FileShare.Read) is refused while agy writes.
+            Assert.Throws<IOException>(() => File.ReadAllText(path));
+
+            // The real reader shares ReadWrite and succeeds.
+            Assert.Equal(RealPair, LsDiscovery.ReadCliLogText(path));
+        }
+        finally { File.Delete(path); }
     }
 }

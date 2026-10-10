@@ -1644,6 +1644,7 @@ public class AgyAskIntegrationTests
             Exception? e = thrown;
             while (e is not null && e is not InvalidOperationException) e = e.InnerException;
             Assert.IsType<InvalidOperationException>(e);
+            Assert.Equal("a bug in a custom sink", e.Message); // the sink's own throw, not an unrelated one
         }
         finally
         {
