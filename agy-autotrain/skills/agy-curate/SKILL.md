@@ -64,7 +64,7 @@ driver-owned static SEED (they ship in each driver's `plugin/knowledge/`), refre
 ## STEP ZERO - arm the in-progress marker, before anything else
 
 **Before reading a single inbox entry**, create the marker file `.clavity/curate-in-progress` at the
-repository root. Empty content; its existence is the whole signal. Create `.clavity/` first if absent.
+repository root. Empty content; its existence is the whole signal. Create `.clavity/` first if absent. Then DELETE `.clavity/curate-proposed/` if it exists and recreate it empty: a proposal left by an aborted run is stale and unreviewed, and would otherwise be shown at the gate or published as this run's. The gate shows, and the publish step publishes, ONLY files this run compiled into it.
 
 **Delete it in exactly one place: the Finish step, once the run has completed normally.** Nowhere else.
 Not on an abort, not in an error handler, not "to tidy up" - **every path that is not a normal completion
@@ -223,23 +223,31 @@ mangle characters.
 
 ### EMIT GROWTH ONLY - the floor is already injected
 
-**The write target is `<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.growth.md`.**
-Use the SAME atomic `.tmp`->rename the golden-header uses (a reader must never see a half-written file).
+**Compile the cheatsheet proposal to the STAGING path `.clavity/curate-proposed/driver-cheatsheet.growth.md`
+at the repository root** (create the directory; it sits beside `.clavity/curate-in-progress`). NOTHING reads a
+staging file. The LIVE file, `<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.growth.md`,
+has exactly one writer: `curate-commit --cheatsheet`, which you run ONLY after the human-review gate below has
+approved. Both drivers deliver that live file ONLY when the `.sha256` sidecar that verb writes beside it
+matches; a file without one, or with a stale one, degrades to the compiled floor with a visible warning. So a
+write to the live name that bypasses the verb publishes nothing - do not make one, and do not "help" by
+writing a sidecar by hand: the sidecar is the record that the verb ran after the gate.
 
-@produces "driver-cheatsheet.growth.md"
+This closed `docs/backlog/cheatsheet-reaches-live-path-before-the-human-gate.md` on 2026-10-10. Before it,
+this section wrote the live file directly, 150 lines before the gate; MEASURED, a sentinel written that way
+was delivered on the next ask with no approval anywhere.
 
-That marker line is machine-read by `scripts/check-dangling-consumers.ps1`, which fails CI when a binary
-reads a runtime filename that nothing declares it produces. **If you ever change the write target, change
-that line in the same edit** - it is the only thing connecting this skill to the readers, and the defect
-it exists to catch is exactly the one that happened here: the readers were repointed at a new filename
-while this skill kept writing the old one, and nothing noticed.
+The `@produces` marker for the live filename sits beside the code that writes it (`driver_cheatsheet.rs`
+`commit_growth`, `DriverCheatsheet.cs` `CommitGrowth`), where `scripts/check-dangling-consumers.ps1` finds it.
+That gate fails CI when a binary reads a runtime filename nothing declares it produces - the defect it exists
+to catch is exactly the one that happened here once: the readers were repointed at a new filename while this
+skill kept writing the old one, and nothing noticed. **If you ever change the live filename, change the
+constant, the verb and the marker in the same edit.**
 
 **DO NOT WRITE `%USERPROFILE%\.clavity\driver-cheatsheet.md`.** That name is RETIRED and both binaries deliberately IGNORE it
 (`DriverCheatsheet.RetiredLegacyFileName`, `driver_cheatsheet::RETIRED_LEGACY_FILE_NAME`). Writing it
-publishes to a file nothing reads. This is not a hypothetical caution: between `f497aaa` and the fix, this
-skill wrote the retired name while both readers looked for the growth name, so the whole EXTEND path was
-unreachable in production and NOTHING WARNED - an absent growth file is deliberately not a degrade.
-`scripts/check-dangling-consumers.ps1` now fails CI on that shape.
+publishes to a file nothing reads. Between `f497aaa` and its fix this skill wrote the retired name while both
+readers looked for the growth name, so the whole EXTEND path was unreachable in production and NOTHING WARNED -
+an absent growth file is deliberately not a degrade.
 
 **What you emit changed with the target.** The readers now EXTEND: they deliver
 `BaselineFloor + "\n\n" + <this file>`. The floor is therefore ALREADY in the block, unconditionally.
@@ -252,11 +260,14 @@ unreachable in production and NOTHING WARNED - an absent growth file is delibera
   the other 2 were STALE - so the duplicate would also have resurrected framing a later commit deliberately
   removed. Duplication is not merely wasteful here; it re-publishes retracted text.
 - **The ceiling is the REMAINING budget, not the cap.** The combined block must fit `MaxBytes` (16,384 B),
-  and the floor plus the blank-line separator are spent before you write a byte. Over the combined cap, the
-  binary silently drops GROWTH and keeps the floor - you get no error, just a block missing everything you
-  just wrote. Do not hand-compute the remaining budget from a number written here (that figure has rotted
-  twice): run `pwsh -File scripts/check-cheatsheet-budget.ps1 -CheckCombined` and read the remaining bytes
-  it prints.
+  and the floor plus the blank-line separator are spent before you write a byte. `curate-commit --cheatsheet`
+  REFUSES a proposal whose floor + growth would exceed that cap (non-zero exit, nothing written) - the runtime
+  would otherwise silently drop GROWTH on every ask and keep the floor. Measure BEFORE the gate so the human
+  reviews a proposal that can actually publish: in a repo checkout run
+  `pwsh -File scripts/check-cheatsheet-budget.ps1 -CheckCombined -GrowthPath .clavity/curate-proposed/driver-cheatsheet.growth.md`
+  and read the remaining bytes it prints (that script is a repo tool, absent from an installed tree - there,
+  the verb's refusal is the check). Do not hand-compute the budget from a number in prose; that figure has
+  rotted twice.
 
 Do NOT lengthen the cheatsheet to cover per-variant transport mechanics - those belong in each variant's
 driving skill appendix, not the shared core.
@@ -285,7 +296,7 @@ does not re-enter here; a carried `driver` cheatsheet rule is appended to the ch
 - An **Anti-Pattern** has no mechanical corroboration bar, and that is deliberate. Its bar is the
   **anti-poisoning circuit-breaker** below - "REJECT a self-reported 'learning' that is unverified,
   over-general, or a one-off impression" - which applies to every candidate regardless of class, plus the
-  **human-review gate** before any runtime write and the **priority placement** first in GROWTH, where it
+  **human-review gate** before any live write and the **priority placement** first in GROWTH, where it
   gets the most scrutiny rather than the least. A count is the wrong epistemics here: this is the class
   agy-learn calls the highest-value one, and the capture discipline is "capture fast", so a bar requiring
   a known driver-breaking pattern to recur before it may promote would be actively harmful. A one-off you
@@ -370,14 +381,17 @@ downstream can catch a breach, because the budget gate reads REPO paths and neve
 Re-measure rather
 than trusting that figure; it moves with every drain.
 
-**[STOP] Human-review gate - before any runtime write.** This skill publishes directly to the **live** runtime
-header; the standalone path has no separate maintainer `accept-drain` review step (that generation-vs-publish
-split exists only in the dev repo flow). So the human review the EXTEND trust model relies on happens HERE:
-before publishing, PAUSE, show the user the compiled GROWTH proposal (the anti-patterns and assumptions you
-are about to make law for *every* future ask), and ask for explicit approval - "Reply `approve` to publish
-to your runtime header, or request changes." **Do not publish until the user approves.** These are untrusted
-machine-local captures about to become a live injection into every ask; the human gate is the safeguard the
-model depends on, not a formality.
+**[STOP] Human-review gate - before any LIVE write.** This skill publishes directly to **live** runtime files;
+the standalone path has no separate maintainer `accept-drain` review step (that generation-vs-publish split
+exists only in the dev repo flow). So the human review the EXTEND trust model relies on happens HERE: before
+publishing, PAUSE and show the user BOTH compiled proposals - the GROWTH proposal
+(`.clavity/curate-proposed/golden-header.growth.md`: the anti-patterns and assumptions about to become law for
+*every* future ask) AND the cheatsheet proposal (`.clavity/curate-proposed/driver-cheatsheet.growth.md`: the
+driver rules about to extend the floor on every first ask) - and ask for explicit approval: "Reply `approve`
+to publish both to your runtime files, or request changes." **Do not publish either until the user approves.**
+Both are distilled from the same untrusted machine-local captures; distilling untrusted input does not make it
+trusted, and the gate covers both since 2026-10-10. The human gate is the safeguard the model depends on, not
+a formality.
 
 **READ THIS BEFORE THE BRANCHES BELOW - it applies to all of them, and to any exit added later.** If the
 run **ends in any way other than completing normally** - the approval gate was not passed, or an error
@@ -401,8 +415,8 @@ nor BUILT. Do this as part of ending the run, **before** the exit itself.
   2. **"any exit that did not publish"** - sweeps in exit 0, which also covers "nothing pending";
   3. **"any non-zero exit"** - would fire on a future published-with-warnings code;
   4. **"did not publish GROWTH"** - fires on a perfectly good run whose inbox held only carried `driver`
-     rules (`:121` routes those to the cheatsheet, not GROWTH), which edits the pins, publishes nothing
-     and ends normally;
+     rules (`:121` routes those to the cheatsheet, not GROWTH), which publishes the CHEATSHEET through the
+     gate, publishes no GROWTH, edits the pins, and ends normally;
   5. **"does not reach the Finish step"** - a run can REACH Finish and fail INSIDE it (a `curate-commit`
      error), which leaves the tree dirty and unpublished while the predicate reads false.
 
@@ -412,7 +426,7 @@ is terminal, so "non-blocking" states the opposite of what happens.
 
 **No interactive approval channel?** If this skill runs where no interactive approval can be obtained (a
 headless or otherwise non-interactive session), do **NOT** publish. Emit a message - "no
-interactive approval channel; the compiled GROWTH was NOT published. Re-run agy-curate interactively to
+interactive approval channel; the compiled GROWTH and cheatsheet were NOT published. Re-run agy-curate interactively to
 publish." - on **STDERR**, and **exit 2**.
 
 **The human did not approve?** The gate above offers two answers that are NOT the same outcome, and they
@@ -422,7 +436,7 @@ do NOT take the same path:
   terminal state: do not exit, and do not publish until an approval is actually given. A gate that
   invites "request changes" and then treats it as an abort is not a gate, it is a trap.
 - **A refusal, or no answer at all** - do **NOT** publish. Emit on **STDERR** - "the human did not
-  approve; the compiled GROWTH was NOT published." - and **exit 3**. **Write that exit-3 message out in
+  approve; the compiled GROWTH and cheatsheet were NOT published." - and **exit 3**. **Write that exit-3 message out in
   full**, rather than deriving it from the exit-2 wording above: a substitution across two separate
   strings silently stops applying the moment either one is reworded, and the exit-2 message ends by
   telling the reader to re-run interactively, which is nonsense for a human who just declined in an
@@ -435,7 +449,7 @@ The table is the count; do not restate how many there are in prose:
 
 | exit | state | inbox `## Pending` |
 |------|-------|--------------------|
-| 0 | ran to a normal end - GROWTH published, or nothing for GROWTH to publish (an empty inbox, or one holding only carried `driver` rules) | reset |
+| 0 | ran to a normal end - every approved proposal published (GROWTH, the cheatsheet, or both), or nothing to publish (an empty inbox) | reset |
 | 2 | NOT published - no interactive approval channel. Deliberate, not a fault | left intact |
 | 3 | NOT published - the human reviewed it and did not approve. Deliberate, not a fault | left intact |
 | 1 | error - something went wrong | left intact **unless the error struck after the Finish step's reset** - see below |
@@ -456,9 +470,10 @@ not a rollback, so state the partial effect rather than leaving an executor to g
 
 | already happened | reverted when the run reaches this block? | where it lives |
 |---|---|---|
-| the compiled cheatsheet GROWTH was written to `<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.growth.md` | **no** | user profile - **live, and EXTENDS the floor on every ask** |
+| the compiled cheatsheet proposal in `.clavity/curate-proposed/driver-cheatsheet.growth.md` | left in place - it is a staging file; nothing reads it | the repository's `.clavity/` - never live |
+| the compiled GROWTH proposal in `.clavity/curate-proposed/golden-header.growth.md` | left in place - same | same |
 | `knowledge/driver-cheatsheet.core.md` and its two GENERATED pins may have been regenerated | **no** | **IN THE REPOSITORY - these are uncommitted edits in the working tree** |
-| `golden-header.growth.md` (the GROWTH publish) | **never written** | - this is exactly what the gate withheld |
+| the two LIVE files, `%USERPROFILE%\.clavity\golden-header.growth.md` and `%USERPROFILE%\.clavity\driver-cheatsheet.growth.md` | **never written** - this is exactly what the gate withheld; `curate-commit` and `curate-commit --cheatsheet` are never invoked on this path | - |
 | the inbox `## Pending` section | untouched, per the paragraph above | - |
 
 **This block describes the GATE's abort paths only** - the ones that arrive here, currently exit 2 and
@@ -474,16 +489,15 @@ here** - restating it is how the two copies drift apart.
 **`driver_cheatsheet.rs` and `DriverCheatsheet.cs` are COMPILED-IN baselines (`:93-95`)** - content left
 in them is built by the next `cargo build` / `dotnet build` and shipped by the next `git commit -a`.
 
-**The cheatsheet is outside the human gate's scope.** That gate shows the compiled GROWTH proposal
-(`:224`). The cheatsheet is compiled from the `driver/probabilistic` entries (`:79`), and a carried
-`driver` rule is appended to it rather than to GROWTH (`:121`); neither route reaches that gate. Moving
-the write below it would not subject it to review. Gap recorded at
-`docs/backlog/cheatsheet-reaches-live-path-before-the-human-gate.md`, which is UMBRELLA-rooted - unlike
-the `docs/fix-the-tool-backlog/` paths above, which sit under `agy-autotrain/`. Two roots, one file:
-resolving either against the wrong one reports a real directory as missing. MEASURED - a real drain
-concluded backlog routing was impossible by construction because of exactly this. The umbrella root is
-never shipped (the installer copies only the `agy-autotrain` subtree), so in an installed plugin tree
-this reference does not resolve at all; it is a pointer for a maintainer reading the repo.
+**The cheatsheet is INSIDE the human gate's scope** since 2026-10-10. The gate shows both proposals; the live
+cheatsheet file is written only by `curate-commit --cheatsheet`, and both readers refuse a live file without the
+sidecar that verb writes. Before that date the write landed before the gate and was live on the next ask -
+recorded at `docs/backlog/cheatsheet-reaches-live-path-before-the-human-gate.md`, which is UMBRELLA-rooted,
+unlike the `docs/fix-the-tool-backlog/` paths above, which sit under `agy-autotrain/`. Two roots, one file:
+resolving either against the wrong one reports a real directory as missing. MEASURED - a real drain concluded
+backlog routing was impossible by construction because of exactly this. The umbrella root is never shipped
+(the installer copies only the `agy-autotrain` subtree), so in an installed plugin tree this reference does
+not resolve at all; it is a pointer for a maintainer reading the repo.
 
 > This is the SKILL's exit contract and is unrelated to the `exit 2` convention used by the repository's
 > **hooks** (see `clavity-classic/plugin/hooks/agy-liveness-check.sh`), where 2 means "advisory on stderr"
@@ -496,12 +510,15 @@ Finish ordering below resets `## Pending` only when `curate-commit` exits 0, so 
 every entry in place and a later interactive run simply recompiles them. Only compute is wasted, and only
 once. Do NOT add an inbox reset to this path - that would turn a safe abort into data loss.
 
-Then, once approved, **commit it through the binary** so it lands at the resolved shared GROWTH path
-(`%USERPROFILE%\.clavity\golden-header.growth.md`) with an atomic write + a `.sha256` **integrity** sidecar -
-NOT a security control (anyone who can rewrite the header can equally rewrite or delete the sidecar); it exists
-to catch torn writes, filesystem corruption, and a hand-edited header. It is **verified on read**: absent or
-unreadable is accepted unchanged (a fresh install seeds SEED with no sidecar); mismatched or over its own 1 KiB
-cap causes that region to be skipped with a warning. Only the binary knows `CLAVITY_GOLDEN_HEADER`.
+Then, once approved, **commit BOTH through the binary**: `curate-commit` with the GROWTH proposal's bytes
+lands `%USERPROFILE%\.clavity\golden-header.growth.md`, and `curate-commit --cheatsheet` with the cheatsheet
+proposal's bytes lands `%USERPROFILE%\.clavity\driver-cheatsheet.growth.md`; each is an atomic write plus a
+`.sha256` sidecar. For the GOLDEN HEADER the sidecar is an **integrity** check, NOT a security control (anyone
+who can rewrite the header can rewrite the sidecar): absent or unreadable is accepted unchanged (a fresh
+install seeds SEED with no sidecar); mismatched or over its own 1 KiB cap causes that region to be skipped
+with a warning. For the CHEATSHEET the sidecar is additionally the gate's record: absent, mismatched or
+oversize ALL degrade the file to the floor with a visible warning, because nothing but this verb - run after
+the approval above - ever writes it. Only the binary knows `CLAVITY_GOLDEN_HEADER`.
 
 **Publish via the binary's STDIN as RAW BYTES - never a shell redirect or pipe.** A multi-line markdown
 header blows past command-line quoting/length limits (so it must go via STDIN, not an argument); and on
@@ -518,25 +535,38 @@ authoring policy is what covers the general case. GROWTH is a compiled, machine-
 present need for typography, and non-ASCII in it bought nothing while costing 13 days of silently corrupt
 injection into every ask.
 
-    # Resolve the driver (dotnet `clavity-ls` or classic `clavity`) and stream RAW bytes to its stdin.
-    # Both variants' `curate-commit` write ONLY golden-header.growth.md (SEED untouched) - transport is identical.
+    # Resolve the driver (dotnet `clavity-ls` or classic `clavity`) and stream RAW bytes to its stdin, once per
+    # approved proposal. Each target is written by exactly one invocation and neither touches the other's file.
     $exe = (Get-Command clavity-ls -EA SilentlyContinue) ?? (Get-Command clavity -EA SilentlyContinue)
-    $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName = $exe.Source; $psi.ArgumentList.Add('curate-commit')
-    $psi.RedirectStandardInput = $true; $psi.UseShellExecute = $false
-    $bytes = [System.IO.File]::ReadAllBytes('compiled-growth.md')
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    $proc.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
-    $proc.StandardInput.Close(); $proc.WaitForExit()   # 0 = ok; 2 = bad input/over-cap; 1 = IO
+    $publishes = @(
+        @{ File = '.clavity/curate-proposed/golden-header.growth.md';     Args = @('curate-commit') },
+        @{ File = '.clavity/curate-proposed/driver-cheatsheet.growth.md'; Args = @('curate-commit', '--cheatsheet') }
+    )
+    foreach ($p in $publishes) {
+        if (-not (Test-Path -LiteralPath $p.File)) { continue }   # a run may have compiled only one proposal
+        $psi = [System.Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = $exe.Source; foreach ($a in $p.Args) { $psi.ArgumentList.Add($a) }
+        $psi.RedirectStandardInput = $true; $psi.UseShellExecute = $false
+        $bytes = [System.IO.File]::ReadAllBytes($p.File)
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        $proc.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
+        $proc.StandardInput.Close(); $proc.WaitForExit()
+        if ($proc.ExitCode -ne 0) { throw "publish of $($p.File) failed with exit $($proc.ExitCode) - STOP, leave the inbox untouched" }
+    }
 
-`curate-commit` (both variants) writes **only** `golden-header.growth.md`; it never touches the SEED. Do NOT edit
+`curate-commit` (both variants) writes **only** the one file its flag selects - `%USERPROFILE%\.clavity\golden-header.growth.md` bare,
+`%USERPROFILE%\.clavity\driver-cheatsheet.growth.md` with `--cheatsheet` - plus that file's `.sha256`; it never touches the SEED or the
+other target. Do NOT edit
 the shared files by hand, and do **not rename or remove** a legacy flat `%USERPROFILE%\.clavity\golden-header.md`
 if one is present - the binary reads it as a one-time migration fallback (GROWTH present -> legacy ignored), and
 renaming it would defeat that migration for an upgrading user.
 
-**No driver installed?** If no clavity binary is on PATH, still compile and write `golden-header.growth.md`
-(create the `.clavity` dir if absent) and emit a **non-blocking** warning - e.g. "no clavity driver detected;
-the learned header won't be injected until a driver is installed." Do NOT hard-fail; the capture still has value.
+**No driver installed?** If no clavity binary is on PATH, still compile both proposals and run the gate. After
+approval, write `golden-header.growth.md` directly into the RESOLVED golden-header directory (`CLAVITY_GOLDEN_HEADER` if set, else `%USERPROFILE%\.clavity`; its readers accept a sidecar-less region; create the
+`.clavity` dir if absent) and emit a **non-blocking** warning - e.g. "no clavity driver detected; the learned
+header won't be injected until a driver is installed." The CHEATSHEET proposal STAYS in staging: a direct write
+to its live name is refused by both readers, so publish it with `curate-commit --cheatsheet` once a driver is
+installed. Do NOT hard-fail; the capture still has value.
 
 **Variant-agnostic ONLY.** GROWTH carries cross-cutting agy *reasoning* wisdom (anti-patterns, load-bearing
 assumptions) - forbid BOTH project nouns AND variant-specific driving mechanics (e.g. `agy_ask` argument shaping
@@ -551,10 +581,11 @@ downstream call. When in doubt, leave it in the inbox.
 
 - **Order the mutation, and reset the inbox LAST.** Snapshot (the `agy-inbox-snapshot` hook does this
   automatically when this skill is invoked through the `Skill` tool; do it by hand if you got here another
-  way), then compile GROWTH, then publish via `curate-commit`, and **only when `curate-commit` exits 0**
-  perform the `## Pending` reset described in the next bullet (which is a reset to the still-pending
-  entries, NOT to zero lines). Resetting first means a failed publish loses the entries and produces no
-  GROWTH to show for them. If `curate-commit` returns non-zero, STOP and leave the inbox untouched.
+  way), then compile BOTH proposals into `.clavity/curate-proposed/`, pass the gate, then publish via
+  `curate-commit` and `curate-commit --cheatsheet`, and **only when every publish you ran exits 0** perform
+  the `## Pending` reset described in the next bullet (which is a reset to the still-pending entries, NOT to
+  zero lines). Resetting first means a failed publish loses the entries and produces nothing to show for
+  them. If either publish returns non-zero, STOP and leave the inbox untouched.
 - **Empty the inbox** - every entry must reach a terminal disposition: promoted into GROWTH, compiled into
   the driver cheatsheet, emitted as a fix-the-tool backlog item, dropped as noise, or marked **HELD** with
   a recorded blocker and release condition. Reset `## Pending` to contain the HELD entries **and any entry
@@ -569,6 +600,9 @@ downstream call. When in doubt, leave it in the inbox.
   and therefore must be able to survive.
 - If the loop has proven out in-project, this is the point to **promote** the skills + knowledge to the
   global config (the trial-then-globalise step).
+- **Then delete `.clavity/curate-proposed/`.** Both proposals are published; a proposal left behind is not
+  live, but it is stale, and the next run must start from an empty staging directory so a half-compiled
+  leftover can never be mistaken for this run's proposal.
 - **LAST OF ALL, and only if everything above completed normally: delete `.clavity/curate-in-progress`.**
   This is the ONLY place that file is ever removed. It was created as Step Zero before any work began,
   and while it exists it is what lets a repository's own guard refuse cheatsheet content this run never
