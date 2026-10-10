@@ -8,6 +8,8 @@ status: SCHEDULED
 
 # A transport error carries no build provenance, so a stale installed client is diagnosed as a peer fault
 
+**Re-routed 2026-10-09 at the start of Branch C to Branch R (owner delegated, AGY-FIRST aligned).** Measured: the dotnet binary carries no runtime version surface at all (no `InformationalVersion`, no `--version` verb) and the default assembly version is uninformative, so the fix is a build-time stamp that the release workflow must set; that is Branch R's domain. Still SCHEDULED.
+
 ## Steps to Reproduce
 
 1. Install a client build that predates a commit fixing a known transport failure mode (measured case:

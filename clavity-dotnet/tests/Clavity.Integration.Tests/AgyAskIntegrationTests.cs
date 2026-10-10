@@ -1606,6 +1606,124 @@ public class AgyAskIntegrationTests
         finally { Directory.Delete(dir, true); }
     }
 
+    private sealed class ThrowingWriter : StringWriter
+    {
+        public override void WriteLine(string? value) => throw new IOException("diagnostics sink is full");
+    }
+
+    private sealed class MisprogrammedWriter : StringWriter
+    {
+        public override void WriteLine(string? value) => throw new InvalidOperationException("a bug in a custom sink");
+    }
+
+    private sealed class FaultingWriter(Exception fault) : StringWriter
+    {
+        public override void WriteLine(string? value) => throw fault;
+    }
+
+    [Fact]
+    public async Task AskAsync_does_not_hide_a_programming_error_thrown_by_a_diagnostics_sink()
+    {
+        // Capstone Branch C R4: Diag swallows only what a SINK can produce (I/O, disposed, access, not-supported). A
+        // programming error in a custom sink must still surface, else the guard hides real bugs. A blanket catch in
+        // Diag turns this row green-for-the-wrong-reason: the ask would succeed and nothing would be thrown.
+        var initial = new[]
+        {
+            new CascadeStep
+            {
+                Kind = 15,
+                Metadata = new CortexStepMetadata { GeneratorModel = 1016 },
+                UserInput = new CascadeUserInput { Text = "prior assistant turn" },
+            },
+        };
+        var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), initial);
+
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Diagnostics = new MisprogrammedWriter() });
+            var thrown = await Assert.ThrowsAnyAsync<Exception>(() => view.AskAsync("please do X"));
+
+            // The sink's exception, itself or as an inner cause - never silently swallowed.
+            Exception? e = thrown;
+            while (e is not null && e is not InvalidOperationException) e = e.InnerException;
+            Assert.IsType<InvalidOperationException>(e);
+            Assert.Equal("a bug in a custom sink", e.Message); // the sink's own throw, not an unrelated one
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public async Task AskAsync_survives_a_diagnostics_sink_that_throws()
+    {
+        // Backlog agyview-diagnostics-writes-are-unguarded: the Diagnostics write is advisory and must never
+        // fail the ask it describes. Same scenario as the trajectory-model row, but with a sink that throws.
+        var initial = new[]
+        {
+            new CascadeStep
+            {
+                Kind = 15,
+                Metadata = new CortexStepMetadata { GeneratorModel = 1016 },
+                UserInput = new CascadeUserInput { Text = "prior assistant turn" },
+            },
+        };
+        var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), initial);
+
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Diagnostics = new ThrowingWriter() });
+            await view.AskAsync("please do X");
+
+            Assert.Equal(1016, fake.LastSentModel);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Theory]
+    [InlineData(typeof(ObjectDisposedException))]
+    [InlineData(typeof(UnauthorizedAccessException))]
+    [InlineData(typeof(NotSupportedException))]
+    public async Task AskAsync_survives_each_non_io_sink_fault_that_Diag_names(Type faultType)
+    {
+        // Test-audit Branch C: Diag's `when` clause names FOUR sink faults and the row above pins only IOException.
+        // One row per remaining type, so dropping any single `or X` from the clause reds a NAMED row instead of
+        // leaving the suite green (the ask would then fail on a closed / read-only / unsupported sink).
+        var fault = (Exception)Activator.CreateInstance(faultType, "sink fault")!;
+        var initial = new[]
+        {
+            new CascadeStep
+            {
+                Kind = 15,
+                Metadata = new CortexStepMetadata { GeneratorModel = 1016 },
+                UserInput = new CascadeUserInput { Text = "prior assistant turn" },
+            },
+        };
+        var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), initial);
+
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Diagnostics = new FaultingWriter(fault) });
+            await view.AskAsync("please do X");
+
+            Assert.Equal(1016, fake.LastSentModel);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public async Task AskAsync_sends_the_conversations_own_model_from_the_trajectory()
     {

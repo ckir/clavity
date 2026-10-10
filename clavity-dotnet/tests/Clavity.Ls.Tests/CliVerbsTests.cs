@@ -54,6 +54,25 @@ public sealed class CliVerbsTests : IDisposable
         Assert.DoesNotContain("Γ", combined);   // the mojibake signature
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("  \n\t\n")]
+    public void CurateCommit_refuses_empty_or_blank_input_and_leaves_the_existing_growth_untouched(string blank)
+    {
+        // Backlog curate-commit-accepts-empty-stdin: `curate-commit < /dev/null` truncated the live GROWTH
+        // region from 11039 bytes to 0 and exited 0. Documented contract: 2 = bad input.
+        var seeded = Encoding.UTF8.GetBytes("PRE-EXISTING GROWTH THAT MUST NOT VANISH\n");
+        Assert.Equal(0, CliVerbs.CurateCommit(_dir, new MemoryStream(seeded), new StringWriter()));
+        var before = Directory.GetFiles(_dir).OrderBy(x => x).ToArray();
+
+        var error = new StringWriter();
+        Assert.Equal(2, CliVerbs.CurateCommit(_dir, Utf8(blank), error));
+
+        Assert.Contains("nothing written", error.ToString());
+        Assert.Equal(seeded, File.ReadAllBytes(GoldenHeader.GrowthPath(_dir)));
+        Assert.Equal(before, Directory.GetFiles(_dir).OrderBy(x => x).ToArray()); // no new .bak either
+    }
+
     [Fact]
     public void CurateCommit_refuses_input_that_is_not_utf8_and_writes_nothing()
     {

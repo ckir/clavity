@@ -339,6 +339,259 @@ public class AgyChannelDownTests
         finally { Directory.Delete(dir, true); }
     }
 
+    [Fact]
+    public async Task Boot_race_resolved_but_unanswered_reports_a_busy_peer_with_a_retry_hint()
+    {
+        // Backlog ls-discovery-misreports-a-busy-peer-as-exited: every poll reaches the LS and gets
+        // DeadlineExceeded. The report must say the peer is alive and busy (LsUnanswered), not "starting or exited".
+        var fake = new FakeChannelDownLs("conv-1", StatusCode.DeadlineExceeded, throwOnDiscovery: true);
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var json = await McpTools.AgyStatus(ViewFor(cliLog));
+            using var doc = JsonDocument.Parse(json);
+            Assert.Equal("channel_down", doc.RootElement.GetProperty("State").GetString());
+            Assert.Equal("LsUnanswered", doc.RootElement.GetProperty("Diagnostic").GetProperty("StatusCode").GetString());
+            var hint = doc.RootElement.GetProperty("Hint").GetString()!;
+            Assert.Contains("RETRY", hint);
+            Assert.DoesNotContain("shut down or restarted", hint);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    private sealed class FakeDeadThenClampedLs : LanguageServerService.LanguageServerServiceBase
+    {
+        private int _calls;
+
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            // Poll 1: a genuine death. Poll 2+: the clamped boot-race budget expires on the wire (DeadlineExceeded),
+            // which says nothing about the peer. Deterministic on purpose: the reached-empty-then-dead row above only
+            // reaches the DeadlineExceeded arm when its FINAL poll's remaining budget happens to expire before the
+            // fake answers (a loopback race), so it pins `!sawChannelDeath` only by timing.
+            if (System.Threading.Interlocked.Increment(ref _calls) == 1)
+                throw new RpcException(new Status(StatusCode.Unavailable, "agy died mid-boot-race"));
+            throw new RpcException(new Status(StatusCode.DeadlineExceeded, "clamped boot-race budget expired"));
+        }
+    }
+
+    [Fact]
+    public async Task Boot_race_death_then_a_clamped_final_poll_still_reports_a_dead_peer_not_a_busy_one()
+    {
+        // Test-audit Branch C: `else if (!sawChannelDeath) sawUnanswered = true;` in ConnectAndResolveAsync - a
+        // DeadlineExceeded AFTER a death must not promote the dead peer to "busy, RETRY" (LsUnanswered), which would
+        // send the operator retrying against a server that exited. Under the mutant that drops `!sawChannelDeath`
+        // the deadline reports LsUnanswered and this row goes red.
+        var fake = new FakeDeadThenClampedLs();
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            });
+            var json = await McpTools.AgyStatus(view);
+            using var doc = JsonDocument.Parse(json);
+            Assert.Equal("channel_down", doc.RootElement.GetProperty("State").GetString());
+            Assert.Equal("LsDiscovery", doc.RootElement.GetProperty("Diagnostic").GetProperty("StatusCode").GetString());
+            Assert.DoesNotContain("RETRY the call", doc.RootElement.GetProperty("Hint").GetString()!);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // A listening probe that says "open" for the first N polls and "closed" afterwards: the peer's port vanished
+    // mid-boot-race (agy exited; LsDiscovery then throws on every later poll).
+    private sealed class PortOpenThenClosed(int openPolls) : IListeningPorts
+    {
+        private int _calls;
+        public bool IsListening(int port) => System.Threading.Interlocked.Increment(ref _calls) <= openPolls;
+    }
+
+    [Fact]
+    public async Task Boot_race_unanswered_then_port_gone_reports_a_dead_peer_not_a_busy_one()
+    {
+        // Capstone Branch C R1: poll 1 reaches the LS and times out (DeadlineExceeded -> sawUnanswered), then the port
+        // stops listening (agy exited) and every later poll is a discovery miss. The deadline must report the peer as
+        // GONE (LsDiscovery), not as busy (LsUnanswered): a discovery miss is conclusive and must clear the stale flag.
+        var fake = new FakeChannelDownLs("conv-1", StatusCode.DeadlineExceeded, throwOnDiscovery: true);
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            }, new PortOpenThenClosed(1));
+            var json = await McpTools.AgyStatus(view);
+            using var doc = JsonDocument.Parse(json);
+            Assert.Equal("channel_down", doc.RootElement.GetProperty("State").GetString());
+            Assert.Equal("LsDiscovery", doc.RootElement.GetProperty("Diagnostic").GetProperty("StatusCode").GetString());
+            Assert.DoesNotContain("busy", doc.RootElement.GetProperty("Diagnostic").GetProperty("Detail").GetString());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task Boot_race_reached_empty_then_port_gone_reports_channel_down_not_waiting_for_human()
+    {
+        // Capstone Branch C R1 (pre-existing twin of the R2 latch): poll 1 reaches the LS EMPTY (reachedLsButEmpty),
+        // then the port stops listening. The deadline must NOT tell the operator to wait for the human on a peer that
+        // has exited; a discovery miss after a reach is as conclusive as a death.
+        await using var app = await StartAsync(new FakeReachedEmptyForeverLs());
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            }, new PortOpenThenClosed(1));
+            var json = await McpTools.AgyStatus(view);
+            using var doc = JsonDocument.Parse(json);
+            // channel_down AgyStatus shape ("State"); the waiting_for_human envelope has a lowercase "status" instead.
+            Assert.Equal("channel_down", doc.RootElement.GetProperty("State").GetString());
+            Assert.False(doc.RootElement.TryGetProperty("status", out _));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // Boot-race fake: reachable-but-EMPTY, and on its FIRST discovery poll it deletes the cli.log (a rotation, a
+    // cleanup, a transient unreadable file). Every later poll is an IOException from ReadCliLogText.
+    private sealed class FakeEmptyThenLogVanishesLs : LanguageServerService.LanguageServerServiceBase
+    {
+        private int _calls;
+        public string? CliLogPath { get; set; } // set once the test knows the path (the app starts first)
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            if (System.Threading.Interlocked.Increment(ref _calls) == 1 && CliLogPath is { } p) File.Delete(p);
+            return Task.FromResult(new GetAllCascadeTrajectoriesResponse());
+        }
+    }
+
+    [Fact]
+    public async Task Boot_race_reached_empty_then_cli_log_unreadable_keeps_waiting_for_human()
+    {
+        // Capstone Branch C R2: a reach is stronger evidence than a later failure to READ the log. The LS was reached
+        // (empty) and its port was never seen closed; an IOException from cli.log afterwards must NOT demote that to
+        // channel_down ("starting or exited") at the deadline. Only a resolved port that is NOT LISTENING is conclusive.
+        var fake = new FakeEmptyThenLogVanishesLs();
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        fake.CliLogPath = cliLog;
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            });
+            var json = await McpTools.AgyStatus(view);
+            using var doc = JsonDocument.Parse(json);
+            // waiting_for_human envelope (lowercase "status"); channel_down would be the AgyStatus shape with "State".
+            Assert.True(doc.RootElement.TryGetProperty("status", out var st), json);
+            Assert.Equal("waiting_for_human", st.GetString());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // Boot-race fake: reachable-but-EMPTY. Poll 1 answers at once (so the reach never depends on runner speed);
+    // every later reply takes longer than the budget's final remainder, so the last poll before the deadline is a
+    // clamped DeadlineExceeded against a healthy LS (capstone Branch C R3: a slow CI runner must not be able to
+    // clamp the FIRST poll and fail the row for a reason unrelated to the behaviour it pins).
+    private sealed class FakeSlowEmptyLs : LanguageServerService.LanguageServerServiceBase
+    {
+        private int _calls;
+        public override async Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            if (System.Threading.Interlocked.Increment(ref _calls) > 1) await Task.Delay(400);
+            return new GetAllCascadeTrajectoriesResponse();
+        }
+    }
+
+    [Fact]
+    public async Task Boot_race_reached_empty_whose_final_poll_is_clamped_still_reports_waiting_for_human()
+    {
+        // Capstone Branch C R2 (pins the REJECTED finding R2-1): the final poll of a healthy always-empty LS times out
+        // because the remaining budget is clamped to a sliver - that DeadlineExceeded is the clamp expiring, not
+        // evidence about the peer, so it must not demote reached-empty to "busy" (LsUnanswered) or channel_down.
+        await using var app = await StartAsync(new FakeSlowEmptyLs());
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            });
+            var json = await McpTools.AgyStatus(view);
+            using var doc = JsonDocument.Parse(json);
+            Assert.True(doc.RootElement.TryGetProperty("status", out var st), json);
+            Assert.Equal("waiting_for_human", st.GetString());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // Boot-race fake: reachable-but-EMPTY, and on its FIRST discovery poll it TRUNCATES the cli.log to zero bytes (a
+    // rotation that recreates the file). Every later poll is an LsDiscoveryException from ParseLatest ("cli.log is
+    // empty") with PortNotListening = false - a discovery miss that says nothing about the peer.
+    private sealed class FakeEmptyThenLogTruncatedLs : LanguageServerService.LanguageServerServiceBase
+    {
+        private int _calls;
+        public string? CliLogPath { get; set; }
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            if (System.Threading.Interlocked.Increment(ref _calls) == 1 && CliLogPath is { } p) File.WriteAllText(p, "");
+            return Task.FromResult(new GetAllCascadeTrajectoriesResponse());
+        }
+    }
+
+    [Fact]
+    public async Task Boot_race_reached_empty_then_cli_log_truncated_keeps_waiting_for_human()
+    {
+        // Capstone Branch C R4: pins the CONDITION on the LsDiscoveryException arm. Only PortNotListening may clear an
+        // earlier reach; a log that no longer parses (PortNotListening = false) must not. Dropping the condition and
+        // clearing unconditionally turns this row into channel_down.
+        var fake = new FakeEmptyThenLogTruncatedLs();
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        fake.CliLogPath = cliLog;
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            });
+            var json = await McpTools.AgyStatus(view);
+            using var doc = JsonDocument.Parse(json);
+            Assert.True(doc.RootElement.TryGetProperty("status", out var st), json);
+            Assert.Equal("waiting_for_human", st.GetString());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // Boot-race fake: reachable, but no conversation, on every poll.
+    private sealed class FakeReachedEmptyForeverLs : LanguageServerService.LanguageServerServiceBase
+    {
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context) =>
+            Task.FromResult(new GetAllCascadeTrajectoriesResponse());
+    }
+
     // Boot-race fake: a TRANSIENT death on the first discovery poll (the LS has bound the port but its gRPC
     // service is not ready yet -> Unavailable), then reachable-but-EMPTY forever (the LS is up, waiting for the
     // human to start a conversation). Drives the capstone-R3 "flapping" regression.

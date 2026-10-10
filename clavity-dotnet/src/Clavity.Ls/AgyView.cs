@@ -96,7 +96,7 @@ public sealed class AgyView
         if (_options.GoldenHeaderDir is null && !haveIndex) return null;
         if (Interlocked.Exchange(ref _guidanceDelivered, 1) != 0) return null;
 
-        void Warn(string m) => _options.Diagnostics.WriteLine($"clavity: {m}");
+        void Warn(string m) => Diag($"clavity: {m}");
 
         // Order (F5 canonical, matched by clavity-classic): warning -> cheatsheet -> header -> escalation index.
         var sections = new List<string>();
@@ -574,6 +574,10 @@ public sealed class AgyView
         // is only the boot-race budget clamp expiring a poll; it is NOT evidence of death, so it must NOT flip this
         // (else a healthy always-empty LS whose final clamped poll times out would be mis-reported as channel_down).
         var sawChannelDeath = false;
+        // Did the MOST RECENT conclusive poll hit DeadlineExceeded (peer reachable, not answering)? Like
+        // sawChannelDeath it reflects only the latest conclusive poll: a later death or a later successful
+        // reach supersedes it.
+        var sawUnanswered = false;
 
         while (true)
         {
@@ -603,9 +607,20 @@ public sealed class AgyView
                 // must not latch and mislabel a healthy waiting-for-human LS as channel_down. sawChannelDeath thus
                 // reflects only the MOST RECENT conclusive poll (empty here, death in the catch below).
                 sawChannelDeath = false;
+                sawUnanswered = false;
             }
-            catch (LsDiscoveryException) { }  // log/port not ready, or port not listening yet.
-            catch (IOException) { }           // cli.log not present yet.
+            // Evidence hierarchy for a discovery miss (capstone Branch C R1+R2). A resolved endpoint whose port is NOT
+            // LISTENING is conclusive: the peer exited, so a stale "reached but unanswered" / "reached but empty" from
+            // an earlier poll must be cleared, else a peer that exited mid-boot-race is reported as busy /
+            // waiting-for-human. Every OTHER miss - the log unreadable or absent (rotation, a transient lock), or a log
+            // with no port lines yet - says nothing about a peer that was already reached, so it keeps the earlier
+            // reach; demoting it would turn a transient read error on the final poll into a false channel_down.
+            // Before any reach both flags are already false, so a normal boot is unaffected either way.
+            catch (LsDiscoveryException ex)
+            {
+                if (ex.PortNotListening) { sawUnanswered = false; reachedLsButEmpty = false; }
+            }
+            catch (IOException) { }           // cli.log not present / not readable (yet, or any more).
             // A CSRF/auth refusal is DEFINITIVE, not a transient boot-race miss: retrying every poll until the
             // deadline only delays a wrong "not reachable" verdict, and folding it into sawChannelDeath hides the
             // real status. Let it propagate so ChannelDown reports auth_failed (endpoint stale/missing), not
@@ -622,7 +637,8 @@ public sealed class AgyView
                 // A genuine channel death (Unavailable/Internal/...) means the LS is no longer reachable; record it so
                 // the deadline reports channel_down over a stale reached-empty. DeadlineExceeded is just the clamped
                 // boot-race budget expiring this poll — NOT a death — so it must not set this.
-                if (ex.StatusCode != StatusCode.DeadlineExceeded) sawChannelDeath = true;
+                if (ex.StatusCode != StatusCode.DeadlineExceeded) { sawChannelDeath = true; sawUnanswered = false; }
+                else if (!sawChannelDeath) sawUnanswered = true; // a clamped final poll must not erase an earlier death
             }
             finally
             {
@@ -639,6 +655,13 @@ public sealed class AgyView
                     throw new AgyConversationPendingException(
                         "agy is running but has no conversation yet. WAIT for the human to start or continue the " +
                         "agy session, then try again — do NOT auto-retry in a loop.");
+                // The endpoint resolved and the peer was reached, but it never answered inside the budget: it is
+                // BUSY, not starting and not exited. Say so, because the operator's action differs (retry).
+                if (sawUnanswered)
+                    throw new LsDiscoveryException(
+                        $"agy Language Server is running (resolved via {_options.CliLogPath}) but did not answer within " +
+                        $"{_options.BootRaceTimeout}; it is most likely busy mid-turn.")
+                    { PeerReachedButUnanswered = true };
                 throw new LsDiscoveryException(
                     $"agy Language Server not reachable within {_options.BootRaceTimeout} via {_options.CliLogPath}; " +
                     "the agy session is still starting or has exited.");
@@ -712,7 +735,7 @@ public sealed class AgyView
             catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled) { throw; } // caller-cancel: propagate, don't emit a false "catalog unreachable" warning (mirrors the new-conv path, capstone F2).
             catch (RpcException)
             {
-                _options.Diagnostics.WriteLine(
+                Diag(
                     "clavity: WARNING — could not reach agy's model catalog to validate; proceeding with the " +
                     $"conversation's model {t}.");
             }
@@ -728,7 +751,7 @@ public sealed class AgyView
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Unimplemented)
         {
-            _options.Diagnostics.WriteLine(
+            Diag(
                 $"clavity: WARNING — agy is outdated (no GetAvailableModels); driving with legacy model " +
                 $"{LsClient.LegacyFallbackModelId}, which may NOT be your conversation's model. Update agy.");
             Surface(LsClient.LegacyFallbackModelId, ModelSource.Legacy);
@@ -759,6 +782,17 @@ public sealed class AgyView
         "The conversation's model is no longer available. In agy, pick a new model AND send a message so the " +
         "conversation records it, then retry.";
 
-    private void Surface(int model, ModelSource source) => _options.Diagnostics.WriteLine(
+    private void Surface(int model, ModelSource source) => Diag(
         $"clavity: driving with model {model} (source: {source.ToString().ToLowerInvariant()})");
+
+    /// <summary>Write one advisory line to the operator Diagnostics sink. A diagnostics write describes an
+    /// operation and must never be able to kill it, so the failures a sink can produce - an I/O error (full disk),
+    /// a closed stream, a read-only or non-writable sink - are swallowed; anything else (a programming error in a
+    /// custom sink, an out-of-memory) still propagates (backlog: agyview-diagnostics-writes-are-unguarded).</summary>
+    private void Diag(string line)
+    {
+        try { _options.Diagnostics.WriteLine(line); }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or UnauthorizedAccessException or NotSupportedException)
+        { /* advisory only: a full disk, a closed stream, a read-only sink */ }
+    }
 }

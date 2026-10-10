@@ -30,6 +30,16 @@ public sealed record LsEndpoint(int GrpcPort, int HttpPort, int Pid);
 public sealed class LsDiscoveryException : Exception
 {
     public LsDiscoveryException(string message) : base(message) { }
+
+    /// <summary>True when the endpoint WAS resolved and every conclusive poll ended in DeadlineExceeded: the
+    /// peer is alive but did not answer inside the budget (busy mid-turn). The operator's action is to retry,
+    /// not to restart anything (backlog: ls-discovery-misreports-a-busy-peer-as-exited).</summary>
+    public bool PeerReachedButUnanswered { get; init; }
+
+    /// <summary>True when the endpoint WAS resolved from the log and its port is NOT listening: the peer has exited.
+    /// This is the one discovery miss that is conclusive about the peer; an unreadable log or a log without port
+    /// lines says nothing about a peer that was already reached (capstone Branch C R2).</summary>
+    public bool PortNotListening { get; init; }
 }
 
 /// <summary>
@@ -59,13 +69,15 @@ public static class LsDiscovery
     // — which silently broke a pattern anchored on the glog severity token and took the whole channel
     // down while agy itself was healthy and listening. Anchor on the distinctive MESSAGE BODY instead;
     // the glog tail is still required because that is where the pid comes from. Leftmost-match lands on
-    // the real pid: "\S+\]" cannot span whitespace, so a timestamp fragment can never satisfy it.
+    // the real pid. The pid must sit IMMEDIATELY after a full glog header (severity+date, time with
+    // fraction): without that, a line whose thread-id field is missing would read the timestamp's
+    // fractional seconds as the pid (ROADMAP s55). The header is required, the text BEFORE it is not.
     private static readonly Regex GrpcLine = new(
-        @"(?<pid>\d+)\s+\S+\]\s+Language server listening on random port at (?<port>\d+) for HTTPS \(gRPC\)\s*$",
+        @"[IWEF]\d{4} \d\d:\d\d:\d\d\.\d+\s+(?<pid>\d+)\s+\S+\]\s+Language server listening on random port at (?<port>\d+) for HTTPS \(gRPC\)\s*$",
         RegexOptions.Compiled);
 
     private static readonly Regex HttpLine = new(
-        @"(?<pid>\d+)\s+\S+\]\s+Language server listening on random port at (?<port>\d+) for HTTP\s*$",
+        @"[IWEF]\d{4} \d\d:\d\d:\d\d\.\d+\s+(?<pid>\d+)\s+\S+\]\s+Language server listening on random port at (?<port>\d+) for HTTP\s*$",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -198,7 +210,8 @@ public static class LsDiscovery
         if (!listening.IsListening(ep.HttpPort))
             throw new LsDiscoveryException(
                 $"Latest cli.log endpoint http={ep.HttpPort} (grpc={ep.GrpcPort}, pid={ep.Pid}) is not listening; " +
-                "the agy session likely exited — relaunch agy.");
+                "the agy session likely exited — relaunch agy.")
+            { PortNotListening = true };
         return ep;
     }
 

@@ -90,6 +90,13 @@ public static class CliVerbs
         // by contract (see CurateCommit_round_trips_non_ascii_content_byte_identically), and rejecting
         // all non-ASCII would break the very property that makes the raw-byte path worth mandating.
         var payload = new string(buffer, 0, total);
+        // Empty (or blank) input is BAD INPUT (exit 2), never a request to wipe the region: a probe like
+        // `curate-commit < /dev/null` once truncated the live GROWTH region from 11039 bytes to 0 and exited 0.
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            error.WriteLine("curate-commit: stdin is empty; nothing written.");
+            return 2;
+        }
         foreach (var signature in new[] { "\u0393\u00C7", "\u00E2\u20AC" })
         {
             if (payload.Contains(signature, StringComparison.Ordinal))
