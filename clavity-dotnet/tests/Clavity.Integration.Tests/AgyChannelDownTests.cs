@@ -360,6 +360,50 @@ public class AgyChannelDownTests
         finally { Directory.Delete(dir, true); }
     }
 
+    private sealed class FakeDeadThenClampedLs : LanguageServerService.LanguageServerServiceBase
+    {
+        private int _calls;
+
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            // Poll 1: a genuine death. Poll 2+: the clamped boot-race budget expires on the wire (DeadlineExceeded),
+            // which says nothing about the peer. Deterministic on purpose: the reached-empty-then-dead row above only
+            // reaches the DeadlineExceeded arm when its FINAL poll's remaining budget happens to expire before the
+            // fake answers (a loopback race), so it pins `!sawChannelDeath` only by timing.
+            if (System.Threading.Interlocked.Increment(ref _calls) == 1)
+                throw new RpcException(new Status(StatusCode.Unavailable, "agy died mid-boot-race"));
+            throw new RpcException(new Status(StatusCode.DeadlineExceeded, "clamped boot-race budget expired"));
+        }
+    }
+
+    [Fact]
+    public async Task Boot_race_death_then_a_clamped_final_poll_still_reports_a_dead_peer_not_a_busy_one()
+    {
+        // Test-audit Branch C: `else if (!sawChannelDeath) sawUnanswered = true;` in ConnectAndResolveAsync - a
+        // DeadlineExceeded AFTER a death must not promote the dead peer to "busy, RETRY" (LsUnanswered), which would
+        // send the operator retrying against a server that exited. Under the mutant that drops `!sawChannelDeath`
+        // the deadline reports LsUnanswered and this row goes red.
+        var fake = new FakeDeadThenClampedLs();
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            });
+            var json = await McpTools.AgyStatus(view);
+            using var doc = JsonDocument.Parse(json);
+            Assert.Equal("channel_down", doc.RootElement.GetProperty("State").GetString());
+            Assert.Equal("LsDiscovery", doc.RootElement.GetProperty("Diagnostic").GetProperty("StatusCode").GetString());
+            Assert.DoesNotContain("RETRY the call", doc.RootElement.GetProperty("Hint").GetString()!);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     // A listening probe that says "open" for the first N polls and "closed" afterwards: the peer's port vanished
     // mid-boot-race (agy exited; LsDiscovery then throws on every later poll).
     private sealed class PortOpenThenClosed(int openPolls) : IListeningPorts

@@ -1616,6 +1616,11 @@ public class AgyAskIntegrationTests
         public override void WriteLine(string? value) => throw new InvalidOperationException("a bug in a custom sink");
     }
 
+    private sealed class FaultingWriter(Exception fault) : StringWriter
+    {
+        public override void WriteLine(string? value) => throw fault;
+    }
+
     [Fact]
     public async Task AskAsync_does_not_hide_a_programming_error_thrown_by_a_diagnostics_sink()
     {
@@ -1673,6 +1678,42 @@ public class AgyAskIntegrationTests
         try
         {
             var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Diagnostics = new ThrowingWriter() });
+            await view.AskAsync("please do X");
+
+            Assert.Equal(1016, fake.LastSentModel);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Theory]
+    [InlineData(typeof(ObjectDisposedException))]
+    [InlineData(typeof(UnauthorizedAccessException))]
+    [InlineData(typeof(NotSupportedException))]
+    public async Task AskAsync_survives_each_non_io_sink_fault_that_Diag_names(Type faultType)
+    {
+        // Test-audit Branch C: Diag's `when` clause names FOUR sink faults and the row above pins only IOException.
+        // One row per remaining type, so dropping any single `or X` from the clause reds a NAMED row instead of
+        // leaving the suite green (the ask would then fail on a closed / read-only / unsupported sink).
+        var fault = (Exception)Activator.CreateInstance(faultType, "sink fault")!;
+        var initial = new[]
+        {
+            new CascadeStep
+            {
+                Kind = 15,
+                Metadata = new CortexStepMetadata { GeneratorModel = 1016 },
+                UserInput = new CascadeUserInput { Text = "prior assistant turn" },
+            },
+        };
+        var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), initial);
+
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Diagnostics = new FaultingWriter(fault) });
             await view.AskAsync("please do X");
 
             Assert.Equal(1016, fake.LastSentModel);
