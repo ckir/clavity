@@ -59,9 +59,14 @@ if (args.Contains("--mcp"))
     return 0;
 }
 
-// `clavity-ls curate-commit` — atomically write the compiled golden-header (read from stdin) to the shared path.
+// `clavity-ls curate-commit [--cheatsheet]` — atomically write a compiled region (read from stdin) to the shared path.
 if (args.Length > 0 && args[0] == "curate-commit")
 {
+    if (!CliVerbs.TryParseCurateCommitArgs(args, out var cheatsheet, out var argError))
+    {
+        Console.Error.WriteLine(argError);
+        return 2;
+    }
     var dir = GoldenHeader.ResolveDir(
         Environment.GetEnvironmentVariable(GoldenHeader.PathVar),
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
@@ -69,7 +74,7 @@ if (args.Length > 0 && args[0] == "curate-commit")
     // Windows), which silently corrupted the header on the way in. CurateCommit takes a Stream precisely so
     // this call site cannot choose a decoder at all — see its doc comment.
     using var stdin = Console.OpenStandardInput();
-    return CliVerbs.CurateCommit(dir, stdin, Console.Error);
+    return CliVerbs.CurateCommit(dir, stdin, Console.Error, cheatsheet);
 }
 
 if (Clavity.Ls.Install.CliRouter.IsInstallerVerb(args))

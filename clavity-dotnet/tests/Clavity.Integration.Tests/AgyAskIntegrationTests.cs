@@ -490,6 +490,65 @@ public class AgyAskIntegrationTests
         finally { try { Directory.Delete(dir, true); } catch { /* best effort */ } }
     }
 
+    // Branch G (docs/backlog/cheatsheet-reaches-live-path-before-the-human-gate.md): the MEASUREMENT that opened the
+    // branch, as a test. A growth file written directly to the live name - no curate-commit, no sidecar, no
+    // approval - must NOT be delivered. RED on the pre-branch reader (the sentinel was delivered, degraded=false).
+    [Fact]
+    public void TryTakeGuidanceBlock_degrades_a_cheatsheet_GROWTH_that_lacks_a_sidecar()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "clavity-g-nosidecar-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, DriverCheatsheet.GrowthFileName), "- SENTINEL-G-UNAPPROVED\n");
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = "unused-in-this-test",
+                GoldenHeaderDir = dir,
+                EscalationIndex = null,
+            });
+
+            var block = view.TryTakeGuidanceBlock();
+
+            Assert.NotNull(block);
+            Assert.DoesNotContain("SENTINEL-G-UNAPPROVED", block);
+            Assert.Contains(DriverCheatsheet.DegradedWarningPrefix, block);
+            Assert.Contains(DriverCheatsheet.BaselineFloor, block);
+        }
+        finally { try { Directory.Delete(dir, true); } catch { /* best effort */ } }
+    }
+
+    // The sanctioned path: published through the verb, the rule is delivered with no degrade warning.
+    [Fact]
+    public void TryTakeGuidanceBlock_delivers_a_cheatsheet_GROWTH_published_through_curate_commit_cheatsheet()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "clavity-g-published-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var rc = CliVerbs.CurateCommit(dir, new MemoryStream(System.Text.Encoding.UTF8.GetBytes("- SENTINEL-G-PUBLISHED\n")), TextWriter.Null, cheatsheet: true);
+            Assert.Equal(0, rc);
+            // The delivered block carries BOTH regions (golden header and cheatsheet), so a block-contains assertion
+            // alone cannot see a mis-route (measured in the dry run: the swapped-target mutant left this row green).
+            // Pin the LOCATION: the cheatsheet file and its sidecar exist, the golden-header growth does not.
+            Assert.True(File.Exists(Path.Combine(dir, DriverCheatsheet.GrowthFileName) + ".sha256"));
+            Assert.False(File.Exists(GoldenHeader.GrowthPath(dir)));
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = "unused-in-this-test",
+                GoldenHeaderDir = dir,
+                EscalationIndex = null,
+            });
+
+            var block = view.TryTakeGuidanceBlock();
+
+            Assert.NotNull(block);
+            Assert.Contains("SENTINEL-G-PUBLISHED", block);
+            Assert.DoesNotContain(DriverCheatsheet.DegradedWarningPrefix, block);
+        }
+        finally { try { Directory.Delete(dir, true); } catch { /* best effort */ } }
+    }
+
     // F1: with NEITHER source present, there is nothing to deliver, so the block stays null (and — per the
     // existing once-per-process contract — this bail-out must not itself consume the delivery gate, though that
     // is covered by the once-per-process assertion above; here we just pin the null result).
