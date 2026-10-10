@@ -198,13 +198,14 @@ public sealed class DriverCheatsheetTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_dir, DriverCheatsheet.GrowthFileName)), "nothing may be written on refusal");
     }
 
-    // Pins the Trim() in the combined check: trailing newlines must not count against the budget because the reader
-    // trims before measuring. Exactly filling the combined cap WITH a padded tail must publish and read undegraded.
+    // Pins the Trim() in the combined check: leading AND trailing whitespace must not count against the budget because
+    // the reader trims before measuring. Exactly filling the combined cap WITH a padded head and tail must publish and
+    // read undegraded.
     [Fact]
     public void CommitGrowth_measures_the_trimmed_payload_the_way_the_reader_does()
     {
         var room = DriverCheatsheet.MaxBytes - Encoding.UTF8.GetByteCount(DriverCheatsheet.BaselineFloor) - 2;
-        DriverCheatsheet.CommitGrowth(_dir, new string('g', room) + "\n\n\n");
+        DriverCheatsheet.CommitGrowth(_dir, "\n\n" + new string('g', room) + "\n\n\n");
         var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
         Assert.Equal(DriverCheatsheet.MaxBytes, Encoding.UTF8.GetByteCount(text));
         Assert.False(degraded);

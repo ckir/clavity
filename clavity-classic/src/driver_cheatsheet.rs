@@ -524,12 +524,12 @@ mod tests {
 
     #[test]
     fn commit_growth_measures_the_trimmed_payload_the_way_the_reader_does() {
-        // Pins the `.trim()` in the combined check: trailing newlines must not count against the budget, because
-        // the reader trims before measuring. Exactly filling the combined cap WITH a padded tail must publish
-        // and be delivered undegraded.
+        // Pins the `.trim()` in the combined check: leading AND trailing whitespace must not count against the
+        // budget, because the reader trims before measuring. Exactly filling the combined cap WITH a padded head
+        // and tail must publish and be delivered undegraded.
         let d = fresh_dir("commit-trim-measure");
         let growth = "g".repeat(MAX_BYTES - BASELINE_FLOOR.len() - 2);
-        let padded = format!("{growth}\n\n\n");
+        let padded = format!("\n\n{growth}\n\n\n");
         commit_growth(&d, &padded).unwrap();
         let (text, degraded) = read_with_status(&d);
         assert_eq!(text.len(), MAX_BYTES);

@@ -538,6 +538,12 @@ injection into every ask.
     # Resolve the driver (dotnet `clavity-ls` or classic `clavity`) and stream RAW bytes to its stdin, once per
     # approved proposal. Each target is written by exactly one invocation and neither touches the other's file.
     $exe = (Get-Command clavity-ls -EA SilentlyContinue) ?? (Get-Command clavity -EA SilentlyContinue)
+    $dir = if ($env:CLAVITY_GOLDEN_HEADER) { $env:CLAVITY_GOLDEN_HEADER } else { Join-Path $env:USERPROFILE '.clavity' }
+    $goldenLive = Join-Path $dir 'golden-header.growth.md'
+    function Get-Bytes($f) { if (Test-Path -LiteralPath $f) { [System.IO.File]::ReadAllBytes($f) } else { $null } }
+    function Same($a, $b) { if ($null -eq $a -or $null -eq $b) { return ($null -eq $a -and $null -eq $b) }; [System.Linq.Enumerable]::SequenceEqual([byte[]]$a, [byte[]]$b) }
+    function Restore($f, $bytes) { if ($null -eq $bytes) { Remove-Item -LiteralPath $f -Force -EA SilentlyContinue } else { [System.IO.File]::WriteAllBytes($f, $bytes) } }
+    $kept = @{ Body = (Get-Bytes $goldenLive); Sidecar = (Get-Bytes ($goldenLive + '.sha256')) }   # live golden-header GROWTH before anything is published
     $publishes = @(
         @{ File = '.clavity/curate-proposed/golden-header.growth.md';     Args = @('curate-commit') },
         @{ File = '.clavity/curate-proposed/driver-cheatsheet.growth.md'; Args = @('curate-commit', '--cheatsheet') }
@@ -552,7 +558,19 @@ injection into every ask.
         $proc.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
         $proc.StandardInput.Close(); $proc.WaitForExit()
         if ($proc.ExitCode -ne 0) { throw "publish of $($p.File) failed with exit $($proc.ExitCode) - STOP, leave the inbox untouched" }
+        if ($p.Args -notcontains '--cheatsheet') {
+            $kept = @{ Body = (Get-Bytes $goldenLive); Sidecar = (Get-Bytes ($goldenLive + '.sha256')) }   # the golden publish is final
+            continue
+        }
+        # VERSION-SKEW GUARD: an OLD dotnet binary ignores --cheatsheet and wrote the cheatsheet text over the golden header.
+        $cheatSidecar = Join-Path $dir 'driver-cheatsheet.growth.md.sha256'
+        if (-not (Test-Path -LiteralPath $cheatSidecar) -or -not (Same (Get-Bytes $goldenLive) $kept.Body)) {
+            Restore $goldenLive $kept.Body; Restore ($goldenLive + '.sha256') $kept.Sidecar
+            throw "this clavity binary predates 'curate-commit --cheatsheet': it wrote the cheatsheet over golden-header.growth.md. The golden header was RESTORED; the cheatsheet proposal stays in staging. Update the clavity binary, then re-run - STOP, leave the inbox untouched"
+        }
     }
+
+**Why the guard exists (MEASURED 2026-10-11).** The skill and the binary are versioned independently, so this skill can run against a clavity binary that predates `--cheatsheet`. The pre-branch dotnet binary IGNORES the flag, exits 0 and writes the cheatsheet text to the PEER-facing golden header; the pre-branch classic exits non-zero. Do NOT probe the binary with an empty stdin to find out: the pre-branch dotnet binary exits 0 on empty input and truncates the region. The guard therefore checks AFTER the cheatsheet publish that the verb really wrote its sidecar and left the golden header's bytes alone, and if not it restores the golden header and stops.
 
 `curate-commit` (both variants) writes **only** the one file its flag selects - `%USERPROFILE%\.clavity\golden-header.growth.md` bare,
 `%USERPROFILE%\.clavity\driver-cheatsheet.growth.md` with `--cheatsheet` - plus that file's `.sha256`; it never touches the SEED or the

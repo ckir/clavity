@@ -762,7 +762,7 @@ fn curate_commit(cheatsheet: bool) -> i32 {
     };
     let (what, result) = if cheatsheet {
         (
-            "driver-cheatsheet growth (floor + growth combined)",
+            "driver-cheatsheet growth (raw file size, or floor + growth combined)",
             driver_cheatsheet::commit_growth(&dir, &content),
         )
     } else {
