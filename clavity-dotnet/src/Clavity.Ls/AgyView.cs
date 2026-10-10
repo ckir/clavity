@@ -786,8 +786,9 @@ public sealed class AgyView
         $"clavity: driving with model {model} (source: {source.ToString().ToLowerInvariant()})");
 
     /// <summary>Write one advisory line to the operator Diagnostics sink. A diagnostics write describes an
-    /// operation and must never be able to kill it, so a sink that throws (full disk, closed stream) is
-    /// swallowed (backlog: agyview-diagnostics-writes-are-unguarded).</summary>
+    /// operation and must never be able to kill it, so the failures a sink can produce - an I/O error (full disk),
+    /// a closed stream, a read-only or non-writable sink - are swallowed; anything else (a programming error in a
+    /// custom sink, an out-of-memory) still propagates (backlog: agyview-diagnostics-writes-are-unguarded).</summary>
     private void Diag(string line)
     {
         try { _options.Diagnostics.WriteLine(line); }

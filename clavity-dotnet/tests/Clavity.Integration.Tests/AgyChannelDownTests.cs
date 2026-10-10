@@ -460,14 +460,17 @@ public class AgyChannelDownTests
         finally { Directory.Delete(dir, true); }
     }
 
-    // Boot-race fake: reachable-but-EMPTY, but SLOW - every reply takes longer than the budget's final remainder, so
-    // the last poll before the deadline is a clamped DeadlineExceeded against a healthy LS.
+    // Boot-race fake: reachable-but-EMPTY. Poll 1 answers at once (so the reach never depends on runner speed);
+    // every later reply takes longer than the budget's final remainder, so the last poll before the deadline is a
+    // clamped DeadlineExceeded against a healthy LS (capstone Branch C R3: a slow CI runner must not be able to
+    // clamp the FIRST poll and fail the row for a reason unrelated to the behaviour it pins).
     private sealed class FakeSlowEmptyLs : LanguageServerService.LanguageServerServiceBase
     {
+        private int _calls;
         public override async Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
             GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
         {
-            await Task.Delay(400);
+            if (System.Threading.Interlocked.Increment(ref _calls) > 1) await Task.Delay(400);
             return new GetAllCascadeTrajectoriesResponse();
         }
     }
