@@ -148,9 +148,16 @@ pub fn read_with_status(dir: &Path) -> (String, bool) {
 /// refuses a growth file whose sidecar is absent or stale, so a write that bypasses this function is never
 /// delivered. The cap enforced here is the COMBINED one the reader applies (floor + "\n\n" + trimmed growth
 /// <= MAX_BYTES), so an over-budget publish is REFUSED once at commit instead of silently dropped at every
-/// read. Mirrors dotnet `DriverCheatsheet.CommitGrowth`.
+/// read. The reader also caps the RAW file size before trimming, so the writer refuses a raw size the reader would
+/// drop even when the trimmed form fits. Mirrors dotnet `DriverCheatsheet.CommitGrowth`.
 /// @produces "driver-cheatsheet.growth.md"
 pub fn commit_growth(dir: &Path, content: &str) -> Result<(), crate::golden_header::CommitError> {
+    if content.len() > MAX_BYTES {
+        return Err(crate::golden_header::CommitError::OverCap {
+            actual: content.len(),
+            cap: MAX_BYTES,
+        });
+    }
     let combined = BASELINE_FLOOR.len() + 2 + content.trim().len();
     if combined > MAX_BYTES {
         return Err(crate::golden_header::CommitError::OverCap {
@@ -493,6 +500,39 @@ mod tests {
         let (text, degraded) = read_with_status(&d);
         assert_eq!(text.len(), MAX_BYTES);
         assert!(text.ends_with(&growth));
+        assert!(!degraded);
+    }
+
+    #[test]
+    fn commit_growth_refuses_a_payload_whose_raw_size_exceeds_the_reader_file_cap_even_when_its_trimmed_form_fits(
+    ) {
+        // The reader caps the RAW file on metadata before trimming. "g" + MAX_BYTES spaces trims to one byte
+        // (the combined check alone would accept it) but is MAX_BYTES + 1 raw bytes, which the reader drops.
+        let d = fresh_dir("commit-raw-overcap");
+        let payload = format!("g{}", " ".repeat(MAX_BYTES));
+        let err = commit_growth(&d, &payload)
+            .expect_err("a raw size the reader would drop must be refused at commit");
+        assert!(
+            matches!(err, crate::golden_header::CommitError::OverCap { cap, .. } if cap == MAX_BYTES),
+            "got: {err:?}"
+        );
+        assert!(
+            !d.join(GROWTH_FILE_NAME).exists(),
+            "nothing may be written on refusal"
+        );
+    }
+
+    #[test]
+    fn commit_growth_measures_the_trimmed_payload_the_way_the_reader_does() {
+        // Pins the `.trim()` in the combined check: trailing newlines must not count against the budget, because
+        // the reader trims before measuring. Exactly filling the combined cap WITH a padded tail must publish
+        // and be delivered undegraded.
+        let d = fresh_dir("commit-trim-measure");
+        let growth = "g".repeat(MAX_BYTES - BASELINE_FLOOR.len() - 2);
+        let padded = format!("{growth}\n\n\n");
+        commit_growth(&d, &padded).unwrap();
+        let (text, degraded) = read_with_status(&d);
+        assert_eq!(text.len(), MAX_BYTES);
         assert!(!degraded);
     }
 

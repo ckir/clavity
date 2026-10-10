@@ -172,6 +172,9 @@ public const string BaselineFloor =
     /// </summary>
     public static void CommitGrowth(string dir, string content)
     {
+        var raw = Encoding.UTF8.GetByteCount(content);
+        if (raw > MaxBytes)
+            throw new InvalidOperationException($"driver-cheatsheet growth file would be {raw}B, over the {MaxBytes}B file cap (the reader caps the raw file before trimming)");
         var combined = Encoding.UTF8.GetByteCount(BaselineFloor + "\n\n" + content.Trim());
         if (combined > MaxBytes)
             throw new InvalidOperationException($"driver-cheatsheet floor + growth would be {combined}B, over the {MaxBytes}B combined cap");

@@ -186,6 +186,30 @@ public sealed class DriverCheatsheetTests : IDisposable
         Assert.False(degraded);
     }
 
+    // The reader caps the RAW file on metadata before trimming. "g" + MaxBytes spaces trims to one byte (the combined
+    // check alone would accept it) but is MaxBytes + 1 raw bytes, which the reader drops. A writer must refuse what its
+    // reader would drop. Classic twin: commit_growth_refuses_a_payload_whose_raw_size_exceeds_the_reader_file_cap_...
+    [Fact]
+    public void CommitGrowth_refuses_a_payload_whose_raw_size_exceeds_the_reader_file_cap_even_when_its_trimmed_form_fits()
+    {
+        var payload = "g" + new string(' ', DriverCheatsheet.MaxBytes);
+        var ex = Assert.Throws<InvalidOperationException>(() => DriverCheatsheet.CommitGrowth(_dir, payload));
+        Assert.Contains("file cap", ex.Message);
+        Assert.False(File.Exists(Path.Combine(_dir, DriverCheatsheet.GrowthFileName)), "nothing may be written on refusal");
+    }
+
+    // Pins the Trim() in the combined check: trailing newlines must not count against the budget because the reader
+    // trims before measuring. Exactly filling the combined cap WITH a padded tail must publish and read undegraded.
+    [Fact]
+    public void CommitGrowth_measures_the_trimmed_payload_the_way_the_reader_does()
+    {
+        var room = DriverCheatsheet.MaxBytes - Encoding.UTF8.GetByteCount(DriverCheatsheet.BaselineFloor) - 2;
+        DriverCheatsheet.CommitGrowth(_dir, new string('g', room) + "\n\n\n");
+        var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
+        Assert.Equal(DriverCheatsheet.MaxBytes, Encoding.UTF8.GetByteCount(text));
+        Assert.False(degraded);
+    }
+
     [Fact]
     public void Block_prefixes_the_driver_guidance_label()
     {
