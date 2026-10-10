@@ -1333,7 +1333,7 @@ other target.
 Replace the paragraph starting `**No driver installed?**` with:
 ```markdown
 **No driver installed?** If no clavity binary is on PATH, still compile both proposals and run the gate. After
-approval, write `golden-header.growth.md` directly (its readers accept a sidecar-less region; create the
+approval, write `golden-header.growth.md` directly into the RESOLVED golden-header directory (`CLAVITY_GOLDEN_HEADER` if set, else `%USERPROFILE%\.clavity`; its readers accept a sidecar-less region; create the
 `.clavity` dir if absent) and emit a **non-blocking** warning - e.g. "no clavity driver detected; the learned
 header won't be injected until a driver is installed." The CHEATSHEET proposal STAYS in staging: a direct write
 to its live name is refused by both readers, so publish it with `curate-commit --cheatsheet` once a driver is
@@ -1459,7 +1459,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 - [ ] **Step 4: Full gates at the branch tip (the capstone opens on these numbers)**
 
-Run, one at a time, never two Pester suites at once:
+Run, one at a time, never two Pester suites at once (also `pwsh -NoProfile -File scripts/check-agy-discipline-skills.ps1`: measured to read only the discipline skills, so it should be unaffected by the driving-skill edits, but run it):
 - `cd clavity-classic && cargo test --all --features test-fakes && cargo clippy --all-targets --features test-fakes -- -D warnings && cargo fmt --all -- --check`
 - `cd clavity-dotnet && dotnet build && dotnet test tests/Clavity.Ls.Tests && dotnet test tests/Clavity.Integration.Tests` (read both counts)
 - `just check-dangling-consumers`, `just check-tracker-status`, `just check-tracker-format-excerpt`, `pwsh -NoProfile -File scripts/check-roadmap-claims.ps1`, `pwsh -NoProfile -File scripts/check-injected-context.ps1`
@@ -1482,3 +1482,8 @@ Then: AGY-CAPSTONE on `c27e68cd..HEAD` (the spec's step d), AGY-TEST-AUDIT (e), 
 - `DISCARDED-BELOW-FLOOR: .bak ring evicts the owner's hand-made cheatsheet backups` - `GoldenHeader.Commit` keeps 5 stamped slots by the glob `<file>.*.bak`; the owner's three hand-made `.bak` files under `~/.clavity` match it, so the sixth publish evicts the oldest. Reachable but only after five republishes and only loses backups the owner made by hand; classic has no ring. Stated to the owner at approval (it is not hidden); a ring that ignores non-stamp names is a `GoldenHeader` change outside this branch.
 - `DISCARDED-BELOW-FLOOR: a read between the file move and the sidecar write` - the reader sees `Absent`, that ONE ask leads with the degrade warning, the next ask is clean. The window is the one `GoldenHeader.Commit`'s doc comment already records ("It does NOT eliminate the torn-write window"); no two-file update can without a journal, and the failure is a warning, never unreviewed delivery.
 - `OPEN - OWNER RULING REQUIRED (panel round 1, BS-1): the golden-header GROWTH reader still accepts a sidecar-less file.` A direct write to `golden-header.growth.md` bypasses the gate exactly as the cheatsheet did. NOT built here: the skill has no pre-gate write of GROWTH (only the cheatsheet had one - that is the measured defect), `curate-commit` is already its only instructed writer and it runs after the gate, and requiring the sidecar changes the legacy flat-file migration and every hand-edited install. The recommendation to the owner is a follow-up item, not this branch; the owner may instead widen G. Asked at plan approval.
+- `REJECTED (panel r2 BA-1): the {via} format argument does not compile` - `via` is a local defined at `clavity-classic/src/main.rs:749` and captured inline; the dry run compiled and ran the plan's exact string in Task 3 (integration over-cap row green).
+- `REJECTED (panel r2 SC-1): the dotnet .bak does not carry the sidecar` - `clavity-dotnet/src/Clavity.Ls/GoldenHeader.cs:266` copies `liveSidecar` to `bak + ".sha256"`.
+- `REJECTED (panel r2 AA-1): different line wrapping in the two driving SKILL.md files reds check-agy-discipline-skills` - that script reads only the discipline skills (`check-agy-discipline-skills.ps1:455`, and :481 names ls-driving as a non-discipline); it is nevertheless added to the Task 6 gate run.
+- `FOLDED (panel r2 DC-1): the no-driver fallback names the resolved directory` - `CLAVITY_GOLDEN_HEADER` if set, else `%USERPROFILE%\.clavity`.
+- `BREACH (panel r2): the peer wrote four scratch_*.txt files to the repo root despite the banner` - removed by the driver, targeted; logged in `.clavity/agy-marks/skipped.log`; no tracked path changed (status before/after identical apart from those four).
