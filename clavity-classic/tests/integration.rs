@@ -848,3 +848,240 @@ fn curate_commit_refuses_blank_stdin_and_leaves_growth_untouched() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Branch G (docs/backlog/cheatsheet-reaches-live-path-before-the-human-gate.md): the MEASUREMENT that opened
+/// the branch, as a test. A growth file written directly to the live name - no `curate-commit --cheatsheet`,
+/// no sidecar, no approval - must NOT be delivered: the block leads with the degrade warning and carries the
+/// floor only. RED on the pre-branch binary (the sentinel was delivered).
+#[test]
+fn ask_degrades_a_cheatsheet_growth_file_that_lacks_a_sidecar() {
+    let dir = std::env::temp_dir().join(format!("clavity-g-nosidecar-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("driver-cheatsheet.growth.md"),
+        "- SENTINEL-G-UNAPPROVED\n",
+    )
+    .unwrap();
+
+    let (url, _state) = start_fake_bus(Reply::EchoReqIdAfter(1));
+    let out = clavity_bus(&url)
+        .args([
+            "ask",
+            "hello",
+            "--no-ring",
+            "--timeout",
+            "10",
+            "--poll-interval",
+            "150",
+        ])
+        .env("CLAVITY_SESSION", "g-nosidecar-session")
+        .env("CLAVITY_GOLDEN_HEADER", &dir)
+        .env("FAKE_TMUX_STATE", "idle")
+        .output()
+        .expect("run ask");
+    assert!(
+        out.status.success(),
+        "ask failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("[driver_guidance]"), "got: {stdout}");
+    assert!(
+        !stdout.contains("SENTINEL-G-UNAPPROVED"),
+        "unapproved growth reached the driver: {stdout}"
+    );
+    assert!(
+        stdout.to_lowercase().contains("could not be read normally")
+            && stdout.to_lowercase().contains("baseline floor"),
+        "the degrade must be visible in the block, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Verify what it volunteers"),
+        "floor missing: {stdout}"
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("no .sha256 sidecar"),
+        "stderr should name the cause: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The sanctioned path: `curate-commit --cheatsheet` writes the growth file AND its sidecar, touches nothing
+/// else, and the next ask delivers the published rule without a degrade warning.
+#[test]
+fn curate_commit_cheatsheet_publishes_a_sidecar_and_the_next_ask_delivers_it() {
+    use std::io::Write as _;
+    use std::process::Stdio;
+    let dir = std::env::temp_dir().join(format!("clavity-g-publish-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mut child = clavity()
+        .args(["curate-commit", "--cheatsheet"])
+        .env("CLAVITY_GOLDEN_HEADER", &dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn clavity curate-commit --cheatsheet");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"- SENTINEL-G-PUBLISHED\n")
+        .unwrap();
+    let out = child
+        .wait_with_output()
+        .expect("run curate-commit --cheatsheet");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("driver-cheatsheet.growth.md")).unwrap(),
+        "- SENTINEL-G-PUBLISHED\n"
+    );
+    assert!(
+        dir.join("driver-cheatsheet.growth.md.sha256").exists(),
+        "the sidecar IS the publish"
+    );
+    assert!(
+        !dir.join("golden-header.growth.md").exists(),
+        "--cheatsheet must not touch the golden header"
+    );
+
+    let (url, _state) = start_fake_bus(Reply::EchoReqIdAfter(1));
+    let out = clavity_bus(&url)
+        .args([
+            "ask",
+            "hello",
+            "--no-ring",
+            "--timeout",
+            "10",
+            "--poll-interval",
+            "150",
+        ])
+        .env("CLAVITY_SESSION", "g-publish-session")
+        .env("CLAVITY_GOLDEN_HEADER", &dir)
+        .env("FAKE_TMUX_STATE", "idle")
+        .output()
+        .expect("run ask");
+    assert!(
+        out.status.success(),
+        "ask failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("SENTINEL-G-PUBLISHED"),
+        "published growth not delivered: {stdout}"
+    );
+    assert!(
+        !stdout.to_lowercase().contains("could not be read normally"),
+        "a published file must not degrade: {stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The combined cap is enforced at COMMIT: 16 KiB of growth alone is under the reader's per-file cap but floor
+/// + growth is over it, so without this check the publish would succeed and every ask would silently drop it.
+#[test]
+fn curate_commit_cheatsheet_refuses_a_combined_over_cap_payload_and_writes_nothing() {
+    use std::io::Write as _;
+    use std::process::Stdio;
+    let dir = std::env::temp_dir().join(format!("clavity-g-overcap-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mut child = clavity()
+        .args(["curate-commit", "--cheatsheet"])
+        .env("CLAVITY_GOLDEN_HEADER", &dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(&vec![b'g'; 16 * 1024])
+        .unwrap();
+    let out = child.wait_with_output().expect("run");
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "over-cap is bad input (classic numbering)"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("over the") && stderr.contains("16384"),
+        "got: {stderr}"
+    );
+    assert!(!dir.join("driver-cheatsheet.growth.md").exists());
+    assert!(!dir.join("driver-cheatsheet.growth.md.sha256").exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The two publish targets are disjoint in BOTH directions: `--cheatsheet` leaves an existing golden-header
+/// GROWTH byte-identical, and a bare `curate-commit` leaves an existing cheatsheet growth + sidecar alone.
+#[test]
+fn curate_commit_targets_are_disjoint_in_both_directions() {
+    use std::io::Write as _;
+    use std::process::Stdio;
+    let dir = std::env::temp_dir().join(format!("clavity-g-disjoint-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("golden-header.growth.md"), "KEEP GOLDEN\n").unwrap();
+
+    let run = |args: &[&str], payload: &[u8]| {
+        let mut child = clavity()
+            .args(args)
+            .env("CLAVITY_GOLDEN_HEADER", &dir)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn");
+        child.stdin.take().unwrap().write_all(payload).unwrap();
+        child.wait_with_output().expect("run")
+    };
+    let out = run(&["curate-commit", "--cheatsheet"], b"- CHEAT\n");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("golden-header.growth.md")).unwrap(),
+        "KEEP GOLDEN\n"
+    );
+    let sidecar_before =
+        std::fs::read_to_string(dir.join("driver-cheatsheet.growth.md.sha256")).unwrap();
+
+    let out = run(&["curate-commit"], b"NEW GOLDEN\n");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("golden-header.growth.md")).unwrap(),
+        "NEW GOLDEN\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("driver-cheatsheet.growth.md")).unwrap(),
+        "- CHEAT\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("driver-cheatsheet.growth.md.sha256")).unwrap(),
+        sidecar_before
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

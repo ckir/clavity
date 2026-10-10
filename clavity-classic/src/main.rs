@@ -152,9 +152,15 @@ enum Cmd {
     Cancel,
     /// Tear down the agy session (kill the psmux session) so it doesn't orphan
     Stop,
-    /// Read the compiled golden header from STDIN and atomically write it (+ .sha256 sidecar) to
-    /// the resolved golden-header path. This is the write path `agy-curate` invokes.
-    CurateCommit,
+    /// Read a compiled region from STDIN and atomically write it (+ .sha256 sidecar) into the resolved
+    /// golden-header directory. Bare: the golden-header GROWTH region. `--cheatsheet`: the driver-cheatsheet
+    /// GROWTH file, which both readers deliver ONLY with the sidecar this verb writes - the mechanical half of
+    /// agy-curate's human gate. This is the write path `agy-curate` invokes, after approval.
+    CurateCommit {
+        /// Publish the driver-cheatsheet GROWTH instead of the golden-header GROWTH.
+        #[arg(long)]
+        cheatsheet: bool,
+    },
     /// Start agy (in a psmux session) AND Claude Code in the same folder (the default action)
     Start {
         /// The first arg is the folder unless it starts with `-`; everything else forwards to `claude`
@@ -316,7 +322,7 @@ fn main() {
             0
         }
         Some(Cmd::Doctor) => doctor(&session),
-        Some(Cmd::CurateCommit) => curate_commit(),
+        Some(Cmd::CurateCommit { cheatsheet }) => curate_commit(cheatsheet),
         Some(Cmd::Cancel) => match tmux::send_key(&session, "Escape") {
             // agy's busy footer reads "esc to cancel", so Escape interrupts the current turn.
             // (Posting a cancel `alert` on the bus is Claude's job — it has the bus tools.)
@@ -697,7 +703,7 @@ fn ask(
 /// `curate-commit`: read the header from stdin (bounded at the IO level so a giant pipe can't OOM
 /// us), then atomically write it via `golden_header::commit`. Exit codes: 0 ok, 1 over-cap / bad
 /// input, 2 IO/read error. Messages are ACTIONABLE (resolved path, env-override flag, size vs cap).
-fn curate_commit() -> i32 {
+fn curate_commit(cheatsheet: bool) -> i32 {
     use std::io::Read as _;
     let cap1 = (golden_header::MAX_BYTES + 1) as u64;
     let mut buf = Vec::new();
@@ -754,18 +760,29 @@ fn curate_commit() -> i32 {
     } else {
         ""
     };
-    match golden_header::commit_growth(&dir, &content) {
+    let (what, result) = if cheatsheet {
+        (
+            "driver-cheatsheet growth (floor + growth combined)",
+            driver_cheatsheet::commit_growth(&dir, &content),
+        )
+    } else {
+        (
+            "growth region",
+            golden_header::commit_growth(&dir, &content),
+        )
+    };
+    match result {
         Ok(()) => 0,
         Err(golden_header::CommitError::OverCap { actual, cap }) => {
             eprintln!(
-                "clavity curate-commit: growth region in {}{via} is {actual} bytes, over the {cap} cap",
+                "clavity curate-commit: {what} in {}{via} is {actual} bytes, over the {cap} cap",
                 dir.display()
             );
             1
         }
         Err(golden_header::CommitError::Io(e)) => {
             eprintln!(
-                "clavity curate-commit: writing growth region in {}{via} failed: {e}",
+                "clavity curate-commit: writing {what} in {}{via} failed: {e}",
                 dir.display()
             );
             2
@@ -967,7 +984,15 @@ mod tests {
     fn curate_commit_subcommand_parses() {
         assert!(matches!(
             parse(&["clavity", "curate-commit"]).cmd,
-            Some(Cmd::CurateCommit)
+            Some(Cmd::CurateCommit { cheatsheet: false })
+        ));
+    }
+
+    #[test]
+    fn curate_commit_cheatsheet_flag_parses() {
+        assert!(matches!(
+            parse(&["clavity", "curate-commit", "--cheatsheet"]).cmd,
+            Some(Cmd::CurateCommit { cheatsheet: true })
         ));
     }
 
