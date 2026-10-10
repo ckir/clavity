@@ -35,6 +35,11 @@ public sealed class LsDiscoveryException : Exception
     /// peer is alive but did not answer inside the budget (busy mid-turn). The operator's action is to retry,
     /// not to restart anything (backlog: ls-discovery-misreports-a-busy-peer-as-exited).</summary>
     public bool PeerReachedButUnanswered { get; init; }
+
+    /// <summary>True when the endpoint WAS resolved from the log and its port is NOT listening: the peer has exited.
+    /// This is the one discovery miss that is conclusive about the peer; an unreadable log or a log without port
+    /// lines says nothing about a peer that was already reached (capstone Branch C R2).</summary>
+    public bool PortNotListening { get; init; }
 }
 
 /// <summary>
@@ -205,7 +210,8 @@ public static class LsDiscovery
         if (!listening.IsListening(ep.HttpPort))
             throw new LsDiscoveryException(
                 $"Latest cli.log endpoint http={ep.HttpPort} (grpc={ep.GrpcPort}, pid={ep.Pid}) is not listening; " +
-                "the agy session likely exited — relaunch agy.");
+                "the agy session likely exited — relaunch agy.")
+            { PortNotListening = true };
         return ep;
     }
 

@@ -609,12 +609,18 @@ public sealed class AgyView
                 sawChannelDeath = false;
                 sawUnanswered = false;
             }
-            // A discovery miss (port not listening, log absent) is conclusive about the MOST RECENT poll: the peer is
-            // not there. It must clear a stale "reached but unanswered" or "reached but empty" from an earlier poll,
-            // else a peer that exited mid-boot-race is reported as busy / waiting-for-human (capstone Branch C R1).
-            // Before any reach both flags are already false, so this is a no-op during a normal boot.
-            catch (LsDiscoveryException) { sawUnanswered = false; reachedLsButEmpty = false; }  // log/port not ready, or port not listening (any more).
-            catch (IOException) { sawUnanswered = false; reachedLsButEmpty = false; }           // cli.log not present (any more).
+            // Evidence hierarchy for a discovery miss (capstone Branch C R1+R2). A resolved endpoint whose port is NOT
+            // LISTENING is conclusive: the peer exited, so a stale "reached but unanswered" / "reached but empty" from
+            // an earlier poll must be cleared, else a peer that exited mid-boot-race is reported as busy /
+            // waiting-for-human. Every OTHER miss - the log unreadable or absent (rotation, a transient lock), or a log
+            // with no port lines yet - says nothing about a peer that was already reached, so it keeps the earlier
+            // reach; demoting it would turn a transient read error on the final poll into a false channel_down.
+            // Before any reach both flags are already false, so a normal boot is unaffected either way.
+            catch (LsDiscoveryException ex)
+            {
+                if (ex.PortNotListening) { sawUnanswered = false; reachedLsButEmpty = false; }
+            }
+            catch (IOException) { }           // cli.log not present / not readable (yet, or any more).
             // A CSRF/auth refusal is DEFINITIVE, not a transient boot-race miss: retrying every poll until the
             // deadline only delays a wrong "not reachable" verdict, and folding it into sawChannelDeath hides the
             // real status. Let it propagate so ChannelDown reports auth_failed (endpoint stale/missing), not

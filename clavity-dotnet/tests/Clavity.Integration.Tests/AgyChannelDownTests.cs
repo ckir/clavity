@@ -419,6 +419,83 @@ public class AgyChannelDownTests
         finally { Directory.Delete(dir, true); }
     }
 
+    // Boot-race fake: reachable-but-EMPTY, and on its FIRST discovery poll it deletes the cli.log (a rotation, a
+    // cleanup, a transient unreadable file). Every later poll is an IOException from ReadCliLogText.
+    private sealed class FakeEmptyThenLogVanishesLs : LanguageServerService.LanguageServerServiceBase
+    {
+        private int _calls;
+        public string? CliLogPath { get; set; } // set once the test knows the path (the app starts first)
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            if (System.Threading.Interlocked.Increment(ref _calls) == 1 && CliLogPath is { } p) File.Delete(p);
+            return Task.FromResult(new GetAllCascadeTrajectoriesResponse());
+        }
+    }
+
+    [Fact]
+    public async Task Boot_race_reached_empty_then_cli_log_unreadable_keeps_waiting_for_human()
+    {
+        // Capstone Branch C R2: a reach is stronger evidence than a later failure to READ the log. The LS was reached
+        // (empty) and its port was never seen closed; an IOException from cli.log afterwards must NOT demote that to
+        // channel_down ("starting or exited") at the deadline. Only a resolved port that is NOT LISTENING is conclusive.
+        var fake = new FakeEmptyThenLogVanishesLs();
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        fake.CliLogPath = cliLog;
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            });
+            var json = await McpTools.AgyStatus(view);
+            using var doc = JsonDocument.Parse(json);
+            // waiting_for_human envelope (lowercase "status"); channel_down would be the AgyStatus shape with "State".
+            Assert.True(doc.RootElement.TryGetProperty("status", out var st), json);
+            Assert.Equal("waiting_for_human", st.GetString());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // Boot-race fake: reachable-but-EMPTY, but SLOW - every reply takes longer than the budget's final remainder, so
+    // the last poll before the deadline is a clamped DeadlineExceeded against a healthy LS.
+    private sealed class FakeSlowEmptyLs : LanguageServerService.LanguageServerServiceBase
+    {
+        public override async Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            await Task.Delay(400);
+            return new GetAllCascadeTrajectoriesResponse();
+        }
+    }
+
+    [Fact]
+    public async Task Boot_race_reached_empty_whose_final_poll_is_clamped_still_reports_waiting_for_human()
+    {
+        // Capstone Branch C R2 (pins the REJECTED finding R2-1): the final poll of a healthy always-empty LS times out
+        // because the remaining budget is clamped to a sliver - that DeadlineExceeded is the clamp expiring, not
+        // evidence about the peer, so it must not demote reached-empty to "busy" (LsUnanswered) or channel_down.
+        await using var app = await StartAsync(new FakeSlowEmptyLs());
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            });
+            var json = await McpTools.AgyStatus(view);
+            using var doc = JsonDocument.Parse(json);
+            Assert.True(doc.RootElement.TryGetProperty("status", out var st), json);
+            Assert.Equal("waiting_for_human", st.GetString());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     // Boot-race fake: reachable, but no conversation, on every poll.
     private sealed class FakeReachedEmptyForeverLs : LanguageServerService.LanguageServerServiceBase
     {
