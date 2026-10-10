@@ -499,6 +499,47 @@ public class AgyChannelDownTests
         finally { Directory.Delete(dir, true); }
     }
 
+    // Boot-race fake: reachable-but-EMPTY, and on its FIRST discovery poll it TRUNCATES the cli.log to zero bytes (a
+    // rotation that recreates the file). Every later poll is an LsDiscoveryException from ParseLatest ("cli.log is
+    // empty") with PortNotListening = false - a discovery miss that says nothing about the peer.
+    private sealed class FakeEmptyThenLogTruncatedLs : LanguageServerService.LanguageServerServiceBase
+    {
+        private int _calls;
+        public string? CliLogPath { get; set; }
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            if (System.Threading.Interlocked.Increment(ref _calls) == 1 && CliLogPath is { } p) File.WriteAllText(p, "");
+            return Task.FromResult(new GetAllCascadeTrajectoriesResponse());
+        }
+    }
+
+    [Fact]
+    public async Task Boot_race_reached_empty_then_cli_log_truncated_keeps_waiting_for_human()
+    {
+        // Capstone Branch C R4: pins the CONDITION on the LsDiscoveryException arm. Only PortNotListening may clear an
+        // earlier reach; a log that no longer parses (PortNotListening = false) must not. Dropping the condition and
+        // clearing unconditionally turns this row into channel_down.
+        var fake = new FakeEmptyThenLogTruncatedLs();
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        fake.CliLogPath = cliLog;
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            });
+            var json = await McpTools.AgyStatus(view);
+            using var doc = JsonDocument.Parse(json);
+            Assert.True(doc.RootElement.TryGetProperty("status", out var st), json);
+            Assert.Equal("waiting_for_human", st.GetString());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     // Boot-race fake: reachable, but no conversation, on every poll.
     private sealed class FakeReachedEmptyForeverLs : LanguageServerService.LanguageServerServiceBase
     {

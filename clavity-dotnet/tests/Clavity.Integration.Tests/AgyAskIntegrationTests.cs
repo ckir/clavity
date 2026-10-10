@@ -1611,6 +1611,46 @@ public class AgyAskIntegrationTests
         public override void WriteLine(string? value) => throw new IOException("diagnostics sink is full");
     }
 
+    private sealed class MisprogrammedWriter : StringWriter
+    {
+        public override void WriteLine(string? value) => throw new InvalidOperationException("a bug in a custom sink");
+    }
+
+    [Fact]
+    public async Task AskAsync_does_not_hide_a_programming_error_thrown_by_a_diagnostics_sink()
+    {
+        // Capstone Branch C R4: Diag swallows only what a SINK can produce (I/O, disposed, access, not-supported). A
+        // programming error in a custom sink must still surface, else the guard hides real bugs. A blanket catch in
+        // Diag turns this row green-for-the-wrong-reason: the ask would succeed and nothing would be thrown.
+        var initial = new[]
+        {
+            new CascadeStep
+            {
+                Kind = 15,
+                Metadata = new CortexStepMetadata { GeneratorModel = 1016 },
+                UserInput = new CascadeUserInput { Text = "prior assistant turn" },
+            },
+        };
+        var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), initial);
+
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Diagnostics = new MisprogrammedWriter() });
+            var thrown = await Assert.ThrowsAnyAsync<Exception>(() => view.AskAsync("please do X"));
+
+            // The sink's exception, itself or as an inner cause - never silently swallowed.
+            Exception? e = thrown;
+            while (e is not null && e is not InvalidOperationException) e = e.InnerException;
+            Assert.IsType<InvalidOperationException>(e);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public async Task AskAsync_survives_a_diagnostics_sink_that_throws()
     {
