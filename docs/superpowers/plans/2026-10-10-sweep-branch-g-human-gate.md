@@ -12,6 +12,8 @@
 
 **Measured baseline (2026-10-10, before any change):** against the real .NET reader (`DriverCheatsheet.ReadWithDegradeStatus`, called by `AgyView.cs:105`): no file -> floor, degraded=false; a sentinel at the RETIRED name -> floor, degraded=false; the same sentinel written directly to the live name with no sidecar and no approval -> DELIVERED, degraded=false. Task 3 step 1 and Task 4 step 1 turn that measurement into failing controls.
 
+**MARKER SPELLING (measured in the dry run):** `scripts/check-dangling-consumers.ps1` scans `docs/` for the literal producer marker, so this plan spells it `@MARKER-produces`. When you paste a code block into source, write the marker as the at-sign immediately followed by the word produces (no `MARKER-`). NEVER commit a doc that carries it unsplit - it would satisfy the gate for the reader constants and hide a deleted real marker.
+
 **Rules for every task:** failing control BEFORE the fix (the new test must be RED on the pre-change code); one LOGIC mutant per new test, applied by the driver, exactly the named row red, reverted with `git status` clean afterwards; mirror every pair change to the other variant in the same branch; stage explicit paths, never `git add -A`, never commit anything under `.clavity/`; commit trailer `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`. Run the repo's gates as they are (`cargo test --all --features test-fakes`, `cargo clippy --all-targets --features test-fakes -- -D warnings`, `cargo fmt --all -- --check`; `dotnet build` then `dotnet test tests/Clavity.Ls.Tests` and `dotnet test tests/Clavity.Integration.Tests` from `clavity-dotnet/`) - do not invent stricter flags. `dotnet test --filter` exits 0 on no match: READ THE COUNT.
 
 ---
@@ -95,7 +97,7 @@ Append inside `mod tests` (after `read_with_status_absent_is_not_degraded`; the 
         // silently dropped at every read is refused at commit instead, so the curator hears about it once.
         let d = fresh_dir("commit-overcap");
         let growth = "g".repeat(MAX_BYTES - BASELINE_FLOOR.len() - 2 + 1);
-        let err = commit_growth(&d, &growth).err().expect("one byte over the combined cap must be refused");
+        let err = commit_growth(&d, &growth).expect_err("one byte over the combined cap must be refused");
         assert!(
             matches!(err, crate::golden_header::CommitError::OverCap { cap, .. } if cap == MAX_BYTES),
             "got: {err:?}"
@@ -145,6 +147,8 @@ with
         crate::golden_header::commit(&d.join(GROWTH_FILE_NAME), &growth).unwrap();
 ```
 
+`read_with_status_content_is_not_degraded` (it writes `"custom core\n"` directly and asserts `!degraded`; measured RED after the reader change) - replace its direct `std::fs::write(d.join(GROWTH_FILE_NAME), "custom core\n").unwrap();` with `commit_growth(&d, "custom core\n").unwrap();` (Grep the whole test module for every other `GROWTH_FILE_NAME` write and re-point or justify each - Law 3.)
+
 `read_returns_floor_when_over_cap` keeps its direct write: the over-cap check reads METADATA before the sidecar is consulted, so that row still exercises the branch it names. Add this comment above its `std::fs::write`:
 ```rust
         // A direct write is fine HERE: the over-cap check runs on metadata before the sidecar is consulted.
@@ -153,7 +157,7 @@ with
 - [ ] **Step 3: Run the module tests to see the new rows fail to COMPILE (no `commit_growth`, no `verify_sidecar`) and nothing else**
 
 Run: `cd clavity-classic && cargo test --all --features test-fakes driver_cheatsheet 2>&1 | tail -n 20`
-Expected: compile error naming `commit_growth` / `golden_header::sidecar_path` unresolved. (The reader rows cannot be shown red separately until the writer exists; step 6 proves them with the mutant.)
+Expected: `error[E0425]: cannot find function `commit_growth` in this scope` (measured in the dry run; `sidecar_path` already exists). (The reader rows cannot be shown red separately until the writer exists; step 6 proves them with the mutant.)
 
 - [ ] **Step 4: Add `SidecarVerdict` + `verify_sidecar` to `golden_header.rs` and make `try_read_file` use it**
 
@@ -229,7 +233,7 @@ In `try_read_file`, replace the code from the line `let sc_path = sidecar_path(p
     }
 ```
 
-Keep the explanatory comment block that precedes the old code (the one starting `// Sidecar INTEGRITY check — NOT a security control`) in place above the new `match`; delete the two comment lines that described the metadata cap and the strip_bom ordering inline (they now live on `verify_sidecar`). The two warning strings are IDENTICAL to today's (same words, same em dash), so no existing golden-header test moves.
+Keep the explanatory comment block that precedes the old code (the one starting `// Sidecar INTEGRITY check — NOT a security control`) in place above the new `match`; delete ONLY the two sentences that described the metadata cap and the strip_bom ordering inline (they now live on `verify_sidecar`). KEEP the multi-line `// NOTE this does NOT match the region-body check above ... Do not "restore symmetry" by deleting this note.` comment (it is about the region-body read, still true, and says not to delete it): move it directly above the new `match` (the dry run deleted it by following the old wording). The two warning strings are IDENTICAL to today's (same words, same em dash), so no existing golden-header test moves.
 
 Add to `golden_header.rs` `mod tests` (it has `fresh_dir(name)`):
 
@@ -306,7 +310,7 @@ Add AFTER `read_with_status` (before the `#[cfg(test)] fn read` helper):
 /// delivered. The cap enforced here is the COMBINED one the reader applies (floor + "\n\n" + trimmed growth
 /// <= MAX_BYTES), so an over-budget publish is REFUSED once at commit instead of silently dropped at every
 /// read. Mirrors dotnet `DriverCheatsheet.CommitGrowth`.
-/// @produces "driver-cheatsheet.growth.md"
+/// @MARKER-produces "driver-cheatsheet.growth.md"
 pub fn commit_growth(dir: &Path, content: &str) -> Result<(), crate::golden_header::CommitError> {
     let combined = BASELINE_FLOOR.len() + 2 + content.trim().len();
     if combined > MAX_BYTES {
@@ -329,12 +333,13 @@ Mutants (apply one at a time, run `cargo test --all --features test-fakes driver
 - M2: change `SidecarVerdict::Mismatch => {` arm body to `{}` -> `read_degrades_when_sidecar_does_not_match` red.
 - M3 in `commit_growth`: `if combined > MAX_BYTES` -> `if combined > MAX_BYTES + 1` -> `commit_growth_refuses_a_combined_over_cap_payload_and_writes_nothing` red.
 - M4 in `commit_growth`: `if combined > MAX_BYTES` -> `if combined >= MAX_BYTES` -> `commit_growth_accepts_a_payload_that_exactly_fills_the_combined_cap` red.
-- M5 in `verify_sidecar`: `if expected == sha256_hex(bytes)` -> `if true` -> `verify_sidecar_reports_each_verdict` red AND `read_degrades_when_sidecar_does_not_match` red (both name the same mechanism; record both).
+- M5 in `verify_sidecar`: `if expected == sha256_hex(bytes)` -> `if true` -> `verify_sidecar_reports_each_verdict` red AND `read_degrades_when_sidecar_does_not_match` red (both name the same mechanism; record both). The existing golden-header rows `read_combined_rejects_a_utf16le_sidecar` and `try_read_file_treats_region_as_absent_when_sidecar_mismatches` ALSO go red (they share the function; measured).
 
 - [ ] **Step 7: clippy + fmt, then commit**
 
-Run: `cd clavity-classic && cargo clippy --all-targets --features test-fakes -- -D warnings && cargo fmt --all -- --check`
-Expected: both exit 0.
+Run: `cd clavity-classic && cargo fmt --all && cargo fmt --all -- --check` (the plan-supplied tests are not rustfmt-clean as pasted; `cargo fmt --all` touches only plan-added code).
+Expected: exit 0.
+Do NOT run clippy at this commit: `commit_growth` is unused in the bin target until Task 3 (`error: function `commit_growth` is never used`, measured). Clippy is run at Task 3 step 5, where it must be clean.
 
 ```bash
 git add clavity-classic/src/golden_header.rs clavity-classic/src/driver_cheatsheet.rs
@@ -594,7 +599,7 @@ Add after `public static string Block(string cheatsheet) => Label + "\n" + cheat
     /// bypasses this method is never delivered. The cap enforced here is the COMBINED one the reader applies (floor +
     /// "\n\n" + trimmed growth &lt;= <see cref="MaxBytes"/>), so an over-budget publish is REFUSED once at commit instead
     /// of silently dropped at every read. Mirrors classic <c>driver_cheatsheet::commit_growth</c>.
-    /// @produces "driver-cheatsheet.growth.md"
+    /// @MARKER-produces "driver-cheatsheet.growth.md"
     /// </summary>
     public static void CommitGrowth(string dir, string content)
     {
@@ -616,7 +621,7 @@ Mutants (one at a time; run `dotnet test tests/Clavity.Ls.Tests`; exactly the na
 - M2: `case ... Mismatch:` arm -> `break;` -> `ReadWithDegradeStatus_degrades_a_growth_file_whose_sidecar_does_not_match` red.
 - M3 `CommitGrowth`: `combined > MaxBytes` -> `combined > MaxBytes + 1` -> `CommitGrowth_refuses_a_combined_over_cap_payload_and_writes_nothing` red.
 - M4: `combined > MaxBytes` -> `combined >= MaxBytes` -> `CommitGrowth_accepts_a_payload_that_exactly_fills_the_combined_cap` red.
-- M5 `VerifySidecar`: `expected == Sha256Hex(bytes) ?` -> `true ?` -> `VerifySidecar_reports_each_verdict` red AND `..._whose_sidecar_does_not_match` red (record both).
+- M5 `VerifySidecar`: `expected == Sha256Hex(bytes) ?` -> `true ?` -> `VerifySidecar_reports_each_verdict` red AND `..._whose_sidecar_does_not_match` red (record both); the existing `GoldenHeaderTests.TryReadCombined_rejects_a_utf16le_sidecar` and `TryReadCombined_treats_region_as_absent_when_sidecar_mismatches` ALSO go red (shared function; measured).
 
 - [ ] **Step 7: Commit**
 
@@ -800,7 +805,7 @@ fn curate_commit_targets_are_disjoint_in_both_directions() {
 
 - [ ] **Step 2: Run the four rows and record the control**
 
-Run: `cd clavity-classic && cargo test --all --features test-fakes --test integration cheatsheet 2>&1 | grep -E "^test |test result"`
+Run: `cd clavity-classic && cargo test --all --features test-fakes --test integration -- cheatsheet curate_commit_targets 2>&1 | grep -E "^test |test result"` (two filters: `cheatsheet` alone misses the disjoint-targets row, measured)
 Expected: `ask_degrades_a_cheatsheet_growth_file_that_lacks_a_sidecar` PASSES already (Task 1 landed the reader) - that is fine, its control was the 2026-10-10 measurement and Task 1's mutant M1; the three verb rows FAIL because `--cheatsheet` is an unknown argument (clap exits 2). Quote the failure lines in the commit body.
 
 - [ ] **Step 3: Add the flag, route the verb**
@@ -887,7 +892,7 @@ Mutants (integration rows need the binary rebuilt - `cargo test` does that; reve
 
 - [ ] **Step 5: clippy + fmt, commit**
 
-Run: `cd clavity-classic && cargo clippy --all-targets --features test-fakes -- -D warnings && cargo fmt --all -- --check` -> 0.
+Run: `cd clavity-classic && cargo fmt --all && cargo clippy --all-targets --features test-fakes -- -D warnings && cargo fmt --all -- --check` -> 0 (this is where Task 1's deferred clippy is first run; `commit_growth` is used now).
 
 ```bash
 git add clavity-classic/src/main.rs clavity-classic/tests/integration.rs
@@ -1012,6 +1017,11 @@ Append to `AgyAskIntegrationTests.cs` (the class has `DriverCheatsheet`, `AgyVie
         {
             var rc = CliVerbs.CurateCommit(dir, new MemoryStream(System.Text.Encoding.UTF8.GetBytes("- SENTINEL-G-PUBLISHED\n")), TextWriter.Null, cheatsheet: true);
             Assert.Equal(0, rc);
+            // The delivered block carries BOTH regions (golden header and cheatsheet), so a block-contains assertion
+            // alone cannot see a mis-route (measured in the dry run: the swapped-target mutant left this row green).
+            // Pin the LOCATION: the cheatsheet file and its sidecar exist, the golden-header growth does not.
+            Assert.True(File.Exists(Path.Combine(dir, DriverCheatsheet.GrowthFileName) + ".sha256"));
+            Assert.False(File.Exists(GoldenHeader.GrowthPath(dir)));
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = "unused-in-this-test",
@@ -1119,7 +1129,7 @@ if (args.Length > 0 && args[0] == "curate-commit")
     return CliVerbs.CurateCommit(dir, stdin, Console.Error, cheatsheet);
 }
 ```
-(Keep the existing comment line above the block, replacing its text with the one shown.)
+(The block's leading comment line is REPLACED by the one shown above; do not keep both.)
 
 - [ ] **Step 5: Build 0 warnings, both test projects, then mutants**
 
@@ -1128,7 +1138,7 @@ Run: `dotnet test tests/Clavity.Ls.Tests 2>&1 | grep -E "Passed!|Failed!"` -> +8
 Run: `dotnet test tests/Clavity.Integration.Tests 2>&1 | grep -E "Passed!|Failed!"` -> +2.
 
 Mutants (one at a time; `git checkout -- clavity-dotnet/src`; `git status --short` clean):
-- M6 `CliVerbs.CurateCommit`: `if (cheatsheet) DriverCheatsheet.CommitGrowth(..); else GoldenHeader.CommitGrowth(..);` -> swap the two calls -> `CurateCommit_cheatsheet_writes_the_cheatsheet_growth_and_its_sidecar_and_not_the_golden_header`, `..._published_growth_is_delivered_by_the_reader_without_a_degrade`, `CurateCommit_bare_leaves_an_existing_cheatsheet_publish_untouched` and the integration row `..._published_through_curate_commit_cheatsheet` red; the pre-existing bare-verb rows ALSO go red (they assert the golden path) - record that.
+- M6 `CliVerbs.CurateCommit`: `if (cheatsheet) DriverCheatsheet.CommitGrowth(..); else GoldenHeader.CommitGrowth(..);` -> swap the two calls -> `CurateCommit_cheatsheet_writes_the_cheatsheet_growth_and_its_sidecar_and_not_the_golden_header`, `..._published_growth_is_delivered_by_the_reader_without_a_degrade`, `CurateCommit_bare_leaves_an_existing_cheatsheet_publish_untouched` and the integration row `..._published_through_curate_commit_cheatsheet` red (via its location assertions); every pre-existing bare-verb row that asserts the golden path ALSO goes red (measured in the dry run: five more Ls rows and one Integration row) - record the list.
 - M7 `TryParseCurateCommitArgs`: delete the `error = ...; return false;` lines (accept anything) -> the two `ok == false` theory cases red.
 - M8 `DriverCheatsheet.CommitGrowth`: delete the combined check -> `CurateCommit_cheatsheet_refuses_a_combined_over_cap_payload_and_writes_nothing` red and Task 2's `CommitGrowth_refuses_...` red.
 
@@ -1154,11 +1164,9 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `clavity-dotnet/plugin/README.md` (after the bullet starting `- **\`driver-cheatsheet GROWTH exceeds 16384 bytes; using baseline floor\`**`)
 - Modify: `clavity-classic/plugin/README.md` (after the bullet starting `- **\`clavity: driver-cheatsheet GROWTH exceeds 16384 bytes; using baseline floor\`**`)
 
-- [ ] **Step 1: Failing control for the dangling-consumers gate - remove the skill's `@produces` marker FIRST and watch the gate go red**
+- [ ] **Step 1: The dangling-consumers control (measured in the dry run: the naive control is vacuous)**
 
-In `agy-curate/SKILL.md` delete the line `@produces "driver-cheatsheet.growth.md"` (and nothing else yet).
-Run: `just check-dangling-consumers`
-Expected: `DANGLING CONSUMER: ... reads 'driver-cheatsheet.growth.md' (const GrowthFileName / GROWTH_FILE_NAME), but NOTHING in the repository declares it produces that file`, exit 1. Then run it again on the FULL tree as it is after Tasks 1-2 (the markers on `commit_growth` / `CommitGrowth` already exist): if the gate is GREEN with the skill line deleted, that is the expected end state and the control is `git stash`-free: temporarily comment out BOTH `@produces` lines in `driver_cheatsheet.rs` and `DriverCheatsheet.cs`, re-run, see RED, restore them (`git checkout -- clavity-classic/src/driver_cheatsheet.rs clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs`), re-run, see GREEN. Record both outcomes.
+With Tasks 1-2 committed, the producer markers live on `commit_growth` / `CommitGrowth`, so deleting the SKILL line alone leaves `just check-dangling-consumers` GREEN - that is the intended end state, not a control. The control is: temporarily rename BOTH code markers (`@MARKER-produces` spelling in this plan means the real `@produces` in source; here edit the two source lines so the word reads `@XXproduces`) in `clavity-classic/src/driver_cheatsheet.rs` and `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs`, run `just check-dangling-consumers`, expect `2 problem(s)` naming `DriverCheatsheet.cs:14` and `driver_cheatsheet.rs:10` (`DANGLING CONSUMER`), exit 1. Restore with `git checkout -- clavity-classic/src/driver_cheatsheet.rs clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs`, re-run, expect `OK`. This only works because the plan spells the marker `@MARKER-produces` (see MARKER SPELLING): an unsplit marker in this committed plan satisfies the gate and the control stays green (measured). Then delete the skill's own marker line (the one beside the `The write target is` sentence, if still present) in step 2.
 
 - [ ] **Step 2: Rewrite the `### EMIT GROWTH ONLY - the floor is already injected` section**
 
@@ -1231,7 +1239,7 @@ In the exit table, replace the `| 0 |` row with:
 | 0 | ran to a normal end - every approved proposal published (GROWTH, the cheatsheet, or both), or nothing to publish (an empty inbox) | reset |
 ```
 
-Replace formulation 4 (the two lines starting `4. **"did not publish GROWTH"**`) with:
+Replace formulation 4 (the THREE lines starting `4. **"did not publish GROWTH"**`; the plan's earlier "two lines" was wrong, measured) with:
 ```markdown
   4. **"did not publish GROWTH"** - fires on a perfectly good run whose inbox held only carried `driver`
      rules (`:121` routes those to the cheatsheet, not GROWTH), which publishes the CHEATSHEET through the
@@ -1242,7 +1250,7 @@ Replace the "already happened" table's first row (starting `| the compiled cheat
 ```markdown
 | the compiled cheatsheet proposal in `.clavity/curate-proposed/driver-cheatsheet.growth.md` | left in place - it is a staging file; nothing reads it | the repository's `.clavity/` - never live |
 | the compiled GROWTH proposal in `.clavity/curate-proposed/golden-header.growth.md` | left in place - same | same |
-| the two LIVE files, `golden-header.growth.md` and `driver-cheatsheet.growth.md` | **never written** - this is exactly what the gate withheld; `curate-commit` and `curate-commit --cheatsheet` are never invoked on this path | - |
+| the two LIVE files, `%USERPROFILE%\.clavity\golden-header.growth.md` and `%USERPROFILE%\.clavity\driver-cheatsheet.growth.md` | **never written** - this is exactly what the gate withheld; `curate-commit` and `curate-commit --cheatsheet` are never invoked on this path | - |
 ```
 
 Replace the paragraph starting `**The cheatsheet is outside the human gate's scope.**` (through `...it is a pointer for a maintainer reading the repo.`) with:
@@ -1258,6 +1266,15 @@ backlog routing was impossible by construction because of exactly this. The umbr
 (the installer copies only the `agy-autotrain` subtree), so in an installed plugin tree this reference does
 not resolve at all; it is a pointer for a maintainer reading the repo.
 ```
+
+- [ ] **Step 3b: The headless and refusal messages, the rubric sentence, and the bare filename mentions** (all measured in the dry run)
+
+`check-injected-context.ps1` reports a bare backticked `driver-cheatsheet.growth.md` (no `%USERPROFILE%\.clavity\` or `.clavity/curate-proposed/` prefix) as a broken reference. Every mention this task writes must carry a prefix; step 3's table row and step 4's "writes only the one file its flag selects" sentence below are prefixed accordingly.
+
+In `agy-curate/SKILL.md` replace, exactly once each:
+- `interactive approval channel; the compiled GROWTH was NOT published. Re-run agy-curate interactively to` -> `interactive approval channel; the compiled GROWTH and cheatsheet were NOT published. Re-run agy-curate interactively to`
+- `approve; the compiled GROWTH was NOT published." - and **exit 3**.` -> `approve; the compiled GROWTH and cheatsheet were NOT published." - and **exit 3**.`
+- the line `  **human-review gate** before any runtime write and the **priority placement** first in GROWTH, where it` -> `  **human-review gate** before any live write and the **priority placement** first in GROWTH, where it` (the Law 3 `rg` in step 7 finds this line).
 
 - [ ] **Step 4: Rewrite the publish section**
 
@@ -1300,8 +1317,8 @@ Replace the pwsh snippet (from `    # Resolve the driver (dotnet \`clavity-ls\` 
 
 Replace the sentence `\`curate-commit\` (both variants) writes **only** \`golden-header.growth.md\`; it never touches the SEED.` with:
 ```markdown
-`curate-commit` (both variants) writes **only** the one file its flag selects - `golden-header.growth.md` bare,
-`driver-cheatsheet.growth.md` with `--cheatsheet` - plus that file's `.sha256`; it never touches the SEED or the
+`curate-commit` (both variants) writes **only** the one file its flag selects - `%USERPROFILE%\.clavity\golden-header.growth.md` bare,
+`%USERPROFILE%\.clavity\driver-cheatsheet.growth.md` with `--cheatsheet` - plus that file's `.sha256`; it never touches the SEED or the
 other target.
 ```
 
@@ -1353,14 +1370,14 @@ Insert a new bullet directly BEFORE the `- **LAST OF ALL, and only if everything
   something other than `clavity-ls curate-commit --cheatsheet` - a hand edit, or a drain from before 2026-10-10,
   when `agy-curate` wrote this file before its human gate. Review the content and republish it through the
   verb; until then only the shipped baseline is injected. `did not match its .sha256 sidecar` is the same
-  outcome for a file edited after it was published.
+  outcome for a file edited after it was published, or for a publish interrupted between the file move and the sidecar write - re-running the verb repairs it.
 ```
 `clavity-classic/plugin/README.md`: the same bullet with the `clavity: ` prefix on the quoted warning and `clavity curate-commit --cheatsheet` as the verb.
 
 - [ ] **Step 7: Run the gates that read these files**
 
 Run: `just check-dangling-consumers` -> `OK` (the markers are on the two `commit_growth` functions).
-Run: `pwsh -NoProfile -File scripts/check-injected-context.ps1` -> OK (pure ASCII in the skill).
+Run: `pwsh -NoProfile -File scripts/check-injected-context.ps1` -> `check-injected-context: OK`. (It was RED before this branch - four section-sign bytes from commit 0eebdfd0 - and is fixed on main by af2582eb, which this branch is rebased onto. A bare backticked cheatsheet filename in the new skill text re-reddens it, so this is a real gate for step 3b.)
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-cheatsheet-budget.Tests.ps1, scripts/tests/check-dangling-consumers.Tests.ps1, scripts/tests/check-injected-context.Tests.ps1 -Output Normal" 2>&1 | grep -E "Tests Passed|Failed:|\[-\]"` -> a `Tests Passed:` line with `Failed: 0`.
 Run (Law 3 - incomplete fold): `rg -n "outside the human gate|before any runtime write|compiled-growth.md|writes \*\*only\*\* .golden-header.growth.md" agy-autotrain clavity-dotnet/plugin clavity-classic/plugin docs/backlog` -> no hits except the backlog stub's own history.
 
@@ -1408,6 +1425,8 @@ mismatched or oversize degrades to the floor with the existing visible warning. 
 case, so nothing legitimate ever lacks the sidecar. Headless (exit 2) and refusal (exit 3) now withhold BOTH
 artifacts. Shared verdict: `golden_header::verify_sidecar` / `GoldenHeader.VerifySidecar`.
 
+**What this does NOT do:** the verb cannot know whether the gate ran. A prose-following agent that runs `curate-commit --cheatsheet` itself before the gate still publishes; the sidecar proves "published through the verb", not "approved". The fix removes the SKILL's own pre-gate write and the silent-delivery of any other writer, which is the measured defect; it does not make the human gate mechanical. Recorded as an accepted residual in the plan's Stand-downs.
+
 **Migration the owner performs once, after the release ships the new readers:** an existing
 `%USERPROFILE%\.clavity\driver-cheatsheet.growth.md` written by a pre-2026-10-10 drain has no sidecar, so every
 first ask degrades to the floor with the warning until that content is read and republished with
@@ -1448,3 +1467,8 @@ Then: AGY-CAPSTONE on `c27e68cd..HEAD` (the spec's step d), AGY-TEST-AUDIT (e), 
 - **Placeholders.** One deliberate fill-in: the sha list on the stub's status line (Task 6 step 1), which cannot exist before Tasks 1-5 commit.
 - **Type consistency.** `SidecarVerdict::{Absent, Match, Mismatch, Oversize(u64)}` / `GoldenHeader.SidecarVerdict.{Absent, Match, Mismatch, Oversize}` + `out long sidecarLength`; `verify_sidecar(&Path, &[u8])` / `VerifySidecar(string, byte[], out long)`; `commit_growth(&Path, &str) -> Result<(), CommitError>` / `CommitGrowth(string, string)` throwing `InvalidOperationException`; `curate_commit(bool)` / `CurateCommit(string, Stream, TextWriter, bool cheatsheet = false)`; `TryParseCurateCommitArgs(string[], out bool, out string?)`. Exit codes keep each variant's scheme (classic 1 = bad input incl. over-cap, 2 = IO; dotnet 2 = bad input, 1 = IO).
 - **Known edges stated.** A sidecar-less legacy live file degrades loudly on purpose (F3 a). `GoldenHeader.Commit`'s snapshot ring (`.bak` rotation) now applies to the cheatsheet file too; classic's `commit` has no ring - a pre-existing pair asymmetry, unchanged. The ring's glob `driver-cheatsheet.growth.md.*.bak` ALSO matches the owner's hand-made backups of that file (three exist today under `~/.clavity`), so after five publishes the oldest hand-made `.bak` is evicted - state this to the owner at the panel; the alternative (a ring that ignores non-stamp names) is a GoldenHeader change outside this branch. The integration rows reuse `clavity_bus` + the fake bus exactly as `ask_stdout_warns_when_driver_cheatsheet_is_over_cap` does.
+
+## Stand-downs
+
+- `UNVERIFIED-ACCEPTED: the verb cannot prove the gate ran` - an agent that runs `curate-commit --cheatsheet` before showing the human anything still publishes. The sidecar proves "written by the verb", not "approved". Neither provable nor refutable from code (the verb has no channel to the human); owner to accept at plan approval. The pre-gate WRITE the defect measured is removed, and every other writer is refused by the readers.
+- `DISCARDED-BELOW-FLOOR: .bak ring evicts the owner's hand-made cheatsheet backups` - `GoldenHeader.Commit` keeps 5 stamped slots by the glob `<file>.*.bak`; the owner's three hand-made `.bak` files under `~/.clavity` match it, so the sixth publish evicts the oldest. Reachable but only after five republishes and only loses backups the owner made by hand; classic has no ring. Stated to the owner at approval (it is not hidden); a ring that ignores non-stamp names is a `GoldenHeader` change outside this branch.
