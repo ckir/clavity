@@ -10,7 +10,7 @@ fixed-on: 2026-10-08
 
 # An input-validation rejection is surfaced as a generic channel failure, so schema drift is diagnosed as an outage
 
-**Closed 2026-10-09 at the start of Branch C (re-measured; owner delegated, AGY-FIRST aligned):** covered by §71 (`17244343`). `ArgumentPrecheck.Filter` (registered in `Clavity.Cli/Program.cs`) rejects an unknown or mistyped argument with a result that names the parameter and lists the tool's declared arguments, distinct from a channel failure. The build-stamp half of this entry lives on in `stale-client-binary-blamed-on-the-peer` (Branch R).
+**Closed 2026-10-09 at the start of Branch C (re-measured; owner delegated, AGY-FIRST aligned):** covered by s71 (`17244343`). `ArgumentPrecheck.Filter` (registered in `Clavity.Cli/Program.cs`) rejects an unknown or mistyped argument with a result that names the parameter and lists the tool's declared arguments, distinct from a channel failure. The build-stamp half of this entry lives on in `stale-client-binary-blamed-on-the-peer` (Branch R).
 
 ## Steps to Reproduce
 

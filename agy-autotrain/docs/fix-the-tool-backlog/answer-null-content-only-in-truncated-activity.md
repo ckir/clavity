@@ -10,7 +10,7 @@ fixed-on: 2026-10-08
 
 # `agy_ask` returns `Answer: null` while the reply text survives only as a truncated Activity summary
 
-**Closed 2026-10-09 at the start of Branch C (re-measured; owner delegated, AGY-FIRST aligned):** covered by §74 (`17244343`). `BoundedView.cs` sets `answer` only when the assistant run is trailing and gives a non-trailing last assistant run the full `AskMaxStepChars` budget in Activity (`rescueRun`), so a cut 200-character summary with a null Answer cannot occur; `AgyView` also returns `ReplyFile` (a full server-side copy) and `TurnEndedOnToolStep`.
+**Closed 2026-10-09 at the start of Branch C (re-measured; owner delegated, AGY-FIRST aligned):** covered by s74 (`17244343`). `BoundedView.cs` sets `answer` only when the assistant run is trailing and gives a non-trailing last assistant run the full `AskMaxStepChars` budget in Activity (`rescueRun`), so a cut 200-character summary with a null Answer cannot occur; `AgyView` also returns `ReplyFile` (a full server-side copy) and `TurnEndedOnToolStep`.
 
 ## Steps to Reproduce
 

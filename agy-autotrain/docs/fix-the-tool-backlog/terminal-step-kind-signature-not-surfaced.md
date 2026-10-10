@@ -8,7 +8,7 @@ status: CLOSED-BY-RULING
 
 # An impaired channel and an overrun are indistinguishable, though the step trajectory separates them
 
-**Closed by ruling 2026-10-09 at the start of Branch C (owner delegated, AGY-FIRST aligned).** No recorded trajectory shows the 'N identical terminal step kinds' signature, and §66 set the rule for this family: fixture first. A classifier built against a synthetic delta would pin an invented shape. What exists today: `Activity[]` lists every step kind of the delta, `TurnEndedOnToolStep` names a tool-step tail, and `QuotaStop` reads agy's own log for the quota case.
+**Closed by ruling 2026-10-09 at the start of Branch C (owner delegated, AGY-FIRST aligned).** No recorded trajectory shows the 'N identical terminal step kinds' signature, and s66 set the rule for this family: fixture first. A classifier built against a synthetic delta would pin an invented shape. What exists today: `Activity[]` lists every step kind of the delta, `TurnEndedOnToolStep` names a tool-step tail, and `QuotaStop` reads agy's own log for the quota case.
 
 **Reopen if:** a real trajectory (saved `ReplyFile` or `agy_look` output) shows a cascade ending on repeated identical non-assistant step kinds with no output - attach it to the entry and build `TailSignature` against it.
 

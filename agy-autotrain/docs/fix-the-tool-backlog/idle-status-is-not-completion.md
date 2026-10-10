@@ -8,7 +8,7 @@ status: CLOSED-BY-RULING
 
 # An idle peer status is reported as a completion signal, so a null answer reads as a clean result
 
-**Closed by ruling 2026-10-09 at the start of Branch C (owner delegated, AGY-FIRST aligned).** Mitigation 1 is shipped for the cases that matter: a discipline ask with an empty reply is flagged `[13b] TRUNCATED REPLY` (§74) and a quota stop is flagged (§66); an ordinary ask whose delta ends on a tool step returns `Answer: null` with `TurnEndedOnToolStep: true` in the same JSON, which is the distinct machine-readable outcome this entry asked for. Mitigation 2 (gate completion on a deliverable path) is NOT built: the bridge does not know the deliverable.
+**Closed by ruling 2026-10-09 at the start of Branch C (owner delegated, AGY-FIRST aligned).** Mitigation 1 is shipped for the cases that matter: a discipline ask with an empty reply is flagged `[13b] TRUNCATED REPLY` (s74) and a quota stop is flagged (s66); an ordinary ask whose delta ends on a tool step returns `Answer: null` with `TurnEndedOnToolStep: true` in the same JSON, which is the distinct machine-readable outcome this entry asked for. Mitigation 2 (gate completion on a deliverable path) is NOT built: the bridge does not know the deliverable.
 
 **Reopen if:** a driver reads a null-Answer reply with `TurnEndedOnToolStep: true` as a completed consult in practice, or a null-Answer case is found that carries neither a 13b flag nor that field.
 
