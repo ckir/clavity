@@ -333,6 +333,8 @@ Mutants (apply one at a time, run `cargo test --all --features test-fakes driver
 - M2: change `SidecarVerdict::Mismatch => {` arm body to `{}` -> `read_degrades_when_sidecar_does_not_match` red.
 - M3 in `commit_growth`: `if combined > MAX_BYTES` -> `if combined > MAX_BYTES + 1` -> `commit_growth_refuses_a_combined_over_cap_payload_and_writes_nothing` red.
 - M4 in `commit_growth`: `if combined > MAX_BYTES` -> `if combined >= MAX_BYTES` -> `commit_growth_accepts_a_payload_that_exactly_fills_the_combined_cap` red.
+- M6 in `try_read_file` (golden_header.rs): split the arm `SidecarVerdict::Absent | SidecarVerdict::Match => {}` into `SidecarVerdict::Absent => return None, SidecarVerdict::Match => {}` -> the EXISTING `try_read_file_accepts_when_sidecar_absent` red (pins that the golden header still ACCEPTS a sidecar-less region after the refactor; panel round 1 AB-1).
+- M7 in `commit_growth` (driver_cheatsheet.rs): write to `dir.join("driver-cheatsheet.md")` instead of `GROWTH_FILE_NAME` -> `commit_growth_writes_the_file_and_a_matching_sidecar_that_read_accepts` red, plus the reader rows that call `commit_growth` (panel round 1 MG-1: that row had no named mutant).
 - M5 in `verify_sidecar`: `if expected == sha256_hex(bytes)` -> `if true` -> `verify_sidecar_reports_each_verdict` red AND `read_degrades_when_sidecar_does_not_match` red (both name the same mechanism; record both). The existing golden-header rows `read_combined_rejects_a_utf16le_sidecar` and `try_read_file_treats_region_as_absent_when_sidecar_mismatches` ALSO go red (they share the function; measured).
 
 - [ ] **Step 7: clippy + fmt, then commit**
@@ -621,6 +623,8 @@ Mutants (one at a time; run `dotnet test tests/Clavity.Ls.Tests`; exactly the na
 - M2: `case ... Mismatch:` arm -> `break;` -> `ReadWithDegradeStatus_degrades_a_growth_file_whose_sidecar_does_not_match` red.
 - M3 `CommitGrowth`: `combined > MaxBytes` -> `combined > MaxBytes + 1` -> `CommitGrowth_refuses_a_combined_over_cap_payload_and_writes_nothing` red.
 - M4: `combined > MaxBytes` -> `combined >= MaxBytes` -> `CommitGrowth_accepts_a_payload_that_exactly_fills_the_combined_cap` red.
+- M6 `GoldenHeader.TryReadFile`: make `case SidecarVerdict.Absent` reject (`return null;`) -> the EXISTING `TryReadCombined_accepts_when_sidecar_absent` red.
+- M7 `DriverCheatsheet.CommitGrowth`: write to `Path.Combine(dir, "driver-cheatsheet.md")` -> `CommitGrowth_writes_the_file_and_a_matching_sidecar_that_the_reader_accepts` red.
 - M5 `VerifySidecar`: `expected == Sha256Hex(bytes) ?` -> `true ?` -> `VerifySidecar_reports_each_verdict` red AND `..._whose_sidecar_does_not_match` red (record both); the existing `GoldenHeaderTests.TryReadCombined_rejects_a_utf16le_sidecar` and `TryReadCombined_treats_region_as_absent_when_sidecar_mismatches` ALSO go red (shared function; measured).
 
 - [ ] **Step 7: Commit**
@@ -1267,6 +1271,10 @@ backlog routing was impossible by construction because of exactly this. The umbr
 not resolve at all; it is a pointer for a maintainer reading the repo.
 ```
 
+- [ ] **Step 3a: Empty the staging directory at the START of every run** (panel round 1, BLOCKING: the only delete is the last Finish bullet, so a run that aborts at exit 2/3 or on an error leaves stale proposals, and the NEXT run's publish loop - which publishes every file it finds - would publish a proposal no human saw this run)
+
+In `agy-curate/SKILL.md` Step Zero, directly after the sentence `Create `.clavity/` first if absent.` insert: `Then DELETE `.clavity/curate-proposed/` if it exists and recreate it empty: a proposal left by an aborted run is stale and unreviewed, and would otherwise be shown at the gate or published as this run's. The gate shows, and the publish step publishes, ONLY files this run compiled into it.` (Grep Step Zero for that anchor first; it must occur once.)
+
 - [ ] **Step 3b: The headless and refusal messages, the rubric sentence, and the bare filename mentions** (all measured in the dry run)
 
 `check-injected-context.ps1` reports a bare backticked `driver-cheatsheet.growth.md` (no `%USERPROFILE%\.clavity\` or `.clavity/curate-proposed/` prefix) as a broken reference. Every mention this task writes must carry a prefix; step 3's table row and step 4's "writes only the one file its flag selects" sentence below are prefixed accordingly.
@@ -1370,7 +1378,7 @@ Insert a new bullet directly BEFORE the `- **LAST OF ALL, and only if everything
   something other than `clavity-ls curate-commit --cheatsheet` - a hand edit, or a drain from before 2026-10-10,
   when `agy-curate` wrote this file before its human gate. Review the content and republish it through the
   verb; until then only the shipped baseline is injected. `did not match its .sha256 sidecar` is the same
-  outcome for a file edited after it was published, or for a publish interrupted between the file move and the sidecar write - re-running the verb repairs it.
+  outcome for a file edited after it was published, or for a publish interrupted between the file move and the sidecar write (the warning is `has no .sha256 sidecar` on a first publish, `did not match` on a republish) - re-running the verb repairs it.
 ```
 `clavity-classic/plugin/README.md`: the same bullet with the `clavity: ` prefix on the quoted warning and `clavity curate-commit --cheatsheet` as the verb.
 
@@ -1472,3 +1480,5 @@ Then: AGY-CAPSTONE on `c27e68cd..HEAD` (the spec's step d), AGY-TEST-AUDIT (e), 
 
 - `UNVERIFIED-ACCEPTED: the verb cannot prove the gate ran` - an agent that runs `curate-commit --cheatsheet` before showing the human anything still publishes. The sidecar proves "written by the verb", not "approved". Neither provable nor refutable from code (the verb has no channel to the human); owner to accept at plan approval. The pre-gate WRITE the defect measured is removed, and every other writer is refused by the readers.
 - `DISCARDED-BELOW-FLOOR: .bak ring evicts the owner's hand-made cheatsheet backups` - `GoldenHeader.Commit` keeps 5 stamped slots by the glob `<file>.*.bak`; the owner's three hand-made `.bak` files under `~/.clavity` match it, so the sixth publish evicts the oldest. Reachable but only after five republishes and only loses backups the owner made by hand; classic has no ring. Stated to the owner at approval (it is not hidden); a ring that ignores non-stamp names is a `GoldenHeader` change outside this branch.
+- `DISCARDED-BELOW-FLOOR: a read between the file move and the sidecar write` - the reader sees `Absent`, that ONE ask leads with the degrade warning, the next ask is clean. The window is the one `GoldenHeader.Commit`'s doc comment already records ("It does NOT eliminate the torn-write window"); no two-file update can without a journal, and the failure is a warning, never unreviewed delivery.
+- `OPEN - OWNER RULING REQUIRED (panel round 1, BS-1): the golden-header GROWTH reader still accepts a sidecar-less file.` A direct write to `golden-header.growth.md` bypasses the gate exactly as the cheatsheet did. NOT built here: the skill has no pre-gate write of GROWTH (only the cheatsheet had one - that is the measured defect), `curate-commit` is already its only instructed writer and it runs after the gate, and requiring the sidecar changes the legacy flat-file migration and every hand-edited install. The recommendation to the owner is a follow-up item, not this branch; the owner may instead widen G. Asked at plan approval.
