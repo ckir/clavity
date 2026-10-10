@@ -1,6 +1,6 @@
 # Backlog stub — LS discovery misreports a BUSY peer as "starting or exited"
 
-**Status:** IMPLEMENTED 2026-10-09 - fix 1 built: the boot race tracks a resolved-but-unanswered peer and reports it as `LsUnanswered` with a retry-first hint instead of 'starting or exited' (`91519bc3`, failing control first) on branch sweep/branch-c-csharp-ls; merge pending
+**Status:** SHIPPED 2026-10-10 - fix 1 built: the boot race tracks a resolved-but-unanswered peer and reports it as `LsUnanswered` with a retry-first hint instead of 'starting or exited' (`91519bc3`, failing control first) on branch sweep/branch-c-csharp-ls (merged `b9617a18`)
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** 🔴 **OPEN.** Reporting defect, not a logic defect — the loop already computes everything the
 
 **Ruling 2026-10-09 (owner delegated, AGY-FIRST aligned):** fix 2 (a separate, longer liveness budget once the address resolves) is NOT built. With fix 1 the operator's action is already correct (retry), and a longer budget only delays the verdict for a peer that is listening but dead. Fix 3 is folded into the `LsUnanswered` hint (retry first, restart only after repeated failures); fix 4 is pinned by `ChannelDownTests` and `AgyChannelDownTests`.

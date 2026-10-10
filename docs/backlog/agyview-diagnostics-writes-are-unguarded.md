@@ -1,6 +1,6 @@
 # Backlog stub — `AgyView` writes to the operator Diagnostics sink unguarded, and a throwing sink fails the ask
 
-**Status:** IMPLEMENTED 2026-10-09 - every `_options.Diagnostics` write in `AgyView` (`Warn`, `Surface`, the two catalog warnings) goes through one guarded `Diag` writer that swallows a throwing sink (`91519bc3`, failing control: a throwing `TextWriter` no longer fails `AskAsync`) on branch sweep/branch-c-csharp-ls; merge pending
+**Status:** SHIPPED 2026-10-10 - every `_options.Diagnostics` write in `AgyView` (`Warn`, `Surface`, the two catalog warnings) goes through one guarded `Diag` writer that swallows a throwing sink (`91519bc3`, failing control: a throwing `TextWriter` no longer fails `AskAsync`) on branch sweep/branch-c-csharp-ls (merged `b9617a18`)
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** 🔴 **OPEN.** Verified by measurement 2026-08-20; line re-verified at the 2026-08-25 triage.
 
 **Raised:** AGY-CAPSTONE R3 fold on step 2 (`13b`). Promoted from `.clavity/local-anomalies.md`.

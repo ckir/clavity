@@ -3,12 +3,14 @@ slug: curate-commit-accepts-empty-stdin
 variant: clavity-dotnet
 observed: 2026-08-17
 source-inbox-entry: "not an inbox entry - found by accident during the 2026-08-17 drain and verified"
-status: IMPLEMENTED
+status: SHIPPED
+fixed-by: 4b174b63
+fixed-on: 2026-10-10
 ---
 
 # `curate-commit` accepts EMPTY stdin and publishes an empty GROWTH region, exit 0
 
-**Built 2026-10-09 on branch sweep/branch-c-csharp-ls (`4b174b63`, failing controls first on both variants; merge pending):** empty or blank stdin is bad input - dotnet exits 2, classic exits 1 (each variant's documented bad-input code) - and the GROWTH region, its sidecar and the backup set are left untouched. The backup-before-replace behaviour this entry asked to keep is unchanged.
+**Built 2026-10-09 on branch sweep/branch-c-csharp-ls (`4b174b63`, failing controls first on both variants; merged `b9617a18`):** empty or blank stdin is bad input - dotnet exits 2, classic exits 1 (each variant's documented bad-input code) - and the GROWTH region, its sidecar and the backup set are left untouched. The backup-before-replace behaviour this entry asked to keep is unchanged.
 
 A malformed or accidental invocation silently wipes the live injected header instead of refusing. The
 skill's own documented contract for this command is `0 = ok; 2 = bad input/over-cap; 1 = IO` - empty

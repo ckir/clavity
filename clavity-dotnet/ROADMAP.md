@@ -3618,7 +3618,7 @@ not a plugin pair.
 
 ### §55 — LsDiscovery's un-anchored log patterns read a timestamp fraction as the pid when the glog thread field is missing
 
-**Status:** IMPLEMENTED 2026-10-09 - LsDiscovery requires the full glog header immediately before the pid (`1d39dd86`, failing control first: the header-less line is refused) on branch sweep/branch-c-csharp-ls; merge pending
+**Status:** SHIPPED 2026-10-10 - LsDiscovery requires the full glog header immediately before the pid (`1d39dd86`, failing control first: the header-less line is refused) on branch sweep/branch-c-csharp-ls (merged `b9617a18`)
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-09-30 from the anomalies conveyor (capstone F1 at `8d00a56`, left open for an owner decision; AGY-TEST-AUDIT gap PP-1), owner-ruled low priority, not yet planned**
 
 `clavity-dotnet/src/Clavity.Ls/LsDiscovery.cs:63-69` (`GrpcLine`, `HttpLine`) are deliberately NOT anchored
