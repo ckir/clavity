@@ -387,6 +387,31 @@ mod tests {
         );
     }
 
+    // Branch G test-audit BS-1: the sidecar is tolerant of what a shell tool or a Notepad hand-edit adds (a trailing
+    // newline, a UTF-8 BOM) and is NOT tolerant of anything else (the distractor), the same verdicts as dotnet.
+    #[test]
+    fn verify_sidecar_tolerates_trailing_newlines_and_a_bom_but_not_other_suffixes() {
+        let d = fresh_dir("tolerance");
+        let p = d.join("region.md");
+        fs::write(&p, b"body").unwrap();
+        let h = sha256_hex(b"body");
+        for (label, sidecar, want) in [
+            ("lf", format!("{h}\n"), SidecarVerdict::Match),
+            ("crlf", format!("{h}\r\n"), SidecarVerdict::Match),
+            ("bom", format!("\u{FEFF}{h}"), SidecarVerdict::Match),
+            (
+                "bom+crlf",
+                format!("\u{FEFF}{h}\r\n"),
+                SidecarVerdict::Match,
+            ),
+            ("suffix", format!("{h}x"), SidecarVerdict::Mismatch),
+            ("prefix", format!("x{h}"), SidecarVerdict::Mismatch),
+        ] {
+            fs::write(sidecar_path(&p), sidecar).unwrap();
+            assert_eq!(verify_sidecar(&p, b"body"), want, "{label}");
+        }
+    }
+
     #[test]
     fn sha256_hex_matches_known_vector() {
         let h = sha256_hex(b"");

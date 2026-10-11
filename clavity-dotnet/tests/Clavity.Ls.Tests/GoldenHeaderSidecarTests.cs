@@ -29,4 +29,23 @@ public sealed class GoldenHeaderSidecarTests : IDisposable
         Assert.Equal(GoldenHeader.SidecarVerdict.Oversize, GoldenHeader.VerifySidecar(p, body, out var len));
         Assert.Equal(GoldenHeader.MaxSidecarBytes + 1, len);
     }
+
+    // Branch G test-audit BS-1: tolerant of a trailing newline and a UTF-8 BOM (what a shell tool or a Notepad
+    // hand-edit adds), NOT of any other suffix or prefix (the distractors) - the same verdicts as classic.
+    [Theory]
+    [InlineData("{h}\n", true)]
+    [InlineData("{h}\r\n", true)]
+    [InlineData("﻿{h}", true)]
+    [InlineData("﻿{h}\r\n", true)]
+    [InlineData("{h}x", false)]
+    [InlineData("x{h}", false)]
+    public void VerifySidecar_tolerates_trailing_newlines_and_a_bom_but_not_other_suffixes(string template, bool match)
+    {
+        var p = Path.Combine(_dir, "region.md");
+        var body = Encoding.UTF8.GetBytes("body");
+        File.WriteAllBytes(p, body);
+        File.WriteAllText(p + ".sha256", template.Replace("{h}", GoldenHeader.Sha256Hex(body)), new UTF8Encoding(false));
+        var want = match ? GoldenHeader.SidecarVerdict.Match : GoldenHeader.SidecarVerdict.Mismatch;
+        Assert.Equal(want, GoldenHeader.VerifySidecar(p, body, out _));
+    }
 }

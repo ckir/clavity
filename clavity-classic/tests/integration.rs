@@ -981,6 +981,10 @@ fn curate_commit_cheatsheet_publishes_a_sidecar_and_the_next_ask_delivers_it() {
         "published growth not delivered: {stdout}"
     );
     assert!(
+        stdout.contains("Verify what it volunteers"),
+        "growth is appended to the baseline floor, which must still be delivered: {stdout}"
+    );
+    assert!(
         !stdout.to_lowercase().contains("could not be read normally"),
         "a published file must not degrade: {stdout}"
     );

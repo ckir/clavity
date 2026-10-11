@@ -351,6 +351,18 @@ public sealed class CliVerbsTests : IDisposable
         Assert.Equal("", error.ToString());
     }
 
+    // Branch G test-audit PP-1: the other direction of the disjoint-targets property (classic pins both).
+    [Fact]
+    public void CurateCommit_cheatsheet_leaves_an_existing_golden_header_growth_untouched()
+    {
+        Assert.Equal(0, CliVerbs.CurateCommit(_dir, Utf8("GOLDEN\n"), new StringWriter()));
+        var sidecarBefore = File.ReadAllText(GoldenHeader.GrowthPath(_dir) + ".sha256");
+        Assert.Equal(0, CliVerbs.CurateCommit(_dir, Utf8("- CHEAT\n"), new StringWriter(), cheatsheet: true));
+        Assert.Equal("GOLDEN\n", File.ReadAllText(GoldenHeader.GrowthPath(_dir)));
+        Assert.Equal(sidecarBefore, File.ReadAllText(GoldenHeader.GrowthPath(_dir) + ".sha256"));
+        Assert.Equal("- CHEAT\n", File.ReadAllText(Path.Combine(_dir, DriverCheatsheet.GrowthFileName)));
+    }
+
     [Fact]
     public void CurateCommit_cheatsheet_published_growth_is_delivered_by_the_reader_without_a_degrade()
     {

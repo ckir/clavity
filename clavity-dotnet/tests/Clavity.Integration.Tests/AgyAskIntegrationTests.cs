@@ -544,6 +544,7 @@ public class AgyAskIntegrationTests
 
             Assert.NotNull(block);
             Assert.Contains("SENTINEL-G-PUBLISHED", block);
+            Assert.Contains(DriverCheatsheet.BaselineFloor, block); // test-audit MG-1: growth is APPENDED to the floor
             Assert.DoesNotContain(DriverCheatsheet.DegradedWarningPrefix, block);
         }
         finally { try { Directory.Delete(dir, true); } catch { /* best effort */ } }
