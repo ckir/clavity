@@ -30,11 +30,11 @@ fi
 
 case "$event" in
   PreCompact)
-    msg="agy-LEARN check BEFORE COMPACTION: did you learn anything GENERAL about the agy peer this session (a capability, a latency/failure mode, or a way the DRIVER broke it) that is NOT yet captured? Uncaptured agy knowledge is LOST at compaction. If yes, capture it NOW via the agy-learn skill - a project-agnostic [General Rule] (ZERO project nouns), classified assumption|heuristic|anti-pattern, with no version stamp for general behavior. Knowledge accumulation is the agy-autotrain plugin's job - do not journal agy knowledge into ad-hoc notes."
+    msg="agy-LEARN check BEFORE COMPACTION: did you learn anything GENERAL about the agy peer this session (a capability, a latency/failure mode, or a way the DRIVER broke it) that is NOT yet captured? Uncaptured agy knowledge is LOST at compaction. If yes, capture it NOW via the agy-autotrain:agy-learn skill (invoke it by that namespaced name - it ships in the agy-autotrain plugin, not under clavity:) - a project-agnostic [General Rule] (ZERO project nouns), classified assumption|heuristic|anti-pattern, with no version stamp for general behavior. Knowledge accumulation is the agy-autotrain plugin's job - do not journal agy knowledge into ad-hoc notes."
     ;;
   *)
     event="SessionStart"
-    msg="agy-autotrain is active: the MOMENT you learn something GENERAL about the agy peer (a capability, a latency/failure mode, or a prompting/driving anti-pattern), capture it IMMEDIATELY via the agy-learn skill - a project-agnostic [General Rule] (no project nouns), classified assumption|heuristic|anti-pattern. Capture is cheap and live; do not batch, and do not wait to be reminded. (agy-LEARN - the capture sibling of agy-FIRST and agy-AFTER.)"
+    msg="agy-autotrain is active: the MOMENT you learn something GENERAL about the agy peer (a capability, a latency/failure mode, or a prompting/driving anti-pattern), capture it IMMEDIATELY via the agy-autotrain:agy-learn skill (invoke it by that namespaced name - it ships in the agy-autotrain plugin, not under clavity:) - a project-agnostic [General Rule] (no project nouns), classified assumption|heuristic|anti-pattern. Capture is cheap and live; do not batch, and do not wait to be reminded. (agy-LEARN - the capture sibling of agy-FIRST and agy-AFTER.)"
     ;;
 esac
 
