@@ -337,4 +337,75 @@ public sealed class CliVerbsTests : IDisposable
             Baks(_dir).Length,
             Directory.GetFiles(_dir, "golden-header.growth.md.*.bak.sha256").Length);
     }
+
+    // Branch G: the --cheatsheet target writes the cheatsheet growth AND its sidecar and never the golden header.
+    [Fact]
+    public void CurateCommit_cheatsheet_writes_the_cheatsheet_growth_and_its_sidecar_and_not_the_golden_header()
+    {
+        var error = new StringWriter();
+        Assert.Equal(0, CliVerbs.CurateCommit(_dir, Utf8("- CHEAT\n"), error, cheatsheet: true));
+        var path = Path.Combine(_dir, DriverCheatsheet.GrowthFileName);
+        Assert.Equal("- CHEAT\n", File.ReadAllText(path));
+        Assert.True(File.Exists(path + ".sha256"), "the sidecar IS the publish");
+        Assert.False(File.Exists(GoldenHeader.GrowthPath(_dir)));
+        Assert.Equal("", error.ToString());
+    }
+
+    // Branch G test-audit PP-1: the other direction of the disjoint-targets property (classic pins both).
+    [Fact]
+    public void CurateCommit_cheatsheet_leaves_an_existing_golden_header_growth_untouched()
+    {
+        Assert.Equal(0, CliVerbs.CurateCommit(_dir, Utf8("GOLDEN\n"), new StringWriter()));
+        var sidecarBefore = File.ReadAllText(GoldenHeader.GrowthPath(_dir) + ".sha256");
+        Assert.Equal(0, CliVerbs.CurateCommit(_dir, Utf8("- CHEAT\n"), new StringWriter(), cheatsheet: true));
+        Assert.Equal("GOLDEN\n", File.ReadAllText(GoldenHeader.GrowthPath(_dir)));
+        Assert.Equal(sidecarBefore, File.ReadAllText(GoldenHeader.GrowthPath(_dir) + ".sha256"));
+        Assert.Equal("- CHEAT\n", File.ReadAllText(Path.Combine(_dir, DriverCheatsheet.GrowthFileName)));
+    }
+
+    [Fact]
+    public void CurateCommit_cheatsheet_published_growth_is_delivered_by_the_reader_without_a_degrade()
+    {
+        Assert.Equal(0, CliVerbs.CurateCommit(_dir, Utf8("- SENTINEL-G-PUBLISHED\n"), new StringWriter(), cheatsheet: true));
+        var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
+        Assert.Equal(DriverCheatsheet.BaselineFloor + "\n\n- SENTINEL-G-PUBLISHED", text);
+        Assert.False(degraded);
+    }
+
+    // 16 KiB of growth alone is under the reader's per-file cap but floor + growth is over it: refused at commit
+    // (exit 2 = bad input in this variant's numbering), nothing written.
+    [Fact]
+    public void CurateCommit_cheatsheet_refuses_a_combined_over_cap_payload_and_writes_nothing()
+    {
+        var error = new StringWriter();
+        Assert.Equal(2, CliVerbs.CurateCommit(_dir, Utf8(new string('g', 16 * 1024)), error, cheatsheet: true));
+        Assert.Contains("combined cap", error.ToString());
+        Assert.False(File.Exists(Path.Combine(_dir, DriverCheatsheet.GrowthFileName)));
+        Assert.False(File.Exists(Path.Combine(_dir, DriverCheatsheet.GrowthFileName) + ".sha256"));
+    }
+
+    // The bare verb must leave an existing cheatsheet publish alone (the disjoint-targets property, other direction).
+    [Fact]
+    public void CurateCommit_bare_leaves_an_existing_cheatsheet_publish_untouched()
+    {
+        Assert.Equal(0, CliVerbs.CurateCommit(_dir, Utf8("- CHEAT\n"), new StringWriter(), cheatsheet: true));
+        var sidecarBefore = File.ReadAllText(Path.Combine(_dir, DriverCheatsheet.GrowthFileName) + ".sha256");
+        Assert.Equal(0, CliVerbs.CurateCommit(_dir, Utf8("GOLDEN\n"), new StringWriter()));
+        Assert.Equal("GOLDEN\n", File.ReadAllText(GoldenHeader.GrowthPath(_dir)));
+        Assert.Equal("- CHEAT\n", File.ReadAllText(Path.Combine(_dir, DriverCheatsheet.GrowthFileName)));
+        Assert.Equal(sidecarBefore, File.ReadAllText(Path.Combine(_dir, DriverCheatsheet.GrowthFileName) + ".sha256"));
+    }
+
+    [Theory]
+    [InlineData(new[] { "curate-commit" }, true, false)]
+    [InlineData(new[] { "curate-commit", "--cheatsheet" }, true, true)]
+    [InlineData(new[] { "curate-commit", "--bogus" }, false, false)]
+    [InlineData(new[] { "curate-commit", "--cheatsheet", "extra" }, false, true)]
+    public void TryParseCurateCommitArgs_accepts_only_the_cheatsheet_flag(string[] args, bool ok, bool cheatsheet)
+    {
+        Assert.Equal(ok, CliVerbs.TryParseCurateCommitArgs(args, out var gotCheatsheet, out var error));
+        Assert.Equal(cheatsheet, gotCheatsheet);
+        if (ok) Assert.Null(error);
+        else Assert.Contains(args[^1], error!);
+    }
 }

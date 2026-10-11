@@ -47,6 +47,40 @@ public static class GoldenHeader
     /// </summary>
     public const int MaxSidecarBytes = 1024;
 
+    /// <summary>
+    /// Outcome of checking a region file's <c>.sha256</c> sidecar against the RAW bytes read from disk. Shared by two
+    /// readers with OPPOSITE rules for <see cref="Absent"/>: the golden header ACCEPTS a sidecar-less region (the
+    /// installer seeds SEED without one, see <see cref="TryReadFile"/>), the driver cheatsheet GROWTH DEGRADES on it
+    /// (only <c>curate-commit --cheatsheet</c> writes that file, always with its sidecar, and only after the agy-curate
+    /// human gate - see <see cref="DriverCheatsheet.ReadWithDegradeStatus"/>). This only measures; each caller decides
+    /// what a verdict means and emits its own warning. Mirrors Rust <c>golden_header::SidecarVerdict</c>.
+    /// </summary>
+    public enum SidecarVerdict { Absent, Match, Mismatch, Oversize }
+
+    /// <summary>
+    /// See <see cref="SidecarVerdict"/>. The sidecar is capped from METADATA before its bytes are read. Decode lossily
+    /// as UTF-8 (U+FFFD for invalid bytes), mirroring Rust's from_utf8_lossy - NOT File.ReadAllText, which would
+    /// auto-detect a UTF-16 BOM and decode with THAT codec, accepting a sidecar classic rejects. An unreadable sidecar
+    /// (IO or access failure) is <see cref="SidecarVerdict.Absent"/>, as in Rust. <paramref name="sidecarLength"/> is
+    /// the sidecar's byte length when it exists (meaningful for <see cref="SidecarVerdict.Oversize"/>), else 0.
+    /// </summary>
+    public static SidecarVerdict VerifySidecar(string path, byte[] bytes, out long sidecarLength)
+    {
+        sidecarLength = 0;
+        var sidecarPath = path + ".sha256";
+        try
+        {
+            if (!File.Exists(sidecarPath)) return SidecarVerdict.Absent;
+            sidecarLength = new FileInfo(sidecarPath).Length;
+            if (sidecarLength > MaxSidecarBytes) return SidecarVerdict.Oversize;
+            var sidecarBytes = File.ReadAllBytes(sidecarPath);
+            var expected = StripBom(Encoding.UTF8.GetString(sidecarBytes)).Trim(AsciiWs).ToLowerInvariant();
+            return expected == Sha256Hex(bytes) ? SidecarVerdict.Match : SidecarVerdict.Mismatch;
+        }
+        catch (IOException) { return SidecarVerdict.Absent; }
+        catch (UnauthorizedAccessException) { return SidecarVerdict.Absent; }
+    }
+
     public const string SeedFileName = "golden-header.seed.md";
     public const string GrowthFileName = "golden-header.growth.md";
     public const string LegacyFileName = "golden-header.md";
@@ -122,37 +156,16 @@ public static class GoldenHeader
             // (installer/_shared/golden-header-data.iss). Sidecar unreadable = treat exactly as absent,
             // accept. Sidecar present but mismatched = warn and degrade this region to ABSENT, mirroring
             // the over-cap path above.
-            var sidecarPath = path + ".sha256";
-            try
+            switch (VerifySidecar(path, bytes, out var sidecarLen))
             {
-                if (File.Exists(sidecarPath))
-                {
-                    var sidecarLen = new FileInfo(sidecarPath).Length;
-                    if (sidecarLen > MaxSidecarBytes)
-                    {
-                        warn?.Invoke($"golden-header sidecar at {sidecarPath} is {sidecarLen}B, over the {MaxSidecarBytes}B cap — skipped");
-                        return null;
-                    }
-
-                    // Decode lossily as UTF-8 (Encoding.UTF8.GetString substitutes U+FFFD for invalid
-                    // bytes rather than throwing) — mirrors Rust's String::from_utf8_lossy on this path,
-                    // NOT the strict throwing decoder used for the region body below. File.ReadAllText
-                    // would auto-detect a UTF-16/UTF-32 BOM and decode with THAT codec instead, which
-                    // Rust's UTF-8-only sidecar read can never do — a UTF-16LE sidecar (exactly what
-                    // PowerShell 5.1's `>` redirection or Notepad's "Unicode" save produce) must be
-                    // REJECTED (garbage decode -> mismatch) on both variants, not silently accepted here.
-                    var sidecarBytes = File.ReadAllBytes(sidecarPath);
-                    var expected = StripBom(Encoding.UTF8.GetString(sidecarBytes)).Trim(AsciiWs).ToLowerInvariant();
-                    var actual = Sha256Hex(bytes);
-                    if (expected != actual)
-                    {
-                        warn?.Invoke($"golden-header region at {path} did not match its .sha256 sidecar — skipped");
-                        return null;
-                    }
-                }
+                case SidecarVerdict.Oversize:
+                    warn?.Invoke($"golden-header sidecar at {path + ".sha256"} is {sidecarLen}B, over the {MaxSidecarBytes}B cap — skipped");
+                    return null;
+                case SidecarVerdict.Mismatch:
+                    warn?.Invoke($"golden-header region at {path} did not match its .sha256 sidecar — skipped");
+                    return null;
+                // Absent = ACCEPT (installer-seeded SEED has no sidecar); Match = accept.
             }
-            catch (IOException) { /* sidecar unreadable: treat exactly as absent, accept */ }
-            catch (UnauthorizedAccessException) { /* sidecar unreadable: treat exactly as absent, accept */ }
 
             string text;
             try

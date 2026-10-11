@@ -131,43 +131,28 @@ fn try_read_file(path: &Path, warn: &mut dyn FnMut(&str)) -> Option<String> {
     // has a sidecar-less SEED (installer/_shared/golden-header-data.iss). Sidecar unreadable = treat
     // exactly as absent, accept. Sidecar present but mismatched = warn and degrade this region to
     // ABSENT, mirroring the over-cap path above.
-    let sc_path = sidecar_path(path);
-    // Cap the sidecar from METADATA, before reading its bytes: a sidecar too large to hold a plausible
-    // sha256 digest cannot be a valid one, so a huge `.sha256` must not be read wholly into memory.
     // NOTE this does NOT match the region-body check above, which reads the file first and only then
     // compares `bytes.len()` — so an oversized REGION is still loaded into memory before it is rejected.
     // dotnet checks `FileInfo.Length` first for BOTH (GoldenHeader.cs), and is the better shape; the
     // region-body check here should follow, but that is a behavior change and is deliberately not made
     // in the same edit as this comment. Do not "restore symmetry" by deleting this note.
-    // Metadata-read failure (sidecar absent or otherwise unreadable) is NOT oversized here; it falls
-    // through to the `fs::read` below, which fails the same way and is already treated as absent/accept.
-    if let Ok(meta) = fs::metadata(&sc_path) {
-        if meta.len() > MAX_SIDECAR_BYTES {
+    match verify_sidecar(path, &bytes) {
+        SidecarVerdict::Oversize(len) => {
             warn(&format!(
-                "golden-header sidecar at {} is {}B, over the {MAX_SIDECAR_BYTES}B cap — skipped",
-                sc_path.display(),
-                meta.len()
+                "golden-header sidecar at {} is {len}B, over the {MAX_SIDECAR_BYTES}B cap — skipped",
+                sidecar_path(path).display()
             ));
             return None;
         }
-    }
-    if let Ok(sidecar_bytes) = fs::read(&sc_path) {
-        // strip_bom BEFORE trimming: dotnet reads the sidecar with File.ReadAllText, which strips a BOM
-        // for us, and U+FEFF is NOT in ASCII_WS — so without this a BOM-prefixed sidecar (exactly what a
-        // hand-edit in Notepad produces, the case this check exists to catch) would be REJECTED here and
-        // ACCEPTED by dotnet. The two variants must reach the same verdict on the same bytes.
-        let sidecar_text = String::from_utf8_lossy(&sidecar_bytes);
-        let expected = strip_bom(&sidecar_text)
-            .trim_matches(ASCII_WS)
-            .to_ascii_lowercase();
-        let actual = sha256_hex(&bytes);
-        if expected != actual {
+        SidecarVerdict::Mismatch => {
             warn(&format!(
                 "golden-header region at {} did not match its .sha256 sidecar — skipped",
                 path.display()
             ));
             return None;
         }
+        // Absent = ACCEPT (installer-seeded SEED has no sidecar); Match = accept.
+        SidecarVerdict::Absent | SidecarVerdict::Match => {}
     }
 
     let text = String::from_utf8(bytes).ok()?;
@@ -277,6 +262,51 @@ pub fn sidecar_path(path: &Path) -> PathBuf {
     with_suffix(path, ".sha256")
 }
 
+/// Outcome of checking a region file's `.sha256` sidecar against the RAW bytes read from disk. Shared by two
+/// readers with OPPOSITE rules for `Absent`: the golden header ACCEPTS a sidecar-less region (the installer
+/// seeds SEED without one, see `try_read_file`), the driver cheatsheet GROWTH DEGRADES on it (only
+/// `curate-commit --cheatsheet` writes that file, always with its sidecar, and only after the agy-curate human
+/// gate - see `driver_cheatsheet::read_with_status`). This function only measures; each caller decides what a
+/// verdict means and emits its own warning.
+#[derive(Debug, PartialEq, Eq)]
+pub enum SidecarVerdict {
+    /// No sidecar, or one whose metadata or bytes could not be read.
+    Absent,
+    /// Sidecar present and its digest equals `sha256_hex(bytes)`.
+    Match,
+    /// Sidecar present and readable, digest differs.
+    Mismatch,
+    /// Sidecar larger than `MAX_SIDECAR_BYTES` (the size in bytes); its bytes are never read.
+    Oversize(u64),
+}
+
+/// See `SidecarVerdict`. Cap the sidecar from METADATA before reading its bytes: a sidecar too large to hold a
+/// plausible digest cannot be valid, so a huge `.sha256` must not be read wholly into memory. A metadata
+/// failure is not oversize; it falls through to the read, which fails the same way and is `Absent`.
+pub fn verify_sidecar(path: &Path, bytes: &[u8]) -> SidecarVerdict {
+    let sc_path = sidecar_path(path);
+    if let Ok(meta) = fs::metadata(&sc_path) {
+        if meta.len() > MAX_SIDECAR_BYTES {
+            return SidecarVerdict::Oversize(meta.len());
+        }
+    }
+    let Ok(sidecar_bytes) = fs::read(&sc_path) else {
+        return SidecarVerdict::Absent;
+    };
+    // strip_bom BEFORE trimming: dotnet reads the sidecar with a BOM-stripping decode and U+FEFF is NOT in
+    // ASCII_WS - without this a BOM-prefixed sidecar (what a Notepad hand-edit produces) would be REJECTED
+    // here and ACCEPTED by dotnet. The two variants must reach the same verdict on the same bytes.
+    let sidecar_text = String::from_utf8_lossy(&sidecar_bytes);
+    let expected = strip_bom(&sidecar_text)
+        .trim_matches(ASCII_WS)
+        .to_ascii_lowercase();
+    if expected == sha256_hex(bytes) {
+        SidecarVerdict::Match
+    } else {
+        SidecarVerdict::Mismatch
+    }
+}
+
 #[derive(Debug)]
 pub enum CommitError {
     OverCap { actual: usize, cap: usize },
@@ -338,6 +368,48 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn verify_sidecar_reports_each_verdict() {
+        let d = fresh_dir("verdicts");
+        let p = d.join("region.md");
+        fs::write(&p, b"body").unwrap();
+        assert_eq!(verify_sidecar(&p, b"body"), SidecarVerdict::Absent);
+        fs::write(sidecar_path(&p), sha256_hex(b"body").to_uppercase()).unwrap(); // case-insensitive, like dotnet
+        assert_eq!(verify_sidecar(&p, b"body"), SidecarVerdict::Match);
+        fs::write(sidecar_path(&p), sha256_hex(b"other")).unwrap();
+        assert_eq!(verify_sidecar(&p, b"body"), SidecarVerdict::Mismatch);
+        fs::write(sidecar_path(&p), vec![b'a'; MAX_SIDECAR_BYTES as usize + 1]).unwrap();
+        assert_eq!(
+            verify_sidecar(&p, b"body"),
+            SidecarVerdict::Oversize(MAX_SIDECAR_BYTES + 1)
+        );
+    }
+
+    // Branch G test-audit BS-1: the sidecar is tolerant of what a shell tool or a Notepad hand-edit adds (a trailing
+    // newline, a UTF-8 BOM) and is NOT tolerant of anything else (the distractor), the same verdicts as dotnet.
+    #[test]
+    fn verify_sidecar_tolerates_trailing_newlines_and_a_bom_but_not_other_suffixes() {
+        let d = fresh_dir("tolerance");
+        let p = d.join("region.md");
+        fs::write(&p, b"body").unwrap();
+        let h = sha256_hex(b"body");
+        for (label, sidecar, want) in [
+            ("lf", format!("{h}\n"), SidecarVerdict::Match),
+            ("crlf", format!("{h}\r\n"), SidecarVerdict::Match),
+            ("bom", format!("\u{FEFF}{h}"), SidecarVerdict::Match),
+            (
+                "bom+crlf",
+                format!("\u{FEFF}{h}\r\n"),
+                SidecarVerdict::Match,
+            ),
+            ("suffix", format!("{h}x"), SidecarVerdict::Mismatch),
+            ("prefix", format!("x{h}"), SidecarVerdict::Mismatch),
+        ] {
+            fs::write(sidecar_path(&p), sidecar).unwrap();
+            assert_eq!(verify_sidecar(&p, b"body"), want, "{label}");
+        }
     }
 
     #[test]

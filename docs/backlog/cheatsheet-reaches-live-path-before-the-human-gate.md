@@ -1,6 +1,7 @@
 # Backlog stub — the driver cheatsheet reaches a live path outside the human review gate's scope
 
-**Status:** SCHEDULED 2026-09-29 - scheduled - see the legacy status below
+**Status:** IMPLEMENTED 2026-10-11 - the live cheatsheet file is written only by `curate-commit --cheatsheet` after the gate, and both readers refuse a file without that verb's sidecar (`c5fa769d`, `605a7682`, `5433fbe5`, `c7de9b2d`, `a8533694`; failing controls first) on branch sweep/branch-g-human-gate; merge pending
+> **Previous status:** SCHEDULED 2026-09-29 - scheduled - see the legacy status below
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** 🔴 **OPEN.** Pre-existing SCOPE defect. A doc note in `agy-curate/SKILL.md` now describes it · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 11 - make the human gate cover the cheatsheet path (runs before Branch 8)**
 
 accurately; nothing yet changes what the gate covers.
@@ -66,3 +67,13 @@ is produced, not whether it is gated.
 Option 3 is the smallest and is done: `SKILL.md` now states the scope limit at the exit-2 branch. Options
 1 and 2 are design changes and belong to the owner. **Any fix must change the gate's SCOPE; none can work
 by changing the write ORDER alone.**
+
+## Fixed - 2026-10-11, final sweep Branch G (owner-approved design, AGY-FIRST seam `.clavity/seams/branch-g-agy-first.md`)
+
+**Re-measured first (2026-10-10):** against the real .NET reader, a sentinel written directly to the live name with no sidecar and no approval was DELIVERED; the retired name and the absent case stayed at the floor. The line references above (`SKILL.md:110-111`, `:224`) are from 2026-08-12 and had drifted to `:226` and `:373`; the gap itself had not moved.
+
+**The fix is candidate 1 with a mechanical half.** The skill compiles the cheatsheet proposal to `.clavity/curate-proposed/driver-cheatsheet.growth.md` (nothing reads it; the directory is emptied at the start of every run), the gate shows BOTH proposals, and after approval `curate-commit --cheatsheet` writes the live file atomically with a `.sha256` sidecar and refuses a floor + growth payload over 16384 B. Both readers (`driver_cheatsheet.rs` `read_with_status`, `DriverCheatsheet.cs` `ReadWithDegradeStatus`) deliver the growth file ONLY when that sidecar matches; absent, mismatched or oversize degrades to the floor with the existing visible warning. The golden header keeps its "absent sidecar = accept" rule (the installer seeds SEED without one); the cheatsheet growth has no seeded case, so nothing legitimate ever lacks the sidecar. Headless (exit 2) and refusal (exit 3) now withhold BOTH artifacts. Shared verdict: `golden_header::verify_sidecar` / `GoldenHeader.VerifySidecar`.
+
+**What this does NOT do:** the verb cannot know whether the gate ran. A prose-following agent that runs `curate-commit --cheatsheet` itself before the gate still publishes; the sidecar proves "published through the verb", not "approved". The fix removes the skill's own pre-gate write and the silent delivery of any other writer, which is the measured defect; it does not make the human gate mechanical. The same bypass on the golden-header GROWTH reader is tracked at `docs/backlog/golden-header-growth-accepts-a-sidecarless-file.md`.
+
+**Migration the owner performs once, after the release ships the new readers:** an existing `%USERPROFILE%\.clavity\driver-cheatsheet.growth.md` written by a pre-2026-10-10 drain has no sidecar, so every first ask degrades to the floor with the warning until that content is read and republished with `curate-commit --cheatsheet` (stream the file's raw bytes to the verb's stdin). That content never passed a gate, which is the point of making the degrade loud rather than grandfathering it.

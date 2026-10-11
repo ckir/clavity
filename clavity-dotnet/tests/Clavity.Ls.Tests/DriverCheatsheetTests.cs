@@ -20,7 +20,9 @@ public sealed class DriverCheatsheetTests : IDisposable
     [Fact]
     public void Read_returns_floor_then_growth_when_growth_present()
     {
-        File.WriteAllText(Path.Combine(_dir, DriverCheatsheet.GrowthFileName), "learned rule\n");
+        // Published through the sanctioned writer: a direct write is now refused by the reader (see
+        // ReadWithDegradeStatus_degrades_a_growth_file_that_has_no_sidecar), so this row publishes the way agy-curate does.
+        DriverCheatsheet.CommitGrowth(_dir, "learned rule\n");
         // EXTEND, not replace: the compiled floor survives and GROWTH is appended after a blank line.
         Assert.Equal(DriverCheatsheet.BaselineFloor + "\n\nlearned rule", DriverCheatsheet.Read(_dir));
     }
@@ -47,7 +49,10 @@ public sealed class DriverCheatsheetTests : IDisposable
         var growth = new string('g', room + 1);
         Assert.True(Encoding.UTF8.GetByteCount(growth) <= DriverCheatsheet.MaxBytes,
             "fixture must fit alone or it exercises the wrong branch");
-        File.WriteAllText(Path.Combine(_dir, DriverCheatsheet.GrowthFileName), growth);
+        // Written WITH a valid sidecar, deliberately bypassing CommitGrowth's combined-cap refusal (it would never
+        // publish this), so the row still exercises the reader's combined-cap branch and not the sidecar branch -
+        // a sidecar-less fixture would degrade for the wrong reason and this row would pass vacuously.
+        GoldenHeader.Commit(Path.Combine(_dir, DriverCheatsheet.GrowthFileName), growth);
         var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
         Assert.Equal(DriverCheatsheet.BaselineFloor, text);
         Assert.True(degraded);
@@ -56,6 +61,7 @@ public sealed class DriverCheatsheetTests : IDisposable
     [Fact]
     public void Read_falls_back_to_floor_when_over_cap()
     {
+        // A direct write is fine HERE: the over-cap check runs on metadata before the sidecar is consulted.
         File.WriteAllBytes(Path.Combine(_dir, DriverCheatsheet.GrowthFileName),
             Encoding.UTF8.GetBytes(new string('x', DriverCheatsheet.MaxBytes + 1)));
         Assert.Equal(DriverCheatsheet.BaselineFloor, DriverCheatsheet.Read(_dir));
@@ -75,6 +81,7 @@ public sealed class DriverCheatsheetTests : IDisposable
     [Fact]
     public void ReadWithDegradeStatus_reports_degraded_when_over_cap()
     {
+        // A direct write is fine HERE: the over-cap check runs on metadata before the sidecar is consulted.
         File.WriteAllBytes(Path.Combine(_dir, DriverCheatsheet.GrowthFileName),
             Encoding.UTF8.GetBytes(new string('x', DriverCheatsheet.MaxBytes + 1)));
         var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
@@ -110,9 +117,97 @@ public sealed class DriverCheatsheetTests : IDisposable
     [Fact]
     public void ReadWithDegradeStatus_reports_not_degraded_when_file_present_and_readable()
     {
-        File.WriteAllText(Path.Combine(_dir, DriverCheatsheet.GrowthFileName), "custom core\n");
+        DriverCheatsheet.CommitGrowth(_dir, "custom core\n");
         var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
         Assert.Equal(DriverCheatsheet.BaselineFloor + "\n\ncustom core", text);
+        Assert.False(degraded);
+    }
+
+    // THE HUMAN GATE, ON READ. MEASURED 2026-10-10 before this check existed: a sentinel written straight to the
+    // live name - no curate-commit, no sidecar, no approval - was delivered on the next ask. Only CommitGrowth
+    // (behind `curate-commit --cheatsheet`, behind the agy-curate approval gate) writes the sidecar, so a
+    // sidecar-less file is unreviewed content and must degrade OBSERVABLY. Classic twin:
+    // driver_cheatsheet.rs read_degrades_when_growth_has_no_sidecar.
+    [Fact]
+    public void ReadWithDegradeStatus_degrades_a_growth_file_that_has_no_sidecar()
+    {
+        File.WriteAllText(Path.Combine(_dir, DriverCheatsheet.GrowthFileName), "- SENTINEL-UNAPPROVED\n");
+        var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
+        Assert.Equal(DriverCheatsheet.BaselineFloor, text);
+        Assert.True(degraded, "a present-but-unpublished growth file is anomalous and must be visible");
+    }
+
+    [Fact]
+    public void ReadWithDegradeStatus_degrades_a_growth_file_whose_sidecar_does_not_match()
+    {
+        DriverCheatsheet.CommitGrowth(_dir, "- approved rule\n");
+        // A later direct write leaves the sidecar describing the OLD bytes.
+        File.WriteAllText(Path.Combine(_dir, DriverCheatsheet.GrowthFileName), "- SENTINEL-EDITED-AFTER-APPROVAL\n");
+        var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
+        Assert.Equal(DriverCheatsheet.BaselineFloor, text);
+        Assert.True(degraded);
+    }
+
+    [Fact]
+    public void CommitGrowth_writes_the_file_and_a_matching_sidecar_that_the_reader_accepts()
+    {
+        DriverCheatsheet.CommitGrowth(_dir, "- approved rule\n");
+        var path = Path.Combine(_dir, DriverCheatsheet.GrowthFileName);
+        Assert.Equal("- approved rule\n", File.ReadAllText(path));
+        Assert.Equal(GoldenHeader.Sha256Hex(Encoding.UTF8.GetBytes("- approved rule\n")), File.ReadAllText(path + ".sha256"));
+        var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
+        Assert.Equal(DriverCheatsheet.BaselineFloor + "\n\n- approved rule", text);
+        Assert.False(degraded);
+    }
+
+    // The reader's cap is COMBINED (floor + "\n\n" + trimmed growth <= MaxBytes). A publish that would be silently
+    // dropped at every read is refused at commit instead, so the curator hears about it once.
+    [Fact]
+    public void CommitGrowth_refuses_a_combined_over_cap_payload_and_writes_nothing()
+    {
+        var room = DriverCheatsheet.MaxBytes - Encoding.UTF8.GetByteCount(DriverCheatsheet.BaselineFloor) - 2;
+        var growth = new string('g', room + 1);
+        var ex = Assert.Throws<InvalidOperationException>(() => DriverCheatsheet.CommitGrowth(_dir, growth));
+        Assert.Contains("combined", ex.Message);
+        Assert.False(File.Exists(Path.Combine(_dir, DriverCheatsheet.GrowthFileName)), "nothing may be written on refusal");
+        Assert.False(File.Exists(Path.Combine(_dir, DriverCheatsheet.GrowthFileName) + ".sha256"));
+    }
+
+    // Boundary IDENTITY, not a count: exactly MaxBytes combined is in budget and is delivered whole.
+    [Fact]
+    public void CommitGrowth_accepts_a_payload_that_exactly_fills_the_combined_cap()
+    {
+        var room = DriverCheatsheet.MaxBytes - Encoding.UTF8.GetByteCount(DriverCheatsheet.BaselineFloor) - 2;
+        var growth = new string('g', room);
+        DriverCheatsheet.CommitGrowth(_dir, growth);
+        var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
+        Assert.Equal(DriverCheatsheet.MaxBytes, Encoding.UTF8.GetByteCount(text));
+        Assert.EndsWith(growth, text);
+        Assert.False(degraded);
+    }
+
+    // The reader caps the RAW file on metadata before trimming. "g" + MaxBytes spaces trims to one byte (the combined
+    // check alone would accept it) but is MaxBytes + 1 raw bytes, which the reader drops. A writer must refuse what its
+    // reader would drop. Classic twin: commit_growth_refuses_a_payload_whose_raw_size_exceeds_the_reader_file_cap_...
+    [Fact]
+    public void CommitGrowth_refuses_a_payload_whose_raw_size_exceeds_the_reader_file_cap_even_when_its_trimmed_form_fits()
+    {
+        var payload = "g" + new string(' ', DriverCheatsheet.MaxBytes);
+        var ex = Assert.Throws<InvalidOperationException>(() => DriverCheatsheet.CommitGrowth(_dir, payload));
+        Assert.Contains("file cap", ex.Message);
+        Assert.False(File.Exists(Path.Combine(_dir, DriverCheatsheet.GrowthFileName)), "nothing may be written on refusal");
+    }
+
+    // Pins the Trim() in the combined check: leading AND trailing whitespace must not count against the budget because
+    // the reader trims before measuring. Exactly filling the combined cap WITH a padded head and tail must publish and
+    // read undegraded.
+    [Fact]
+    public void CommitGrowth_measures_the_trimmed_payload_the_way_the_reader_does()
+    {
+        var room = DriverCheatsheet.MaxBytes - Encoding.UTF8.GetByteCount(DriverCheatsheet.BaselineFloor) - 2;
+        DriverCheatsheet.CommitGrowth(_dir, "\n\n" + new string('g', room) + "\n\n\n");
+        var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
+        Assert.Equal(DriverCheatsheet.MaxBytes, Encoding.UTF8.GetByteCount(text));
         Assert.False(degraded);
     }
 

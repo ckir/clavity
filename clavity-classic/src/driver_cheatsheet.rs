@@ -84,6 +84,39 @@ pub fn read_with_status(dir: &Path) -> (String, bool) {
                     );
                     (BASELINE_FLOOR.to_string(), true)
                 } else {
+                    // THE HUMAN GATE, ENFORCED ON READ. Only `commit_growth` (behind `curate-commit
+                    // --cheatsheet`, which agy-curate reaches only after its human-review gate) writes this
+                    // file, and it always writes the `.sha256` sidecar beside it. A growth file WITHOUT a
+                    // matching sidecar was written by something else - a prose-following agent, a hand edit,
+                    // a pre-gate drain - and is unreviewed content: degrade to the floor, OBSERVABLY. This is
+                    // the OPPOSITE of the golden header's rule (`golden_header::try_read_file` accepts a
+                    // sidecar-less region because the installer seeds SEED without one); the cheatsheet
+                    // growth has no installer-seeded case, so nothing legitimate ever lacks the sidecar.
+                    // MEASURED 2026-10-10 before this existed: a sentinel written directly to this filename
+                    // was delivered on the next ask with no approval anywhere
+                    // (docs/backlog/cheatsheet-reaches-live-path-before-the-human-gate.md).
+                    match crate::golden_header::verify_sidecar(&path, &bytes) {
+                        crate::golden_header::SidecarVerdict::Match => {}
+                        crate::golden_header::SidecarVerdict::Absent => {
+                            eprintln!(
+                                "clavity: driver-cheatsheet GROWTH has no .sha256 sidecar (it was not published through curate-commit --cheatsheet); using baseline floor"
+                            );
+                            return (BASELINE_FLOOR.to_string(), true);
+                        }
+                        crate::golden_header::SidecarVerdict::Mismatch => {
+                            eprintln!(
+                                "clavity: driver-cheatsheet GROWTH did not match its .sha256 sidecar; using baseline floor"
+                            );
+                            return (BASELINE_FLOOR.to_string(), true);
+                        }
+                        crate::golden_header::SidecarVerdict::Oversize(len) => {
+                            eprintln!(
+                                "clavity: driver-cheatsheet GROWTH sidecar is {len}B, over the {}B cap; using baseline floor",
+                                crate::golden_header::MAX_SIDECAR_BYTES
+                            );
+                            return (BASELINE_FLOOR.to_string(), true);
+                        }
+                    }
                     // SEED-then-GROWTH, blank-line separated - the same order and separator the golden
                     // header uses, so the two injected regions read consistently to the driver.
                     let combined = format!("{BASELINE_FLOOR}\n\n{text}");
@@ -108,6 +141,31 @@ pub fn read_with_status(dir: &Path) -> (String, bool) {
             }
         },
     }
+}
+
+/// `curate-commit --cheatsheet` writes ONLY this: the growth file AND its `.sha256` sidecar, atomically, through
+/// the same `golden_header::commit` the golden header uses. It is the ONLY sanctioned writer - `read_with_status`
+/// refuses a growth file whose sidecar is absent or stale, so a write that bypasses this function is never
+/// delivered. The cap enforced here is the COMBINED one the reader applies (floor + "\n\n" + trimmed growth
+/// <= MAX_BYTES), so an over-budget publish is REFUSED once at commit instead of silently dropped at every
+/// read. The reader also caps the RAW file size before trimming, so the writer refuses a raw size the reader would
+/// drop even when the trimmed form fits. Mirrors dotnet `DriverCheatsheet.CommitGrowth`.
+/// @produces "driver-cheatsheet.growth.md"
+pub fn commit_growth(dir: &Path, content: &str) -> Result<(), crate::golden_header::CommitError> {
+    if content.len() > MAX_BYTES {
+        return Err(crate::golden_header::CommitError::OverCap {
+            actual: content.len(),
+            cap: MAX_BYTES,
+        });
+    }
+    let combined = BASELINE_FLOOR.len() + 2 + content.trim().len();
+    if combined > MAX_BYTES {
+        return Err(crate::golden_header::CommitError::OverCap {
+            actual: combined,
+            cap: MAX_BYTES,
+        });
+    }
+    crate::golden_header::commit(&dir.join(GROWTH_FILE_NAME), content)
 }
 
 /// Back-compat convenience: the cheatsheet text alone, baseline floor on any miss. Not called from
@@ -162,7 +220,9 @@ mod tests {
     #[test]
     fn read_returns_floor_then_growth_when_growth_present() {
         let d = fresh_dir("present");
-        std::fs::write(d.join(GROWTH_FILE_NAME), "learned rule\n").unwrap();
+        // Published through the sanctioned writer: a direct write is now refused by the reader (see
+        // read_degrades_when_growth_has_no_sidecar), so this row must publish the way agy-curate does.
+        commit_growth(&d, "learned rule\n").unwrap();
         // EXTEND, not replace: the compiled floor survives and GROWTH is appended after a blank line.
         assert_eq!(read(&d), format!("{BASELINE_FLOOR}\n\nlearned rule"));
     }
@@ -199,7 +259,11 @@ mod tests {
             growth.len() <= MAX_BYTES,
             "fixture must fit alone or it tests the wrong branch"
         );
-        std::fs::write(d.join(GROWTH_FILE_NAME), &growth).unwrap();
+        // Written WITH a valid sidecar, deliberately bypassing commit_growth's combined-cap refusal (it would
+        // never publish this), so the row still exercises the reader's combined-cap branch and not the
+        // sidecar branch - a sidecar-less fixture would degrade for the wrong reason and this row would pass
+        // vacuously.
+        crate::golden_header::commit(&d.join(GROWTH_FILE_NAME), &growth).unwrap();
         let (text, degraded) = read_with_status(&d);
         assert_eq!(
             text, BASELINE_FLOOR,
@@ -214,6 +278,7 @@ mod tests {
     #[test]
     fn read_returns_floor_when_over_cap() {
         let d = fresh_dir("overcap");
+        // A direct write is fine HERE: the over-cap check runs on metadata before the sidecar is consulted.
         std::fs::write(d.join(GROWTH_FILE_NAME), "x".repeat(MAX_BYTES + 1)).unwrap();
         assert_eq!(read(&d), BASELINE_FLOOR);
     }
@@ -351,9 +416,123 @@ mod tests {
     #[test]
     fn read_with_status_content_is_not_degraded() {
         let d = fresh_dir("rws-content");
-        std::fs::write(d.join(GROWTH_FILE_NAME), "custom core\n").unwrap();
+        commit_growth(&d, "custom core\n").unwrap();
         let (text, degraded) = read_with_status(&d);
         assert_eq!(text, format!("{BASELINE_FLOOR}\n\ncustom core"));
+        assert!(!degraded);
+    }
+
+    #[test]
+    fn read_degrades_when_growth_has_no_sidecar() {
+        // THE HUMAN GATE, ON READ. MEASURED 2026-10-10 before this check existed: a sentinel written straight
+        // to the live name - no curate-commit, no sidecar, no approval - was delivered on the next ask. Only
+        // `commit_growth` (behind `curate-commit --cheatsheet`, behind the agy-curate approval gate) writes the
+        // sidecar, so a sidecar-less file is unreviewed content and must degrade OBSERVABLY.
+        let d = fresh_dir("no-sidecar");
+        std::fs::write(d.join(GROWTH_FILE_NAME), "- SENTINEL-UNAPPROVED\n").unwrap();
+        let (text, degraded) = read_with_status(&d);
+        assert_eq!(
+            text, BASELINE_FLOOR,
+            "unapproved growth must not be delivered"
+        );
+        assert!(
+            degraded,
+            "a present-but-unpublished growth file is anomalous and must be visible"
+        );
+    }
+
+    #[test]
+    fn read_degrades_when_sidecar_does_not_match() {
+        let d = fresh_dir("stale-sidecar");
+        commit_growth(&d, "- approved rule\n").unwrap();
+        // A later direct write leaves the sidecar describing the OLD bytes.
+        std::fs::write(
+            d.join(GROWTH_FILE_NAME),
+            "- SENTINEL-EDITED-AFTER-APPROVAL\n",
+        )
+        .unwrap();
+        let (text, degraded) = read_with_status(&d);
+        assert_eq!(text, BASELINE_FLOOR);
+        assert!(degraded);
+    }
+
+    #[test]
+    fn commit_growth_writes_the_file_and_a_matching_sidecar_that_read_accepts() {
+        let d = fresh_dir("commit-ok");
+        commit_growth(&d, "- approved rule\n").unwrap();
+        let path = d.join(GROWTH_FILE_NAME);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "- approved rule\n");
+        let sidecar = std::fs::read_to_string(crate::golden_header::sidecar_path(&path)).unwrap();
+        assert_eq!(
+            sidecar,
+            crate::golden_header::sha256_hex(b"- approved rule\n")
+        );
+        let (text, degraded) = read_with_status(&d);
+        assert_eq!(text, format!("{BASELINE_FLOOR}\n\n- approved rule"));
+        assert!(!degraded);
+    }
+
+    #[test]
+    fn commit_growth_refuses_a_combined_over_cap_payload_and_writes_nothing() {
+        // The reader's cap is COMBINED (floor + "\n\n" + trimmed growth <= MAX_BYTES). A publish that would be
+        // silently dropped at every read is refused at commit instead, so the curator hears about it once.
+        let d = fresh_dir("commit-overcap");
+        let growth = "g".repeat(MAX_BYTES - BASELINE_FLOOR.len() - 2 + 1);
+        let err =
+            commit_growth(&d, &growth).expect_err("one byte over the combined cap must be refused");
+        assert!(
+            matches!(err, crate::golden_header::CommitError::OverCap { cap, .. } if cap == MAX_BYTES),
+            "got: {err:?}"
+        );
+        assert!(
+            !d.join(GROWTH_FILE_NAME).exists(),
+            "nothing may be written on refusal"
+        );
+        assert!(!crate::golden_header::sidecar_path(&d.join(GROWTH_FILE_NAME)).exists());
+    }
+
+    #[test]
+    fn commit_growth_accepts_a_payload_that_exactly_fills_the_combined_cap() {
+        // Boundary IDENTITY, not a count: exactly MAX_BYTES combined is in budget and is delivered whole.
+        let d = fresh_dir("commit-exact");
+        let growth = "g".repeat(MAX_BYTES - BASELINE_FLOOR.len() - 2);
+        commit_growth(&d, &growth).unwrap();
+        let (text, degraded) = read_with_status(&d);
+        assert_eq!(text.len(), MAX_BYTES);
+        assert!(text.ends_with(&growth));
+        assert!(!degraded);
+    }
+
+    #[test]
+    fn commit_growth_refuses_a_payload_whose_raw_size_exceeds_the_reader_file_cap_even_when_its_trimmed_form_fits(
+    ) {
+        // The reader caps the RAW file on metadata before trimming. "g" + MAX_BYTES spaces trims to one byte
+        // (the combined check alone would accept it) but is MAX_BYTES + 1 raw bytes, which the reader drops.
+        let d = fresh_dir("commit-raw-overcap");
+        let payload = format!("g{}", " ".repeat(MAX_BYTES));
+        let err = commit_growth(&d, &payload)
+            .expect_err("a raw size the reader would drop must be refused at commit");
+        assert!(
+            matches!(err, crate::golden_header::CommitError::OverCap { cap, .. } if cap == MAX_BYTES),
+            "got: {err:?}"
+        );
+        assert!(
+            !d.join(GROWTH_FILE_NAME).exists(),
+            "nothing may be written on refusal"
+        );
+    }
+
+    #[test]
+    fn commit_growth_measures_the_trimmed_payload_the_way_the_reader_does() {
+        // Pins the `.trim()` in the combined check: leading AND trailing whitespace must not count against the
+        // budget, because the reader trims before measuring. Exactly filling the combined cap WITH a padded head
+        // and tail must publish and be delivered undegraded.
+        let d = fresh_dir("commit-trim-measure");
+        let growth = "g".repeat(MAX_BYTES - BASELINE_FLOOR.len() - 2);
+        let padded = format!("\n\n{growth}\n\n\n");
+        commit_growth(&d, &padded).unwrap();
+        let (text, degraded) = read_with_status(&d);
+        assert_eq!(text.len(), MAX_BYTES);
         assert!(!degraded);
     }
 

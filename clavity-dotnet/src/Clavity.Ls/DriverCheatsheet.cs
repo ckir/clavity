@@ -107,11 +107,37 @@ public const string BaselineFloor =
                 warn?.Invoke($"driver-cheatsheet GROWTH exceeds {MaxBytes} bytes; using baseline floor");
                 return (BaselineFloor, true);
             }
-            var growth = Encoding.UTF8.GetString(File.ReadAllBytes(path)).Trim();
+            var bytes = File.ReadAllBytes(path);
+            var growth = Encoding.UTF8.GetString(bytes).Trim();
             if (growth.Length == 0)
             {
                 warn?.Invoke("driver-cheatsheet GROWTH is present but empty; using baseline floor");
                 return (BaselineFloor, true); // present-but-empty = anomalous
+            }
+
+            // THE HUMAN GATE, ENFORCED ON READ. Only CommitGrowth (behind `curate-commit --cheatsheet`, which
+            // agy-curate reaches only after its human-review gate) writes this file, and it always writes the
+            // `.sha256` sidecar beside it. A growth file WITHOUT a matching sidecar was written by something else -
+            // a prose-following agent, a hand edit, a pre-gate drain - and is unreviewed content: degrade to the
+            // floor, OBSERVABLY. This is the OPPOSITE of the golden header's rule (GoldenHeader.TryReadFile accepts a
+            // sidecar-less region because the installer seeds SEED without one); the cheatsheet growth has no
+            // installer-seeded case, so nothing legitimate ever lacks the sidecar. MEASURED 2026-10-10 before this
+            // existed: a sentinel written directly to this filename was delivered on the next ask with no approval
+            // anywhere (docs/backlog/cheatsheet-reaches-live-path-before-the-human-gate.md). Twin:
+            // driver_cheatsheet.rs read_with_status.
+            switch (GoldenHeader.VerifySidecar(path, bytes, out var sidecarLen))
+            {
+                case GoldenHeader.SidecarVerdict.Match:
+                    break;
+                case GoldenHeader.SidecarVerdict.Absent:
+                    warn?.Invoke("driver-cheatsheet GROWTH has no .sha256 sidecar (it was not published through curate-commit --cheatsheet); using baseline floor");
+                    return (BaselineFloor, true);
+                case GoldenHeader.SidecarVerdict.Mismatch:
+                    warn?.Invoke("driver-cheatsheet GROWTH did not match its .sha256 sidecar; using baseline floor");
+                    return (BaselineFloor, true);
+                case GoldenHeader.SidecarVerdict.Oversize:
+                    warn?.Invoke($"driver-cheatsheet GROWTH sidecar is {sidecarLen}B, over the {GoldenHeader.MaxSidecarBytes}B cap; using baseline floor");
+                    return (BaselineFloor, true);
             }
 
             // SEED-then-GROWTH, blank-line separated — the same order and separator the golden header uses,
@@ -134,4 +160,24 @@ public const string BaselineFloor =
 
     /// <summary>Wrap cheatsheet text in the labelled block the model reads as distinct from the peer answer.</summary>
     public static string Block(string cheatsheet) => Label + "\n" + cheatsheet.Trim();
+
+    /// <summary>
+    /// `curate-commit --cheatsheet` writes ONLY this: the growth file AND its `.sha256` sidecar, atomically, through the
+    /// same <see cref="GoldenHeader.Commit"/> the golden header uses. It is the ONLY sanctioned writer -
+    /// <see cref="ReadWithDegradeStatus"/> refuses a growth file whose sidecar is absent or stale, so a write that
+    /// bypasses this method is never delivered. The cap enforced here is the COMBINED one the reader applies (floor +
+    /// "\n\n" + trimmed growth &lt;= <see cref="MaxBytes"/>), so an over-budget publish is REFUSED once at commit instead
+    /// of silently dropped at every read. Mirrors classic <c>driver_cheatsheet::commit_growth</c>.
+    /// @produces "driver-cheatsheet.growth.md"
+    /// </summary>
+    public static void CommitGrowth(string dir, string content)
+    {
+        var raw = Encoding.UTF8.GetByteCount(content);
+        if (raw > MaxBytes)
+            throw new InvalidOperationException($"driver-cheatsheet growth file would be {raw}B, over the {MaxBytes}B file cap (the reader caps the raw file before trimming)");
+        var combined = Encoding.UTF8.GetByteCount(BaselineFloor + "\n\n" + content.Trim());
+        if (combined > MaxBytes)
+            throw new InvalidOperationException($"driver-cheatsheet floor + growth would be {combined}B, over the {MaxBytes}B combined cap");
+        GoldenHeader.Commit(Path.Combine(dir, GrowthFileName), content);
+    }
 }

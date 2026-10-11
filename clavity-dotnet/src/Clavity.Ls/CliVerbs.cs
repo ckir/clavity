@@ -32,8 +32,14 @@ public static class CliVerbs
     /// a specific non-zero code, unify both variants on THIS scheme (2 = bad input, 1 = environmental
     /// failure) and say so in agy-curate/SKILL.md, which currently calls the two variants "identical".
     /// </para>
+    /// <para>
+    /// <paramref name="cheatsheet"/> selects the driver-cheatsheet GROWTH file instead of the golden-header GROWTH
+    /// (`curate-commit --cheatsheet`). Both readers deliver that file ONLY with the sidecar this write produces, so
+    /// this verb is the mechanical half of agy-curate's human gate: the skill compiles to a staging path and calls
+    /// this after approval. The two targets are disjoint - neither call touches the other's file.
+    /// </para>
     /// </summary>
-    public static int CurateCommit(string dir, Stream stdin, TextWriter error)
+    public static int CurateCommit(string dir, Stream stdin, TextWriter error, bool cheatsheet = false)
     {
         // detectEncodingFromByteOrderMarks is FALSE on purpose: with BOM detection on, a UTF-16 BOM silently
         // switches the decoder to UTF-16 and accepts non-UTF-8 input — exactly what GoldenHeader's sidecar read
@@ -110,7 +116,8 @@ public static class CliVerbs
 
         try
         {
-            GoldenHeader.CommitGrowth(dir, payload);
+            if (cheatsheet) DriverCheatsheet.CommitGrowth(dir, payload);
+            else GoldenHeader.CommitGrowth(dir, payload);
             return 0;
         }
         catch (InvalidOperationException ex)   // multibyte content whose UTF-8 BYTE count exceeds the cap
@@ -123,8 +130,27 @@ public static class CliVerbs
             // Environmental write failure (disk full, read-only path, bad CLAVITY_GOLDEN_HEADER). Report cleanly
             // instead of dumping a raw stack trace — agy-curate invokes this verb, and a stack trace would clutter
             // the agent's context (agy review req-djlih4srlzr0).
-            error.WriteLine($"curate-commit: cannot write golden-header to {dir}: {ex.Message}");
+            error.WriteLine($"curate-commit: cannot write {(cheatsheet ? "driver-cheatsheet growth" : "golden-header")} to {dir}: {ex.Message}");
             return 1;
         }
+    }
+
+    /// <summary>
+    /// `curate-commit [--cheatsheet]`: the verb takes exactly one optional flag. Anything else is refused with a
+    /// sentence naming it, so a typo (`--cheatsheets`) cannot silently publish to the GOLDEN HEADER - the one
+    /// mis-route that would put cheatsheet content on the peer-facing wire. Program.cs is top-level code with no
+    /// test seam, so the parse lives here where it is pinned.
+    /// </summary>
+    public static bool TryParseCurateCommitArgs(string[] args, out bool cheatsheet, out string? error)
+    {
+        cheatsheet = false;
+        error = null;
+        foreach (var a in args.Skip(1))
+        {
+            if (a == "--cheatsheet") { cheatsheet = true; continue; }
+            error = $"curate-commit: unknown argument '{a}' (the only option is --cheatsheet); nothing written.";
+            return false;
+        }
+        return true;
     }
 }

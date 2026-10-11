@@ -199,6 +199,12 @@ Much smaller once `escape-time` is fixed (Install step 4).
   cheatsheet at `%USERPROFILE%\.clavity\driver-cheatsheet.growth.md` is over its 16 KiB cap, so it is ignored
   and the shipped baseline is injected instead. Your curated additions stop reaching agy until you
   trim it — the only symptom otherwise is that learned rules quietly stop applying.
+- **`clavity: driver-cheatsheet GROWTH has no .sha256 sidecar (it was not published through curate-commit --cheatsheet); using baseline floor`**
+  (stderr warning; the delivered block also leads with the degrade prefix). The growth file was written by
+  something other than `clavity curate-commit --cheatsheet` - a hand edit, or a drain from before 2026-10-10,
+  when `agy-curate` wrote this file before its human gate. Review the content and republish it through the
+  verb; until then only the shipped baseline is injected. `did not match its .sha256 sidecar` is the same
+  outcome for a file edited after it was published, or for a publish interrupted between the file move and the sidecar write (the warning is `has no .sha256 sidecar` on a first publish, `did not match` on a republish) - re-running the verb repairs it.
 - **`clavity: driver-cheatsheet GROWTH unreadable (<error>); using baseline floor`** (stderr warning). Same outcome as
   above, from an I/O error rather than size (the dotnet variant words this one as
   `driver-cheatsheet GROWTH read failed: <error>`). An ABSENT cheatsheet is normal and silent — the baseline
