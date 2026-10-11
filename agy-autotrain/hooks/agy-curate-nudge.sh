@@ -114,11 +114,11 @@ fi
 if [ "$count" -lt "$THRESHOLD" ] && [ "$age_stale" -eq 0 ]; then exit 0; fi
 
 if [ "$count" -ge "$((THRESHOLD * 2))" ]; then
-  msg="agy-curate is OVERDUE: the observations inbox has ${count} pending entries (threshold ${THRESHOLD}). The driver is running on stale rules while the peer drifts. Run the agy-curate skill to drain the inbox now. (Snooze for 7 days: touch \"${SNOOZE}\".)"
+  msg="agy-curate is OVERDUE: the observations inbox has ${count} pending entries (threshold ${THRESHOLD}). The driver is running on stale rules while the peer drifts. Run the agy-autotrain:agy-curate skill (that namespaced name, not clavity:agy-curate) to drain the inbox now. (Snooze for 7 days: touch \"${SNOOZE}\".)"
 elif [ "$count" -lt "$THRESHOLD" ] && [ "$age_stale" -eq 1 ]; then
-  msg="agy-curate nudge: the observations inbox's oldest pending entry (${oldest}) is over ${MAX_AGE_DAYS} days old (only ${count} entries, under the count threshold). Run the agy-curate skill to drain it before the driver drifts on stale rules. (Snooze for 7 days: touch \"${SNOOZE}\".)"
+  msg="agy-curate nudge: the observations inbox's oldest pending entry (${oldest}) is over ${MAX_AGE_DAYS} days old (only ${count} entries, under the count threshold). Run the agy-autotrain:agy-curate skill (that namespaced name, not clavity:agy-curate) to drain it before the driver drifts on stale rules. (Snooze for 7 days: touch \"${SNOOZE}\".)"
 else
-  msg="agy-curate nudge: the observations inbox has ${count} pending entries (threshold ${THRESHOLD}). Consider running the agy-curate skill to drain it. (Snooze for 7 days: touch \"${SNOOZE}\".)"
+  msg="agy-curate nudge: the observations inbox has ${count} pending entries (threshold ${THRESHOLD}). Consider running the agy-autotrain:agy-curate skill (that namespaced name, not clavity:agy-curate) to drain it. (Snooze for 7 days: touch \"${SNOOZE}\".)"
 fi
 
 # PROCESS BUDGET: emitting the JSON in-shell saves a jq process on every nudge path. Byte-identical to
