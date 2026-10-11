@@ -24,6 +24,8 @@ mtimes immediately afterwards for an unrelated reason.
 restore was possible and the sidecar hash matched exactly afterwards. Whatever fix lands must not remove
 that.
 
+**Recurred 2026-10-11, same probe, same outcome.** `clavity-ls.exe curate-commit --help` (dotnet 0.10.2, Linux) wrote a 0-byte `~/.clavity/golden-header.growth.md` + sidecar, exit 0. Caught only because the real publish three minutes later left the `.bak` of that empty file beside the new one. Two operators, two months apart, ran the same discovery probe; `--help` must not read stdin, and empty input must exit 2.
+
 ## Steps to Reproduce
 
 Sandboxed via the documented `CLAVITY_GOLDEN_HEADER` directory override, so the live header is untouched:
