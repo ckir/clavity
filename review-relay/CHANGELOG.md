@@ -1,5 +1,10 @@
 # review-relay changelog
 
+## 0.3.0 - 2026-10-11
+
+### Features
+- feat(trackers): normalise every ROADMAP section, backlog stub, fix-the-tool entry and the review-relay / agy-autotrain items to docs/tracker-format.md (Branch T task 4)
+
 ## 0.2.0 - 2026-10-01
 
 ### Features

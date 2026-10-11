@@ -1,4 +1,72 @@
 # dotnet changelog
+## 0.11.0 - 2026-10-11
+
+### Features
+- feat(agy-curate): compile the cheatsheet to a staging path, show both proposals at the gate, publish both through curate-commit after approval (branch G)
+- feat(ls): curate-commit --cheatsheet publishes the cheatsheet growth with its sidecar; unknown arguments refused; a sidecar-less file degrades end to end (failing controls first) (branch G)
+- feat(ls): the cheatsheet reader requires the sidecar only CommitGrowth writes (failing controls first; shared VerifySidecar) (branch G)
+- feat(trackers): normalise every ROADMAP section, backlog stub, fix-the-tool entry and the review-relay / agy-autotrain items to docs/tracker-format.md (Branch T task 4)
+- feat(skills): tracker-format excerpt in open-issues, agy-capstone and agy-test-audit (both plugins) + parity gate
+- feat(gates): check C - ROADMAP path:N pointers are range-checked, anchored ones content-checked (section 77)
+- feat(ask): agy_ask names an agy quota stop read from agy's own log instead of reporting a truncated reply (section 66)
+- feat(mcp): a call with a wrong argument name is refused naming the real names, before the SDK binds (section 71b)
+- feat(13b): a healthy discipline reply carries no file pointers (owner ruling, capstone R2 CA1, option 3)
+- feat(13b): every flagged notice names one recovery order with its paths; ANSWER CUT and RESCUED notices (section 74)
+- feat(13b): capture every reply, request + read the peer file, check the untruncated run (section 74)
+- feat(13b): RecoveryNotice - one recovery order, one bounded sentence (section 74)
+- feat(13b): PeerReplyFile - agy-workspace root, shield gate, nonce request, bounded read (section 74)
+- feat(13b): ReplyCapture - the server's capped copy of every reply, pruned to 50 (section 74)
+- feat(13b): expose the untruncated trailing run; add the recovery fields to AskReply (section 74)
+- feat(start): --attach without an id pairs with the one waiting agy; one Claude per agy (section 65)
+- feat(start): SessionRegistry - the live agy sessions in a folder, taken ones flagged (section 65)
+- feat(start): SessionLock - an exclusive per-session lock as the 'taken' marker (section 65)
+- feat(start): per-session folder record, lock and alive paths (section 65)
+- feat(start): wait for agy to pair before launching Claude - Windows, Linux and --attach (owner request)
+- feat(start): Linux opens agy via PosixAgyTab; new 'agy' verb and 'start --attach' (sections 60+62)
+- feat(ls): PosixAgyTab - open agy in the user's terminal tab, claim-file readiness, fallback text (section 62)
+- feat(launcher): BuildPosixScript - claim-once POSIX agy script with the pairing prompt (sections 60+62)
+- feat(start): parse --attach <session-id> (section 62)
+- feat(hooks): fetch-clavity-ls reports every user-actionable outcome on stdout (section 61)
+
+### Fixes
+- fix(classic,ls,agy-curate): guard against a pre-branch binary that ignores --cheatsheet; pin leading-whitespace trimming; classic raw-size label (branch G capstone round 2)
+- fix(classic,ls): commit_growth refuses a raw size the reader would drop; pin the trimmed measurement (branch G capstone round 1)
+- fix(ls): only a resolved port that is not listening clears an earlier reach; an unreadable log keeps it (branch C capstone round 2)
+- fix(ls): a discovery miss after a reach clears the stale unanswered/empty flags, so a peer that exits mid-boot-race is reported as gone, not busy or waiting-for-human; Diag swallows only sink exceptions (branch C capstone round 1)
+- fix(curate-commit): empty or blank stdin is bad input and no longer wipes the GROWTH region (both variants; branch C)
+- fix(ls): a busy peer is reported as busy with a retry hint, and advisory Diagnostics writes can no longer fail an ask (branch C: two AgyView backlog stubs)
+- fix(ls): LsDiscovery requires a full glog header before the pid, so a missing thread-id field no longer yields the timestamp fraction as pid (ROADMAP s55, branch C)
+- fix(dotnet): just dotnet::test runs both test projects, like CI (section 36 small closure)
+- fix(docs-audit): a roster doc that was never audited shows up in the view, the summary and the nudge (section 56)
+- fix(tests): null-safe cleanup and in-try allocation, pass 5 (section 34): discipline-skills, plugin-drift, hook-spawn-budget; section 34 IMPLEMENTED
+- fix(mcp): agy_ask returns a typed model_unavailable / error status instead of the SDK's generic text (section 71a)
+- fix(install): PluginInstaller.Clip never splits a surrogate pair (section 76)
+- fix(hooks): dispatch-reminder + model-notice read stdin with the builtin (s59 closes)
+- fix(hooks): gate the shield lib fast path on BASH_VERSINFO, not BASH_VERSION (capstone phase-1 R2)
+- fix(hooks): shield lib fast path only under bash; other shells keep the greps (capstone phase-1 R1, driver-measured)
+- fix(13b): no remaining cut splits a surrogate pair - Clip, the Activity summary, agy_look steps and the timeout diagnostic (capstone R2 FA1-FA4)
+- fix(13b): a cut never splits a surrogate pair - TextCut for the capture head/tail, the rescued Answer and the chat Answer (capstone R1 BS1)
+- fix(13b): accept an echo whose inner markdown the peer escaped; correct the SemanticEcho header (section 74)
+- fix(hooks): Branch 20 test-audit R2 - no-jq after-reminder ends its match at .md; pin two degraded paths
+- fix(hooks): capstone R4 - consult-guard Post warns without jq only for a real consult
+- fix(hooks): capstone R3 - consult-guard Post says the guard is inactive when jq is missing
+- fix(hooks): capstone R1 - the rewritten hooks keep working on bash 3.2 (macOS /bin/bash)
+- fix(hooks): consult-recovery comment no longer names an example path the injected-context gate reads as a broken reference
+- fix(start): the folder notice prints as soon as the folder is decided (capstone R5)
+- fix(start): the folder-switch notice prints only once the session lock is held (capstone R3)
+- fix(start): the git warning checks the folder Claude really starts in; "other folders" when several (capstone R2)
+- fix(start): a symlinked folder no longer hides a waiting agy; an explicit id starts Claude where agy runs (capstone R1)
+- fix(start): a folder argument that is a file is not "missing" (capstone R8)
+- fix(start): refuse a missing folder with exit 2 on every platform and for --attach (capstone R7)
+- fix(start): exit with Claude's own exit code (capstone R5)
+- fix(start): claude preflight searches like CreateProcess; say agy is still up when claude fails (capstone R4)
+- fix(start): a program that cannot start is reported, not thrown (capstone R3)
+- fix(start): no Enter hold in the user's own terminal; Windows PowerShell fallback (capstone R2)
+- fix(start): stop waiting when agy ends before pairing (capstone R1)
+- fix(hint): auth_failed points at a pending prompt in the agy tab (section 62)
+- fix(pairing): POSIX publish line; both lines refuse empty ANTIGRAVITY_* values (section 60)
+- fix(hooks): fetch-clavity-ls assigns its messages to msg* so the injected-context gate sees them (section 61)
+
 ## Unreleased
 
 ### Features

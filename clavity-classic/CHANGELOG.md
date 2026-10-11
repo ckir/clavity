@@ -1,4 +1,25 @@
 # classic changelog
+## 0.10.0 - 2026-10-11
+
+### Features
+- feat(agy-curate): compile the cheatsheet to a staging path, show both proposals at the gate, publish both through curate-commit after approval (branch G)
+- feat(classic): curate-commit --cheatsheet publishes the cheatsheet growth with its sidecar; a sidecar-less file degrades end to end (failing controls first) (branch G)
+- feat(classic): the cheatsheet reader requires the sidecar only commit_growth writes (failing controls first; shared verify_sidecar) (branch G)
+- feat(skills): tracker-format excerpt in open-issues, agy-capstone and agy-test-audit (both plugins) + parity gate
+
+### Fixes
+- fix(classic,ls,agy-curate): guard against a pre-branch binary that ignores --cheatsheet; pin leading-whitespace trimming; classic raw-size label (branch G capstone round 2)
+- fix(classic,ls): commit_growth refuses a raw size the reader would drop; pin the trimmed measurement (branch G capstone round 1)
+- fix(curate-commit): empty or blank stdin is bad input and no longer wipes the GROWTH region (both variants; branch C)
+- fix(hooks): dispatch-reminder + model-notice read stdin with the builtin (s59 closes)
+- fix(hooks): gate the shield lib fast path on BASH_VERSINFO, not BASH_VERSION (capstone phase-1 R2)
+- fix(hooks): shield lib fast path only under bash; other shells keep the greps (capstone phase-1 R1, driver-measured)
+- fix(hooks): Branch 20 test-audit R2 - no-jq after-reminder ends its match at .md; pin two degraded paths
+- fix(hooks): capstone R4 - consult-guard Post warns without jq only for a real consult
+- fix(hooks): capstone R3 - consult-guard Post says the guard is inactive when jq is missing
+- fix(hooks): capstone R1 - the rewritten hooks keep working on bash 3.2 (macOS /bin/bash)
+- fix(hooks): consult-recovery comment no longer names an example path the injected-context gate reads as a broken reference
+
 ## 0.9.2 - 2026-10-02
 
 ### Fixes

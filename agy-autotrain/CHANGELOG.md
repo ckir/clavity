@@ -1,4 +1,20 @@
 # agy-autotrain - changelog
+## 0.7.0 - 2026-10-11
+
+### Features
+- feat(agy-curate): compile the cheatsheet to a staging path, show both proposals at the gate, publish both through curate-commit after approval (branch G)
+- feat(trackers): normalise every ROADMAP section, backlog stub, fix-the-tool entry and the review-relay / agy-autotrain items to docs/tracker-format.md (Branch T task 4)
+
+### Fixes
+- fix(agy-autotrain): hooks name the skills by their namespaced names
+- fix(agy-curate): publish snippet parses on Windows PowerShell 5.1 and refuses cleanly with no binary; say what a failed second publish leaves (branch G capstone round 3)
+- fix(classic,ls,agy-curate): guard against a pre-branch binary that ignores --cheatsheet; pin leading-whitespace trimming; classic raw-size label (branch G capstone round 2)
+- fix(trackers): replace the section sign in four fix-the-tool entries - 0eebdfd0 turned check-injected-context red (4 encoding violations)
+- fix(hooks): inbox-snapshot reads a CRLF inbox again; steady-state prune row asserts WHICH slot survives (test-audit B21 R1)
+- fix(hooks): curate-nudge rejects a day past the end of its month (capstone R1 - date -d refused Feb 30, _dfc folded it forward)
+- fix(hooks): curate-nudge age gate computes days in bash (s73 - macOS date has no -d)
+- fix(hooks): capstone R1 - the rewritten hooks keep working on bash 3.2 (macOS /bin/bash)
+
 ## 0.6.0 - 2026-09-23
 
 ### Features
