@@ -1,6 +1,6 @@
 # Backlog stub - a fresh install injects SEED only; the knowledge store is never projected into GROWTH
 
-**Status:** OPEN. Raised 2026-10-11 while regenerating the runtime GROWTH on a new development machine.
+**Status:** OPEN 2026-10-11 - Raised while regenerating the runtime GROWTH on a new development machine.
 **Scope:** the installer / `agy-autotrain` plugin, `GoldenHeader` readers in both variants, the knowledge
 store at `agy-autotrain/knowledge/rules/`.
 
