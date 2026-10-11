@@ -1,6 +1,6 @@
 # Backlog stub — the driver cheatsheet reaches a live path outside the human review gate's scope
 
-**Status:** IMPLEMENTED 2026-10-11 - the live cheatsheet file is written only by `curate-commit --cheatsheet` after the gate, and both readers refuse a file without that verb's sidecar (`c5fa769d`, `605a7682`, `5433fbe5`, `c7de9b2d`, `a8533694`; failing controls first) on branch sweep/branch-g-human-gate; merge pending
+**Status:** SHIPPED 2026-10-11 - the live cheatsheet file is written only by `curate-commit --cheatsheet` after the gate, and both readers refuse a file without that verb's sidecar (`c5fa769d`, `605a7682`, `5433fbe5`, `c7de9b2d`, `a8533694`; failing controls first) on branch sweep/branch-g-human-gate, merged a980f68e (local main, unpushed, unreleased)
 > **Previous status:** SCHEDULED 2026-09-29 - scheduled - see the legacy status below
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** 🔴 **OPEN.** Pre-existing SCOPE defect. A doc note in `agy-curate/SKILL.md` now describes it · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 11 - make the human gate cover the cheatsheet path (runs before Branch 8)**
 
