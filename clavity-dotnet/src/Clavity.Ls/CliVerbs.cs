@@ -9,7 +9,7 @@ public static class CliVerbs
     /// `curate-commit` — read the compiled golden-header from <paramref name="stdin"/> (NOT a shell arg: a
     /// multi-line markdown header blows past command-line quoting/length limits — F5) and atomically commit it
     /// as the GROWTH region file inside <paramref name="dir"/> (never touching SEED). The read is BOUNDED to
-    /// GoldenHeader.MaxBytes+1 chars so a hostile pipe cannot OOM the process (F12); over-cap input is refused
+    /// GoldenHeader.MaxBytes+1 BYTES so a hostile pipe cannot OOM the process (F12); over-cap input is refused
     /// with a non-zero exit. The caller resolves the dir from CLAVITY_GOLDEN_HEADER (F8 — the verb never touches
     /// the environment, so tests stay parallel-safe).
     /// <para>
@@ -21,16 +21,8 @@ public static class CliVerbs
     /// corrupt bytes happily and <see cref="GoldenHeader"/>'s strict read-side decode accepts them. Decoding
     /// correctly HERE is the only defence, so no caller is given the chance to supply its own reader.
     /// Mirrors classic's <c>curate_commit</c> (clavity-classic/src/main.rs:690), which likewise takes raw bytes
-    /// and validates them itself. Two divergences, both deliberate and neither affecting WHICH inputs are
-    /// accepted: (1) classic caps BYTES as it reads, while this caps CHARS at read and byte-count at commit;
-    /// (2) the two variants number their non-zero exit codes oppositely — classic returns 1 for over-cap and
-    /// non-UTF-8 input and 2 for an IO failure, this returns 2 for bad input and 1 for an IO failure. The
-    /// accept/reject SET is identical, so any caller testing zero-vs-non-zero is unaffected; no caller in this
-    /// repo branches on the specific code (agy-curate/SKILL.md:167-172 just runs the verb). Unifying them
-    /// would change a shipped CLI contract in one variant or the other, which is not worth doing while
-    /// nothing reads the codes. The trigger to resolve it is concrete: the FIRST time any caller branches on
-    /// a specific non-zero code, unify both variants on THIS scheme (2 = bad input, 1 = environmental
-    /// failure) and say so in agy-curate/SKILL.md, which currently calls the two variants "identical".
+    /// and validates them itself. Both variants now cap BYTES during read and use strict UTF-8 decode.
+    /// Exit codes unified: 2 = bad input (over-cap, non-UTF-8, empty, mojibake), 1 = IO/environment error.
     /// </para>
     /// <para>
     /// <paramref name="cheatsheet"/> selects the driver-cheatsheet GROWTH file instead of the golden-header GROWTH
@@ -41,43 +33,23 @@ public static class CliVerbs
     /// </summary>
     public static int CurateCommit(string dir, Stream stdin, TextWriter error, bool cheatsheet = false)
     {
-        // detectEncodingFromByteOrderMarks is FALSE on purpose: with BOM detection on, a UTF-16 BOM silently
-        // switches the decoder to UTF-16 and accepts non-UTF-8 input — exactly what GoldenHeader's sidecar read
-        // path goes out of its way to reject. Keep the two consistent. throwOnInvalidBytes makes input that is
-        // not UTF-8 at all (e.g. CP1252 bytes) a hard refusal rather than silently-mangled plausible text.
-        using var reader = new StreamReader(
-            stdin,
-            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true),
-            detectEncodingFromByteOrderMarks: false,
-            bufferSize: -1,
-            // leaveOpen so the reader does not dispose a stream it does not own (Program.cs disposes stdin
-            // itself). It does NOT make the stream reusable: StreamReader buffers ahead, so on return the
-            // underlying stream is positioned past what was actually decoded, and any bytes still sitting in
-            // the reader's buffer are gone. A caller that read on after this would silently skip input — so
-            // the contract is "yours to dispose", not "yours to keep reading".
-            leaveOpen: true);
-
-        // Bounded read: at most MaxBytes+1 chars, so input can never balloon memory before the cap check.
-        var buffer = new char[GoldenHeader.MaxBytes + 1];
-        var total = 0;
-        int read;
+        // Read raw bytes directly from the stream, capped at MaxBytes+1 so we never allocate more than the cap.
+        // This mirrors classic's stdin.lock().take(cap).read_to_end() — byte-level cap, not char-level.
+        const int Cap = GoldenHeader.MaxBytes + 1;
+        var buffer = new byte[Cap];
+        int total = 0;
         try
         {
-            while (total < buffer.Length && (read = reader.Read(buffer, total, buffer.Length - total)) > 0)
+            while (total < Cap)
+            {
+                int read = stdin.Read(buffer, total, Cap - total);
+                if (read == 0) break;
                 total += read;
-        }
-        catch (DecoderFallbackException)
-        {
-            error.WriteLine("curate-commit: stdin is not valid UTF-8; nothing written. Pipe the compiled "
-                + "header as UTF-8 rather than retyping it through a terminal (a console code page mangles "
-                + "em dashes and emoji).");
-            return 2;
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // A broken pipe or unreadable stdin. Report cleanly rather than dumping a stack trace, for the same
-            // reason the write path below does: agy-curate invokes this verb and a stack trace clutters the
-            // agent's context (agy review req-djlih4srlzr0).
+            // A broken pipe or unreadable stdin. Report cleanly rather than dumping a stack trace.
             error.WriteLine($"curate-commit: cannot read stdin: {ex.Message}; nothing written.");
             return 1;
         }
@@ -88,6 +60,21 @@ public static class CliVerbs
             return 2;
         }
 
+        // Strict UTF-8 decode (no BOM detection, throw on invalid bytes) — mirrors classic's String::from_utf8.
+        string payload;
+        try
+        {
+            payload = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)
+                .GetString(buffer, 0, total);
+        }
+        catch (DecoderFallbackException)
+        {
+            error.WriteLine("curate-commit: stdin is not valid UTF-8; nothing written. Pipe the compiled "
+                + "header as UTF-8 rather than retyping it through a terminal (a console code page mangles "
+                + "em dashes and emoji).");
+            return 2;
+        }
+
         // Mojibake tripwire. A text pipe on Windows re-encodes the stream through the console code page,
         // so the payload can arrive already mangled AND still be well-formed UTF-8 - which is why the
         // integrity sidecar matched corrupt content for 13 days. This is deliberately a HEURISTIC over
@@ -95,7 +82,6 @@ public static class CliVerbs
         // claim to. It is NOT a blanket non-ASCII rejection - curate-commit is a faithful byte transport
         // by contract (see CurateCommit_round_trips_non_ascii_content_byte_identically), and rejecting
         // all non-ASCII would break the very property that makes the raw-byte path worth mandating.
-        var payload = new string(buffer, 0, total);
         // Empty (or blank) input is BAD INPUT (exit 2), never a request to wipe the region: a probe like
         // `curate-commit < /dev/null` once truncated the live GROWTH region from 11039 bytes to 0 and exited 0.
         if (string.IsNullOrWhiteSpace(payload))

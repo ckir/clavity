@@ -325,15 +325,22 @@ fn ring_min_interval() -> Duration {
 /// so the debounce is shared across *independent* `clavity ring` processes — that is the whole
 /// point: one rate limit no single caller can bypass by re-invoking. Override the location with
 /// `AGY_RING_STATE_FILE` (used by tests for isolation).
+/// 
+/// The filename includes a hash of the session name to avoid collisions where different sessions
+/// sanitize to the same string (e.g. "foo" and "foo_" both become "foo_").
 fn ring_state_path(session: &str) -> PathBuf {
     if let Ok(p) = std::env::var("AGY_RING_STATE_FILE") {
         return PathBuf::from(p);
     }
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    session.hash(&mut hasher);
+    let hash = hasher.finish();
     let safe: String = session
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect();
-    std::env::temp_dir().join(format!("clavity-ring-{safe}.ts"))
+    std::env::temp_dir().join(format!("clavity-ring-{safe}-{hash:x}.ts"))
 }
 
 /// The time of the last recorded ring, if any (None = never rung / file absent or unreadable).

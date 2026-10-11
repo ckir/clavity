@@ -151,7 +151,7 @@ public const string BaselineFloor =
             warn?.Invoke($"combined driver-cheatsheet exceeds {MaxBytes} bytes; dropping GROWTH, keeping the baseline floor");
             return (BaselineFloor, true);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
             warn?.Invoke($"driver-cheatsheet GROWTH read failed: {ex.Message}");
             return (BaselineFloor, true); // unreadable = anomalous

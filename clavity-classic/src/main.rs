@@ -701,35 +701,36 @@ fn ask(
 }
 
 /// `curate-commit`: read the header from stdin (bounded at the IO level so a giant pipe can't OOM
-/// us), then atomically write it via `golden_header::commit`. Exit codes: 0 ok, 1 over-cap / bad
-/// input, 2 IO/read error. Messages are ACTIONABLE (resolved path, env-override flag, size vs cap).
+/// us), then atomically write it via `golden_header::commit`. Exit codes: 0 ok, 2 bad input
+/// (over-cap, non-UTF-8, empty, mojibake), 1 IO/environment error. Messages are ACTIONABLE
+/// (resolved path, env-override flag, size vs cap). Matches .NET CliVerbs.CurateCommit.
 fn curate_commit(cheatsheet: bool) -> i32 {
     use std::io::Read as _;
     let cap1 = (golden_header::MAX_BYTES + 1) as u64;
     let mut buf = Vec::new();
     if let Err(e) = std::io::stdin().lock().take(cap1).read_to_end(&mut buf) {
         eprintln!("clavity curate-commit: reading stdin failed: {e}");
-        return 2;
+        return 1;
     }
     if buf.len() > golden_header::MAX_BYTES {
         eprintln!(
             "clavity curate-commit: input exceeds the {} byte cap",
             golden_header::MAX_BYTES
         );
-        return 1;
+        return 2;
     }
     let content = match String::from_utf8(buf) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("clavity curate-commit: stdin is not valid UTF-8: {e}");
-            return 1;
+            return 2;
         }
     };
     // Empty (or blank) input is bad input, never a request to wipe the region: `curate-commit < /dev/null`
     // once truncated the live GROWTH region to 0 bytes and exited 0. Mirrors the .NET twin in CliVerbs.cs.
     if content.trim().is_empty() {
         eprintln!("clavity curate-commit: stdin is empty; nothing written.");
-        return 1;
+        return 2;
     }
     // Mojibake tripwire - see the .NET twin in CliVerbs.cs for the full rationale. A heuristic over known
     // corruption families, NOT a blanket non-ASCII rejection: curate-commit is a faithful byte transport
@@ -742,12 +743,12 @@ fn curate_commit(cheatsheet: bool) -> i32 {
                  re-encoded it through the console code page); nothing written. Stream the file's raw \
                  bytes to stdin instead of piping text."
             );
-            return 1;
+            return 2;
         }
     }
     let Some(home) = user_home() else {
         eprintln!("clavity curate-commit: cannot locate home dir (USERPROFILE/HOME unset)");
-        return 2;
+        return 1;
     };
     let env_override = std::env::var("CLAVITY_GOLDEN_HEADER").ok();
     warn_if_file_shaped_override(env_override.as_deref());
@@ -778,14 +779,14 @@ fn curate_commit(cheatsheet: bool) -> i32 {
                 "clavity curate-commit: {what} in {}{via} is {actual} bytes, over the {cap} cap",
                 dir.display()
             );
-            1
+            2
         }
         Err(golden_header::CommitError::Io(e)) => {
             eprintln!(
                 "clavity curate-commit: writing {what} in {}{via} failed: {e}",
                 dir.display()
             );
-            2
+            1
         }
     }
 }

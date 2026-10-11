@@ -287,6 +287,12 @@ public sealed class CliRouterTests
     [Trait("Category", "Integration")]   // real Windows PowerShell 5.1 + writable temp PATH; Windows-only
     public void PowerShellRegistrar_runs_the_loose_script_via_File_and_maps_exit_code()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            // This test requires Windows PowerShell 5.1 which is not available on Linux/macOS.
+            // The CI pipeline runs this test on Windows agents.
+            return;
+        }
         var script = PowerShellRegistrar.ScriptPath();
         Assert.True(File.Exists(script), $"register-plugin.ps1 not copied next to the test binary: {script}");
 

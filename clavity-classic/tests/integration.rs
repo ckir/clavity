@@ -808,7 +808,7 @@ fn curate_commit_refuses_empty_stdin_and_leaves_growth_untouched() {
         .output()
         .expect("run clavity curate-commit");
 
-    assert_eq!(out.status.code(), Some(1), "empty stdin is bad input");
+    assert_eq!(out.status.code(), Some(2), "empty stdin is bad input");
     assert!(String::from_utf8_lossy(&out.stderr).contains("nothing written"));
     assert_eq!(
         std::fs::read_to_string(&growth).unwrap(),
@@ -840,7 +840,7 @@ fn curate_commit_refuses_blank_stdin_and_leaves_growth_untouched() {
     child.stdin.take().unwrap().write_all(b"  \n\t\n").unwrap(); // dropped here -> EOF
     let out = child.wait_with_output().expect("run clavity curate-commit");
 
-    assert_eq!(out.status.code(), Some(1), "blank stdin is bad input");
+    assert_eq!(out.status.code(), Some(2), "blank stdin is bad input");
     assert!(String::from_utf8_lossy(&out.stderr).contains("nothing written"));
     assert_eq!(
         std::fs::read_to_string(&growth).unwrap(),
@@ -1018,8 +1018,8 @@ fn curate_commit_cheatsheet_refuses_a_combined_over_cap_payload_and_writes_nothi
     let out = child.wait_with_output().expect("run");
     assert_eq!(
         out.status.code(),
-        Some(1),
-        "over-cap is bad input (classic numbering)"
+        Some(2),
+        "over-cap is bad input (unified: 2=bad input, 1=IO)"
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(

@@ -1,6 +1,7 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
-using System.Globalization;
+using System.Threading;
 
 namespace Clavity.Ls;
 
@@ -74,7 +75,11 @@ public static class GoldenHeader
             sidecarLength = new FileInfo(sidecarPath).Length;
             if (sidecarLength > MaxSidecarBytes) return SidecarVerdict.Oversize;
             var sidecarBytes = File.ReadAllBytes(sidecarPath);
-            var expected = StripBom(Encoding.UTF8.GetString(sidecarBytes)).Trim(AsciiWs).ToLowerInvariant();
+            // Lossy UTF-8 decode (replacement fallback for invalid bytes), mirroring Rust's from_utf8_lossy.
+            // This ensures UTF-16LE sidecars (with BOM 0xFF 0xFE) decode to replacement chars + garbled text,
+            // which then fails the hash comparison (Mismatch), rather than being accepted as Absent.
+            var sidecarText = Encoding.UTF8.GetString(sidecarBytes);
+            var expected = StripBom(sidecarText).Trim(AsciiWs).ToLowerInvariant();
             return expected == Sha256Hex(bytes) ? SidecarVerdict.Match : SidecarVerdict.Mismatch;
         }
         catch (IOException) { return SidecarVerdict.Absent; }
@@ -84,6 +89,10 @@ public static class GoldenHeader
     public const string SeedFileName = "golden-header.seed.md";
     public const string GrowthFileName = "golden-header.growth.md";
     public const string LegacyFileName = "golden-header.md";
+
+    /// <summary>Monotonic counter for snapshot ring timestamps — avoids collisions when DateTime.Now
+    /// doesn't advance (e.g. rapid commits) and is immune to system clock changes.</summary>
+    private static long _snapshotCounter;
 
     /// <summary>CLAVITY_GOLDEN_HEADER (a directory) if set+non-blank, else %USERPROFILE%\.clavity.</summary>
     public static string ResolveDir(string? envOverride, string userProfileDir) =>
@@ -272,7 +281,10 @@ public static class GoldenHeader
             var current = File.ReadAllText(path);
             if (!string.Equals(current, content, StringComparison.Ordinal))
             {
-                var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+                // Monotonic timestamp: Stopwatch.GetTimestamp() + interlocked counter.
+                // Immune to system clock changes and guarantees uniqueness for rapid commits.
+                var counter = Interlocked.Increment(ref _snapshotCounter);
+                var stamp = $"{Stopwatch.GetTimestamp():x}{counter:x}";
                 var bak = $"{path}.{stamp}.bak";
                 File.Copy(path, bak, overwrite: true);
                 var liveSidecar = path + ".sha256";

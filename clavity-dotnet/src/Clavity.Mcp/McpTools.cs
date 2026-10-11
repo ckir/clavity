@@ -12,17 +12,21 @@ namespace Clavity.Mcp;
 [McpServerToolType]
 public class McpTools
 {
+    private readonly AgyView _view;
+
+    public McpTools(AgyView view) => _view = view;
+
     [McpServerTool(Name = "agy_look"), Description("Look at the active agy conversation's cascade trajectory as a size-bounded JSON summary (no verbose ids).")]
-    public static async Task<string> AgyLook(AgyView view, CancellationToken cancellationToken = default)
-        => await RunAsync(() => view.LookAsync(cancellationToken: cancellationToken));
+    public async Task<string> AgyLook(CancellationToken cancellationToken = default)
+        => await RunAsync(() => _view.LookAsync(cancellationToken: cancellationToken));
 
     [McpServerTool(Name = "agy_status"), Description("Report whether the active agy conversation is idle, working, or unknown (pre-fire check), plus cascade id and step count.")]
-    public static async Task<string> AgyStatus(AgyView view, CancellationToken cancellationToken = default)
-        => await RunAsync(() => view.StatusAsync(cancellationToken));
+    public async Task<string> AgyStatus(CancellationToken cancellationToken = default)
+        => await RunAsync(() => _view.StatusAsync(cancellationToken));
 
     [McpServerTool(Name = "agy_ask"), Description("Send a message to the active agy conversation and return agy's reply (size-bounded JSON) once the conversation goes idle. WRITE: consumes quota and posts a visible message in the user's agy.")]
-    public static async Task<CallToolResult> AgyAsk(
-        AgyView view, string message, IProgress<ProgressNotificationValue> progress,
+    public async Task<CallToolResult> AgyAsk(
+        string message, IProgress<ProgressNotificationValue> progress,
         string? discipline = null, string? artifactPath = null,
         CancellationToken cancellationToken = default)
     {
@@ -58,12 +62,12 @@ public class McpTools
         AskReply? reply13b = null;
         var json = await RunAsync(async () =>
         {
-            var r = await view.AskAsync(message, progress: relay, expectTerminal: expectTerminal, expectEcho: expectEcho, cancellationToken: cancellationToken);
+            var r = await _view.AskAsync(message, progress: relay, expectTerminal: expectTerminal, expectEcho: expectEcho, cancellationToken: cancellationToken);
             reply13b = r;
             return r;
         });
         var blocks = new List<ContentBlock> { new TextContentBlock { Text = json } };
-        var guidance = view.TryTakeGuidanceBlock();
+        var guidance = _view.TryTakeGuidanceBlock();
         if (guidance is not null) blocks.Add(new TextContentBlock { Text = guidance });
 
         // A reply delivered from a turn that ENDED while the conversation stayed busy. Independent of the 13b verdicts
@@ -176,7 +180,7 @@ public class McpTools
         // normal-looking result with no checks run - which is the compliance-theater failure in a
         // different costume: not a check that can be turned off, but one that was never turned on and
         // said nothing about it. This does NOT block the consult; it makes the gap visible.
-        if (expectTerminal is null && view.TryTakeUncheckedNotice())
+        if (expectTerminal is null && _view.TryTakeUncheckedNotice())
         {
             blocks.Add(new TextContentBlock
             {
@@ -252,5 +256,22 @@ public class McpTools
             // 2026-10-08 dry run).
             return JsonSerializer.Serialize(new { status = "error", exception = ex.GetType().Name, message = ex.Message });
         }
+    }
+
+    // Static wrappers for backward compatibility with tests that call McpTools.Method(view, ...) directly.
+    // These are NOT marked with [McpServerTool] so they don't affect schema generation.
+    public static async Task<string> AgyLook(AgyView view, CancellationToken cancellationToken = default)
+        => await RunAsync(() => view.LookAsync(cancellationToken: cancellationToken));
+
+    public static async Task<string> AgyStatus(AgyView view, CancellationToken cancellationToken = default)
+        => await RunAsync(() => view.StatusAsync(cancellationToken));
+
+    public static async Task<CallToolResult> AgyAsk(
+        AgyView view, string message, IProgress<ProgressNotificationValue> progress,
+        string? discipline = null, string? artifactPath = null,
+        CancellationToken cancellationToken = default)
+    {
+        var tools = new McpTools(view);
+        return await tools.AgyAsk(message, progress, discipline, artifactPath, cancellationToken);
     }
 }
