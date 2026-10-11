@@ -530,11 +530,11 @@ Describe 'agy-curate-nudge.sh' {
             # byte-identical on both of those cells, and the emitted message literally offers a "Snooze
             # for 7 days". The 6-day cell is where a shrunk window diverges - orig stays silent, the
             # one-hour mutant nudges.
-            (Get-Item -LiteralPath $snooze).LastWriteTime = (Get-Date).AddDays(-6)
+            (Get-Item -Force -LiteralPath $snooze).LastWriteTime = (Get-Date).AddDays(-6)
             $stillFresh = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
             $stillFresh.StdOut | Should -BeNullOrEmpty -Because 'six days is inside the documented 7-day window, so the opt-out must still hold'
 
-            (Get-Item -LiteralPath $snooze).LastWriteTime = (Get-Date).AddDays(-8)
+            (Get-Item -Force -LiteralPath $snooze).LastWriteTime = (Get-Date).AddDays(-8)
             $stale = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
             $stale.StdOut | Should -Match 'agy-curate nudge' -Because 'a snooze older than 7 days has expired and must NOT keep silencing the nudge'
         } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
