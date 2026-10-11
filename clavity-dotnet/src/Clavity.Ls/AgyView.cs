@@ -578,6 +578,8 @@ public sealed class AgyView
         // sawChannelDeath it reflects only the latest conclusive poll: a later death or a later successful
         // reach supersedes it.
         var sawUnanswered = false;
+        // The stale-endpoint-file note from the latest discovery miss (null when the file was absent or live).
+        string? staleEndpointNote = null;
 
         while (true)
         {
@@ -619,6 +621,7 @@ public sealed class AgyView
             catch (LsDiscoveryException ex)
             {
                 if (ex.PortNotListening) { sawUnanswered = false; reachedLsButEmpty = false; }
+                staleEndpointNote = ex.StaleEndpointNote;
             }
             catch (IOException) { }           // cli.log not present / not readable (yet, or any more).
             // A CSRF/auth refusal is DEFINITIVE, not a transient boot-race miss: retrying every poll until the
@@ -664,7 +667,9 @@ public sealed class AgyView
                     { PeerReachedButUnanswered = true };
                 throw new LsDiscoveryException(
                     $"agy Language Server not reachable within {_options.BootRaceTimeout} via {_options.CliLogPath}; " +
-                    "the agy session is still starting or has exited.");
+                    "the agy session is still starting or has exited." +
+                    (staleEndpointNote is null ? "" : " " + staleEndpointNote))
+                { StaleEndpointNote = staleEndpointNote };
             }
 
             await Task.Delay(_options.BootRacePollInterval, cancellationToken);
@@ -677,13 +682,26 @@ public sealed class AgyView
     /// from being dialed; a fresh publish or a relaunch refreshes it.</summary>
     private LsClient ConnectPreferringEndpoint()
     {
-        if (_options.EndpointPath is { Length: > 0 } epPath
-            && AgyEndpoint.TryRead(epPath) is { } ep
-            && _listening.IsListening(ep.Port))
+        string? staleNote = null;
+        if (_options.EndpointPath is { Length: > 0 } epPath && AgyEndpoint.TryRead(epPath) is { } ep)
         {
-            return LsClient.ConnectToEndpoint(ep);
+            if (_listening.IsListening(ep.Port)) return LsClient.ConnectToEndpoint(ep);
+            staleNote = $"The published endpoint file {epPath} points at port {ep.Port}, which is not listening " +
+                "(stale: agy restarted, or it published the wrong address).";
         }
-        return LsClient.Connect(LsDiscovery.ReadCliLogText(_options.CliLogPath), _listening);
+        try
+        {
+            return LsClient.Connect(LsDiscovery.ReadCliLogText(_options.CliLogPath), _listening);
+        }
+        catch (LsDiscoveryException ex) when (staleNote is not null)
+        {
+            throw new LsDiscoveryException(ex.Message)
+            {
+                PortNotListening = ex.PortNotListening,
+                PeerReachedButUnanswered = ex.PeerReachedButUnanswered,
+                StaleEndpointNote = staleNote,
+            };
+        }
     }
 
     /// <summary>The instance's most-recently-active conversation. Protobuf maps are UNORDERED on the wire, so the

@@ -40,6 +40,11 @@ public sealed class LsDiscoveryException : Exception
     /// This is the one discovery miss that is conclusive about the peer; an unreadable log or a log without port
     /// lines says nothing about a peer that was already reached (capstone Branch C R2).</summary>
     public bool PortNotListening { get; init; }
+
+    /// <summary>Set when a published endpoint file was present and valid but its port was NOT listening, so the
+    /// connect fell back to cli.log. That fallback's own failure says nothing about the file, so the note rides
+    /// along to be reported: a stale endpoint file is a second, independent cause (measured live 2026-10-12).</summary>
+    public string? StaleEndpointNote { get; init; }
 }
 
 /// <summary>

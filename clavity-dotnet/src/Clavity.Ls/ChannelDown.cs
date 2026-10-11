@@ -14,6 +14,10 @@ public static class ChannelDown
     /// It keeps the channel_down status (compatibility) but gets its own hint: retry, do not restart.</summary>
     public const string LsUnanswered = "LsUnanswered";
 
+    /// <summary>Diagnostic code for "discovery failed AND a published endpoint file named a dead port". Keeps the
+    /// channel_down status; the hint says relaunch agy, because only a new agy republishes its endpoint.</summary>
+    public const string LsEndpointStale = "LsEndpointStale";
+
     /// <summary>True if the exception is a channel death we should diagnose. Excludes a caller-cancel
     /// (RpcException StatusCode.Cancelled — F6). The AgyModelUnavailableException-wrapper clause is added in the
     /// F3 fold.</summary>
@@ -31,6 +35,7 @@ public static class ChannelDown
         { InnerException: RpcException rpc } => new ChannelDiagnostic(rpc.StatusCode.ToString(), DetailOf(rpc)),
         ObjectDisposedException => new ChannelDiagnostic("ObjectDisposed", ex.Message),
         LsDiscoveryException { PeerReachedButUnanswered: true } => new ChannelDiagnostic(LsUnanswered, ex.Message),
+        LsDiscoveryException { StaleEndpointNote: not null } => new ChannelDiagnostic(LsEndpointStale, ex.Message),
         LsDiscoveryException => new ChannelDiagnostic("LsDiscovery", ex.Message),
         _ => new ChannelDiagnostic(ex.GetType().Name, ex.Message),
     };
@@ -89,6 +94,11 @@ public static class ChannelDown
                 "likely BUSY mid-turn, not down. RETRY the call - the endpoint is re-resolved on every call, so " +
                 "there is nothing to reconnect. Only if repeated retries keep failing should you restart the " +
                 "Claude Code session (or the clavity-ls MCP server).";
+        if (d.StatusCode == LsEndpointStale)
+            return prefix + "Neither discovery path reaches a live agy: the published endpoint file is stale (see " +
+                "above) and so is the cli.log session. Restarting the Claude Code session will NOT clear this. " +
+                "Relaunch agy through clavity-ls (clavity-ls agy, or clavity start) so it gets its own log and " +
+                "republishes its endpoint, or have the running agy re-run the pairing Step 1 with its built-in shell tool.";
         return Classify(d) switch
         {
             // ResourceExhausted covers TWO causes and the code cannot tell them apart from the status alone:

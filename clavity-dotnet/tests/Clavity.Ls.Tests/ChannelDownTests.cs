@@ -108,6 +108,32 @@ public class ChannelDownTests
     }
 
     [Fact]
+    public void A_stale_endpoint_file_is_diagnosed_and_the_hint_says_relaunch_agy_not_restart_the_session()
+    {
+        // Measured live 2026-10-12: the endpoint file named a dead port AND the cli.log session was dead; restarting
+        // the Claude session cannot clear either. Only a relaunched agy republishes its endpoint.
+        var d = ChannelDown.Diagnose(new LsDiscoveryException("not reachable. file X is stale") { StaleEndpointNote = "file X is stale" });
+        var hint = ChannelDown.Hint(d);
+
+        Assert.Equal(ChannelDown.LsEndpointStale, d.StatusCode);
+        Assert.Contains("file X is stale", hint);
+        Assert.Contains("Relaunch agy", hint);
+        Assert.DoesNotContain("Restart the Claude Code session", hint);
+        Assert.Equal(ChannelDown.Status, ChannelDown.StatusFor(d)); // status stays channel_down (compatibility)
+    }
+
+    [Fact]
+    public void A_busy_peer_with_a_stale_note_is_still_told_to_retry()
+    {
+        // Distractor: PeerReachedButUnanswered proves the peer is alive, so it outranks the stale-file note.
+        var d = ChannelDown.Diagnose(new LsDiscoveryException("busy")
+            { PeerReachedButUnanswered = true, StaleEndpointNote = "file X is stale" });
+
+        Assert.Equal(ChannelDown.LsUnanswered, d.StatusCode);
+        Assert.Contains("RETRY", ChannelDown.Hint(d));
+    }
+
+    [Fact]
     public void Every_hint_names_the_status_code_and_detail_it_was_given()
     {
         // Distractor case: a fault we have not special-cased must still surface its real diagnostic
