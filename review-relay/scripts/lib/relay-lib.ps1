@@ -81,6 +81,8 @@ function Remove-SitePreamble {
 
 function Read-AiSaveCapture {
     # Spec 5.2 steps 2 and 4. Returns $null for a file that is not an AiSave capture.
+    # Format is the path the parser USED; DeclaredFormat is what the frontmatter CLAIMS ($null if absent). NoRoleMarkers is $true
+    # only for a complete aisave-dev/1 skeleton with no human and no assistant marker: the scraper fell back (R1).
     param([Parameter(Mandatory)][string]$Path)
     $raw = Get-Content -LiteralPath $Path -Raw -Encoding utf8
     if ($null -eq $raw) { return $null }
@@ -97,6 +99,7 @@ function Read-AiSaveCapture {
     $humanPart = $text
     $format = 'aisave'
     $usedMarkerPath = $false
+    $noRoleMarkers = $false
     $tagSearchStart = 0
 
     # MARKER path: an AiSaveDev (format: aisave-dev/1) capture carries an unambiguous per-turn
@@ -112,6 +115,9 @@ function Read-AiSaveCapture {
         $turnMarkers = @($turnRx.Matches($text))
         $endMatch = $endRx.Match($text)
         if ($endMatch.Success) {
+            # R1: a complete skeleton with NO human and NO assistant marker is a scraper that fell back (scrapeGeneric labels the page
+            # 'conversation'). A capture saved before the model answered still has its human marker, so it is not this.
+            $noRoleMarkers = (@($turnMarkers | Where-Object { $_.Groups[2].Value -in 'human', 'assistant' }).Count -eq 0)
             $humanMarkers = @($turnMarkers | Where-Object { $_.Groups[2].Value -eq 'human' })
             $searchFromIdx = if ($humanMarkers.Count -gt 0) { $humanMarkers[-1].Index } else { -1 }
             $assistantMarker = $turnMarkers | Where-Object { $_.Groups[2].Value -eq 'assistant' -and $_.Index -gt $searchFromIdx } | Select-Object -First 1
@@ -181,7 +187,7 @@ function Read-AiSaveCapture {
     $tag = $null
     $tm = [regex]::Match($text.Substring($tagSearchStart, $humanPart.Length - $tagSearchStart), '(?m)review-relay tag: ([a-z0-9][a-z0-9-]*)/round-(\d+)')
     if ($tm.Success) { $tag = [pscustomobject]@{ Review = $tm.Groups[1].Value; Round = [int]$tm.Groups[2].Value } }
-    [pscustomobject]@{ Path = $Path; Platform = $meta['platform']; Url = $meta['url']; Title = $meta['title']; Date = $meta['date']; Reply = $reply; Tag = $tag; Format = $format }
+    [pscustomobject]@{ Path = $Path; Platform = $meta['platform']; Url = $meta['url']; Title = $meta['title']; Date = $meta['date']; Reply = $reply; Tag = $tag; Format = $format; DeclaredFormat = $(if ($meta.ContainsKey('format')) { $meta['format'] } else { $null }); NoRoleMarkers = $noRoleMarkers }
 }
 
 function Get-ClosedFenceMask {
