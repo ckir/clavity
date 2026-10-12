@@ -51,9 +51,9 @@ cwd="$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null)"
 
 # Snooze: if the marker exists and is younger than 7 days, stay silent. The age comes from `find -mmin` (10080
 # minutes = 7 days), not `date -r <file>`: BSD/macOS date -r takes EPOCH SECONDS, so the GNU form read no mtime there
-# and the snooze was silently ignored (ROADMAP section 75). Granularity is one minute. BSD find -mmin is from
+# and the snooze was silently ignored (ROADMAP section 75). -L keeps date -r symlink-following. Granularity is one minute. BSD find -mmin is from
 # documentation, not measured on a BSD box.
-if [ -f "$SNOOZE" ] && [ -n "$(find "$SNOOZE" -mmin -10080 2>/dev/null)" ]; then exit 0; fi
+if [ -f "$SNOOZE" ] && [ -n "$(find -L "$SNOOZE" -mmin -10080 2>/dev/null)" ]; then exit 0; fi
 
 [ -f "$OBS" ] || exit 0
 # Count entries under "## Pending" (lines beginning with "- ["), and find the OLDEST entry date
