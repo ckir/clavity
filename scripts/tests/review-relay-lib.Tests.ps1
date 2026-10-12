@@ -245,6 +245,22 @@ VERDICT: NOT READY
         $c.Reply | Should -BeNullOrEmpty
         $c.Format | Should -BeExactly 'aisave'
     }
+    It 'exposes the DECLARED format of a capture whose marker skeleton is missing (R1)' {
+        # A scraper that fell back (layout drift) still writes format: aisave-dev/1 + a nonce, but no
+        # role markers, so the parser drops to the H2 path: Format stays 'aisave' and the reply is empty.
+        # collect needs the declared value to tell this from a plain AiSave capture.
+        $text = "---`ntitle: ""Conversation""`ndate: 2026-10-12`nurl: https://example.invalid/drift`nplatform: ChatGPT`nformat: aisave-dev/1`nnonce: 0123456789ab`n---`n`nthe whole page as one blob`n"
+        $path = Join-Path $TestDrive 'drifted.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Format | Should -BeExactly 'aisave'
+        $c.Reply | Should -BeNullOrEmpty
+        $c.DeclaredFormat | Should -BeExactly 'aisave-dev/1'
+    }
+    It 'reports no declared format for a plain AiSave capture (R1 distractor)' {
+        $c = Read-AiSaveCapture (Join-Path $script:Fx 'gemini-inline.md')
+        $c.DeclaredFormat | Should -BeNullOrEmpty
+    }
     It 'takes the reply from the NEW exchange in a two-exchange capture, not the old one (H2)' {
         $text = @"
 ---

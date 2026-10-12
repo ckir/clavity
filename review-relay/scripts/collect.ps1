@@ -120,7 +120,12 @@ foreach ($item in $captures) {
     if ([string]::IsNullOrWhiteSpace($replyBody)) {
         $replyBody = '(This capture has no reply - it has no "## Assistant" section. It was probably saved before the model finished answering. Save it again once the answer is complete.)'
         $hint = ''
-        if ($c.Format -eq 'aisave') {
+        if ($c.Format -eq 'aisave' -and $c.DeclaredFormat -eq 'aisave-dev/1') {
+            # R1: AiSaveDev already saved this file, but its scraper fell back (the site's layout drifted) and wrote no turn
+            # markers. "Save it again with AiSaveDev" would be wrong advice.
+            $hint = ' AiSaveDev could not find the turns on this page - the site may have changed.'
+            $replyBody = $replyBody.TrimEnd(')') + $hint + ')'
+        } elseif ($c.Format -eq 'aisave') {
             # G2 (owner ruling 2026-09-29): a plain AiSave capture has no unambiguous turn delimiter,
             # so a reply that quotes its own "---" + "## Human" (a transcript in a code block, say) hides
             # the reply. The parser is left alone; the failure stays loud and names the fix.

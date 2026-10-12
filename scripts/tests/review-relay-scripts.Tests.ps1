@@ -331,6 +331,21 @@ Please review this.
         $collected | Should -Match 'save it again with AiSaveDev instead'
         $r.Out | Should -Match 'save it again with AiSaveDev instead'
     }
+    It 'blames the site, not the format, when an AiSaveDev capture has no reply (R1)' {
+        # The file says format: aisave-dev/1 but carries no role markers: the scraper fell back. Telling
+        # the owner to "save it again with AiSaveDev" is wrong - AiSaveDev already saved it.
+        $text = "---`ntitle: ""Conversation""`ndate: 2026-10-12`nurl: https://example.invalid/drift`nplatform: ChatGPT`nformat: aisave-dev/1`nnonce: 0123456789ab`n---`n`nthe whole page as one blob`n"
+        Set-Content -LiteralPath (Join-Path $script:Inbox 'drifted.md') -Value $text -NoNewline
+        (Get-Item (Join-Path $script:Inbox 'drifted.md')).LastWriteTimeUtc = $script:After
+        $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r.Exit | Should -Be 0 -Because $r.Out
+        $collected = Get-Content -Raw (Join-Path $script:RoundDir 'collected.md')
+        $collected | Should -Match 'This capture has no reply'
+        $collected | Should -Match 'AiSaveDev could not find the turns on this page'
+        $collected | Should -Not -Match 'save it again with AiSaveDev instead'
+        $r.Out | Should -Match 'AiSaveDev could not find the turns on this page'
+        $r.Out | Should -Not -Match 'save it again with AiSaveDev instead'
+    }
     It 'a re-run leaves exactly one numbered copy per capture' {
         Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox
         (Get-Item (Join-Path $script:Inbox 'gemini-inline.md')).LastWriteTimeUtc = $script:After

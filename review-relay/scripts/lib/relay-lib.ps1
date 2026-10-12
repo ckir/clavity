@@ -81,6 +81,8 @@ function Remove-SitePreamble {
 
 function Read-AiSaveCapture {
     # Spec 5.2 steps 2 and 4. Returns $null for a file that is not an AiSave capture.
+    # Format is the path the parser USED; DeclaredFormat is what the frontmatter CLAIMS ($null if absent). They differ when
+    # a scraper fell back and the marker skeleton is missing (R1), which collect reports differently from a plain capture.
     param([Parameter(Mandatory)][string]$Path)
     $raw = Get-Content -LiteralPath $Path -Raw -Encoding utf8
     if ($null -eq $raw) { return $null }
@@ -181,7 +183,7 @@ function Read-AiSaveCapture {
     $tag = $null
     $tm = [regex]::Match($text.Substring($tagSearchStart, $humanPart.Length - $tagSearchStart), '(?m)review-relay tag: ([a-z0-9][a-z0-9-]*)/round-(\d+)')
     if ($tm.Success) { $tag = [pscustomobject]@{ Review = $tm.Groups[1].Value; Round = [int]$tm.Groups[2].Value } }
-    [pscustomobject]@{ Path = $Path; Platform = $meta['platform']; Url = $meta['url']; Title = $meta['title']; Date = $meta['date']; Reply = $reply; Tag = $tag; Format = $format }
+    [pscustomobject]@{ Path = $Path; Platform = $meta['platform']; Url = $meta['url']; Title = $meta['title']; Date = $meta['date']; Reply = $reply; Tag = $tag; Format = $format; DeclaredFormat = $(if ($meta.ContainsKey('format')) { $meta['format'] } else { $null }) }
 }
 
 function Get-ClosedFenceMask {
