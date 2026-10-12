@@ -93,8 +93,15 @@ A bare "review-only" once let the peer write to the tree anyway. Wrap each consu
 4. **Point at files, not summaries** - write the fork/options to `.clavity/seams/<topic>.md` and send
    the peer the PATH; let it read the artifact itself. Never consult it on a pasted summary of your own
    measurements. Any measure-and-reproduce framing MUST name the scratch dir
-   (`.clavity/scratch/<topic>/`) in the payload so the peer never writes to cwd. Prepare that
-   directory through the shipped writer FIRST - it asserts the `.clavity/` shield before anything is
+   (`.clavity/scratch/<topic>/`) in the payload so the peer never writes to cwd.
+   A named scratch directory does not bind a build's output, which lands in the working
+   directory: any build, compile or throwaway test program the peer must run to measure
+   something goes to a directory OUTSIDE the repository (for example
+   `${TMPDIR:-/tmp}/agy-<topic>/`, named in the payload), and anything it writes inside the
+   repository outside `.clavity/scratch/<topic>/` is a breach. The shipped writer below prepares
+   only the in-repository paths; the out-of-repository directory is the peer's own `mkdir`.
+   Prepare the scratch directory
+   through the shipped writer FIRST - it asserts the `.clavity/` shield before anything is
    written there, and it fails closed:
 
 ```bash

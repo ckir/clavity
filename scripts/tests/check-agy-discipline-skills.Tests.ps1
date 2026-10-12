@@ -968,6 +968,28 @@ Describe 'check-agy-discipline-skills' {
             Remove-Item -Recurse -Force $scratch
         }
 
+        It 'REJECTS <skill> when the out-of-repository build location is stripped' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # A named scratch directory does not bind a build's output: a build the peer runs lands in the
+            # working directory. The skill must send such builds OUTSIDE the repository. The scratch-dir row
+            # above cannot catch its absence, so this is a SEPARATE Fail with its own row.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $real.Contains('goes to a directory OUTSIDE the repository') | Should -BeTrue -Because "the fixture needs the clause present in $skill before it can be stripped"
+            $body = $real.Replace('goes to a directory OUTSIDE the repository', '')
+            $body | Should -Not -Be $real -Because 'the strip must take effect'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            (Get-LintText $out) | Should -Match 'names no out-of-repository build location'
+            Remove-Item -Recurse -Force $scratch
+        }
+
         It 'REJECTS agy-capstone when the strictness line is no longer BLOCKQUOTED' {
             # THE ISOLATING ROW, and the reason its sibling's assertion had to be split in two.
             # The existing 'strictness line gone' case replaces the very phrase the KEY-LIST regex is

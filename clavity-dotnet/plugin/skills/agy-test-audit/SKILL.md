@@ -148,6 +148,12 @@ A bare "review-only" once let the peer write to the tree anyway. Wrap each consu
    `.clavity/seams/<topic>.md` and send the peer the PATH; let it read the committed test+source files
    itself. Never consult it on a pasted summary of your own reading. Any measure-and-reproduce framing
    MUST name a scratch dir (`.clavity/scratch/<topic>/`) so the peer never writes to cwd.
+   A named scratch directory does not bind a build's output, which lands in the working
+   directory: any build, compile or throwaway test program the peer must run to measure
+   something goes to a directory OUTSIDE the repository (for example
+   `${TMPDIR:-/tmp}/agy-<topic>/`, named in the payload), and anything it writes inside the
+   repository outside `.clavity/scratch/<topic>/` is a breach. The shipped writer below prepares
+   only the in-repository paths; the out-of-repository directory is the peer's own `mkdir`.
    Prepare BOTH through the shipped writer before writing into them. Each takes a concrete FILE path,
    never a directory - passing `scratch/<topic>/` would create `.clavity/scratch` and not
    `.clavity/scratch/<topic>`, and the next write would fail mid-run:

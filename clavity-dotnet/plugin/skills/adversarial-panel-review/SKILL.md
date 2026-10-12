@@ -56,7 +56,14 @@ A bare "review-only" once let the peer write to the tree anyway, and this reposi
 3. **Permission to pass** - the peer may decline or say it needs more; it must not act.
 4. **Point at files, not summaries** - you already send the artifact's PATH rather than its text.
    Any measure-and-reproduce framing MUST also name a scratch dir (`.clavity/scratch/<topic>/`) so
-   the peer never writes to cwd. Prepare it through the shipped writer FIRST - it asserts the
+   the peer never writes to cwd.
+   A named scratch directory does not bind a build's output, which lands in the working
+   directory: any build, compile or throwaway test program the peer must run to measure
+   something goes to a directory OUTSIDE the repository (for example
+   `${TMPDIR:-/tmp}/agy-<topic>/`, named in the payload), and anything it writes inside the
+   repository outside `.clavity/scratch/<topic>/` is a breach. The shipped writer below prepares
+   only the in-repository paths; the out-of-repository directory is the peer's own `mkdir`.
+   Prepare the scratch directory through the shipped writer FIRST - it asserts the
    `.clavity/` shield before anything is written there, and it fails closed. It takes a concrete
    FILE path, never a bare directory:
 

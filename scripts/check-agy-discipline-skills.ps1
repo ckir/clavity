@@ -380,6 +380,17 @@ $skillRules = @(
            }
        } }
 
+    # A named scratch directory does not bind a build's output, which lands in the working directory. The
+    # skill must send any build the peer runs OUTSIDE the repository. Like its siblings this proves
+    # PRESENCE of the whole distinctive clause, not meaning.
+    @{ Name = 'sanctioned out-of-repository build location'
+       AppliesTo = { param($ctx, $rule) $true }
+       Check = { param($ctx, $rule)
+           if (-not $ctx.Raw.Contains('goes to a directory OUTSIDE the repository')) {
+               $ctx.Report("$($ctx.Rel) : names no out-of-repository build location - a measure-and-reproduce consult's build would land in the repository")
+           }
+       } }
+
     # 21.1 the ANTI-WRAP-UP clause. MEASURED: several review rounds had their ENTIRE report displaced by a
     # closing pleasantry ("standing by for your feedback"), because what the driver collects is the peer's
     # FINAL message - and every one of those rounds already demanded a terminal token, so the token alone
