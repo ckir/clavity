@@ -286,21 +286,16 @@ live=0
 # deliberately given up. The ONE thing that still speaks under it is an ownership note. ---
 # ROADMAP section 31, the cries-wolf class: every exit here is exit 0 with stderr untouched, because a
 # non-zero SessionStart hook renders as a RED "SessionStart:<source> hook error".
-# _emit <user-visible text, may be EMPTY> <model text>
+# _emit <user-visible text> <model text>: both surfaces, always; since section 80 no caller passes an empty
+# first argument (the model-only mode the old kill-switch announcement used was removed).
 #
 # THE TWO SURFACES ARE ADDRESSED SEPARATELY, and that is the whole point. MEASURED 2026-09-04, recorded
 # at agy-anomaly-reminder.sh:16-23: `systemMessage` is what the OWNER sees; `hookSpecificOutput.
 # additionalContext` is what the MODEL receives; plain stdout reaches neither.
 #
-# AN EMPTY FIRST ARGUMENT OMITS THE systemMessage KEY ENTIRELY, so the notice still reaches the model
-# while the owner's terminal stays clean. That is what lets a fact be DIAGNOSTIC without being an ALERT.
 # jq owns the escaping: these strings carry paths and the ownership note's own newlines.
 _emit() {
-  if [ -n "$1" ]; then
-    jq -nc --arg u "$1" --arg m "$2" '{systemMessage:$u,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
-  else
-    jq -nc --arg m "$2" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
-  fi
+  jq -nc --arg u "$1" --arg m "$2" '{systemMessage:$u,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
   exit 0
 }
 

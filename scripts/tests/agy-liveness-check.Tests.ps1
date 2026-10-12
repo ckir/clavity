@@ -172,8 +172,7 @@ Describe 'agy-liveness-check.sh' {
         } finally { Remove-TestPath $cfg, $h }
     }
     # --- .no-agy at the REPO ROOT, session cwd in a SUBDIRECTORY ---------------------------------
-    # This hook exists to say LOUDLY and TRUTHFULLY why the disciplines are off, so naming a path that
-    # does not exist is a defect in the one hook meant to prevent confusion. Every other test here
+    # A ROOT .no-agy must silence a session started in a SUBDIRECTORY. Every other test here
     # forward-slashes cwd; these feed the raw backslashed shape the real payload carries.
     It 'a ROOT .no-agy silences a session started in a SUBDIRECTORY' {
         $repo = $null; $cfg = $null; $h = $null

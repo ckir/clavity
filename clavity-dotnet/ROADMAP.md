@@ -4291,7 +4291,7 @@ Split out of §31 on 2026-10-08. The original sentence, verbatim from §31's hea
 
 > ⚠ **OPEN, deliberately not decided here: whether `.no-agy` should make this hook SILENT rather than announce its suppression.**
 
-**Built.** Under `.no-agy` the hook is now silent: it prints nothing at all, both with and without `jq`. The ownership notes and the settings-unreadable note still reach the owner, without the suppression sentence. The trade: the model is no longer told at boot why the disciplines are off; the sibling hooks were already silent under `.no-agy`. The owner ruling of 2026-10-08 resolves the open sentence quoted from section 31 above.
+**Built.** Under `.no-agy` the hook is now silent: it prints nothing unless an ownership or settings-unreadable note applies (the no-`jq` path has no ownership check, so it is always silent). The ownership notes and the settings-unreadable note still reach the owner, without the suppression sentence. The trade: the model is no longer told at boot why the disciplines are off; the sibling hooks were already silent under `.no-agy`. The owner ruling of 2026-10-08 resolves the open sentence quoted from section 31 above. The owner confirmed this behavior, including the ownership exception, in chat on 2026-10-12.
 
 ### §81 — The script suites run one process at a time: a parallel, process-per-file lane for the fast and slow halves
 
