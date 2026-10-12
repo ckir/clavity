@@ -144,7 +144,10 @@ Describe 'agy-liveness-check.sh' {
             $r.ExitCode | Should -Be 0
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
-    It 'reports .no-agy in cwd to the MODEL ONLY, and does NOT also emit the superpowers/jq notice' {
+    # ROADMAP section 80 (owner ruling): a `.no-agy` kill-switch makes this hook print NOTHING. Every silent
+    # row below uses a fixture where the hook WOULD speak without `.no-agy` (superpowers disabled, or no jq):
+    # on a live install the hook is silent anyway, so a silent row there could not tell the two apart.
+    It 'is SILENT (exit 0, no output, no stderr) under .no-agy in cwd, even with superpowers disabled' {
         $repo = $null; $cfg = $null; $h = $null
         try {
             $repo = New-TempRepo; $cfg = New-ConfigFixture $false; $h = New-CleanHome  # superpowers disabled too
@@ -152,37 +155,27 @@ Describe 'agy-liveness-check.sh' {
             $cwd = ($repo -replace '\\','/')
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $cwd) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.ExitCode | Should -Be 0
-            $r.StdOut   | Should -Match 'suppressed by .no-agy'
-            $r.StdOut   | Should -Not -Match 'superpowers not detected'   # no triple-spam
-            ($r.StdOut -split "`n").Count | Should -Be 1
-
-            # THE SURFACE SPLIT, and a substring match cannot see it. Settled by AGY-NEGOTIATE
-            # 2026-09-08: `.no-agy` is a CHOSEN STATE, not an actionable fault, so it reaches the MODEL
-            # and not the owner's screen. Asserting only that the text appears in stdout would pass
-            # identically whether it arrived as `systemMessage` (owner sees a notice at every single
-            # start) or as `additionalContext` (owner sees nothing) - the two outcomes this decision is
-            # entirely about. Parse the envelope and name the key.
-            $j = $r.StdOut | ConvertFrom-Json
-            $j.PSObject.Properties.Name | Should -Not -Contain 'systemMessage' -Because 'a state the owner chose demands no action, and a boot notice that demands nothing trains them to ignore the ones that do'
-            $j.hookSpecificOutput.additionalContext | Should -Match 'suppressed by \.no-agy' -Because 'the model must still be able to answer "why are the disciplines not firing" with the exact path'
+            $r.StdOut   | Should -BeNullOrEmpty
+            $r.StdErr   | Should -BeNullOrEmpty
         } finally { Remove-TestPath $repo, $cfg, $h }
     }
-    It 'announces a global $HOME/.claude/.no-agy' {
+    It 'is SILENT under a global $HOME/.claude/.no-agy, with superpowers disabled' {
         $cfg = $null; $h = $null
         try {
-            $cfg = New-ConfigFixture $true
+            $cfg = New-ConfigFixture $false
             $h = New-CleanHome
             New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.ExitCode | Should -Be 0
-            $r.StdOut   | Should -Match 'suppressed by .no-agy'
+            $r.StdOut   | Should -BeNullOrEmpty
+            $r.StdErr   | Should -BeNullOrEmpty
         } finally { Remove-TestPath $cfg, $h }
     }
     # --- .no-agy at the REPO ROOT, session cwd in a SUBDIRECTORY ---------------------------------
     # This hook exists to say LOUDLY and TRUTHFULLY why the disciplines are off, so naming a path that
     # does not exist is a defect in the one hook meant to prevent confusion. Every other test here
     # forward-slashes cwd; these feed the raw backslashed shape the real payload carries.
-    It 'names the ROOT .no-agy path when suppressed from a subdirectory (still, in the model half)' {
+    It 'a ROOT .no-agy silences a session started in a SUBDIRECTORY' {
         $repo = $null; $cfg = $null; $h = $null
         try {
             $repo = New-TempRepo; $cfg = New-ConfigFixture $false; $h = New-CleanHome
@@ -191,9 +184,9 @@ Describe 'agy-liveness-check.sh' {
             New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
             $payload = '{"cwd":"' + ($sub -replace '\\', '\\') + '","source":"startup","hook_event_name":"SessionStart"}'
             $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
-            $r.ExitCode | Should -Be 0 -Because 'SessionStart announces and stops - it must NOT exit 0 silently'
-            $r.StdOut   | Should -Match 'suppressed by \.no-agy' -Because 'a root opt-out must suppress it from a subdirectory'
-            $r.StdOut   | Should -Not -Match 'src[\\/]\.no-agy' -Because 'it must name the file that actually exists, not the cwd candidate'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -BeNullOrEmpty
+            $r.StdErr   | Should -BeNullOrEmpty
         } finally { Remove-TestPath $repo, $cfg, $h }
     }
     It 'still ADVISES from that same subdirectory when .no-agy is absent (positive control)' {
@@ -208,9 +201,7 @@ Describe 'agy-liveness-check.sh' {
             $r.StdOut | Should -Match 'superpowers'               -Because 'it must still deliver its real advisory'
         } finally { Remove-TestPath $repo, $cfg, $h }
     }
-    It 'no-jq: announces the ROOT .no-agy from a subdirectory, not the literal ./.no-agy' {
-        # The degraded path tested "./.no-agy" - the PROCESS cwd - and announced that literal string as the
-        # suppressing path whether or not any such file existed. Nothing covered it.
+    It 'no-jq: a ROOT .no-agy silences a subdirectory session, with no jq warning either' {
         $repo = $null; $h = $null
         try {
             $repo = New-TempRepo; $h = New-CleanHome
@@ -220,10 +211,20 @@ Describe 'agy-liveness-check.sh' {
             $payload = '{"cwd":"' + ($sub -replace '\\', '\\') + '","source":"startup","hook_event_name":"SessionStart"}'
             $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ PATH = $script:NoJqPath; HOME = $h }
             $r.ExitCode | Should -Be 0
-            $r.StdOut   | Should -Match 'suppressed by \.no-agy' -Because 'the degraded path must honour the same root opt-out'
-            $r.StdOut   | Should -Not -Match 'missing jq'        -Because 'one announce, not two - the kill-switch wins'
-            $r.StdOut   | Should -Not -Match '\./\.no-agy'       -Because 'it must name the real file, not the process-cwd placeholder'
+            $r.StdOut   | Should -BeNullOrEmpty
+            $r.StdErr   | Should -BeNullOrEmpty
         } finally { Remove-TestPath $repo, $h }
+    }
+    It 'no-jq: a global $HOME/.claude/.no-agy is silent too' {
+        $h = $null
+        try {
+            $h = New-CleanHome
+            New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ PATH = $script:NoJqPath; HOME = $h }
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -BeNullOrEmpty
+            $r.StdErr   | Should -BeNullOrEmpty
+        } finally { Remove-TestPath $h }
     }
     It 'no-jq: still warns about jq from that subdirectory when .no-agy is absent (degraded control)' {
         $repo = $null; $h = $null
@@ -295,17 +296,26 @@ Describe 'agy-liveness-check.sh' {
             New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
             $r.ExitCode | Should -Be 0
-            $r.StdOut   | Should -Match 'suppressed by .no-agy'
-            $r.StdOut   | Should -Match 'agy-liveness-check'
-
-            # CONSTRAINT 5 IS THE EXCEPTION TO THE SURFACE SPLIT, and it is the whole reason the
-            # kill-switch branch is not simply model-only. An override IS an actionable fault - someone
-            # has personally registered a shipped hook - so it must reach the OWNER even here, or the
-            # kill-switch becomes a way to hide one. The suppression text rides along in the model half.
             $j = $r.StdOut | ConvertFrom-Json
-            $j.systemMessage | Should -Match 'agy-liveness-check' -Because 'a gate the policed party can switch off is not a gate'
-            $j.systemMessage | Should -Not -Match 'suppressed by \.no-agy' -Because 'the override earns the screen; the chosen state that hid it does not'
-            $j.hookSpecificOutput.additionalContext | Should -Match 'suppressed by \.no-agy'
+            $j.systemMessage | Should -Match 'agy-liveness-check' -Because 'an override IS an actionable fault, so it reaches the owner even under .no-agy: a gate the policed party can switch off is not a gate'
+            $j.hookSpecificOutput.additionalContext | Should -Match 'agy-liveness-check'
+            $j.hookSpecificOutput.additionalContext | Should -Not -Match 'suppressed by' -Because 'ROADMAP section 80: the kill-switch is no longer announced'
+            $r.StdOut | Should -Not -Match 'suppressed by'
+        } finally { Remove-TestPath $cfg, $h }
+    }
+
+    It 'STILL reports an unreadable settings file under .no-agy, and still says nothing about suppression' {
+        $cfg = $null; $h = $null
+        try {
+            $cfg = New-ConfigFixture $true; $h = New-CleanHome
+            '{not json' | Set-Content (Join-Path $cfg 'settings.json') -Encoding ascii
+            New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
+            $r.ExitCode | Should -Be 0
+            $j = $r.StdOut | ConvertFrom-Json
+            $j.systemMessage | Should -Match 'settings unreadable'
+            $r.StdOut | Should -Not -Match 'suppressed by'
+            $r.StdOut | Should -Not -Match 'superpowers not detected'
         } finally { Remove-TestPath $cfg, $h }
     }
 

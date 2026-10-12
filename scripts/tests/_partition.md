@@ -696,7 +696,7 @@ agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new
                                                                       idle CPU; 11,1s cold. It will not be the
                                                                       cold-start absorber in this half
 agy-consult-recovery.Tests.ps1                  280,0s   41 tests   <- SLOW, ADDED 2026-09-13 (section 15 consult-recovery). Time is spawn-latency-dominated (~6s/hook: this box AV-scans each bash/git/date) and MEASURED ONLY UNDER CONTENTION - NOT a clean idle figure; re-measure idle before trusting it. Count 30->37 by the section-15 AGY-TEST-AUDIT (this row lagged at 29 from the suite's initial state; corrected 2026-09-14). Slow-half by design: cannot fit the fast cap at this per-call cost.; 38 -> 40 2026-10-06 (Branch 20: +2 keyword-classifier rows), time not re-measured; 40 -> 41 2026-10-06 (Branch 20 capstone R1: +1 loud bash < 4.3 row), time not re-measured
-agy-liveness-check.Tests.ps1                     56,4s   41 tests   <- SLOW, re-measured 2026-08-06 (+4); 40 -> 41 2026-10-06 (Branch 20: +1 multi-document settings row), time not re-measured
+agy-liveness-check.Tests.ps1                     56,4s   43 tests   <- SLOW, re-measured 2026-08-06 (+4); 40 -> 41 2026-10-06 (Branch 20: +1 multi-document settings row), time not re-measured; 41 -> 43 2026-10-12 (section 80: +2 rows), time NOT re-measured
   33 -> 38 on 2026-09-30 (sweep Branch 2): the .clavity/ wiring check - two REPORTS rows and three near-miss
   rows. Runtime NOT re-measured.
   32 -> 33 on 2026-09-12 (anomaly triage): one row proving the hook stays SILENT on stderr when PATH holds
