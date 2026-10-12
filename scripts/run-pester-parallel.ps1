@@ -34,6 +34,10 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
 if ($Child) {
+    # NOT 'Stop' (the parent's setting above): the tests run in THIS process and inherit it, and Stop turns a non-terminating
+    # error inside a row into a failure that a plain Invoke-Pester never reports (measured 2026-10-12, agy-anomaly-reminder's
+    # '.git is a FILE' row). The runner must be exactly as strict as the gate it replaces, no stricter.
+    $ErrorActionPreference = 'Continue'
     Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $r = Invoke-Pester -Path $Child -Output None -PassThru

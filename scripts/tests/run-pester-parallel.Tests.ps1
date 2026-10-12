@@ -60,6 +60,18 @@ Describe 'run-pester-parallel' {
         $r.Exit | Should -Be 1 -Because $r.Out
     }
 
+    It 'does not change test semantics: a NON-terminating error inside a row must not fail it (plain Invoke-Pester agrees)' {
+        # Measured 2026-10-12: agy-anomaly-reminder's ".git is a FILE" row runs `(Get-Item <missing>).PSIsContainer | Should -BeFalse`.
+        # Under a plain Invoke-Pester the missing item is a non-terminating error and $null passes BeFalse. The runner set
+        # $ErrorActionPreference = 'Stop' for its OWN logic and that leaked into the child's Pester run, turning the same row red -
+        # a gate that is stricter than the one it replaces fails suites for a reason the real gate never would.
+        $ne = New-Suite 'non-terminating' "Describe 'nt' { It 'tolerates a non-terminating error' { (Get-Item (Join-Path `$TestDrive 'missing')).PSIsContainer | Should -BeFalse } }"
+        $plain = & pwsh -NoProfile -c "Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force; `$r = Invoke-Pester -Path '$ne' -Output None -PassThru; `$r.FailedCount" 2>&1 | Select-Object -Last 1
+        [string]$plain | Should -Be '0' -Because 'the premise: plain Invoke-Pester passes this row'
+        $r = Invoke-Runner -ExtraArgs @('-Files', $ne)
+        $r.Exit | Should -Be 0 -Because $r.Out
+    }
+
     Context 'recipe parsing (-ListOnly)' {
         It 'lists suites from the named recipe and ignores commented-out entries and the other recipes' {
             $jf = Join-Path $script:Work 'justfile'
