@@ -4209,7 +4209,8 @@ instead of one re-ask) that `e4e6c55d` closed. **Capstone folds:** R1 BS1 - a cu
 
 ### §75 — Agy hooks misread an inbox/table the author's editor wrote differently (CRLF on Linux awk, UTF-8 BOM, BSD `date -r`)
 
-**Status:** SCHEDULED 2026-10-08 - scheduled - Branch H
+**Status:** IMPLEMENTED 2026-10-12 - built on sweep/branch-h-s75 (`664f0bac`, `bf8c2c4b`, `c69d7181`)
+> **Previous status:** SCHEDULED 2026-10-08 - scheduled - Branch H
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (3 entries, Branch 21 test-audit and re-capstone), pre-existing, not yet planned**
 
 Three verified, pre-existing defects of one class - a hook assumes the file or the platform looks the way the shipping writer produces it:
@@ -4219,6 +4220,8 @@ Three verified, pre-existing defects of one class - a hook assumes the file or t
 3. **BSD `date -r`.** `agy-autotrain/hooks/agy-curate-nudge.sh:54` reads the snooze marker's age with GNU-only `date -r "$SNOOZE" +%s`; BSD/macOS `-r` is EPOCH SECONDS, so the 7-day snooze never silences the nudge (same class as §73, which fixed the age gate only). BSD semantics are from the man page, NOT measured here (no macOS).
 
 **Plan shape:** one branch; strip a trailing CR in the awk blocks and a leading BOM in the inbox readers, replace `date -r FILE` with the §73 approach; failing control first for each (WSL for 1, a BOM fixture for 2); item 3 stays unmeasured on a Mac, so test it with a `BASH_ENV` `date` shim as §73 did.
+
+**Built.** Three fixes. (1) A `{ sub(/\r$/, "") }` first rule in the awk programs of `agy-verify-reminder.sh` and `agy-curate-nudge.sh`. (2) A first-line-only UTF-8 BOM strip in the `agy-inbox-snapshot.sh` loop. (3) The curate-nudge snooze age now comes from `find -mmin -10080` instead of GNU-only `date -r` (one-minute granularity). MEASURED 2026-10-12 on gawk 5.3.2 (also mawk and busybox awk): a CRLF `assertions.md` gave the misleading NOROWS, and a CRLF inbox silenced the curate nudge for a 2020 entry (this entry had it as not measured on Linux); a BOM inbox gave 0 `.bak` for BOM+LF and BOM+CRLF against 1 for plain. Under a BSD `date -r` shim a fresh snooze no longer silenced the old code and does silence the new one (fresh and 6-day silent, 8-day nudges). Still unmeasured: BSD `date`/`find -mmin` semantics are read from documentation and shimmed, not run on a Mac; the Windows spawn-budget row `worst: snooze expired + 16 recent entries` was not run. The entry's claim that the same BOM shape likely exists in the other inbox readers was REFUTED by measurement: `agy-curate-nudge` and `agy-verify-reminder` both read a BOM file correctly because neither tests line 1. Side effect: the `agy-verify-reminder` fixture is now portable to Linux (PATH separator and exec bit), which turns its 4 Linux-only baseline failures green.
 
 ### §76 — `PluginInstaller.Clip` can split a UTF-16 surrogate pair
 
