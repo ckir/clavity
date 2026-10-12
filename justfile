@@ -111,6 +111,17 @@ test-scripts-fast:
 test-scripts-fast-parallel *args:
     pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Recipe test-scripts-fast {{args}}
 
+# PROTOTYPE: the SAME suite list as test-scripts-slow, one pwsh process per file, 4 at once, EXCLUDING hook-spawn-budget.
+# hook-spawn-budget is left out on purpose: its real measurement is a Windows Job Object harness that was never run under
+# parallel load on Windows (the Linux proxy only showed deterministic counts). So this lane is NOT the full slow gate - it
+# names the excluded suite in its output - and hook-spawn-budget must still be run serially (test-scripts-slow, or
+# `Invoke-Pester scripts/tests/hook-spawn-budget.Tests.ps1`). Measured 2026-10-12 on Linux/8 cores (49 files incl. that
+# one): single process 973/925s, 4 at once 345/322s, 8 at once 295/268s; Windows/CI UNMEASURED.
+# Add `-ShowMessages` (just test-scripts-slow-parallel -ShowMessages) to print each failing row's message, so a one-off flake can be
+# diagnosed from the run that failed.
+test-scripts-slow-parallel *args:
+    pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Recipe test-scripts-slow -Exclude hook-spawn-budget {{args}}
+
 # CADENCE: on no git hook at all, and it exceeds the 600s foreground tool cap. Run it before any release, and after any
 # change to a file listed as SLOW in scripts/tests/_partition.md. A recipe nobody runs is a retired test.
 # Slow script gate. EXCEEDS the 600s foreground tool cap - an agent MUST background this and read the

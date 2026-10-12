@@ -39,7 +39,7 @@ directly.
 | `check-skill-frontmatter.ps1` | Fail if any tracked `SKILL.md` frontmatter is not valid YAML (parsed by mikefarah `yq` v4, stricter than Claude Code), is not a mapping, lacks a non-empty string `name`/`description`, or has a `name` that differs from its directory - Claude Code loads such a skill with EMPTY metadata and never advertises it. Zero targets, a stale exclusion, or `yq` missing is exit 2, never a pass | `just check-skill-frontmatter` (lefthook pre-push; CI `ci-scripts.yml`) |
 | `check-dangling-consumers.ps1` | Fail when a binary reads a runtime filename FROM A NAMED CONSTANT that nothing in the repository DECLARES it produces | `just check-dangling-consumers` (lefthook pre-push; CI `ci-scripts.yml`) |
 | `check-injected-context.ps1` | Audit every file this repo injects into an agent's context (encoding, plan-residue, tag-hygiene, namespace, payload-budget, reference resolution). Discovery is SUBTRACTIVE: walk `$script:DomainRoots`, subtract `injected-context-ignore.txt`; per-file waivers live in `injected-context-exemptions.json` | `just check-injected-context` |
-| `run-pester-parallel.ps1` | PROTOTYPE: run a justfile recipe's Pester suites one pwsh process per file, N at a time, failing on a failed test, a non-Passed container, a missing file, or an empty list | `just test-scripts-fast-parallel` |
+| `run-pester-parallel.ps1` | PROTOTYPE: run a justfile recipe's Pester suites one pwsh process per file, N at a time, failing on a failed test, a non-Passed container, a missing file, an unmatched `-Exclude`, or an empty list; `-ShowMessages` prints each failing row's message | `just test-scripts-fast-parallel`, `just test-scripts-slow-parallel` (excludes hook-spawn-budget) |
 
 ## Seed / golden-header integrity
 

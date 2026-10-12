@@ -16,6 +16,11 @@
 .PARAMETER Recipe      justfile recipe whose Invoke-Pester list to run.
 .PARAMETER Justfile    justfile to read (default: the repo root's).
 .PARAMETER Files       explicit suite paths (comma-separated); overrides -Recipe.
+.PARAMETER Exclude     suites to leave out, by BASE name (the file name without .Tests.ps1), comma-separated. A name that matches no
+               suite is an error (a typo must not silently exclude nothing), and excluding every suite is an error. Excluded
+               suites are NAMED in the output: a lane that skips a suite must say so, because it is not a full gate.
+.PARAMETER ShowMessages  print each failing row's first error message (whitespace collapsed, cut at 300 chars) under its FAILED
+               name, so a flaky row that fails once can be diagnosed from the run that failed instead of a re-run.
 .PARAMETER ThrottleLimit  files running at once (default 4).
 .PARAMETER ListOnly    print the resolved suite paths and exit 0.
 .PARAMETER Child       internal: run ONE file and print a PESTER-RESULT line.
@@ -25,6 +30,8 @@ param(
     [string]$Recipe = 'test-scripts-fast',
     [string]$Justfile,
     [string[]]$Files,
+    [string[]]$Exclude,
+    [switch]$ShowMessages,
     [ValidateRange(1, 64)][int]$ThrottleLimit = 4,
     [switch]$ListOnly,
     [string]$Child
@@ -46,6 +53,11 @@ if ($Child) {
         passed = $r.PassedCount; failed = $r.FailedCount; skipped = $r.SkippedCount; notrun = $r.NotRunCount
         badContainers = @($r.Containers | Where-Object { $_.Result -ne 'Passed' } | ForEach-Object { [string]$_.Name }).Count
         failedNames = @($r.Failed | ForEach-Object { [string]$_.ExpandedPath })
+        # Always captured (cheap); the parent decides whether to print. One line, bounded, so a 2000-char assertion dump cannot flood a log.
+        failedMessages = @($r.Failed | ForEach-Object {
+            $m = if ($_.ErrorRecord) { ([string]$_.ErrorRecord[0].Exception.Message) -replace '\s+', ' ' } else { '' }
+            $m.Trim().Substring(0, [Math]::Min(300, $m.Trim().Length))
+        })
         secs = [math]::Round($sw.Elapsed.TotalSeconds, 1)
     }
     'PESTER-RESULT ' + ($summary | ConvertTo-Json -Compress -Depth 4)
@@ -71,6 +83,16 @@ else {
     $suites = @(Get-RecipeSuites $jf $Recipe)
 }
 
+$excluded = @()
+if ($Exclude) {
+    $names = @($Exclude | ForEach-Object { $_ -split ',' } | Where-Object { $_ } | ForEach-Object { $_.Trim() })
+    $base = { param($p) ([IO.Path]::GetFileName($p)) -replace '\.Tests\.ps1$', '' }
+    $unknown = @($names | Where-Object { $n = $_; -not (@($suites | Where-Object { (& $base $_) -eq $n }).Count) })
+    if ($unknown.Count -gt 0) { Write-Host ("run-pester-parallel: -Exclude names no suite in the list: " + ($unknown -join ', ')); exit 1 }
+    $excluded = @($suites | Where-Object { (& $base $_) -in $names })
+    $suites = @($suites | Where-Object { (& $base $_) -notin $names })
+}
+
 if ($ListOnly) { $suites; exit 0 }
 
 if ($suites.Count -eq 0) { Write-Host "run-pester-parallel: no suite files resolved (recipe '$Recipe'); an empty gate is not a green gate."; exit 1 }
@@ -78,6 +100,8 @@ if ($suites.Count -eq 0) { Write-Host "run-pester-parallel: no suite files resol
 $resolved = foreach ($s in $suites) { if ([IO.Path]::IsPathRooted($s)) { $s } else { Join-Path $root $s } }
 $missing = @($resolved | Where-Object { -not (Test-Path -LiteralPath $_) })
 if ($missing.Count -gt 0) { Write-Host ("run-pester-parallel: MISSING suite file(s): " + ($missing -join ', ')); exit 1 }
+
+foreach ($x in $excluded) { Write-Host ("EXCLUDED (not run): " + ((([IO.Path]::GetFileName($x)) -replace '\.Tests\.ps1$', ''))) }
 
 $self = $PSCommandPath
 $pwshExe = (Get-Process -Id $PID).Path
@@ -101,11 +125,15 @@ foreach ($r in ($results | Sort-Object File)) {
     $tot.passed += $s.passed; $tot.failed += $s.failed; $tot.skipped += $s.skipped; $tot.bad += $s.badContainers
     $flag = if ($s.failed -gt 0 -or $s.badContainers -gt 0) { 'FAIL' } else { 'ok  ' }
     Write-Host ("{0} {1} passed={2} failed={3} skipped={4} badContainers={5} secs={6}" -f $flag, $name, $s.passed, $s.failed, $s.skipped, $s.badContainers, $s.secs)
-    foreach ($n in @($s.failedNames)) { Write-Host "    FAILED $n" }
+    $names = @($s.failedNames); $msgs = @($s.failedMessages)
+    for ($i = 0; $i -lt $names.Count; $i++) {
+        Write-Host "    FAILED $($names[$i])"
+        if ($ShowMessages -and $i -lt $msgs.Count -and $msgs[$i]) { Write-Host "        $($msgs[$i])" }
+    }
 }
 
-Write-Host ("TOTAL files={0} passed={1} failed={2} skipped={3} badContainers={4} noResult={5} wall={6}s throttle={7}" -f
-    $resolved.Count, $tot.passed, $tot.failed, $tot.skipped, $tot.bad, $tot.noresult, [math]::Round($wall.Elapsed.TotalSeconds, 1), $ThrottleLimit)
+Write-Host ("TOTAL files={0} excluded={8} passed={1} failed={2} skipped={3} badContainers={4} noResult={5} wall={6}s throttle={7}" -f
+    $resolved.Count, $tot.passed, $tot.failed, $tot.skipped, $tot.bad, $tot.noresult, [math]::Round($wall.Elapsed.TotalSeconds, 1), $ThrottleLimit, $excluded.Count)
 
 if ($tot.failed -gt 0 -or $tot.bad -gt 0 -or $tot.noresult -gt 0) { exit 1 }
 exit 0

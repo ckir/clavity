@@ -72,6 +72,65 @@ Describe 'run-pester-parallel' {
         $r.Exit | Should -Be 0 -Because $r.Out
     }
 
+    Context '-ShowMessages (why a row failed, not just which)' {
+        It 'prints the failing row''s message under its FAILED name when asked' {
+            $r = Invoke-Runner -ExtraArgs @('-Files', "$script:Pass1,$script:Fail1", '-ShowMessages', '-ThrottleLimit', '2')
+            $r.Exit | Should -Be 1 -Because $r.Out
+            $r.Out | Should -Match 'FAILED f1\.this-row-fails'
+            $r.Out | Should -Match 'Expected 2, but got 1'
+        }
+
+        It 'does NOT print messages unless asked (the default output stays as terse as before)' {
+            $r = Invoke-Runner -ExtraArgs @('-Files', "$script:Pass1,$script:Fail1", '-ThrottleLimit', '2')
+            $r.Exit | Should -Be 1 -Because $r.Out
+            $r.Out | Should -Match 'FAILED f1\.this-row-fails'
+            $r.Out | Should -Not -Match 'Expected 2'
+        }
+
+        It 'collapses a multi-line message to one line and truncates a long one' {
+            $long = New-Suite 'long-msg' "Describe 'lm' { It 'multi' { throw ('first-line' + [Environment]::NewLine + 'second-line' + [Environment]::NewLine + ('x' * 2000)) } }"
+            $r = Invoke-Runner -ExtraArgs @('-Files', $long, '-ShowMessages')
+            $r.Exit | Should -Be 1 -Because $r.Out
+            $r.Out | Should -Match 'first-line second-line'
+            $r.Out | Should -Not -Match 'x{400}'
+        }
+    }
+
+    Context '-Exclude (suites a lane deliberately does not run)' {
+        It 'drops the named suite from the list by base name and keeps the others' {
+            $r = Invoke-Runner -ExtraArgs @('-Files', "$script:Pass1,$script:Pass2,$script:Fail1", '-Exclude', 'fail-one', '-ListOnly')
+            $r.Exit | Should -Be 0 -Because $r.Out
+            $lines = @($r.Out -split "`r?`n" | Where-Object { $_ -match '\.Tests\.ps1$' })
+            $lines | Should -Be @($script:Pass1, $script:Pass2)
+        }
+
+        It 'does not run an excluded failing suite, and says loudly that it was excluded' {
+            $r = Invoke-Runner -ExtraArgs @('-Files', "$script:Pass1,$script:Fail1", '-Exclude', 'fail-one', '-ThrottleLimit', '2')
+            $r.Exit | Should -Be 0 -Because $r.Out
+            $r.Out | Should -Match 'EXCLUDED \(not run\): fail-one'
+            $r.Out | Should -Match 'excluded=1'
+            $r.Out | Should -Not -Match 'this-row-fails'
+        }
+
+        It 'exits 1 when an exclusion matches nothing, so a typo cannot silently exclude nothing' {
+            $r = Invoke-Runner -ExtraArgs @('-Files', "$script:Pass1,$script:Pass2", '-Exclude', 'fail-on', '-ThrottleLimit', '2')
+            $r.Exit | Should -Be 1 -Because $r.Out
+            $r.Out | Should -Match 'fail-on'
+        }
+
+        It 'exits 1 when excluding leaves nothing to run' {
+            $r = Invoke-Runner -ExtraArgs @('-Files', $script:Pass1, '-Exclude', 'pass-one')
+            $r.Exit | Should -Be 1 -Because $r.Out
+        }
+
+        It 'matches a whole base name, not a substring (pass-one must not exclude pass-one-b)' {
+            $near = New-Suite 'pass-one-b' "Describe 'pb' { It 'z' { 1 | Should -Be 1 } }"
+            $r = Invoke-Runner -ExtraArgs @('-Files', "$script:Pass1,$near", '-Exclude', 'pass-one', '-ListOnly')
+            $r.Exit | Should -Be 0 -Because $r.Out
+            @($r.Out -split "`r?`n" | Where-Object { $_ -match '\.Tests\.ps1$' }) | Should -Be @($near)
+        }
+    }
+
     Context 'recipe parsing (-ListOnly)' {
         It 'lists suites from the named recipe and ignores commented-out entries and the other recipes' {
             $jf = Join-Path $script:Work 'justfile'
@@ -86,6 +145,16 @@ test-y:
             $r.Exit | Should -Be 0 -Because $r.Out
             $lines = @($r.Out -split "`r?`n" | Where-Object { $_ -match '\.Tests\.ps1$' })
             $lines | Should -Be @('a/dir/one.Tests.ps1', 'a/dir/two.Tests.ps1')
+        }
+
+        It 'the real slow recipe lists hook-spawn-budget, and -Exclude hook-spawn-budget removes exactly that one suite' {
+            $all = Invoke-Runner -ExtraArgs @('-Recipe', 'test-scripts-slow', '-ListOnly')
+            $cut = Invoke-Runner -ExtraArgs @('-Recipe', 'test-scripts-slow', '-Exclude', 'hook-spawn-budget', '-ListOnly')
+            $a = @($all.Out -split "`r?`n" | Where-Object { $_ -match '\.Tests\.ps1$' })
+            $c = @($cut.Out -split "`r?`n" | Where-Object { $_ -match '\.Tests\.ps1$' })
+            @($a | Where-Object { $_ -like '*/hook-spawn-budget.Tests.ps1' }).Count | Should -Be 1 -Because 'the exclusion must have something to exclude, or it is a no-op that looks like a lane'
+            $c.Count | Should -Be ($a.Count - 1)
+            @($c | Where-Object { $_ -like '*hook-spawn-budget*' }) | Should -BeNullOrEmpty
         }
 
         It 'parses the real test-scripts-fast recipe to files that all exist' {
