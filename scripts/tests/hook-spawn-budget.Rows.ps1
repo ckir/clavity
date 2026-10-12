@@ -81,8 +81,11 @@ function Add-FxSeams {
 }
 function ConvertTo-HookPayload { param([hashtable]$H) $H | ConvertTo-Json -Compress -Depth 6 }
 function New-ToolPayload {
-    param($Fx, [string]$Tool, [hashtable]$ToolInput, [switch]$NoGit)
-    ConvertTo-HookPayload @{ cwd = $Fx.RepoFwd; session_id = 's1'; tool_name = $Tool; tool_input = $ToolInput }
+    param($Fx, [string]$Tool, [hashtable]$ToolInput, [switch]$NoGit, [object[]]$Response = $null, [int]$DurationMs = 0)
+    $h = @{ cwd = $Fx.RepoFwd; session_id = 's1'; tool_name = $Tool; tool_input = $ToolInput }
+    if ($null -ne $Response) { $h.tool_response = $Response }
+    if ($DurationMs -gt 0) { $h.duration_ms = $DurationMs }
+    ConvertTo-HookPayload $h
 }
 function New-BashPayload { param($Fx, [string]$Command) New-ToolPayload $Fx 'Bash' @{ command = $Command } }
 function New-SessionStartPayload { param($Fx) ConvertTo-HookPayload @{ cwd = $Fx.RepoFwd; session_id = 's1'; hook_event_name = 'SessionStart'; source = 'startup' } }
@@ -151,6 +154,15 @@ $script:Rows = @(
         $null = Invoke-BashHook -HookPath (Join-Path $script:RepoRoot "$D/agy-consult-guard-pre.sh") -Payload $p -Env $fx.Env
         $p
     } -Fixture @{ NoClavity = $true } -Max $script:ConsultPin.PostMcp -Silent
+    # Inconclusive return: the consult was moved to the background, so the post hook emits the NOT VERIFIED notice.
+    # +1 over the clean pin: the `jq -nc` inside `emit`, the only process the notice path adds.
+    New-BudgetRow "$D/agy-consult-guard-post.sh" 'PINNED consult: MCP agy_ask, inconclusive return (after its pre)' {
+        param($fx)
+        $resp = @(@{ type = 'text'; text = 'MCP tool "plugin:clavity:clavity-ls/agy_ask" is still running after 120s. It was moved to the background as task t1 and keeps running.' })
+        $p = New-ToolPayload $fx $mcp @{ prompt = 'x' } -Response $resp -DurationMs 120005
+        $null = Invoke-BashHook -HookPath (Join-Path $script:RepoRoot "$D/agy-consult-guard-pre.sh") -Payload $p -Env $fx.Env
+        $p
+    } -Fixture @{ NoClavity = $true } -Max ($script:ConsultPin.PostMcp + 1) -Expect 'consult not finished'
     New-BudgetRow "$D/agy-consult-guard-post.sh" 'PINNED consult: clavity ask (after its pre)' {
         param($fx)
         $p = New-BashPayload $fx 'clavity ask "x" --review-only'
