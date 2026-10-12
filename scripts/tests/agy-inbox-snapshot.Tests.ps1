@@ -122,6 +122,38 @@ Describe 'agy-inbox-snapshot' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # ROADMAP section 75: a UTF-8 BOM (a Windows editor's Save) glues EF BB BF onto line 1, so the header test
+    # `'# agy observations inbox'*` never matched and the drain ran with NO snapshot. Raw bytes, as above.
+    It 'snapshots a UTF-8-BOM inbox (the BOM is part of line 1)' {
+        $r = New-PluginRoot $null
+        try {
+            $bytes = [byte[]](0xEF,0xBB,0xBF) + [Text.Encoding]::UTF8.GetBytes($script:Good)
+            [IO.File]::WriteAllBytes((Join-Path $r 'home/.clavity/agy-observations.md'), $bytes)
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
+            BakCount $r | Should -Be 1 -Because 'a BOM before the header must not hide the inbox header'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'snapshots a BOM + CRLF inbox' {
+        $r = New-PluginRoot $null
+        try {
+            $bytes = [byte[]](0xEF,0xBB,0xBF) + [Text.Encoding]::UTF8.GetBytes(($script:Good -replace "`n", "`r`n"))
+            [IO.File]::WriteAllBytes((Join-Path $r 'home/.clavity/agy-observations.md'), $bytes)
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
+            BakCount $r | Should -Be 1
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    # DISTRACTOR (passes before AND after): the BOM strip must not WIDEN the header test.
+    It 'does NOT snapshot a BOM file whose first line is not the inbox header' {
+        $r = New-PluginRoot $null
+        try {
+            $body = "# some other file`n`n## Pending`n`n- [assumption] (peer/probabilistic) a rule`n"
+            $bytes = [byte[]](0xEF,0xBB,0xBF) + [Text.Encoding]::UTF8.GetBytes($body)
+            [IO.File]::WriteAllBytes((Join-Path $r 'home/.clavity/agy-observations.md'), $bytes)
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
+            BakCount $r | Should -Be 0
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'refuses to rotate when the inbox is empty' {
         $r = New-PluginRoot ''
         try {

@@ -89,7 +89,7 @@ if [[ $input =~ $re_skill ]] || [[ $input =~ $re_prompt ]]; then matched=1; fi
 # agy-curate-nudge.sh: open on '^##[ \t]+Pending[ \t]*$' (REAL tab - grep's bracket [ \t] matched literal
 # 't'/'\' and disagreed with the awk it gated, measured 2026-10-07), close on any '^#+[ \t]' heading. The
 # bullet class keeps the hyphen: anti-pattern must match.
-hdr=0; pend=0; bullet=0; p=0
+hdr=0; pend=0; bullet=0; p=0; first=1
 re_pending=$'^##[ \t]+Pending[ \t]*$'
 re_close=$'^#+[ \t]'
 re_bullet='^- \[[a-z-]+\]'
@@ -97,6 +97,10 @@ while IFS= read -r line || [ -n "$line" ]; do
   # A CRLF inbox (a Windows editor, a PowerShell drain) leaves a CR on every line, and the `$` in re_pending then never matches.
   # The pre-branch `grep -Eq` tolerated it on MSYS; a builtin `=~` does not (test-audit B21 R1, BS-1: old hook 1 .bak, this one 0).
   line=${line%$'\r'}
+  # ROADMAP section 75: a UTF-8 BOM (a Windows editor's Save) glues EF BB BF onto line 1 and the header test then never
+  # matches (measured 2026-10-12: 0 .bak for BOM+LF and BOM+CRLF, 1 for plain).
+  # Strip it from line 1 ONLY - a BOM elsewhere means nothing.
+  if [ "$first" -eq 1 ]; then first=0; line=${line#$'\xEF\xBB\xBF'}; fi
   case "$line" in '# agy observations inbox'*) hdr=1 ;; esac
   if [[ $line =~ $re_pending ]]; then p=1; pend=1; continue; fi
   if [[ $line =~ $re_close ]]; then p=0; continue; fi
