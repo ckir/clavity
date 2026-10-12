@@ -19,8 +19,10 @@ Describe 'agy-verify-reminder.sh' {
             @('| id | dotnet | classic |', '|----|--------|---------|', "| A1 | $DotnetCell | N/A |") |
                 Set-Content -LiteralPath (Join-Path $cwd 'agy-autotrain/verify/assertions.md')
             [IO.File]::WriteAllText((Join-Path $root 'fakebin/agy'), "#!/bin/sh`necho '$AgyOut'`n")
+            if (-not $IsWindows) { [IO.File]::SetUnixFileMode((Join-Path $root 'fakebin/agy'), [IO.UnixFileMode]'UserRead, UserWrite, UserExecute') }
+            $sep = [string][IO.Path]::PathSeparator
             [pscustomobject]@{ Root = $root; Cwd = $cwd
-                Path = ((Join-Path $root 'fakebin') + ';' + $script:GitUsr + ';' + $script:JqDir + ';C:\WINDOWS\system32') }
+                Path = ((Join-Path $root 'fakebin') + $sep + $script:GitUsr + $sep + $script:JqDir + $sep + 'C:\WINDOWS\system32') }
         }
         function Invoke-Verify {
             param($Fx, [string]$CwdJson = $null)
@@ -79,6 +81,27 @@ Describe 'agy-verify-reminder.sh' {
         $f = New-VerifyFx
         try {
             Remove-Item (Join-Path $f.Cwd 'agy-autotrain') -Recurse -Force
+            (Invoke-Verify $f).StdOut | Should -BeNullOrEmpty
+        } finally { Remove-Item $f.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'reads a CRLF assertions.md exactly like the LF one' {
+        # ROADMAP section 75: awk -F'|' left a trailing CR on the last field and on the separator line, so a CRLF table read as NOROWS.
+        $f = New-VerifyFx -DotnetCell 'PASS 1.0.0'
+        try {
+            $lines = @('| id | dotnet | classic |', '|----|--------|---------|', '| A1 | PASS 1.0.0 | N/A |')
+            [IO.File]::WriteAllText((Join-Path $f.Cwd 'agy-autotrain/verify/assertions.md'), (($lines -join "`r`n") + "`r`n"))
+            $out = (Invoke-Verify $f).StdOut
+            $out | Should -Match 'A1 \[dotnet\] PASS 1\.0\.0 \(live 9\.9\.9\)'
+            $out | Should -Not -Match 'no probe rows'
+        } finally { Remove-Item $f.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'stays SILENT for a CRLF table whose cells are current' {
+        $f = New-VerifyFx -DotnetCell 'PASS 9.9.9'
+        try {
+            $lines = @('| id | dotnet | classic |', '|----|--------|---------|', '| A1 | PASS 9.9.9 | N/A |')
+            [IO.File]::WriteAllText((Join-Path $f.Cwd 'agy-autotrain/verify/assertions.md'), (($lines -join "`r`n") + "`r`n"))
             (Invoke-Verify $f).StdOut | Should -BeNullOrEmpty
         } finally { Remove-Item $f.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }

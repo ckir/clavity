@@ -91,6 +91,9 @@ findings=$(awk -F'|' -v live="$live" -v cols="$cols" '
     if (ver != live) report(id, col, v " (live " live ")")
   }
   function report(id, col, why) { out = out (out == "" ? "" : "; ") id " [" col "] " why }
+  # ROADMAP section 75: a CRLF assertions.md leaves a trailing CR on every line, so the separator rule below never
+  # matched and the table read as NOROWS (measured, gawk 5.3.2). Strip it first; assigning $0 re-splits the fields.
+  { sub(/\r$/, "") }
   /^\|[-: |]+\|$/ { indata = 1; next }
   # Leading whitespace is tolerated: an indented row must NOT be silently skipped -- skipping one is
   # indistinguishable from it passing, which is the whole defect class this gate exists to remove.

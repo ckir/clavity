@@ -754,7 +754,7 @@ agy-ledger-lib.Tests.ps1                        105,0s   34 tests   <- SLOW. RUN
                                                                       throwaway git repo with TWO commits and
                                                                       spawns bash, so ~7-20s per row.
 agy-test-audit-reminder.Tests.ps1                50,8s   36 tests   <- SLOW, re-measured 2026-08-06 (+4); 29 -> 35 2026-10-06 (Branch 20: +6 debounce rows), time not re-measured; 35 -> 36 2026-10-06 (Branch 20 test-audit R2 FPA1: no-jq closed-gate row), time not re-measured
-agy-verify-reminder.Tests.ps1                    12,0s    8 tests   <- SLOW, NEW 2026-10-07 (Branch 21 Task 6: the hook had no suite; one run, box load uncontrolled)
+agy-verify-reminder.Tests.ps1                    12,0s   10 tests   <- SLOW, NEW 2026-10-07 (Branch 21 Task 6: the hook had no suite; one run, box load uncontrolled); 8 -> 10 2026-10-12 (section 75: +2 rows), time NOT re-measured
 assertion-strength-reminder.Tests.ps1            54,9s   42 tests   <- 37 -> 42 2026-10-07 (Branch 21 Task 5: +2 empty-PATH stderr rows, +1 test-audit debounce sweep, +2 BASH3 day-key rows); SLOW as of 2026-08-25; was FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file
