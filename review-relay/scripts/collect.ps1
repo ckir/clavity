@@ -135,7 +135,8 @@ foreach ($item in $captures) {
             $hint = ' If the answer WAS complete, it probably quotes a "## Human" heading, which a plain AiSave capture cannot tell apart from a new turn: save it again with AiSaveDev instead.'
             $replyBody = $replyBody.TrimEnd(')') + $hint + ')'
         }
-        Write-Warning "collect: $($item.File.Name) has no reply (saved before the model finished?)$hint"
+        $cause = if ($c.Format -eq 'aisave' -and $c.DeclaredFormat -eq 'aisave-dev/1' -and $c.NoRoleMarkers) { '' } else { ' (saved before the model finished?)' }
+        Write-Warning "collect: $($item.File.Name) has no reply$cause$hint"
     }
     $bodies.Add("## $n. $($c.Platform) - $($c.Title)`n`nSource: ``replies/$copyName`` ($($c.Url))`n`n$replyBody`n")
     if ($PSCmdlet.ShouldProcess((Join-Path $roundDir 'replies' $copyName), 'copy capture')) {

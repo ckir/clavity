@@ -343,6 +343,7 @@ Please review this.
         $collected | Should -Match 'AiSaveDev could not find the turns on this page'
         $collected | Should -Not -Match 'save it again with AiSaveDev instead'
         $collected | Should -Not -Match 'saved before the model finished'
+        $r.Out | Should -Not -Match 'saved before the model finished' -Because 'the console warning must not contradict the site hint either'
         $r.Out | Should -Match 'AiSaveDev could not find the turns on this page'
         $r.Out | Should -Not -Match 'save it again with AiSaveDev instead'
     }
