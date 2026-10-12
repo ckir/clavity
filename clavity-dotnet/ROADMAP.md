@@ -4236,7 +4236,8 @@ Three verified, pre-existing defects of one class - a hook assumes the file or t
 
 ### §78 — The consult guard did not flag an untracked-file breach during a long (backgrounded) `agy_ask`, and review briefs give the peer no sanctioned place to build
 
-**Status:** SCHEDULED 2026-10-12 - scheduled - Branch H (together with §70; this line read Branch R, which contradicted the sequence spec and this entry's own legacy line)
+**Status:** IMPLEMENTED 2026-10-12 - H and F built on sweep/branch-h-s78 (`4119dd34`, `a0c31185`, `3f6526da`)
+> **Previous status:** SCHEDULED 2026-10-12 - scheduled - Branch H (together with §70; this line read Branch R, which contradicted the sequence spec and this entry's own legacy line)
 > **Previous status:** SCHEDULED 2026-10-08 - scheduled - Branch R
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (Branch 4 plan-panel round 4), not yet planned; slot: the hooks / consult-guard branch, together with §70**
 
@@ -4330,6 +4331,14 @@ Linux proxy (`strace -ff -e trace=execve` over the real hooks, 82 rows plus a de
 **Status:** OPEN 2026-10-12 - observed, cause of the missing item not determined
 
 `scripts/tests/agy-anomaly-reminder.Tests.ps1:286` (`finds the repo root when .git is a FILE (worktree or submodule), not a directory`) checks its own fixture with `(Get-Item (Join-Path $w '.git')).PSIsContainer | Should -BeFalse`. On this Linux box that `Get-Item` reports "Could not find item <fixture>/.git" every run, yet the row passes under plain `Invoke-Pester` (37 passed / 2 failed for the suite); it failed under `$ErrorActionPreference = 'Stop'` 3 of 3 times (§81). The pass is presumably `$null | Should -BeFalse`, which is not proven here. Either the file really is absent when `Get-Item` runs (then the later `1 untriaged` assertion passing needs explaining) or `Get-Item` cannot see a dotfile there. The row's own comment says it exists to prove `.git`-as-FILE support, so a check that cannot fail defeats it. Fix direction: assert with `Test-Path -PathType Leaf` and find why the item is not found.
+
+### §85 — The Bash/CLI consult path's unfinished returns are unmeasured, and the harness's backgrounding text can change
+
+**Status:** OPEN 2026-10-12 - the Bash/CLI consult path's unfinished returns were never captured; next step: capture them with the temporary-hook method of section 78's round-2 block
+
+Classic's `clavity ask` runs through a Bash tool call whose `tool_response` is an object (not the list of text blocks an `agy_ask` returns), and its backgrounding behaviour was never captured. The section 78 hook change classifies only the MCP path, so an unfinished return on the CLI path is still reported as a clean compare.
+
+The harness's backgrounding wording is covered by the `long` class (duration alone) for the MCP path, so a reworded message still gets the notice; the CLI path has no such fallback, because its payload carries no comparable duration signal that was measured.
 
 ## Non-goals / accepted limitations
 
