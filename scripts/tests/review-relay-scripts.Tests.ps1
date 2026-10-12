@@ -331,20 +331,44 @@ Please review this.
         $collected | Should -Match 'save it again with AiSaveDev instead'
         $r.Out | Should -Match 'save it again with AiSaveDev instead'
     }
-    It 'blames the site, not the format, when an AiSaveDev capture has no reply (R1)' {
-        # The file says format: aisave-dev/1 but carries no role markers: the scraper fell back. Telling
-        # the owner to "save it again with AiSaveDev" is wrong - AiSaveDev already saved it.
-        $text = "---`ntitle: ""Conversation""`ndate: 2026-10-12`nurl: https://example.invalid/drift`nplatform: ChatGPT`nformat: aisave-dev/1`nnonce: 0123456789ab`n---`n`nthe whole page as one blob`n"
-        Set-Content -LiteralPath (Join-Path $script:Inbox 'drifted.md') -Value $text -NoNewline
-        (Get-Item (Join-Path $script:Inbox 'drifted.md')).LastWriteTimeUtc = $script:After
+    It 'blames the site, not the format, when an AiSaveDev scraper fell back (R1)' {
+        $text = "---`ntitle: ""Conversation""`ndate: 2026-10-12`nurl: https://example.invalid/drift`nplatform: ChatGPT`nformat: aisave-dev/1`nnonce: 0123456789ab`n---`n`n<!-- aisave:0123456789ab turn=1 role=conversation -->`n## Conversation`n`nthe whole page as one blob`n`n<!-- aisave:0123456789ab end -->`n"
+        Set-Content -LiteralPath (Join-Path $script:Inbox 'r1.md') -Value $text -NoNewline
+        (Get-Item (Join-Path $script:Inbox 'r1.md')).LastWriteTimeUtc = $script:After
+        $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r.Exit | Should -Be 0 -Because $r.Out
+        $collected = Get-Content -Raw (Join-Path $script:RoundDir 'collected.md')
+        # A scraper fallback has no human marker: "save it again with AiSaveDev" is wrong (AiSaveDev saved it) and so is
+        # "saved before the model finished" (there was no model turn to find).
+        $collected | Should -Match 'AiSaveDev could not find the turns on this page'
+        $collected | Should -Not -Match 'save it again with AiSaveDev instead'
+        $collected | Should -Not -Match 'saved before the model finished'
+        $r.Out | Should -Match 'AiSaveDev could not find the turns on this page'
+        $r.Out | Should -Not -Match 'save it again with AiSaveDev instead'
+    }
+    It 'keeps the saved-too-early advice, and no site blame, for an AiSaveDev capture with its human marker (R1)' {
+        $text = "---`ntitle: ""Conversation""`ndate: 2026-10-12`nurl: https://example.invalid/drift`nplatform: ChatGPT`nformat: aisave-dev/1`nnonce: 0123456789ab`n---`n`n<!-- aisave:0123456789ab turn=1 role=human -->`n## Human`n`nplease review`n`n<!-- aisave:0123456789ab end -->`n"
+        Set-Content -LiteralPath (Join-Path $script:Inbox 'r1.md') -Value $text -NoNewline
+        (Get-Item (Join-Path $script:Inbox 'r1.md')).LastWriteTimeUtc = $script:After
         $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
         $r.Exit | Should -Be 0 -Because $r.Out
         $collected = Get-Content -Raw (Join-Path $script:RoundDir 'collected.md')
         $collected | Should -Match 'This capture has no reply'
-        $collected | Should -Match 'AiSaveDev could not find the turns on this page'
+        $collected | Should -Match 'saved before the model finished'
+        $collected | Should -Not -Match 'could not find the turns'
         $collected | Should -Not -Match 'save it again with AiSaveDev instead'
-        $r.Out | Should -Match 'AiSaveDev could not find the turns on this page'
+        $r.Out | Should -Not -Match 'could not find the turns'
         $r.Out | Should -Not -Match 'save it again with AiSaveDev instead'
+    }
+    It 'does not blame the site when the marker path found an empty assistant turn (R1)' {
+        $text = "---`ntitle: ""Conversation""`ndate: 2026-10-12`nurl: https://example.invalid/drift`nplatform: ChatGPT`nformat: aisave-dev/1`nnonce: 0123456789ab`n---`n`n<!-- aisave:0123456789ab turn=1 role=human -->`n## Human`n`nplease review`n`n---`n`n<!-- aisave:0123456789ab turn=2 role=assistant -->`n## Assistant`n`n<!-- aisave:0123456789ab end -->`n"
+        Set-Content -LiteralPath (Join-Path $script:Inbox 'r1.md') -Value $text -NoNewline
+        (Get-Item (Join-Path $script:Inbox 'r1.md')).LastWriteTimeUtc = $script:After
+        $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r.Exit | Should -Be 0 -Because $r.Out
+        $collected = Get-Content -Raw (Join-Path $script:RoundDir 'collected.md')
+        $collected | Should -Not -Match 'could not find the turns'
+        $collected | Should -Not -Match 'save it again with AiSaveDev instead'
     }
     It 'a re-run leaves exactly one numbered copy per capture' {
         Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox

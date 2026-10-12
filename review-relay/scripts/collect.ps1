@@ -120,11 +120,14 @@ foreach ($item in $captures) {
     if ([string]::IsNullOrWhiteSpace($replyBody)) {
         $replyBody = '(This capture has no reply - it has no "## Assistant" section. It was probably saved before the model finished answering. Save it again once the answer is complete.)'
         $hint = ''
-        if ($c.Format -eq 'aisave' -and $c.DeclaredFormat -eq 'aisave-dev/1') {
-            # R1: AiSaveDev already saved this file, but its scraper fell back (the site's layout drifted) and wrote no turn
-            # markers. "Save it again with AiSaveDev" would be wrong advice.
+        if ($c.Format -eq 'aisave' -and $c.DeclaredFormat -eq 'aisave-dev/1' -and $c.NoRoleMarkers) {
+            # R1: AiSaveDev already saved this file, but its scraper fell back (the site's layout drifted) and wrote no human or
+            # assistant marker. "Save it again with AiSaveDev" would be wrong advice, and so would "saved before the model finished".
             $hint = ' AiSaveDev could not find the turns on this page - the site may have changed.'
-            $replyBody = $replyBody.TrimEnd(')') + $hint + ')'
+            $replyBody = "(This capture has no reply.$hint)"
+        } elseif ($c.DeclaredFormat -eq 'aisave-dev/1') {
+            # An AiSaveDev capture that kept its human marker was saved before the answer: the generic text above is right, and
+            # the plain-AiSave hint below is not (AiSaveDev already saved it).
         } elseif ($c.Format -eq 'aisave') {
             # G2 (owner ruling 2026-09-29): a plain AiSave capture has no unambiguous turn delimiter,
             # so a reply that quotes its own "---" + "## Human" (a transcript in a code block, say) hides
