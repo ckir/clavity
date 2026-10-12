@@ -368,8 +368,43 @@ Please review this.
         $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
         $r.Exit | Should -Be 0 -Because $r.Out
         $collected = Get-Content -Raw (Join-Path $script:RoundDir 'collected.md')
+        $collected | Should -Match 'This capture has no reply'
+        $collected | Should -Match 'saved before the model finished'
         $collected | Should -Not -Match 'could not find the turns'
         $collected | Should -Not -Match 'save it again with AiSaveDev instead'
+        $r.Out | Should -Match 'has no reply \(saved before the model finished\?\)'
+        $r.Out | Should -Not -Match 'could not find the turns'
+        $r.Out | Should -Not -Match 'save it again with AiSaveDev instead'
+    }
+    It 'keeps the generic advice, never the plain-AiSave advice, for an aisave-dev/1 file with a malformed nonce (R1 boundary)' {
+        $text = "---`ntitle: bad nonce`ndate: 2026-10-12`nurl: https://example.invalid/bad-nonce`nplatform: ChatGPT`nformat: aisave-dev/1`nnonce: xyz`n---`n`n## Human`n`nplease review`n"
+        Set-Content -LiteralPath (Join-Path $script:Inbox 'r1.md') -Value $text -NoNewline
+        (Get-Item (Join-Path $script:Inbox 'r1.md')).LastWriteTimeUtc = $script:After
+        $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r.Exit | Should -Be 0 -Because $r.Out
+        $collected = Get-Content -Raw (Join-Path $script:RoundDir 'collected.md')
+        $collected | Should -Match 'This capture has no reply'
+        $collected | Should -Match 'saved before the model finished'
+        $collected | Should -Not -Match 'could not find the turns'
+        $collected | Should -Not -Match 'save it again with AiSaveDev instead'
+        $r.Out | Should -Match 'has no reply \(saved before the model finished\?\)'
+        $r.Out | Should -Not -Match 'could not find the turns'
+        $r.Out | Should -Not -Match 'save it again with AiSaveDev instead'
+    }
+    It 'keeps the generic advice, never the plain-AiSave advice, for an aisave-dev/1 file with no end marker (R1 boundary)' {
+        $text = "---`ntitle: no end`ndate: 2026-10-12`nurl: https://example.invalid/no-end`nplatform: ChatGPT`nformat: aisave-dev/1`nnonce: 0123456789ab`n---`n`n<!-- aisave:0123456789ab turn=1 role=human -->`n## Human`n`nplease review`n"
+        Set-Content -LiteralPath (Join-Path $script:Inbox 'r1.md') -Value $text -NoNewline
+        (Get-Item (Join-Path $script:Inbox 'r1.md')).LastWriteTimeUtc = $script:After
+        $r = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
+        $r.Exit | Should -Be 0 -Because $r.Out
+        $collected = Get-Content -Raw (Join-Path $script:RoundDir 'collected.md')
+        $collected | Should -Match 'This capture has no reply'
+        $collected | Should -Match 'saved before the model finished'
+        $collected | Should -Not -Match 'could not find the turns'
+        $collected | Should -Not -Match 'save it again with AiSaveDev instead'
+        $r.Out | Should -Match 'has no reply \(saved before the model finished\?\)'
+        $r.Out | Should -Not -Match 'could not find the turns'
+        $r.Out | Should -Not -Match 'save it again with AiSaveDev instead'
     }
     It 'a re-run leaves exactly one numbered copy per capture' {
         Copy-Item (Join-Path $script:Fx 'gemini-inline.md') $script:Inbox

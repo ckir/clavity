@@ -482,6 +482,8 @@ VERDICT: READY
         $c = Read-AiSaveCapture $path
         $c.Format | Should -BeExactly 'aisave'
         $c.Reply | Should -Match 'Fallback reply text\.'
+        $c.DeclaredFormat | Should -BeExactly 'aisave-dev/1'
+        $c.NoRoleMarkers | Should -BeFalse -Because 'a malformed nonce means the skeleton was never recognised'
     }
 
     It 'falls back to the H2 path when a valid nonce has no end marker' {
@@ -515,6 +517,18 @@ VERDICT: READY
         $c = Read-AiSaveCapture $path
         $c.Format | Should -BeExactly 'aisave'
         $c.Reply | Should -Match 'Fallback reply text without an end marker\.'
+        $c.DeclaredFormat | Should -BeExactly 'aisave-dev/1'
+        $c.NoRoleMarkers | Should -BeFalse -Because 'no end marker means the skeleton is incomplete'
+    }
+    It 'does NOT flag NoRoleMarkers for a role=conversation capture that has no end marker (R1 boundary)' {
+        # Only a COMPLETE skeleton proves the scraper finished and found no turns; a truncated file proves nothing.
+        $text = "---`ntitle: ""Conversation""`ndate: 2026-10-12`nurl: https://example.invalid/drift`nplatform: ChatGPT`nformat: aisave-dev/1`nnonce: 0123456789ab`n---`n`n<!-- aisave:0123456789ab turn=1 role=conversation -->`n## Conversation`n`nthe whole page`n"
+        $path = Join-Path $TestDrive 'conversation-no-end.md'
+        Set-Content -LiteralPath $path -Value $text -NoNewline
+        $c = Read-AiSaveCapture $path
+        $c.Format | Should -BeExactly 'aisave'
+        $c.DeclaredFormat | Should -BeExactly 'aisave-dev/1'
+        $c.NoRoleMarkers | Should -BeFalse
     }
 
     It 'reads the tag from the CURRENT exchange only, not an earlier one in a reused chat (K1, marker path)' {
