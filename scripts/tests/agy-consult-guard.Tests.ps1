@@ -907,6 +907,42 @@ echo "digests=$n calls=$(wc -l < "$count")"
         $rc | Should -Be '1' -Because 'no hashing tool is a failure the caller must be able to see'
     }
 
+    It 'agy_guard_hash is byte-identical to the old sha256sum | cut pipeline' {
+        # Section 70: the helper drops `cut`. The exact bytes matter, including the trailing newline.
+        $lib = $script:Lib -replace '\\','/'
+        $script = ". '$lib'; for v in abc '' 'x y'; do " +
+            'a=$(printf ''%s'' "$v" | agy_guard_hash | od -c); ' +
+            'b=$(printf ''%s'' "$v" | sha256sum | cut -d'' '' -f1 | od -c); ' +
+            'if [ "$a" = "$b" ]; then echo SAME; else echo DIFF; fi; done'
+        $out = @(& $script:Bash -lc $script)
+        ($out -join ',') | Should -Be 'SAME,SAME,SAME' -Because 'the new helper must emit the same bytes as the old pipeline for every input'
+        $abc = & $script:Bash -lc ". '$lib'; x=`$(printf abc | agy_guard_hash); printf '%s' `"`$x`""
+        $abc | Should -Be 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+    }
+
+    It 'agy_guard_hash_files gives the same digests as the old cut|sed pipeline' -Skip:$IsWindows {
+        # Section 70: no `cut` or `sed` per chunk. 300 files crosses the 256-path chunk boundary, and
+        # `back\slash` makes coreutils prefix its output line with a filename escape.
+        $d = Join-Path ([IO.Path]::GetTempPath()) ('hf' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $d | Out-Null
+        try {
+            1..300 | ForEach-Object { Set-Content (Join-Path $d "n$_") $_ -Encoding ascii }
+            Set-Content (Join-Path $d 'plain') 'plain' -Encoding ascii
+            New-Item -ItemType File -Path (Join-Path $d 'zero') | Out-Null
+            $lib = $script:Lib -replace '\\','/'
+            $dd = $d -replace '\\','/'
+            $script = ". '$lib'; cd '$dd' || exit 9; echo bs > 'back\slash'; files=(); for i in `$(seq 1 300); do files+=(`"n`$i`"); done; " +
+                'files+=(plain zero ''back\slash''); ' +
+                'new=$(agy_guard_hash_files "${files[@]}"); ' +
+                'old=$(sha256sum -- "${files[@]}" | cut -d'' '' -f1 | sed ''s/^[^0-9a-fA-F]*//''); ' +
+                'if [ "$new" = "$old" ]; then echo SAME; else echo DIFF; fi; ' +
+                'printf ''%s\n'' "$new" | wc -l'
+            $out = @(& $script:Bash -lc $script)
+            $out[0] | Should -Be 'SAME'
+            [int]($out[1].Trim()) | Should -Be 303 -Because 'one digest line per file'
+        } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'tracks the .clavity shield file as a state of its own' {
         # Capstone R8, and the direct coverage the shield row above cannot provide. The dedicated
         # `.clavity/.gitignore` component of agy_guard_ignored is redundant with the census, so no

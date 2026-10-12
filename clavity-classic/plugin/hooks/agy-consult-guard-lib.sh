@@ -36,8 +36,9 @@ AGY_GUARD_TTL_MIN="${AGY_GUARD_TTL_MIN:-30}"
 # Portable SHA (macOS ships `shasum -a 256`, not `sha256sum`). Reads stdin, echoes the hex digest,
 # or `NOHASH` if NO hashing tool exists (so the caller warns LOUDLY rather than compare empties).
 agy_guard_hash() {
-  if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
-  elif command -v shasum   >/dev/null 2>&1; then shasum -a 256 | cut -d' ' -f1
+  local h
+  if command -v sha256sum >/dev/null 2>&1; then h=$(sha256sum); printf '%s\n' "${h%% *}"
+  elif command -v shasum   >/dev/null 2>&1; then h=$(shasum -a 256); printf '%s\n' "${h%% *}"
   else cat >/dev/null; printf 'NOHASH'
   fi
 }
@@ -90,19 +91,28 @@ agy_guard_hash_files() {
   # costs ~470ms per file - thousands of files would block the hook for HOURS and hang the consult
   # rather than merely slowing it. Chunking removes the trigger, so the per-file fallback stays what
   # it was meant to be: a rare path for genuine per-file errors.
-  local batch=()
+  local batch=() line d
   while [ "$#" -gt 0 ]; do
     batch=()
     while [ "$#" -gt 0 ] && [ "${#batch[@]}" -lt 256 ]; do batch+=("$1"); shift; done
     # Strip a LEADING FILENAME ESCAPE from each digest line. GNU coreutils prefixes an output line
-    # whose FILENAME contains a backslash or a newline, and `cut -d' ' -f1` then leaves that prefix
-    # welded to the digest, while the per-file fallback reads from stdin and never carries it - so
-    # the two paths would disagree for identical bytes and a pre/post pair straddling the fallback
-    # boundary would report a false breach. The class stops at the first hex digit, and a digest is
-    # hex throughout, so it removes the escape and cannot touch the digest.
-    if [ "$tool" = 'sha256sum' ]; then sha256sum -- "${batch[@]}" 2>/dev/null
-    else                              shasum -a 256 -- "${batch[@]}" 2>/dev/null
-    fi | cut -d' ' -f1 | sed 's/^[^0-9a-fA-F]*//'
+    # whose FILENAME contains a backslash or a newline, and cutting at the first space then leaves
+    # that prefix welded to the digest, while the per-file fallback reads from stdin and never
+    # carries it - so the two paths would disagree for identical bytes and a pre/post pair
+    # straddling the fallback boundary would report a false breach. The two parameter expansions
+    # below do what the old `sed 's/^[^0-9a-fA-F]*//'` did (measured identical 2026-10-12): the
+    # inner one yields everything before the first hex digit, the outer removes that prefix. A
+    # digest is hex throughout, so this removes the escape and cannot touch the digest. No cut or
+    # sed process is spawned per chunk.
+    while IFS= read -r line; do
+      d=${line%% *}
+      d=${d#"${d%%[0-9a-fA-F]*}"}
+      printf '%s\n' "$d"
+    done < <(
+      if [ "$tool" = 'sha256sum' ]; then sha256sum -- "${batch[@]}" 2>/dev/null
+      else                              shasum -a 256 -- "${batch[@]}" 2>/dev/null
+      fi
+    )
   done
 }
 
