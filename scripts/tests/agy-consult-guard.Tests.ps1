@@ -1055,6 +1055,22 @@ echo "digests=$n calls=$(wc -l < "$count")"
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'WARNS when an UNREADABLE hook is planted during a consult' -Skip:($IsWindows -or ((& id -u) -eq '0')) {
+        # A newly planted chmod-000 hook yields no digest line, so only the NAME list can see it.
+        $r = New-GuardRepo
+        $hook = Join-Path $r '.git/hooks/planted'
+        try {
+            $out = Invoke-ConsultAround -Repo $r -Between {
+                & $script:Bash -lc "printf 'echo pwned' > '$hook' && chmod 000 '$hook'"
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'ARBITRARY-CODE-EXEC'
+        } finally {
+            & $script:Bash -lc "chmod 600 '$hook' 2>/dev/null; true"
+            Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     It 'WARNS when an assume-unchanged bit is set during a consult' {
         # --assume-unchanged makes git IGNORE later edits to a tracked file: the smuggle is that it
         # hides a subsequent modification from `status` AND from `diff` at once. Setting the bit is
