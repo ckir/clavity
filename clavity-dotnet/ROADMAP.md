@@ -4236,7 +4236,8 @@ Three verified, pre-existing defects of one class - a hook assumes the file or t
 
 ### §78 — The consult guard did not flag an untracked-file breach during a long (backgrounded) `agy_ask`, and review briefs give the peer no sanctioned place to build
 
-**Status:** SCHEDULED 2026-10-08 - scheduled - Branch R
+**Status:** SCHEDULED 2026-10-12 - scheduled - Branch H (together with §70; this line read Branch R, which contradicted the sequence spec and this entry's own legacy line)
+> **Previous status:** SCHEDULED 2026-10-08 - scheduled - Branch R
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-08 from the anomalies conveyor (Branch 4 plan-panel round 4), not yet planned; slot: the hooks / consult-guard branch, together with §70**
 
 **Observed once, live (2026-10-08, Branch 4 plan panel round 4).** The brief named `.clavity/scratch/b4-plan-panel/` as the peer's only write area and said "name the command and I will run it". The peer nevertheless created `clavity-dotnet/test.cs` and a repo-root `scratch_test/` project (`scratch_test.csproj`, `Program.cs`, `bin/`, `obj/`) - its closing disclosure said it had "tested manually in a scratch program with `dotnet build`". Both were UNTRACKED, so no tracked file changed. `clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh:159` has a `worktree/untracked files` axis, yet NO `VERSION CONTROL CHANGED` alarm reached the driver; the files were found later, by the driver, by chance, while checking `git status`.
@@ -4270,6 +4271,49 @@ Split out of §29 on 2026-10-08 so an open sub-item does not hide inside a shipp
 Split out of §31 on 2026-10-08. The original sentence, verbatim from §31's header:
 
 > ⚠ **OPEN, deliberately not decided here: whether `.no-agy` should make this hook SILENT rather than announce its suppression.**
+
+### §81 — The script suites run one process at a time: a parallel, process-per-file lane for the fast and slow halves
+
+**Status:** SHIPPED 2026-10-12 - `scripts/run-pester-parallel.ps1` with `just test-scripts-fast-parallel` and `test-scripts-slow-parallel` merged to main in `7569bba5` (first lane `4ad8f000`, error-preference fix `15abef58`)
+
+Pester 6 has no parallel runner, and the recorded runtimes (`scripts/tests/_partition.md`) put the slow half at ~1300 s on the owner's machine. This entry records what was measured, what was built, and what the measurement got wrong along the way, so a later reader does not re-derive it.
+
+**Built.** `scripts/run-pester-parallel.ps1` runs each suite file of a justfile recipe in its OWN `pwsh` process, N at a time (default 4). The suite list is read from the `test-scripts-fast` / `test-scripts-slow` recipe (one list, same comment-stripping rules as `test-suite-registration.Tests.ps1`). It is as strict as one `Invoke-Pester`: exit 1 on a failed test, a container that is not `Passed` (a discovery failure counts ZERO failed tests, which the CI sweep also guards), a missing file, a child with no result, or an empty list. `-Exclude <base names>` leaves suites out, names them in the output, and fails on a name that matches nothing; `-ShowMessages` prints each failing row's first message line. `test-scripts-slow-parallel` excludes `hook-spawn-budget` on purpose (§82) and is NOT the full slow gate. The original recipes are untouched.
+
+**Measured (2026-10-12, Linux, 8 cores, two runs each, background load uncontrolled: Xorg/xrdp and other sessions at 9-45% CPU).**
+
+| Half | Single process (today) | One pwsh per file, sequential | 4 at once | 8 at once |
+|---|---|---|---|---|
+| fast, 32 files | 145 s / 134 s | 319 s / 305 s | 83 s / 87 s | 69 s / 74 s |
+| slow, 49 files | 974 s / 925 s | not run | 345 s / 322 s | 295 s / 268 s |
+
+Process-per-file alone is ~2.2x SLOWER than the single process (pwsh + Pester start-up per file); parallelism has to win that back. Every mode gave the identical pass/fail census (fast 630 passed / 59 failed; slow 1181 / 248), the same failing suites, and no change to the working tree. The 59 and 248 are Linux-only failures that the single-process recipe also shows (Windows Job Object counting, `cygpath`, `icacls`, ...). The fast half is bounded by its longest file (~32 s), the slow half by the 8 cores. The real `test-scripts-slow-parallel` run: 48 files + 1 excluded, 1189 passed / 83 failed, 335 s.
+
+**What the measurement got wrong (so nobody repeats it).**
+- The runner set `$ErrorActionPreference = 'Stop'` for its own logic and it leaked into the child's Pester run (the tests execute in the same process). A non-terminating error inside a row then became a failure plain `Invoke-Pester` never reports: `agy-anomaly-reminder` went 36 passed / 3 failed through the runner against 37 / 2 plain, deterministically. I first called this a flake; it was not. Fixed in `15abef58`; a parity row runs one fixture through both.
+- A `strace -f` exec count used to probe `hook-spawn-budget` dropped `<unfinished ...>` / `<... resumed>` line pairs, which made seven hook rows look nondeterministic. They are not (57 execs in 12 of 12 runs with `strace -ff`). See §82.
+
+Not done, each tracked on its own: §82 (`hook-spawn-budget` under parallel load on Windows), §83 (Windows/CI measurement, and the CI gate's extra checks), §84 (a row that asserts nothing on Linux).
+
+### §82 — `hook-spawn-budget` has never run under parallel load on Windows, so the parallel slow lane excludes it
+
+**Status:** OPEN 2026-10-12 - excluded from `test-scripts-slow-parallel`; needs one Windows run at `-ThrottleLimit 4` compared with a serial run
+
+Every row of `scripts/tests/hook-spawn-budget.Tests.ps1` counts processes through a Windows Job Object (`Invoke-JobCountedBash`, `scripts/tests/BashHookHelpers.ps1`) against Git for Windows' `usr\bin\bash.exe`, so all 165 of its failures on Linux are structural and the real measurement cannot run there. The count is meant to be deterministic, but the harness has three wall-clock bounds (the hook exiting within 120 s, its output pipes closing within 10 s, the job draining within 30 s), and the suite's own header records 180-360 ms per process on the owner's machine.
+
+Linux proxy (`strace -ff -e trace=execve` over the real hooks, 82 rows plus a deliberately load-sensitive control, 3 runs idle and 3 under 16 CPU spinners on 8 cores, 498 runs, 0 errors): 0 of 82 rows varied in exec count, idle or loaded. The load was mild (median wall time 1.00x, p95 1.79x, max 2.56x) and the control separated idle from loaded only weakly, so this supports "deterministic counts", not "safe under heavy load". The slowest run was 4.9 s against the 30 s bound; on Windows the same hooks cost several times more per process. Next step: run the suite once on Windows serially and once under the runner at 4-way and compare counts and wall time; only then consider including it.
+
+### §83 — The parallel lanes are unmeasured on Windows, and CI does not use them
+
+**Status:** OPEN 2026-10-12 - Linux figures only; `.github/workflows/ci-scripts.yml` still runs one `Invoke-Pester scripts/tests`
+
+`windows-latest` has fewer cores and slower process creation than the 8-core Linux box used in §81, and per-file start-up was the dominant overhead there (2.2x), so the Linux speed-ups are not a forecast for CI. `ForEach-Object -Parallel` needs PowerShell 7 (not Windows PowerShell 5.1). The CI sweep also runs checks the runner does not reproduce: that every container ran, that the registration oracle (`test-suite-registration.Tests.ps1`) ran, and a total-count floor. Before wiring the runner into CI: measure it on a Windows runner, and either port those three checks into it or keep the single-process sweep as the gate and use the lanes for the agent inner loop only.
+
+### §84 — `agy-anomaly-reminder`'s ".git is a FILE" row asserts nothing on Linux
+
+**Status:** OPEN 2026-10-12 - observed, cause of the missing item not determined
+
+`scripts/tests/agy-anomaly-reminder.Tests.ps1:286` (`finds the repo root when .git is a FILE (worktree or submodule), not a directory`) checks its own fixture with `(Get-Item (Join-Path $w '.git')).PSIsContainer | Should -BeFalse`. On this Linux box that `Get-Item` reports "Could not find item <fixture>/.git" every run, yet the row passes under plain `Invoke-Pester` (37 passed / 2 failed for the suite); it failed under `$ErrorActionPreference = 'Stop'` 3 of 3 times (§81). The pass is presumably `$null | Should -BeFalse`, which is not proven here. Either the file really is absent when `Get-Item` runs (then the later `1 untriaged` assertion passing needs explaining) or `Get-Item` cannot see a dotfile there. The row's own comment says it exists to prove `.git`-as-FILE support, so a check that cannot fail defeats it. Fix direction: assert with `Test-Path -PathType Leaf` and find why the item is not found.
 
 ## Non-goals / accepted limitations
 
