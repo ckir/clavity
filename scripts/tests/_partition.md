@@ -1170,6 +1170,7 @@ clavity-install.Tests.ps1                         7,9s   12 tests   <- SLOW, ADD
                                                                       blind spot itself was closed.
 check-tracker-status.Tests.ps1                UNMEASURED  36 tests   <- SLOW, NEW 2026-10-08 (a child pwsh per row, ~3.5s each: ~90-110s contended; SLOW on purpose - the fast half is cap-adjacent. The driver measures it idle at the Task 10 gates.)
 check-tracker-format-excerpt.Tests.ps1       UNMEASURED  9 tests    <- SLOW, NEW 2026-10-08 (a child pwsh per row, ~2s each; the driver measures it idle at the Task 10 gates.)
+run-pester-parallel.Tests.ps1                    22,0s   7 tests   <- SLOW, NEW 2026-10-12 (prototype runner; a child pwsh per row, each starting its own children; two solo runs 22,8s and 22,0s, box load uncontrolled - xrdp/Xorg ~9% idle baseline)
 TestTemp.Tests.ps1                         UNMEASURED  16 tests   <- FAST, NEW 2026-10-08 (in-process, sub-second rows: Remove-TestPath, the shared temp root, the sweep, its once-per-run flag, the killed-run backup restore)
 test-temp-discipline.Tests.ps1             UNMEASURED  4 tests    <- FAST, NEW 2026-10-08 (in-process scan of ~76 suite files, a few seconds)
 ```
