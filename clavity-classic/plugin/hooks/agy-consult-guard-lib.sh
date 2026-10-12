@@ -430,12 +430,19 @@ agy_guard_category() {
 #             omits all of these, which is why peer writes there were invisible.
 agy_guard_quad() {
   local c="$1" head status diff stash refs gitmeta flags ignored gitdir
-  head=$(git -C "$c" rev-parse HEAD 2>/dev/null)
+  local rp allrefs refs_in='' rsha rname
+  rp=$(git -C "$c" rev-parse --absolute-git-dir HEAD 2>/dev/null)
+  gitdir=${rp%%$'\n'*}
+  case $rp in *$'\n'*) head=${rp#*$'\n'} ;; *) head='' ;; esac
   status=$(git -C "$c" status --porcelain 2>/dev/null | agy_guard_hash)
   diff=$( { git -C "$c" diff 2>/dev/null; git -C "$c" diff --cached 2>/dev/null; } | agy_guard_hash)
-  stash=$(git -C "$c" rev-parse -q --verify refs/stash 2>/dev/null || echo none)
-  refs=$(git -C "$c" show-ref 2>/dev/null | grep -v ' refs/stash$' | agy_guard_hash)
-  gitdir=$(git -C "$c" rev-parse --absolute-git-dir 2>/dev/null)
+  allrefs=$(git -C "$c" show-ref 2>/dev/null)
+  stash=none
+  while IFS=' ' read -r rsha rname; do
+    [ -z "$rsha" ] && continue
+    if [ "$rname" = 'refs/stash' ]; then stash=$rsha; else refs_in+="$rsha $rname"$'\n'; fi
+  done <<<"$allrefs"
+  refs=$(printf '%s' "$refs_in" | agy_guard_hash)
   # The NAME list is hashed too: an unreadable file drops out of sha256sum's output, so without the
   # names a chmod 000 would go unseen. Per-file digests, not one `cat` stream: bytes moving between
   # two hooks ("12"+"34" -> "1"+"234") leave a cat stream identical. Measured 2026-10-12.

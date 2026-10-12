@@ -996,6 +996,51 @@ echo "digests=$n calls=$(wc -l < "$count")"
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'handles an UNBORN repository (no commit) across a consult' {
+        # HEAD does not resolve before the first commit; the baseline must still be stable (silent when
+        # nothing moves) and a first commit must still read as a HEAD change.
+        $mk = {
+            $d = New-TestTempPath 'guard'
+            New-Item -ItemType Directory -Path $d -Force | Out-Null
+            $s = "cd '$($d -replace '\\','/')' && git init -q . && git config user.email t@t && git config user.name t && echo one > a.txt"
+            & $script:Bash -lc $s | Out-Null
+            $d
+        }
+        $r1 = & $mk
+        $r2 = & $mk
+        $r3 = & $mk
+        try {
+            $quiet = Invoke-ConsultAround -Repo $r1 -Between { }
+            $quiet | Should -BeNullOrEmpty
+            $out = Invoke-ConsultAround -Repo $r2 -Between {
+                & $script:Bash -lc "cd '$($r2 -replace '\\','/')' && git add a.txt && git commit -qm c" | Out-Null
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'committed-HEAD'
+            # The git dir must resolve on an unborn repo too (it is read from the same call as HEAD, and
+            # the argument order decides it): a hook planted there has to be seen.
+            $hk = Invoke-ConsultAround -Repo $r3 -Between {
+                & $script:Bash -lc "cd '$($r3 -replace '\\','/')' && printf 'echo x' > .git/hooks/pre-commit" | Out-Null
+            }
+            $hk | Should -Match 'VERSION CONTROL CHANGED'
+        } finally {
+            Remove-Item $r1 -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $r2 -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $r3 -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'WARNS when a tag is created during a consult' {
+        $r = New-GuardRepo
+        try {
+            $out = Invoke-ConsultAround -Repo $r -Between {
+                Push-Location $r; git tag peer-tag; Pop-Location
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'other refs'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'WARNS when a .git hook is planted during a consult' {
         # The highest-consequence vector of the four: a file under .git/hooks/ is EXECUTED by later
         # git commands, so planting one is arbitrary code execution that no `git status` will ever
