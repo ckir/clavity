@@ -923,7 +923,7 @@ echo "digests=$n calls=$(wc -l < "$count")"
     It 'agy_guard_hash_files gives the same digests as the old cut|sed pipeline' -Skip:$IsWindows {
         # Section 70: no `cut` or `sed` per chunk. 300 files crosses the 256-path chunk boundary, and
         # `back\slash` makes coreutils prefix its output line with a filename escape.
-        $d = Join-Path ([IO.Path]::GetTempPath()) ('hf' + [guid]::NewGuid().ToString('N'))
+        $d = New-TestTempPath 'hf'
         New-Item -ItemType Directory -Path $d | Out-Null
         try {
             1..300 | ForEach-Object { Set-Content (Join-Path $d "n$_") $_ -Encoding ascii }
