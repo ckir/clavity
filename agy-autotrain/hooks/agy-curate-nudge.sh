@@ -49,11 +49,11 @@ cwd="$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null)"
 [ -f "${HOME_DIR}/.claude/.no-agy" ] && exit 0
 [ -f "${HOME}/.claude/.no-agy" ] && exit 0
 
-# Snooze: if the marker exists and is younger than 7 days, stay silent.
-if [ -f "$SNOOZE" ]; then
-  if [ -z "${CLAVITY_HOOK_BASH3:-}" ] && ((BASH_VERSINFO[0]*100+BASH_VERSINFO[1] >= 402)); then printf -v now '%(%s)T' -1 2>/dev/null; else now=$(date +%s); fi; mt="$(date -r "$SNOOZE" +%s 2>/dev/null)"
-  if [ -n "$now" ] && [ -n "$mt" ] && [ "$((now - mt))" -lt 604800 ]; then exit 0; fi
-fi
+# Snooze: if the marker exists and is younger than 7 days, stay silent. The age comes from `find -mmin` (10080
+# minutes = 7 days), not `date -r <file>`: BSD/macOS date -r takes EPOCH SECONDS, so the GNU form read no mtime there
+# and the snooze was silently ignored (ROADMAP section 75). Granularity is one minute. BSD find -mmin is from
+# documentation, not measured on a BSD box.
+if [ -f "$SNOOZE" ] && [ -n "$(find "$SNOOZE" -mmin -10080 2>/dev/null)" ]; then exit 0; fi
 
 [ -f "$OBS" ] || exit 0
 # Count entries under "## Pending" (lines beginning with "- ["), and find the OLDEST entry date
@@ -87,7 +87,7 @@ fi
 # programs had identical open/close rules, so the merged scan sees the same region. Output is
 # "<count>|<oldest>" (a date is digits and '-', so '|' is unambiguous; `$(...)` would strip a trailing
 # newline, which is why the separator is not a newline).
-scan="$(awk 'function flush(){ v=(stamp!=""?stamp:cur); if(v!=""){ if(m==""||v<m) m=v }; cur=""; stamp="" } /^##[ \t]+Pending[ \t]*$/{p=1;next} /^#+[ \t]/{ flush(); p=0 } p && /^- \[/ { c++; flush(); inrec=1 } p && (/^[ \t]*$/ || /^[ \t]*<!--/) { flush(); inrec=0 } p && inrec { s=$0; while(match(s,/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)){ pre=substr(s,1,RSTART-1); d=substr(s,RSTART,10); s=substr(s,RSTART+10); sub(/[ \t]+$/,"",pre); if(s ~ /^[^0-9A-Za-z]*agy([ \t]|$)/ && pre !~ /[0-9A-Za-z]$/) stamp=d; cur=d } } END{ flush(); print c+0 "|" m }' "$OBS" 2>/dev/null)"
+scan="$(awk 'function flush(){ v=(stamp!=""?stamp:cur); if(v!=""){ if(m==""||v<m) m=v }; cur=""; stamp="" } { sub(/\r$/, "") } /^##[ \t]+Pending[ \t]*$/{p=1;next} /^#+[ \t]/{ flush(); p=0 } p && /^- \[/ { c++; flush(); inrec=1 } p && (/^[ \t]*$/ || /^[ \t]*<!--/) { flush(); inrec=0 } p && inrec { s=$0; while(match(s,/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)){ pre=substr(s,1,RSTART-1); d=substr(s,RSTART,10); s=substr(s,RSTART+10); sub(/[ \t]+$/,"",pre); if(s ~ /^[^0-9A-Za-z]*agy([ \t]|$)/ && pre !~ /[0-9A-Za-z]$/) stamp=d; cur=d } } END{ flush(); print c+0 "|" m }' "$OBS" 2>/dev/null)"
 count=${scan%%|*}; oldest=${scan#*|}
 [ -z "$scan" ] && exit 0
 

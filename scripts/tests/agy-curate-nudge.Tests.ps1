@@ -539,6 +539,59 @@ Describe 'agy-curate-nudge.sh' {
         } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'nudges for a CRLF inbox exactly like the LF one' {
+        # ROADMAP section 75: a Windows-edited inbox has CRLF line endings; awk kept the CR, so the
+        # anchored ^##[ \t]+Pending[ \t]*$ rule never opened the region and the hook stayed silent.
+        $crlf = (New-DatedInbox '2020-01-01') -replace "`n", "`r`n"
+        $e = New-NudgeEnv -Inbox $crlf
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdOut | Should -Match 'agy-curate nudge'
+            $r.StdOut | Should -Match 'oldest pending entry \(2020-01-01\)'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'stays SILENT for a CRLF inbox whose only entry is recent' {
+        # DISTRACTOR: passes before AND after - stripping the CR must not invent a nudge.
+        $crlf = (New-DatedInbox $script:Today) -replace "`n", "`r`n"
+        $e = New-NudgeEnv -Inbox $crlf
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.StdOut | Should -BeNullOrEmpty
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'honours a FRESH snooze under BSD date semantics (date -r takes epoch seconds)' {
+        # BSD date -r takes EPOCH SECONDS, not a file path; GNU date -r takes a file. The shim makes a
+        # bash function that rejects a non-numeric -r argument, as BSD does, so a GNU-only date -r in
+        # the hook reads as "no mtime" and the snooze is silently ignored.
+        $e = New-NudgeEnv -Inbox (New-DatedInbox '2020-01-01')
+        try {
+            $shim = Join-Path $e.Root 'bsd-date-shim.sh'
+            Set-Content -LiteralPath $shim -Value @'
+date() { if [ "$1" = "-r" ]; then case "$2" in ''|*[!0-9]*) echo "date: illegal time format" >&2; return 1;; esac; fi; command date "$@"; }
+'@
+            $e.Env['BASH_ENV'] = ($shim -replace '\\','/')
+
+            $base = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $base.StdOut | Should -Match 'agy-curate nudge' -Because 'precondition: without a snooze this fixture nudges'
+
+            $snooze = Join-Path $e.Root 'home/.clavity/.agy-curate-snooze'
+            Set-Content -LiteralPath $snooze -Value '' -NoNewline
+            $fresh = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $fresh.StdOut | Should -BeNullOrEmpty -Because 'a fresh snooze must silence the nudge even when date -r rejects a path'
+
+            (Get-Item -Force -LiteralPath $snooze).LastWriteTime = (Get-Date).AddDays(-6)
+            $six = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $six.StdOut | Should -BeNullOrEmpty
+
+            (Get-Item -Force -LiteralPath $snooze).LastWriteTime = (Get-Date).AddDays(-8)
+            $eight = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $eight.StdOut | Should -Match 'agy-curate nudge'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     # --- BRANCH 21 (Task 11, ROADMAP section 73): the age gate no longer calls GNU `date -d`. BSD/macOS date has no `-d <date>`
     # parse, so on a Mac the age nudge could never fire. The day number now comes from Hinnant's days_from_civil in plain bash
     # arithmetic. The clock is read through printf %()T (bash >= 4.2) or `date +%s`, so a BASH_ENV `date` function freezes
