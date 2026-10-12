@@ -27,9 +27,21 @@ Describe 'agy-consult-guard' {
             Pop-Location
             return $d
         }
-        function Payload { param([string]$Tool, [string]$Cmd, [string]$Cwd)
-            @{ tool_name = $Tool; tool_input = @{ command = $Cmd }; cwd = ($Cwd -replace '\\','/'); session_id = 'guardtest' } | ConvertTo-Json -Compress
+        function Payload { param([string]$Tool, [string]$Cmd, [string]$Cwd, [object[]]$Response, [int]$DurationMs)
+            $h = @{ tool_name = $Tool; tool_input = @{ command = $Cmd }; cwd = ($Cwd -replace '\\','/'); session_id = 'guardtest' }
+            if ($PSBoundParameters.ContainsKey('Response'))   { $h.tool_response = $Response }
+            if ($PSBoundParameters.ContainsKey('DurationMs')) { $h.duration_ms = $DurationMs }
+            $h | ConvertTo-Json -Compress -Depth 6
         }
+        # Captured 2026-10-12 (ROADMAP section 78): an early PEER STILL BUSY return (block 0 is the reply JSON,
+        # block 1 the driver's own notice) and the harness's 120 s backgrounding message (one whole block).
+        $script:BusyResponse = @(
+            @{ type = 'text'; text = '{"CascadeId":"c","Answer":"The command has been launched in the background. Waiting for it to finish...","PeerStillBusy":true}' }
+            @{ type = 'text'; text = "[PEER STILL BUSY] agy's turn ended" }
+        )
+        $script:BackgroundedResponse = @(
+            @{ type = 'text'; text = 'MCP tool "plugin:clavity:clavity-ls/agy_ask" is still running after 120s. It was moved to the background as task kxiidbwop and keeps running; you''ll receive a notification with the result when it completes.' }
+        )
         # Run a consult around a scriptblock that mutates the repo; return the post hook's stdout.
         # Defined HERE, not in the Describe body: MEASURED under Pester 6.1.0 with a paired control,
         # a function declared in the Describe body is not visible inside an It at run time
@@ -1011,6 +1023,153 @@ echo "digests=$n calls=$(wc -l < "$count")"
             Invoke-BashHook -HookPath $script:Pre -Payload $send | Out-Null   # the second send
             $out = (Invoke-BashHook -HookPath $script:Post -Payload $term).StdOut
             $out | Should -Match 'committed-HEAD' -Because 'the second send must NOT re-baseline away a mutation that already landed'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # ---- ROADMAP section 78 (H): an unfinished consult is NOT verified ----
+    It 'NOT-VERIFIED notice on an early PEER STILL BUSY return when nothing changed' {
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r -Response $script:BusyResponse -DurationMs 78377
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+            $out | Should -Match 'NOT VERIFIED \(consult not finished\)'
+            $out | Should -Match 'PEER STILL BUSY'
+            $out | Should -Not -Match 'VERSION CONTROL CHANGED'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'NOT-VERIFIED notice when the harness backgrounded the call' {
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r -Response $script:BackgroundedResponse -DurationMs 120005
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+            $out | Should -Match 'consult not finished'
+            $out | Should -Match 'moved the call to the background'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'notice still fires on duration alone if the harness rewords its message' {
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r -Response @(@{ type = 'text'; text = 'some future harness wording' }) -DurationMs 120005
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+            $out | Should -Match 'consult not finished'
+            $out | Should -Match 'may have been backgrounded'
+            $out | Should -Not -Match 'the harness moved the call'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'is SILENT on a normal return' {
+        $r = New-GuardRepo
+        try {
+            $resp = @(@{ type = 'text'; text = ($script:BusyResponse[0].text -replace '"PeerStillBusy":true', '"PeerStillBusy":false') })
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r -Response $resp -DurationMs 40000
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut | Should -BeNullOrEmpty
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'is SILENT when the peer''s ANSWER merely quotes the markers' {
+        $r = New-GuardRepo
+        try {
+            $resp = @(@{ type = 'text'; text = '{"CascadeId":"c","Answer":"the [PEER STILL BUSY] marker and moved to the background","PeerStillBusy":false}' })
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r -Response $resp -DurationMs 40000
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut | Should -BeNullOrEmpty
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'is SILENT when the driver''s own MESSAGE quotes the markers' {
+        $r = New-GuardRepo
+        try {
+            $resp = @(@{ type = 'text'; text = '{"CascadeId":"c","Answer":"fine","PeerStillBusy":false}' })
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '[PEER STILL BUSY] and MCP tool x moved to the background' $r -Response $resp -DurationMs 40000
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut | Should -BeNullOrEmpty
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'shows the alarm AND the caveat when an unfinished consult also changed VCS' {
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r -Response $script:BusyResponse -DurationMs 78377
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            Push-Location $r; Set-Content 'b.txt' 'two' -Encoding ascii; git add b.txt; git commit -qm peer; Pop-Location
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'consult not finished'
+            $out | Should -Match 'PEER STILL BUSY'
+            $out.IndexOf('VERSION CONTROL CHANGED') | Should -BeLessThan $out.IndexOf('consult not finished') -Because 'the alarm comes first'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'stays silent and does not error without a tool_response, or with a Bash-shaped or string response (<Shape>)' -ForEach @(
+        @{ Shape = 'absent' }
+        @{ Shape = 'bash-shaped' }
+        @{ Shape = 'plain string' }
+    ) {
+        $r = New-GuardRepo
+        try {
+            $h = @{ tool_name = 'mcp__plugin_clavity_clavity-ls__agy_ask'; tool_input = @{ command = '' }; cwd = ($r -replace '\\','/'); session_id = 'guardtest' }
+            if ($Shape -eq 'bash-shaped')  { $h.tool_response = @{ stdout = 'x'; stderr = '' } }
+            if ($Shape -eq 'plain string') { $h.tool_response = '[PEER STILL BUSY]' }
+            $p = $h | ConvertTo-Json -Compress -Depth 6
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            $res = Invoke-BashHook -HookPath $script:Post -Payload $p
+            $res.StdOut | Should -BeNullOrEmpty
+            $res.StdErr | Should -BeNullOrEmpty
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'reports BOTH degraded and unfinished in one message' {
+        $r = New-GuardRepo
+        $d = New-TestTempPath 'degr2'
+        try {
+            New-Item -ItemType Directory -Path $d -Force | Out-Null
+            Copy-Item $script:Pre  (Join-Path $d 'agy-consult-guard-pre.sh')
+            Copy-Item $script:Post (Join-Path $d 'agy-consult-guard-post.sh')
+            Copy-Item $script:Lib  (Join-Path $d 'agy-consult-guard-lib.sh')
+            $libCopy = Join-Path $d 'agy-consult-guard-lib.sh'
+            $txt = [IO.File]::ReadAllText($libCopy) -replace '(?m)^agy_guard_have_hash\(\) .*$', 'agy_guard_have_hash() { return 1; }'
+            [IO.File]::WriteAllText($libCopy, $txt)
+            ($txt -match 'agy_guard_have_hash\(\) \{ return 1; \}') | Should -BeTrue -Because 'the probe must actually apply, or this row proves nothing'
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r -Response $script:BusyResponse -DurationMs 78377
+            Invoke-BashHook -HookPath (Join-Path $d 'agy-consult-guard-pre.sh') -Payload $p | Out-Null
+            $out = (Invoke-BashHook -HookPath (Join-Path $d 'agy-consult-guard-post.sh') -Payload $p).StdOut
+            $lines = @($out -split "`n" | Where-Object { $_.Trim() })
+            $lines.Count | Should -Be 1
+            $ctx = ($lines[0] | ConvertFrom-Json).hookSpecificOutput.additionalContext
+            $ctx | Should -Match 'PARTIALLY VERIFIED'
+            $ctx | Should -Match 'consult not finished'
+        } finally {
+            Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'notice also works on the bash 3.2 read path' {
+        $r = New-GuardRepo
+        try {
+            $e = @{ CLAVITY_HOOK_BASH3 = '1' }
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r -Response $script:BusyResponse -DurationMs 78377
+            Invoke-BashHook -HookPath $script:Pre -Payload $p -Env $e | Out-Null
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p -Env $e).StdOut
+            $out | Should -Match 'consult not finished'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'a malformed tool_response block does not blind the guard' {
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r -Response @(@{ type = 'text'; text = 5 }) -DurationMs 40000
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            Push-Location $r; Set-Content 'b.txt' 'two' -Encoding ascii; git add b.txt; git commit -qm peer; Pop-Location
+            $res = Invoke-BashHook -HookPath $script:Post -Payload $p
+            $res.StdOut | Should -Match 'VERSION CONTROL CHANGED'
+            $res.StdErr | Should -BeNullOrEmpty
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }

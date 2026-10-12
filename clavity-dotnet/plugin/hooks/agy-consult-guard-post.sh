@@ -48,12 +48,39 @@ d=${0%[/\\]*}; [ "$d" = "$0" ] && d=.; [ -z "$d" ] && d=/
 
 emit(){ jq -nc --arg m "$1" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'; }
 
-# ONE jq call for all four fields, NUL-terminated and read with the builtin. Each field keeps the
+# Sets incmsg (the NOT VERIFIED notice) and increason from the classification $1 (peer-busy|backgrounded|long).
+inc_notice(){
+  case $1 in
+    peer-busy)    increason="agy ended its turn while background work was still running (the driver returned PEER STILL BUSY)" ;;
+    backgrounded) increason="the harness moved the call to the background after 120 s while the peer was still working" ;;
+    *)            increason="the call ran for 120 s or more, the point at which the harness moves a call to the background, so it may have been backgrounded while the peer was still working" ;;
+  esac
+  incmsg="AGY CONSULT GUARD - NOT VERIFIED (consult not finished): this agy_ask returned before the peer finished - ${increason}. The version-control check ran NOW and cannot see anything the peer does afterwards, so a clean result here means only 'nothing so far'. Treat this consult as UNCHECKED until it really ends: run git status --short now (or use the snapshot you took before asking), run it again when the task-completion notification or the result arrives, treat anything new in between as suspect, and do not revert anything you did not verify the peer made."
+}
+
+# ONE jq call for all five fields, NUL-terminated and read with the builtin. Each field keeps the
 # value the old per-field `$(jq -r ...)` produced: `?` makes a non-object tool_input yield "" for
 # the command only (as the failing per-field call did), and trailing newlines are stripped per
 # field below, as command substitution did.
-{ IFS= read -r -d '' tool; IFS= read -r -d '' cmd; IFS= read -r -d '' cwd; IFS= read -r -d '' sid; } < <(
-  jq -j '(.tool_name // ""), "\u0000", (.tool_input.command? // ""), "\u0000", (.cwd // "."), "\u0000", (.session_id // "default"), "\u0000"' <<<"$input" 2>/dev/null)
+# The fifth field, inc, classifies an UNFINISHED agy_ask (ROADMAP section 78, measured 2026-10-12): the
+# call returned before the peer finished, so the VCS check below ran too early to see what the peer does
+# next. peer-busy: the driver appended a text block STARTING "[PEER STILL BUSY]" (an early return, 78 s in
+# the capture). backgrounded: the harness replaced the result with one block starting `MCP tool ` and
+# containing "moved to the background" (duration_ms 120005 in the capture). long: duration alone, >= 120000
+# ms. Matching is per BLOCK with startswith, never on the raw payload: block 0 is the peer's whole answer,
+# which may quote the markers, and the command text may too. Every step is wrapped in try/tostring because
+# a block whose text is not a string was MEASURED to make startswith() fail, and a jq error prints NOTHING,
+# which would blank tool, cwd and session as well and make the guard drop the consult silently.
+{ IFS= read -r -d '' tool; IFS= read -r -d '' cmd; IFS= read -r -d '' cwd; IFS= read -r -d '' sid; IFS= read -r -d '' inc; } < <(
+  jq -j '(.tool_name // "") as $tn
+    | (try (.tool_response | if type == "array" then map(if type == "object" then ((.text // "") | tostring) else "" end) else [] end) catch []) as $blocks
+    | (try (if ($tn | endswith("agy_ask")) then
+         (if any($blocks[]; startswith("[PEER STILL BUSY]")) then "peer-busy"
+          elif any($blocks[]; startswith("MCP tool ") and contains("moved to the background")) then "backgrounded"
+          elif (((.duration_ms // 0) | tonumber? // 0) >= 120000) then "long"
+          else "" end)
+       else "" end) catch "") as $inc
+    | $tn, "\u0000", (.tool_input.command? // ""), "\u0000", (.cwd // "."), "\u0000", (.session_id // "default"), "\u0000", $inc, "\u0000"' <<<"$input" 2>/dev/null)
 tool=${tool%"${tool##*[!$'\n']}"}; cmd=${cmd%"${cmd##*[!$'\n']}"}
 cwd=${cwd%"${cwd##*[!$'\n']}"};   sid=${sid%"${sid##*[!$'\n']}"}
 [ -z "$sid" ] && sid=default
@@ -140,10 +167,17 @@ rm -f "$sf" 2>/dev/null            # consume the baseline
 
 if [ "$before" = "$after" ]; then
   # Clean - but in degraded mode "clean" covers only the unhashed axes, so say exactly that
-  # rather than staying silent, which would read as a full verification.
+  # rather than staying silent, which would read as a full verification. An unfinished consult
+  # (inc, ROADMAP section 78) is likewise only "nothing so far"; both texts go in ONE message.
+  cmsg=""
   if [ "$degraded" = 1 ]; then
-    emit "AGY CONSULT GUARD - PARTIALLY VERIFIED (no hashing tool): neither sha256sum nor shasum is on PATH, so the worktree / index / .git-metadata / refs axes collapsed to a constant and were NOT checked, and gitignored paths degraded to names only. HEAD and stash WERE compared and did not move. Do NOT trust the absence of a further warning - manually confirm the peer made no version-control changes."
+    cmsg="AGY CONSULT GUARD - PARTIALLY VERIFIED (no hashing tool): neither sha256sum nor shasum is on PATH, so the worktree / index / .git-metadata / refs axes collapsed to a constant and were NOT checked, and gitignored paths degraded to names only. HEAD and stash WERE compared and did not move. Do NOT trust the absence of a further warning - manually confirm the peer made no version-control changes."
   fi
+  if [ -n "$inc" ]; then
+    inc_notice "$inc"
+    cmsg="${cmsg:+$cmsg }${incmsg}"
+  fi
+  [ -n "$cmsg" ] && emit "$cmsg"
   exit 0                             # clean: peer honored review-only
 fi
 
@@ -179,5 +213,9 @@ if [ "$b_head" != "$a_head" ]; then
 fi
 
 msg="AGY CONSULT GUARD - VERSION CONTROL CHANGED DURING A REVIEW-ONLY CONSULT: the agy peer appears to have modified git state during a consult that was supposed to make ZERO changes. What changed: ${axes}CAVEAT - this guard compares VCS state before and after the consult and CANNOT attribute a change to the peer rather than to anything else running in this repository at the same time. If you dispatched a local subagent, or another session is open on this repo, that is the likelier cause, and reverting would destroy its in-flight work. Next: verify the peer - not you, and not a concurrent local agent - made these changes; if so, undo them with a TARGETED per-file 'git checkout -- <file>' / 'git reset' (NEVER a broad 'git checkout <dir>/'), then re-issue the consult with a louder forbidden-actions banner. Changed paths:\n${paths}${headmsg}${ignmsg}${degmsg}"
+if [ -n "$inc" ]; then
+  inc_notice "$inc"
+  msg="${msg} ALSO: consult not finished - ${increason}; the check above covers only what had changed before the early return, so keep watching until the result arrives."
+fi
 emit "$msg"
 exit 0
