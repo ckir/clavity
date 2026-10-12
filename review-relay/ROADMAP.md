@@ -4,8 +4,11 @@
 
 ### D1 - Vendor APIs as review seats
 
-**Status:** SCHEDULED 2026-09-28 - scheduled - Branch RR start: owner decides
+**Status:** CLOSED-BY-RULING 2026-10-12 - owner kept the flat-rate manual paste; vendor API seats are an accepted non-goal until usage shows otherwise
+> **Previous status:** SCHEDULED 2026-09-28 - scheduled - Branch RR start: owner decides
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** open (owner, 2026-09-28).
+
+**Reopen if:** review-relay usage shows the manual paste or subscription limits as the bottleneck.
 
 
 Web review seats currently go through consumer chat sites, by hand. Vendor APIs (OpenAI, Meta models via
@@ -17,8 +20,11 @@ alternative on record so it is weighed with real usage numbers once review-relay
 
 ### D2 - Resume full browser automation
 
-**Status:** SCHEDULED 2026-09-28 - scheduled - Branch RR start: owner decides close (archived design) or resume
+**Status:** CLOSED-BY-RULING 2026-10-12 - owner closed it as an archived design; resume only when the manual paste is the bottleneck
+> **Previous status:** SCHEDULED 2026-09-28 - scheduled - Branch RR start: owner decides close (archived design) or resume
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** paused (owner, 2026-09-28).
+
+**Reopen if:** the manual paste becomes the bottleneck (the archived design's own resume trigger).
 
 
 The fully automated design is archived, not abandoned. Neither document is in this repository; both
@@ -50,3 +56,8 @@ warning plus a NO-VERDICT row) and no wrong reply is produced; only the diagnosi
 
 A fix needs `Read-AiSaveCapture` to expose the DECLARED format as well as the path it used, so collect can
 say "AiSaveDev could not find the turns on this page - the site may have changed".
+
+## Non-goals / accepted limitations
+
+- **D1 - vendor APIs as review seats.** Owner ruling 2026-10-12 (final sweep, Branch RR): review seats stay on flat-rate consumer subscriptions with a manual paste; metered vendor APIs are not built. Reopen if review-relay usage shows the manual paste or subscription limits as the bottleneck.
+- **D2 - resume full browser automation.** Owner ruling 2026-10-12 (final sweep, Branch RR): the AIBridgeWeb design and the web-seats spec stay archived in the owner's local working copy, outside this repository; nothing is built. Reopen if the manual paste becomes the bottleneck (the entry's own trigger); the templates, read proof and ledger carry over.
