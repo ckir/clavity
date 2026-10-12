@@ -4098,17 +4098,19 @@ caller uses) with their own capstone round; phase 2 = the six fork-free hooks an
 
 ### §70 — the consult guard's consult path costs ~115 processes a side
 
-**Status:** SCHEDULED 2026-10-04 - scheduled - Branch H
+**Status:** IMPLEMENTED 2026-10-12 - built on sweep/branch-h-s70 (`7ee75e79`, `c389dd93`, `3f1ec23b`, `88369dd1`, `1d5ee07e`)
+> **Previous status:** SCHEDULED 2026-10-04 - scheduled - Branch H
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-04 (owner ruling 3), not yet planned**
 
 `agy_guard_quad` + the gitignored-path census run on every real consult, pre and post (measured 2026-10-04 after Branch
 20: pre 114-120, post 117-129 total). Branch 20 pinned it (`$ConsultPin`) so it cannot grow. Needs its own design consult:
 what each axis costs, which axes can share one git call.
 
-**Also measured in Branch 20 Task 11 (2026-10-06):** with every SessionStart hook started together and 1031
-seams, `agy-consult-recovery.sh` took 6.2 / 6.0 s although it starts only 8 processes beyond boot - the time is
-bash's own per-seam loop (glob + keyword match + `-nt` per file), which a process budget cannot see. Its timeout
-was raised 10 -> 30 s for now; bounding that loop (or pruning concluded seams) is the real fix.
+**Built.** `agy_guard_quad` now starts fewer processes with the same eight axes and the same fingerprint layout: the hash helpers no longer spawn `cut`/`sed` (byte-identical output, measured), the `gitmeta` axis hashes its files in ONE `sha256sum` call plus the NUL-separated name list instead of one `cat` per file, and `head`/git dir/stash/refs come from two git calls instead of four. MEASURED on Linux 2026-10-12 (`strace -f -e trace=process`, distinct pids of one `agy_guard_quad` call): a plain `git init` repo (what the budget fixtures use) 63 -> 40; this repo with its real `.clavity/` 101 -> 74. The consult found three defects in the first drafts before any code was written: one `cat` stream hides bytes moved between two hooks, `sha256sum` silently omits an unreadable file (so the name list is load-bearing for a newly planted `chmod 000` hook), and `rev-parse HEAD --absolute-git-dir` prints no git dir on an unborn repo. Seven rows pin these (the `gitmeta` boundary, existing-unreadable, deleted and planted-unreadable hooks; an unborn repo; a tag; the two hash helpers). A side effect: bytes moved between `config` and `info/exclude` are now detected, which the old single `cat` stream missed.
+
+**Still unmeasured.** The WINDOWS process counts: `$ConsultPin` in `scripts/tests/hook-spawn-budget.Rows.ps1` was NOT lowered, because the budget suite runs on Windows only, a pin below the real count would turn red there, and an agy projection of "111 to 54" was inferred (2 Windows processes per external command) and withdrawn. The pins are ceilings, so the suite stays green; re-pin them from a Windows run. The dotnet and classic lib copies stay byte-identical.
+
+The `agy-consult-recovery.sh` seam-loop item that used to sit here moved to its own entry, section 88.
 
 ### §71 — `agy_ask` hides its own operator instructions behind the MCP SDK's generic error
 
@@ -4358,6 +4360,12 @@ The row `PINNED consult: MCP agy_ask, inconclusive return (after its pre)` in `s
 **Status:** OPEN 2026-10-12 - not isolated in the section 78 probes; next step: leave an untracked file behind an unfinished consult, run a second consult, and read whether the guard reports that file or treats it as baseline
 
 In section 78's second probe the baseline already contained the first probe's file and the guard reported only the new delta, which is consistent with absorption but was not isolated. If absorption is confirmed, a breach that lands after an unfinished consult becomes invisible to every later consult, which bears on how loud the NOT VERIFIED notice has to be and on whether a later check should also compare against the last clean state.
+
+### §88 — `agy-consult-recovery.sh` spends seconds in its own per-seam loop
+
+**Status:** OPEN 2026-10-12 - split out of section 70 (the consult guard's process cost, now implemented)
+
+Measured in Branch 20 Task 11 (2026-10-06): with every SessionStart hook started together and 1031 seams, `agy-consult-recovery.sh` took 6.2 / 6.0 s although it starts only 8 processes beyond boot. The time is bash's own per-seam loop (glob + keyword match + `-nt` per file), which a process budget cannot see. Its timeout was raised 10 -> 30 s for now; bounding that loop (or pruning concluded seams) is the real fix. Not yet scheduled.
 
 ## Non-goals / accepted limitations
 
