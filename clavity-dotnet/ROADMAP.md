@@ -4338,7 +4338,7 @@ Linux proxy (`strace -ff -e trace=execve` over the real hooks, 82 rows plus a de
 
 Classic's `clavity ask` runs through a Bash tool call whose `tool_response` is an object (not the list of text blocks an `agy_ask` returns), and its backgrounding behaviour was never captured. The section 78 hook change classifies only the MCP path, so an unfinished return on the CLI path is still reported as a clean compare.
 
-The harness's backgrounding wording is covered by the `long` class (duration alone) for the MCP path, so a reworded message still gets the notice; the CLI path has no such fallback, because its payload carries no comparable duration signal that was measured.
+The harness's backgrounding wording is covered by the `long` class (duration alone) for the MCP path, so a reworded message still gets the notice; the CLI path has no such fallback, because the hook classifies only agy_ask; a Bash payload does carry duration_ms (63 ms on a trivial call, captured 2026-10-12), but what it reads for a backgrounded Bash call was never captured.
 
 ## Non-goals / accepted limitations
 
