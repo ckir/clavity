@@ -4340,6 +4340,18 @@ Classic's `clavity ask` runs through a Bash tool call whose `tool_response` is a
 
 The harness's backgrounding wording is covered by the `long` class (duration alone) for the MCP path, so a reworded message still gets the notice; the CLI path has no such fallback, because the hook classifies only agy_ask; a Bash payload does carry duration_ms (63 ms on a trivial call, captured 2026-10-12), but what it reads for a backgrounded Bash call was never captured.
 
+### §86 — The inconclusive-return path's process allowance (+1) is unmeasured on Windows
+
+**Status:** OPEN 2026-10-12 - proven only by a Linux strace proxy (44 -> 45 successful execs); next step: run scripts/tests/hook-spawn-budget.Tests.ps1 on Windows and, if the row differs, set its -Max to the measured count
+
+The row `PINNED consult: MCP agy_ask, inconclusive return (after its pre)` in `scripts/tests/hook-spawn-budget.Rows.ps1` allows `$script:ConsultPin.PostMcp + 1` processes: the one extra is the `jq -nc` inside `emit`, the only process the notice path adds. That suite counts through a Windows Job Object and cannot run on Linux, so the allowance rests on an `strace -ff` count of the real hook (normal return 44, backgrounded return 45, repeated twice, 2026-10-12). Related: section 82 (that suite has also never run under parallel load on Windows).
+
+### §87 — Whether a later consult's baseline absorbs a file that a missed breach left behind is unmeasured
+
+**Status:** OPEN 2026-10-12 - not isolated in the section 78 probes; next step: leave an untracked file behind an unfinished consult, run a second consult, and read whether the guard reports that file or treats it as baseline
+
+In section 78's second probe the baseline already contained the first probe's file and the guard reported only the new delta, which is consistent with absorption but was not isolated. If absorption is confirmed, a breach that lands after an unfinished consult becomes invisible to every later consult, which bears on how loud the NOT VERIFIED notice has to be and on whether a later check should also compare against the last clean state.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
