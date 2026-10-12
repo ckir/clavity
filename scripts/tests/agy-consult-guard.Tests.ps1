@@ -1100,6 +1100,51 @@ echo "digests=$n calls=$(wc -l < "$count")"
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'WARNS when .git/config is edited during a consult' {
+        # The gitmeta axis also covers .git/config (a core.hooksPath or alias there is code execution
+        # that no `git status` shows). Every other gitmeta row mutates .git/hooks, so deleting the
+        # config entry from the file list left the suite green.
+        $r = New-GuardRepo
+        try {
+            $out = Invoke-ConsultAround -Repo $r -Between {
+                Push-Location $r; git config peer.planted yes; Pop-Location
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'hooks/config/exclude'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'WARNS when .git/info/exclude is appended to during a consult' {
+        # Appending a pattern to info/exclude hides new worktree files from `status`.
+        $r = New-GuardRepo
+        try {
+            $out = Invoke-ConsultAround -Repo $r -Between {
+                Add-Content (Join-Path $r '.git/info/exclude') 'secret.txt' -Encoding ascii
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'hooks/config/exclude'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'WARNS when bytes move from the end of .git/config to the start of .git/info/exclude' {
+        # config then exclude are adjacent in a concatenated stream; moving a trailing comment line
+        # across that boundary leaves the concatenation identical, so only per-file digests see it.
+        $r = New-GuardRepo
+        $cfg = Join-Path $r '.git/config'
+        $exc = Join-Path $r '.git/info/exclude'
+        try {
+            $c0 = [IO.File]::ReadAllText($cfg); $e0 = [IO.File]::ReadAllText($exc)
+            [IO.File]::WriteAllText($cfg, $c0 + "# x`n")
+            [IO.File]::WriteAllText($exc, "# y`n" + $e0)
+            $out = Invoke-ConsultAround -Repo $r -Between {
+                [IO.File]::WriteAllText($cfg, $c0)
+                [IO.File]::WriteAllText($exc, "# x`n# y`n" + $e0)
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'hooks/config/exclude'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'WARNS when an UNREADABLE hook is planted during a consult' -Skip:($IsWindows -or ((& id -u) -eq '0')) {
         # A newly planted chmod-000 hook yields no digest line, so only the NAME list can see it.
         $r = New-GuardRepo
@@ -1210,7 +1255,10 @@ echo "digests=$n calls=$(wc -l < "$count")"
             $resp = @(@{ type = 'text'; text = ($script:BusyResponse[0].text -replace '"PeerStillBusy":true', '"PeerStillBusy":false') })
             $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r -Response $resp -DurationMs 40000
             Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
-            (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut | Should -BeNullOrEmpty
+            $res = Invoke-BashHook -HookPath $script:Post -Payload $p
+            $res.ExitCode | Should -Be 0 -Because 'a silent return is a clean exit; a crash also prints nothing'
+            $res.StdErr | Should -BeNullOrEmpty
+            $res.StdOut | Should -BeNullOrEmpty
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -1220,7 +1268,10 @@ echo "digests=$n calls=$(wc -l < "$count")"
             $resp = @(@{ type = 'text'; text = '{"CascadeId":"c","Answer":"the [PEER STILL BUSY] marker and moved to the background","PeerStillBusy":false}' })
             $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r -Response $resp -DurationMs 40000
             Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
-            (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut | Should -BeNullOrEmpty
+            $res = Invoke-BashHook -HookPath $script:Post -Payload $p
+            $res.ExitCode | Should -Be 0 -Because 'a silent return is a clean exit; a crash also prints nothing'
+            $res.StdErr | Should -BeNullOrEmpty
+            $res.StdOut | Should -BeNullOrEmpty
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -1230,7 +1281,10 @@ echo "digests=$n calls=$(wc -l < "$count")"
             $resp = @(@{ type = 'text'; text = '{"CascadeId":"c","Answer":"fine","PeerStillBusy":false}' })
             $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '[PEER STILL BUSY] and MCP tool x moved to the background' $r -Response $resp -DurationMs 40000
             Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
-            (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut | Should -BeNullOrEmpty
+            $res = Invoke-BashHook -HookPath $script:Post -Payload $p
+            $res.ExitCode | Should -Be 0 -Because 'a silent return is a clean exit; a crash also prints nothing'
+            $res.StdErr | Should -BeNullOrEmpty
+            $res.StdOut | Should -BeNullOrEmpty
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
