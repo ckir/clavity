@@ -436,14 +436,22 @@ agy_guard_quad() {
   stash=$(git -C "$c" rev-parse -q --verify refs/stash 2>/dev/null || echo none)
   refs=$(git -C "$c" show-ref 2>/dev/null | grep -v ' refs/stash$' | agy_guard_hash)
   gitdir=$(git -C "$c" rev-parse --absolute-git-dir 2>/dev/null)
+  # The NAME list is hashed too: an unreadable file drops out of sha256sum's output, so without the
+  # names a chmod 000 would go unseen. Per-file digests, not one `cat` stream: bytes moving between
+  # two hooks ("12"+"34" -> "1"+"234") leave a cat stream identical. Measured 2026-10-12.
+  local meta_files=() h
+  if [ -d "$gitdir/hooks" ]; then
+    while IFS= read -r -d '' h; do meta_files+=("$h"); done < <(find "$gitdir/hooks" -type f -print0 2>/dev/null | LC_ALL=C sort -z)
+  fi
+  [ -f "$gitdir/config" ] && meta_files+=("$gitdir/config")
+  [ -f "$gitdir/info/exclude" ] && meta_files+=("$gitdir/info/exclude")
   gitmeta=$( {
-    if [ -d "$gitdir/hooks" ]; then
-      find "$gitdir/hooks" -type f 2>/dev/null | LC_ALL=C sort | while IFS= read -r h; do
-        printf '%s\n' "$h"; cat "$h" 2>/dev/null
-      done
+    printf '%s\0' "${meta_files[@]}"
+    if [ "${#meta_files[@]}" -gt 0 ]; then
+      if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "${meta_files[@]}" 2>/dev/null
+      else shasum -a 256 -- "${meta_files[@]}" 2>/dev/null
+      fi
     fi
-    cat "$gitdir/config" 2>/dev/null
-    cat "$gitdir/info/exclude" 2>/dev/null
   } | agy_guard_hash)
   flags=$(git -C "$c" ls-files -v 2>/dev/null | grep -Ev '^H ' | agy_guard_hash)
   ignored=$(agy_guard_ignored "$c")

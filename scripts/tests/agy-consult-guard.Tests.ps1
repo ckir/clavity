@@ -1010,6 +1010,51 @@ echo "digests=$n calls=$(wc -l < "$count")"
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'WARNS when bytes move between two hooks' {
+        # A plain `cat` of both hooks is the SAME stream in both states ("12"+"34" vs "1"+"234"), so
+        # only a per-file digest (or per-file framing) can see content move between two hooks.
+        $r = New-GuardRepo
+        try {
+            [IO.File]::WriteAllText((Join-Path $r '.git/hooks/hookA'), '12')
+            [IO.File]::WriteAllText((Join-Path $r '.git/hooks/hookB'), '34')
+            $out = Invoke-ConsultAround -Repo $r -Between {
+                [IO.File]::WriteAllText((Join-Path $r '.git/hooks/hookA'), '1')
+                [IO.File]::WriteAllText((Join-Path $r '.git/hooks/hookB'), '234')
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'ARBITRARY-CODE-EXEC'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'WARNS when an existing hook becomes unreadable' -Skip:($IsWindows -or ((& id -u) -eq '0')) {
+        # An unreadable file drops out of a tool's output; the NAME list must still change the digest.
+        $r = New-GuardRepo
+        $hook = Join-Path $r '.git/hooks/hook1'
+        try {
+            [IO.File]::WriteAllText($hook, 'echo hi')
+            $out = Invoke-ConsultAround -Repo $r -Between {
+                & chmod 000 $hook
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'ARBITRARY-CODE-EXEC'
+        } finally {
+            & chmod 600 $hook 2>$null
+            Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'WARNS when an existing hook is deleted' {
+        $r = New-GuardRepo
+        try {
+            [IO.File]::WriteAllText((Join-Path $r '.git/hooks/hook1'), 'echo hi')
+            $out = Invoke-ConsultAround -Repo $r -Between {
+                Remove-Item (Join-Path $r '.git/hooks/hook1') -Force
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'ARBITRARY-CODE-EXEC'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'WARNS when an assume-unchanged bit is set during a consult' {
         # --assume-unchanged makes git IGNORE later edits to a tracked file: the smuggle is that it
         # hides a subsequent modification from `status` AND from `diff` at once. Setting the bit is
