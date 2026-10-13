@@ -57,3 +57,12 @@ function Restore-KilledRunBackup {
         Write-Warning "STALE-BACKUP-IGNORED $Backup (the target exists; the backup was deleted)"
     }
 }
+
+function New-TestDirectoryLink {
+    # Windows: a junction (no privilege needed); elsewhere: a symlink. Returns the item.
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Target)
+    $type = if ($IsWindows) { 'Junction' } else { 'SymbolicLink' }
+    $item = New-Item -ItemType $type -Path $Path -Target $Target
+    if (-not (Test-Path -LiteralPath $Path)) { throw "New-TestDirectoryLink: '$Path' was not created" }
+    $item
+}

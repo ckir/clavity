@@ -117,7 +117,56 @@ Describe 'BashHookHelpers (harness validation)' {
         $r.Stdout | Should -BeExactly '[]'
     }
 
-    Context 'Measure-BashHookProcesses (Job Object process counter)' {
+    Context 'cross-platform fixture helpers' {
+        BeforeAll { $script:xpDir = New-TestTempPath 'xp'; New-Item -ItemType Directory -Path $script:xpDir -Force | Out-Null }
+        AfterAll { Remove-TestPath $script:xpDir }
+        It 'Get-GitBashCoreOrThrow resolves on this OS' { (Get-GitBashCoreOrThrow) | Should -Not -BeNullOrEmpty }
+        It 'New-NoJqPath hides jq from bash and keeps grep reachable' {
+            $p = New-NoJqPath
+            try {
+                & (Get-GitBashOrThrow) -c 'PATH="$1"; export PATH; command -v jq >/dev/null 2>&1 && echo REACHABLE || echo absent' _ $p | Should -Be 'absent'
+                & (Get-GitBashOrThrow) -c 'PATH="$1"; export PATH; command -v grep >/dev/null 2>&1 && echo yes' _ $p | Should -Be 'yes'
+            } finally { if (-not $IsWindows) { Remove-TestPath $p } }
+        }
+        It 'Set-TestPathUnreadable blocks the BASH process, and Restore-TestPathReadable undoes it' {
+            $f = Join-Path $script:xpDir 'secret.txt'; Set-Content -LiteralPath $f -Value 'x'
+            $enforced = Set-TestPathUnreadable -Path $f
+            try {
+                if (-not $enforced) { Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: this user (root?) is not bound by the deny'; return }
+                & (Get-GitBashOrThrow) -c 'cat "$1" >/dev/null 2>&1 && echo READ || echo blocked' _ ($f -replace '\\','/') | Should -Be 'blocked'
+            } finally { Restore-TestPathReadable -Path $f }
+            & (Get-GitBashOrThrow) -c 'cat "$1" >/dev/null 2>&1 && echo READ || echo blocked' _ ($f -replace '\\','/') | Should -Be 'READ'
+        }
+        It 'Set-TestFileReadOnly makes an append fail, and Clear-TestFileReadOnly undoes it' {
+            $f = Join-Path $script:xpDir 'ro.txt'; Set-Content -LiteralPath $f -Value 'x'
+            $enforced = Set-TestFileReadOnly -Path $f
+            try {
+                if (-not $enforced) { Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: this user (root?) is not bound by read-only'; return }
+                & (Get-GitBashOrThrow) -c 'echo y >> "$1" 2>/dev/null && echo WROTE || echo blocked' _ ($f -replace '\\','/') | Should -Be 'blocked'
+            } finally { Clear-TestFileReadOnly -Path $f }
+            & (Get-GitBashOrThrow) -c 'echo y >> "$1" 2>/dev/null && echo WROTE || echo blocked' _ ($f -replace '\\','/') | Should -Be 'WROTE'
+        }
+        It 'Set-ShimExecutable lets bash run a freshly written shim from PATH' {
+            $d = Join-Path $script:xpDir 'shim'; New-Item -ItemType Directory -Path $d -Force | Out-Null
+            [IO.File]::WriteAllText((Join-Path $d 'hello'), "#!/usr/bin/env bash`necho hi`n")
+            Set-ShimExecutable -Path (Join-Path $d 'hello')
+            & (Get-GitBashOrThrow) -c ('{0}; PATH="$p:$PATH" hello' -f (Get-BashCygpathPrelude)) _ $d | Should -Be 'hi'
+        }
+        It 'Invoke-BashHookEmptyPath runs a hook with NO resolvable commands' {
+            $h = Join-Path $script:xpDir 'probe.sh'; [IO.File]::WriteAllText($h, "command -v cat >/dev/null 2>&1 && echo FOUND || echo none`n")
+            (Invoke-BashHookEmptyPath -HookPath $h -HomeDir $script:xpDir).StdOut | Should -Be 'none'
+        }
+        It 'New-TestDirectoryLink creates a reparse point that resolves to its target' {
+            $t = Join-Path $script:xpDir 'target'; New-Item -ItemType Directory -Path $t -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $t 'f.txt') -Value 'z'
+            $l = Join-Path $script:xpDir 'link'; New-TestDirectoryLink -Path $l -Target $t | Out-Null
+            (Get-Item -LiteralPath $l -Force).Attributes -band [IO.FileAttributes]::ReparsePoint | Should -Not -Be 0
+            Get-Content -LiteralPath (Join-Path $l 'f.txt') | Should -Be 'z'
+        }
+    }
+
+    # Win32 Job Objects; the Linux budget is not this quantity (spec non-goal).
+    Context 'Measure-BashHookProcesses (Job Object process counter)' -Skip:(-not $IsWindows) -Tag 'WindowsOnly' {
         BeforeAll {
             $script:countDir = New-TestTempPath "sp-d-count"
             New-Item -ItemType Directory -Path $script:countDir -Force | Out-Null

@@ -114,6 +114,7 @@ function Get-GitBashCoreOrThrow {
     # 1 for a run that started a dozen processes. MEASURED 2026-10-04: cold first calls returned 1, warm calls
     # 3. Started directly, the real bash spins on builtins until released, so there is nothing to race.
     $launcher = Get-GitBashOrThrow
+    if (-not $IsWindows) { return $launcher }   # no launcher/core split outside Git for Windows
     if ($launcher -match '\\usr\\bin\\bash\.exe$') { return $launcher }
     $core = Join-Path (Split-Path -Parent (Split-Path -Parent $launcher)) 'usr\bin\bash.exe'
     if (Test-Path -LiteralPath $core) { return $core }
@@ -268,7 +269,7 @@ function Invoke-BashHookEmptyPath {
     # Used by the ROADMAP section 59 rows: every spawn before the first jq check is a stderr leak on such a machine.
     param([Parameter(Mandatory)][string]$HookPath, [string]$Payload = '{}', [Parameter(Mandatory)][string]$HomeDir, [hashtable]$Env = @{})
     if (-not (Test-Path -LiteralPath $HookPath)) { throw "Invoke-BashHookEmptyPath: the hook '$HookPath' does not exist" }
-    $usrBash = Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin\bash.exe'
+    $usrBash = if ($IsWindows) { Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin\bash.exe' } else { Get-GitBashOrThrow }
     if (-not (Test-Path -LiteralPath $usrBash)) { throw "Invoke-BashHookEmptyPath: needs the non-wrapper Git Bash at $usrBash" }
     $psi = [Diagnostics.ProcessStartInfo]::new($usrBash)
     $psi.ArgumentList.Add(($HookPath -replace '\\', '/'))
@@ -278,7 +279,63 @@ function Invoke-BashHookEmptyPath {
     $psi.Environment['HOME'] = $HomeDir
     foreach ($k in $Env.Keys) { $psi.Environment[$k] = $Env[$k] }
     $p = [Diagnostics.Process]::Start($psi)
-    $p.StandardInput.Write($Payload); $p.StandardInput.Close()
+    # A hook that never reads stdin exits first; on Linux the write then gets EPIPE. That is not a failure of the run.
+    try { $p.StandardInput.Write($Payload); $p.StandardInput.Close() } catch [System.IO.IOException] { }
     $out = $p.StandardOutput.ReadToEnd(); $err = $p.StandardError.ReadToEnd(); $p.WaitForExit()
     [pscustomobject]@{ StdOut = $out.Trim(); StdErr = $err.Trim(); ExitCode = $p.ExitCode }
+}
+
+function Get-BashCygpathPrelude {
+    # Verbatim the idiom at clavity-dotnet-setup.Tests.ps1:11. Embed with -f; the converted path is in $p.
+    'p="$1"; command -v cygpath >/dev/null 2>&1 && p="$(cygpath -u "$1")"'
+}
+
+function New-NoJqPath {
+    # A PATH value IN POSIX FORM (consumed inside bash as PATH="$1"; a Windows-form C:\... value is split at the drive colon).
+    # Windows: the literal /usr/bin (MSYS's view of Git's usr\bin). Elsewhere: a fresh temp dir of symlinks to every PATH
+    # entry except jq/jq.exe - the CALLER removes it (Remove-TestPath, guarded by -not $IsWindows).
+    $result = '/usr/bin'
+    if (-not $IsWindows) {
+        $dir = New-TestTempPath 'nojq'
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $result = $dir
+        # ONE bash call: one cp -s process per PATH directory; -n keeps the first name found, as PATH lookup would.
+        & (Get-GitBashOrThrow) -c 'IFS=:; for d in $PATH; do [ -d "$d" ] || continue; cp -s -n "$d"/* "$1"/ 2>/dev/null; done; rm -f "$1/jq" "$1/jq.exe"' _ $result
+    }
+    $probe = & (Get-GitBashOrThrow) -c 'PATH="$1"; export PATH; command -v jq >/dev/null 2>&1 && echo JQ; command -v grep >/dev/null 2>&1 && command -v bash >/dev/null 2>&1 && echo TOOLS' _ $result
+    $probe = @($probe)
+    if ($probe -contains 'JQ') { throw "New-NoJqPath: jq still reachable under '$result'" }
+    if ($probe -notcontains 'TOOLS') { throw "New-NoJqPath: grep/bash not reachable under '$result' (PATH is not usable)" }
+    $result
+}
+
+function Set-TestPathUnreadable {
+    param([Parameter(Mandatory)][string]$Path)
+    if ($IsWindows) { & icacls $Path /deny "$($env:USERNAME):(R)" 2>&1 | Out-Null } else { & chmod 000 $Path }
+    & (Get-GitBashOrThrow) -lc "cat '$($Path -replace '\\','/')' > /dev/null 2>&1"
+    return ($LASTEXITCODE -ne 0)
+}
+
+function Restore-TestPathReadable {
+    param([Parameter(Mandatory)][string]$Path)
+    if ($IsWindows) { & icacls $Path /remove:d "$env:USERNAME" 2>&1 | Out-Null } else { & chmod 644 $Path 2>&1 | Out-Null }
+}
+
+function Set-TestFileReadOnly {
+    param([Parameter(Mandatory)][string]$Path)
+    if ($IsWindows) { & attrib +R ($Path -replace '/','\') 2>$null } else { & chmod 444 $Path }
+    # Probe without mutating the file. WINDOWS, UNMEASURED: whether MSYS `[ -w ]` honours attrib +R; if it does not, use
+    # (Get-Item -LiteralPath $Path).IsReadOnly on Windows (see the Task 2 brief).
+    $r = & (Get-GitBashOrThrow) -c '[ -w "$1" ] && echo writable || echo blocked' _ ($Path -replace '\\','/')
+    return ("$r".Trim() -eq 'blocked')
+}
+
+function Clear-TestFileReadOnly {
+    param([Parameter(Mandatory)][string]$Path)
+    if ($IsWindows) { & attrib -R ($Path -replace '/','\') 2>&1 | Out-Null } else { & chmod 644 $Path 2>&1 | Out-Null }
+}
+
+function Set-ShimExecutable {
+    param([Parameter(Mandatory)][string[]]$Path)
+    & (Get-GitBashOrThrow) -c 'chmod +x "$@"' _ @($Path | ForEach-Object { $_ -replace '\\','/' })
 }
