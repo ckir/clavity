@@ -17,8 +17,7 @@ Describe 'agy-anomaly-capture-reminder.sh' {
 
         # ...\Git\usr\bin carries grep/awk but NOT jq, so pointing PATH here reproduces "jq absent"
         # deterministically. Git Bash itself is invoked by ABSOLUTE path inside Invoke-BashHook.
-        $bashDir = Split-Path -Parent (Get-GitBashOrThrow)
-        $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')
+        $script:NoJqPath = New-NoJqPath
 
         # An empty HOME so a REAL ~/.claude/.no-agy on the dev box cannot silence the hook and hand us a
         # false green. Absolute paths only - MSYS mangles a relative HOME.
@@ -68,6 +67,9 @@ Describe 'agy-anomaly-capture-reminder.sh' {
         # epic measured that bookend assertions left ~95% of a 399-character clause unguarded, and an
         # audit mutant that deleted the operative sentence from all four hooks left a 45-test suite GREEN.
         $script:CaptureMsg = 'AGY-ANOMALIES/1 check BEFORE COMPACTION: did you VERIFY a defect this session that is OUTSIDE your current task and is not yet in .clavity/local-anomalies.md? Capture it now via the open-issues skill - one line: - [type] fact * path:LINE * DATE * task=<what you were doing>. Uncaptured anomalies are lost at compaction. NOT an anomaly: a test you expected to fail, an error in the work you are actively doing, or anything you have not verified by measurement. If nothing qualifies, do nothing - a speculative entry is worse than none, because it lands on a blocking triage gate.'
+    }
+    AfterAll {
+        if (-not $IsWindows) { Remove-TestPath $script:NoJqPath }
     }
 
     # ISOLATION, not a test-logic change: $TestDrive persists across every It in this container run (it is

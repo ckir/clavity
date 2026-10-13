@@ -3,8 +3,7 @@ Describe 'agy-anomaly-reminder.sh' {
         . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
         $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Hook = Join-Path $repoRoot 'clavity-dotnet/plugin/hooks/agy-anomaly-reminder.sh'
-        $bashDir = Split-Path -Parent (Get-GitBashOrThrow)
-        $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')
+        $script:NoJqPath = New-NoJqPath
 
         # A workspace whose .clavity/local-anomalies.md carries $Lines entry bullets.
         function New-Workspace { param([string[]]$Lines)
@@ -51,6 +50,9 @@ Describe 'agy-anomaly-reminder.sh' {
             New-Item -ItemType Directory -Path (Join-Path $r 'src') -Force | Out-Null
             return $r
         }
+    }
+    AfterAll {
+        if (-not $IsWindows) { Remove-TestPath $script:NoJqPath }
     }
 
     # --- THE POSITIVE CONTROL FOR EVERY STDERR ASSERTION IN THIS FILE ----------------------------

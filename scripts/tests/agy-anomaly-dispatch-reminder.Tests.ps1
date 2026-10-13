@@ -16,8 +16,7 @@ Describe 'agy-anomaly-dispatch-reminder.sh' {
         $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Hook = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-anomaly-dispatch-reminder.sh'
 
-        $bashDir = Split-Path -Parent (Get-GitBashOrThrow)
-        $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')
+        $script:NoJqPath = New-NoJqPath
 
         function New-CleanHome {
             $h = New-TestTempPath "anom-disp-home"
@@ -44,6 +43,9 @@ Describe 'agy-anomaly-dispatch-reminder.sh' {
         function RawPayload { param([string]$Cwd)
             '{"cwd":"' + ($Cwd -replace '\\', '\\') + '","tool_name":"Agent","hook_event_name":"PreToolUse"}'
         }
+    }
+    AfterAll {
+        if (-not $IsWindows) { Remove-TestPath $script:NoJqPath }
     }
 
     # --- .no-agy at the REPO ROOT, session cwd in a SUBDIRECTORY ---------------------------------

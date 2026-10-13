@@ -6,8 +6,7 @@ Describe 'agy-after-reminder.sh' {
 
         # A PATH containing bash+coreutils but NOT jq, to exercise the jq-missing branch. Point at the Git
         # usr/bin (bash, grep, printf) only; jq is not shipped there.
-        $bashDir = Split-Path -Parent (Get-GitBashOrThrow)                 # ...\Git\bin
-        $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')  # ...\Git\usr\bin
+        $script:NoJqPath = New-NoJqPath
 
         function New-WritePayload { param([string]$FilePath, [string]$Cwd = '.')
             @{ tool_input = @{ file_path = $FilePath }; cwd = $Cwd } | ConvertTo-Json -Compress
@@ -25,6 +24,9 @@ Describe 'agy-after-reminder.sh' {
             New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
             return $h
         }
+    }
+    AfterAll {
+        if (-not $IsWindows) { Remove-TestPath $script:NoJqPath }
     }
 
     It 'fires the AGY-AFTER reminder on a spec write' {

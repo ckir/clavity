@@ -181,16 +181,18 @@ Describe 'agy-consult-guard' {
         @{ Tool = 'Bash';       Cmd = 'clavity asking';                                             Warns = $false }
         @{ Tool = 'Bash';       Cmd = 'git status';                                                 Warns = $false }
     ) {
-        $noJq = Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin'   # bash, no jq
-        $p = Payload $Tool $Cmd '.'
-        (Invoke-BashHook -HookPath $script:Pre -Payload $p -Env @{ PATH = $noJq }).StdOut | Should -BeNullOrEmpty -Because 'Pre is silent by design; Post is the half that reports'
-        $out = (Invoke-BashHook -HookPath $script:Post -Payload $p -Env @{ PATH = $noJq }).StdOut
-        if ($Warns) {
-            $out | Should -Match 'guard inactive: missing jq'
-            ($out | ConvertFrom-Json).hookSpecificOutput.hookEventName | Should -BeExactly 'PostToolUse'
-        } else {
-            $out | Should -BeNullOrEmpty -Because 'the warning is for a consult the guard could not check, not for a call that only mentions the words'
-        }
+        $noJq = New-NoJqPath   # bash, no jq (a real jq-free PATH; removed below off-Windows)
+        try {
+            $p = Payload $Tool $Cmd '.'
+            (Invoke-BashHook -HookPath $script:Pre -Payload $p -Env @{ PATH = $noJq }).StdOut | Should -BeNullOrEmpty -Because 'Pre is silent by design; Post is the half that reports'
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p -Env @{ PATH = $noJq }).StdOut
+            if ($Warns) {
+                $out | Should -Match 'guard inactive: missing jq'
+                ($out | ConvertFrom-Json).hookSpecificOutput.hookEventName | Should -BeExactly 'PostToolUse'
+            } else {
+                $out | Should -BeNullOrEmpty -Because 'the warning is for a consult the guard could not check, not for a call that only mentions the words'
+            }
+        } finally { if (-not $IsWindows) { Remove-TestPath $noJq } }
     }
     It 'WARNS when the consult CLI is invoked by an absolute path' {
         # Capstone round 1: MEASURED silent before the anchor allowed a path prefix.

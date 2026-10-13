@@ -18,8 +18,7 @@ Describe 'agy-anomaly-model-notice.sh' {
         $script:Hook  = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-anomaly-model-notice.sh'
         # The OWNER-side sibling, for the cross-check that the two halves count the same things.
         $script:Drain = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-anomaly-reminder.sh'
-        $bashDir = Split-Path -Parent (Get-GitBashOrThrow)
-        $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')
+        $script:NoJqPath = New-NoJqPath
 
         function New-CleanHome {
             $h = New-TestTempPath "anom-mn-home"
@@ -41,6 +40,9 @@ Describe 'agy-anomaly-model-notice.sh' {
         }
         function Payload { param([string]$Cwd) @{ cwd = ($Cwd -replace '\\','/'); source = 'startup' } | ConvertTo-Json -Compress }
         function Get-Ctx { param($Result) ($Result.StdOut | ConvertFrom-Json).hookSpecificOutput.additionalContext }
+    }
+    AfterAll {
+        if (-not $IsWindows) { Remove-TestPath $script:NoJqPath }
     }
 
     It 'is SILENT when there are no untriaged anomalies' {

@@ -28,8 +28,7 @@ Describe 'agy-discipline-reaching.sh' {
         $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Hook = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh'
         $script:Stamp = 'AGY-ANOMALIES/1'
-        $bashDir = Split-Path -Parent (Get-GitBashOrThrow)
-        $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')
+        $script:NoJqPath = New-NoJqPath
 
         function New-CleanHome {
             $h = New-TestTempPath 'reach-home'
@@ -99,6 +98,9 @@ Describe 'agy-discipline-reaching.sh' {
             if ($lines.Count -eq 0) { return $null }
             return [pscustomobject]@{ Count = $lines.Count; Last = ($lines[-1] | ConvertFrom-Json); Raw = $lines }
         }
+    }
+    AfterAll {
+        if (-not $IsWindows) { Remove-TestPath $script:NoJqPath }
     }
 
     It 'writes exactly ONE well-formed record per invocation' {

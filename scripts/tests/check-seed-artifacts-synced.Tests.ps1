@@ -9,8 +9,7 @@ Describe 'check-seed-artifacts-synced.sh' {
         # ...\Git\usr\bin carries diff/sed but NOT jq (verified: the hook jq-missing tests rely on this),
         # so pointing PATH here reproduces "jq absent" deterministically. Git Bash is invoked by ABSOLUTE
         # path inside Invoke-BashHook, so bash itself need not be on this restricted PATH.
-        $bashDir = Split-Path -Parent (Get-GitBashOrThrow)                       # ...\Git\bin
-        $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')   # ...\Git\usr\bin
+        $script:NoJqPath = New-NoJqPath
 
         # The script uses repo-root-relative paths, so the bash child must run with cwd = repo root.
         # Native processes launched from pwsh inherit [Environment]::CurrentDirectory (NOT the PSDrive
@@ -22,6 +21,9 @@ Describe 'check-seed-artifacts-synced.sh' {
             try { return (Invoke-BashHook -HookPath $script:Script -Env $Env) }
             finally { [Environment]::CurrentDirectory = $savedCwd }
         }
+    }
+    AfterAll {
+        if (-not $IsWindows) { Remove-TestPath $script:NoJqPath }
     }
 
     It 'passes (exit 0, reports in sync) on the real repo when jq is available' {

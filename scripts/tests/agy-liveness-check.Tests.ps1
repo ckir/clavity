@@ -3,8 +3,7 @@ Describe 'agy-liveness-check.sh' {
         . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
         $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Hook = Join-Path $repoRoot 'clavity-dotnet/plugin/hooks/agy-liveness-check.sh'
-        $bashDir = Split-Path -Parent (Get-GitBashOrThrow)
-        $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')
+        $script:NoJqPath = New-NoJqPath
 
         # Build a fixture config-dir (the CLAUDE_CONFIG_DIR the hook reads as the USER-scope settings home)
         # with an enabledPlugins map. $Enabled = $true|$false|$null (no key) | 'nofile' (no settings.json).
@@ -35,6 +34,9 @@ Describe 'agy-liveness-check.sh' {
             } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Cfg 'settings.json') -Encoding ascii
             return Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $Cfg; HOME = $HomeDir; CLAUDE_PROJECT_DIR = $Cfg }
         }
+    }
+    AfterAll {
+        if (-not $IsWindows) { Remove-TestPath $script:NoJqPath }
     }
 
     It 'is SILENT (exit 0, no output at all) when superpowers is enabled' {
