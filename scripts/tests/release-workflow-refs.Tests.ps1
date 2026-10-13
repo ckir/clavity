@@ -69,8 +69,9 @@ jobs:
 
     It 'umbrella-release.yml passes the TAG to its <Name> build: the dispatch input, else the pushed tag name' -ForEach ($script:Builds | ForEach-Object { @{ Name = $_ } }) {
         $job = Get-JobText (Read-Workflow 'umbrella-release.yml') $Name
-        $job | Should -Match "(?m)^    uses: \./\.github/workflows/build-$([regex]::Escape($Name))\.yml[ ]*\r?$"
-        $job | Should -Match '(?m)^      ref: \$\{\{ github\.event\.inputs\.tag \|\| github\.ref_name \}\}[ ]*\r?$'
+        # ONE match: `ref:` must sit directly under this job's `with:` mapping (only comment lines may sit between). Matching `uses:`
+        # and `ref:` separately passed with `with:` turned into `env:`, and GitHub then passes no input at all (test-audit MG-1, measured).
+        $job | Should -Match "(?m)^    uses: \./\.github/workflows/build-$([regex]::Escape($Name))\.yml[ ]*\r?\n    with:[ ]*\r?\n(?:      #.*\r?\n)*      ref: \$\{\{ github\.event\.inputs\.tag \|\| github\.ref_name \}\}[ ]*\r?$"
     }
 
     It 'the publish job extracts the release notes from the TAG, not the dispatch branch (its checkout carries the same ref)' {
@@ -96,5 +97,8 @@ jobs:
         # The accepted outputs are the bare version or version+metadata: a prefix match would also accept 0.11.00.
         $t | Should -Match ([regex]::Escape('"clavity-ls $v"|"clavity-ls $v+"*)'))
         $t | Should -Match "exit 1 ;;\r?\n\s+esac"
+        # The short flag is smoke-tested too and must print exactly what --version printed (test-audit PP-1).
+        $t | Should -Match '(?m)^\s+short_out=\$\("publish/\$bin" -V 2>&1\)'
+        $t | Should -Match ([regex]::Escape('[ "$short_out" = "$ver_out" ] ||'))
     }
 }

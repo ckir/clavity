@@ -106,6 +106,9 @@ jobs:
             "clavity-ls $v"|"clavity-ls $v+"*) echo "version OK (${{ matrix.rid }}): $ver_out" ;;
             *) echo "clavity-ls --version printed '$ver_out', expected it to start with 'clavity-ls $v'" >&2; exit 1 ;;
           esac
+          # The short flag routes through the same verb; it must print exactly what --version printed.
+          short_out=$("publish/$bin" -V 2>&1) || { echo "clavity-ls -V exited $?" >&2; exit 1; }
+          [ "$short_out" = "$ver_out" ] || { echo "clavity-ls -V printed '$short_out', expected '$ver_out'" >&2; exit 1; }
           # Ship the binary under its NATIVE name: clavity-ls.exe from win-x64, clavity-ls from every
           # other RID. An extensionless PE is NOT executable through PATHEXT, so normalising the name
           # away handed anyone who downloads the win-x64 asset directly a binary Windows will not run.
