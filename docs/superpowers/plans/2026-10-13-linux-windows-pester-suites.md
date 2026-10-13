@@ -408,6 +408,19 @@ Context 'cross-platform fixture helpers' {
 
 ---
 
+### Task 3b: the remaining Windows-only reduced PATHs (added by ruling R9, found by the Task 3 review)
+
+Ten suites outside Task 3 still build a Windows-only jq-free PATH (`Join-Path (Split-Path -Parent $bashDir) 'usr\bin'`). On Linux that directory does not exist, so their "jq absent" rows pass because NOTHING is on PATH, not because jq is absent: a hollow pass the goal forbids ("no row passes without running"). They are green today, so the census did not list them.
+
+**Files (Task 3's pattern, same helper):** `scripts/tests/agy-after-reminder.Tests.ps1:10`, `agy-anomaly-capture-reminder.Tests.ps1:21`, `agy-anomaly-dispatch-reminder.Tests.ps1:20`, `agy-anomaly-model-notice.Tests.ps1:22`, `agy-anomaly-reminder.Tests.ps1:7` (eight uses), `agy-discipline-reaching.Tests.ps1:32`, `agy-liveness-check.Tests.ps1:7`, `check-seed-artifacts-synced.Tests.ps1:13`, plus `agy-consult-guard.Tests.ps1:184` (`$noJq`) and `agy-verify-reminder.Tests.ps1:9` (`$script:GitUsr`) - READ the last two first: convert only where the purpose is "a PATH without jq"; if `GitUsr` has another purpose, leave it and say so.
+
+- [ ] **Step 1:** in each file replace the `$bashDir`/`usr\bin` construction with `$script:NoJqPath = New-NoJqPath` (BeforeAll) and add `if (-not $IsWindows) { Remove-TestPath $script:NoJqPath }` to the AfterAll; delete a `$bashDir` that nothing else reads (grep first).
+- [ ] **Step 2: Run** each suite before and after. EXPECTED: unchanged counts. A row that was green before and goes RED under the real jq-free PATH was passing vacuously: do NOT edit it - STOP and report the row, the old and new result and why (it is a finding about the hook or the row, for the driver to rule on).
+- [ ] **Step 3: Mutant:** with the helper's `rm -f jq` disabled, at least one row per converted suite that asserts the jq-missing behaviour must stay green WHILE the helper's own postcondition throws (so the suite goes red at BeforeAll): name the red suites. Restore the helper.
+- [ ] **Step 4: Commit:** `test(linux): the remaining jq-free PATHs use the real helper (no more hollow passes)`.
+
+---
+
 ## Stand-downs (adversarial panel, 2026-10-13)
 
 - `DISCARDED-BELOW-FLOOR` (round 4, peer-raised): a NEW bare `-Skip` or `Set-ItResult -Skipped` placed inside a Context that already carries a vocabulary tag is approved by tag inheritance. Guard: approval is not the whole gate - the new row appears in the run's skip set, is not in the committed inventory, and fails `SKIP-INVENTORY STALE` (static tags: a missing/extra static row; conditional tags: an unlisted conditional skip), so the author must regenerate the file and the added row shows in the PR diff (`scripts/run-pester-parallel.ps1`, Task 1 `Test-SkipGate`; Step 1 rows 'fails SKIP-INVENTORY STALE when a static skip is added…' and 'fails when a conditional skip is not listed…'). Likewise an invented `NeedsTool:<name>` is accepted by the vocabulary but is visible in the same diff.
