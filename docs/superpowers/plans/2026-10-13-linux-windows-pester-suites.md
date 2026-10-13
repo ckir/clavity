@@ -42,7 +42,7 @@
 - Child JSON gains `skips` = array of `{ path, tags, reason }` for every Skipped test (`path` = `ExpandedPath`; `tags` = the test's own `-Tag` plus every enclosing block's, walking `$test.Block` then `.Parent`; `reason` = `ErrorRecord[0].Exception.Message` with a leading `is skipped, because ` removed, `''` when there is no ErrorRecord - a discovery-time `-Skip` carries none, MEASURED on Pester 6.2.0) and `osTagged` = array of `{ path, tags }` for every test that did NOT skip but carries an OS tag.
 - VOCABULARY (closed): `WindowsOnly`, `LinuxOnly`, `NotAsRoot`, `NeedsTool:<name>`, `FsFeature:<name>` where `<name>` matches `[A-Za-z0-9._-]+`. A skipped row is APPROVED iff one effective tag is in the vocabulary, or its reason matches `^APPROVED:(WindowsOnly|LinuxOnly|NotAsRoot|(?:NeedsTool|FsFeature):[A-Za-z0-9._-]+): `. The approving tag of a row = the first vocabulary tag found in its effective tags, else the tag in its reason.
 - RUNNER RULES (each prints its line and makes the exit 1): `UNAPPROVED SKIP <suite leaf> :: <path>` followed by the hint `a discovery-time -Skip carries no reason text, so it needs a -Tag from the vocabulary; a run-time Set-ItResult -Skipped needs -Because 'APPROVED:<tag>: <why>'`; `OS-TAG MISMATCH <suite leaf> :: <path> (<why>)` when (a) a row tagged `WindowsOnly` did not skip off-Windows, or `LinuxOnly` did not skip off-Linux; or (b) a row tagged for the CURRENT OS skipped WITHOUT an `APPROVED:` reason of its own (a native-OS row may still skip for a probe reason, e.g. ISCC absent, if it says so); `SKIP-INVENTORY STALE: regenerate with -WriteSkipInventory and review the diff` (with a unified-style list of the added/removed lines); `SKIP-INVENTORY: no "## <os>" section in <file>` (fails CLOSED; the unmeasured-OS case).
-- Inventory file format (generated, never hand-edited): per OS a `## <os>` section (`linux`, `macos`, `windows`; OS = `$IsWindows`/`$IsMacOS`/else `linux`) holding `### static` (every skipped row whose approving tag is `WindowsOnly`/`LinuxOnly`) and `### conditional` (every other approved skipped row), each a table `| Suite | Row | Tag | Reason |` over header `| --- | --- | --- | --- |`; `Row` = `ExpandedPath` with `|` written `\|`; `Reason` = the reason or `-`; rows sorted by Suite then Row, ordinal. CHECK mode compares, for the suites THIS RUN covered only: the `static` rows byte-for-byte (a missing or an extra row = stale) and the `conditional` rows one-way (a skipped conditional row that is not listed = stale; a listed one that did not skip is fine - a tool or root state may differ per host). WRITE mode replaces this OS's `static` rows for the run's suites, sets `conditional` = existing rows plus every observed one (a stale conditional line is documentation, never a grant: approval lives in the test's own tag or reason), and preserves every other OS section byte-for-byte.
+- Inventory file format (generated, never hand-edited): per OS a `## <os>` section (`linux`, `macos`, `windows`; OS = `$IsWindows`/`$IsMacOS`/else `linux`) holding `### static` (every skipped row whose approving tag is `WindowsOnly`/`LinuxOnly`) and `### conditional` (every other approved skipped row), each a table `| Suite | Row | Tag | Reason |` over header `| --- | --- | --- | --- |`; `Row` = `ExpandedPath` with `|` written `\|`; `Reason` = the reason or `-`; rows sorted by Suite then Row, ordinal. CHECK mode PARSES the committed `static` and `conditional` tables into rows, keeps only the rows whose Suite this run covered, and compares them as sets of exact row text (never as raw file bytes, so a subset run works): the `static` rows two-way (a missing or an extra row = stale) and the `conditional` rows one-way (a skipped conditional row that is not listed = stale; a listed one that did not skip is fine - a tool or root state may differ per host). WRITE mode replaces this OS's `static` rows for the run's suites, sets `conditional` = existing rows plus every observed one (a stale conditional line is documentation, never a grant: approval lives in the test's own tag or reason), and preserves every other OS section byte-for-byte.
 
 - [ ] **Step 1: Write the failing tests** (append a Context to `scripts/tests/run-pester-parallel.Tests.ps1` inside `Describe 'run-pester-parallel'`; the fixtures are OS-neutral because this suite also runs on Windows):
 
@@ -134,7 +134,8 @@ Describe 'd' {
     }
     It 'fails SKIP-INVENTORY STALE when a static row was un-skipped (a listed static row no longer skips)' {
         $d = New-Dir 's2' $script:Good; $inv = Join-Path $script:Work 's2.md'; (Write-Inv $d $inv) | Out-Null
-        Set-Content -LiteralPath (Join-Path $d 'fx.Tests.ps1') -Value ($script:Good -replace "It 'static ok' -Skip -Tag '$($script:Foreign)'", "It 'static ok' -Tag 'Plain'")
+        $was = [regex]::Escape("It 'static ok' -Skip -Tag '$($script:Foreign)' { 1 | Should -Be 2 }")
+        Set-Content -LiteralPath (Join-Path $d 'fx.Tests.ps1') -Value ($script:Good -replace $was, "It 'static ok' -Tag 'Plain' { 1 | Should -Be 1 }")   # a PASSING row, so exit 1 can only come from the inventory
         $r = Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', $inv)
         $r.Exit | Should -Be 1
         $r.Out | Should -Match 'SKIP-INVENTORY STALE'
@@ -163,6 +164,24 @@ Describe 'd' {
         Add-Content -LiteralPath $inv -Value '| other.Tests.ps1 | o.elsewhere | WindowsOnly | - |'
         (Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', $inv)).Exit | Should -Be 0
     }
+    It '-Files takes precedence over -Directory' {
+        $d = New-Dir 'pr1' $script:Good
+        $r = Invoke-Runner -ExtraArgs @('-Files', $script:Pass1, '-Directory', $d)
+        $r.Exit | Should -Be 0 -Because $r.Out
+        $r.Out | Should -Match 'passed=2 failed=0 skipped=0'
+    }
+    It 'escapes a pipe in a row name when writing, and the check then still passes' {
+        $d = New-Dir 'e1' "Describe 'd' { It 'a | b' -Skip -Tag '$($script:Foreign)' { 1 | Should -Be 2 } }"; $inv = Join-Path $script:Work 'e1.md'
+        (Write-Inv $d $inv).Exit | Should -Be 0
+        (Get-Content -LiteralPath $inv -Raw) | Should -Match ([regex]::Escape('| fx.Tests.ps1 | d.a \| b |'))
+        (Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', $inv)).Exit | Should -Be 0
+    }
+    It 'writing keeps an existing conditional row that did not skip in this run (the table only accumulates)' {
+        $d = New-Dir 'k2' $script:Good; $inv = Join-Path $script:Work 'k2.md'; (Write-Inv $d $inv) | Out-Null
+        Set-Content -LiteralPath $inv -Value (Get-Content -LiteralPath $inv | ForEach-Object { $_; if ($_ -match 'd\.probe ok') { '| fx.Tests.ps1 | d.host dependent | NotAsRoot | seen once as root |' } })
+        (Write-Inv $d $inv).Exit | Should -Be 0
+        (Get-Content -LiteralPath $inv -Raw) | Should -Match ([regex]::Escape('| fx.Tests.ps1 | d.host dependent | NotAsRoot | seen once as root |'))
+    }
     It 'writing preserves another OS section byte-for-byte' {
         $d = New-Dir 'k1' $script:Good; $inv = Join-Path $script:Work 'k1.md'
         Set-Content -LiteralPath $inv -Value @('# inventory', '## plan9', '### static', '| Suite | Row | Tag | Reason |', '| --- | --- | --- | --- |', '| x.Tests.ps1 | a.b | WindowsOnly | - |')
@@ -172,7 +191,7 @@ Describe 'd' {
 }
 ```
 
-- [ ] **Step 2: Run the suite; expect the 16 new rows to FAIL** (`-Directory` / `-SkipInventory` are unknown parameters today): `pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Files scripts/tests/run-pester-parallel.Tests.ps1 -ShowMessages` → `FAIL run-pester-parallel.Tests.ps1 ... failed=16`.
+- [ ] **Step 2: Run the suite; expect the 18 new rows to FAIL** (`-Directory` / `-SkipInventory` are unknown parameters today; the Context's `It` lines minus the four inside the `$Good` fixture string): `pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Files scripts/tests/run-pester-parallel.Tests.ps1 -ShowMessages` → `FAIL run-pester-parallel.Tests.ps1 ... failed=18`. (Rows that merely assert exit 0 on a valid fixture may already pass for the wrong reason before the implementation exists - e.g. none do here, because the parameters are unknown and the runner exits 1; if any passes at Step 2, STOP: its fixture is vacuous.)
 
 - [ ] **Step 3: Implement in `scripts/run-pester-parallel.ps1`:**
   - params: add `[string]$Directory`, `[string]$SkipInventory`, `[switch]$WriteSkipInventory`; document all three (`.PARAMETER`) and note `-Files` > `-Directory` > `-Recipe`.
@@ -183,7 +202,7 @@ Describe 'd' {
 
 - [ ] **Step 4: Create `scripts/tests/_skip-inventory.md`**: a prose header stating that the file is GENERATED by `pwsh scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -WriteSkipInventory`, never hand-edited, reviewed in the PR diff; the rules (the gate fails on an unapproved skip, on an OS-tag mismatch, on a stale static table and on an unlisted conditional skip); the vocabulary; and `<!-- UNMEASURED 2026-10-13: the windows section does not exist yet; the gate fails closed on Windows until the owner runs the generator there and commits the result -->`. No `## <os>` sections yet (Task 9 generates `## linux`).
 
-- [ ] **Step 5: Run the suite; expect all green:** same command → `ok   run-pester-parallel.Tests.ps1 passed=<N+16> failed=0 skipped=0`, where N is the suite's passed count at Step 2. Mutants (each must turn the NAMED row red; revert after each): (a) make the vocabulary check accept any tag → 'rejects a tag or an APPROVED: reason outside the closed vocabulary'; (b) drop the `Block.Parent` walk → 'accepts a tag inherited from the enclosing Context'; (c) compare `static` rows one-way instead of both ways → 'fails SKIP-INVENTORY STALE when a static row was un-skipped'; (d) make a missing OS section return success → 'fails CLOSED when the inventory has no section for this OS'.
+- [ ] **Step 5: Run the suite; expect all green:** same command → `ok   run-pester-parallel.Tests.ps1 passed=<N+18> failed=0 skipped=0`, where N is the suite's passed count at Step 2. Mutants (each must turn the NAMED row red; revert after each): (a) make the vocabulary check accept any tag → 'rejects a tag or an APPROVED: reason outside the closed vocabulary'; (b) drop the `Block.Parent` walk → 'accepts a tag inherited from the enclosing Context'; (c) compare `static` rows one-way instead of both ways → 'fails SKIP-INVENTORY STALE when a static row was un-skipped'; (d) make a missing OS section return success → 'fails CLOSED when the inventory has no section for this OS'.
 
 - [ ] **Step 6: Commit:** `test(runner): -Directory, an approved-skip gate and a generated skip inventory`.
 
@@ -381,6 +400,7 @@ Context 'cross-platform fixture helpers' {
 
 ## Stand-downs (adversarial panel, 2026-10-13)
 
+- `DISCARDED-BELOW-FLOOR` (round 4, peer-raised): a NEW bare `-Skip` or `Set-ItResult -Skipped` placed inside a Context that already carries a vocabulary tag is approved by tag inheritance. Guard: approval is not the whole gate - the new row appears in the run's skip set, is not in the committed inventory, and fails `SKIP-INVENTORY STALE` (static tags: a missing/extra static row; conditional tags: an unlisted conditional skip), so the author must regenerate the file and the added row shows in the PR diff (`scripts/run-pester-parallel.ps1`, Task 1 `Test-SkipGate`; Step 1 rows 'fails SKIP-INVENTORY STALE when a static skip is added…' and 'fails when a conditional skip is not listed…'). Likewise an invented `NeedsTool:<name>` is accepted by the vocabulary but is visible in the same diff.
 - SUPERSEDED (2026-10-13, owner-accepted AGY-NEGOTIATE, `[VERDICT: ALIGNED]`): the hand-written per-OS baseline file and its wildcard / `when:` stand-downs are replaced by tags + `APPROVED:` reasons + a generated inventory; the gate shape and its six criteria are in the spec, Decision 1. Peer-raised weakness recorded, not fixed: authors must know which of the two approval channels applies; the runner's `UNAPPROVED SKIP` message names the rule.
 - `DISCARDED-BELOW-FLOOR`: a stale CONDITIONAL inventory line (its test was deleted) is kept by the generator. Guard: a conditional line grants nothing - approval lives in the test's own tag or reason, and the check is one-way (`scripts/run-pester-parallel.ps1`, Task 1 `Test-SkipGate`); the owner may delete such a line and the next run that skips the row re-adds it.
 - `DISCARDED-BELOW-FLOOR` (peer's, accepted): on Linux CI a global npm install puts binaries under `<prefix>/bin`, not `<prefix>` as the Windows job's `GITHUB_PATH` step assumes (`.github/workflows/ci-scripts.yml:284-286`); Task 9 Step 4 already makes tool installation the builder's call with a STOP clause.
