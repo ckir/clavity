@@ -4415,6 +4415,7 @@ Section 63 fixed only `build-dotnet.yml`, the scope the sweep named. The same na
 6. The `## windows` section of `scripts/tests/_skip-inventory.md` does not exist: the owner generates it on Windows (the gate fails closed until then), must reject any NotAsRoot row in a non-elevated generation, and the first Windows run is unmeasured (parallel engine wall time; `Set-TestFileReadOnly`'s MSYS `[ -w ]` probe versus `attrib +R`: replace with `(Get-Item).IsReadOnly` on Windows if it misreports).
 7. The child process JSON in `scripts/run-pester-parallel.ps1` travels over stdout in the console code page on Windows, so non-ASCII row names may arrive as `?` (consistent per box, but check when generating `## windows`).
 8. Deferred minor items: `New-NoJqPath` orphans its temp dir if its own postcondition throws; the run-pester-parallel TIME text in `scripts/tests/_partition.md` (55,0s versus about 240 s measured); a `Set-ItResult -Skipped` inside try/catch is swallowed (a test-discipline rule candidate); `Select-Object -Unique` in the inventory merge of `scripts/run-pester-parallel.ps1` hides a duplicate row text.
+9. `scripts/tests/check-peer-reply-citations.Tests.ps1` (about line 521) holds three raw NUL bytes inside a comment (a written escape that was interpreted, the ROADMAP §49 class); `scripts/check-control-bytes.ps1` scans only tracked `*.md` files, so the gate cannot see it, and git and grep classify the file as binary. Repair the three bytes and widen the scan to tracked `*.ps1`.
 
 ## Non-goals / accepted limitations
 
