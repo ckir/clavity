@@ -44,14 +44,27 @@ running, and no coverage lost on either OS without a NAMED, reviewed skip.
 
 ## Decisions (the owner's, or the driver's call where marked)
 
-1. **Skip baseline file** `scripts/tests/_skip-baseline.md` (owner's choice over a pinned integer). One
-   `## <os>` section per OS (`linux`, `windows`, `macos`), each line
-   `- <Suite>.Tests.ps1 | <ExpandedPath wildcard> | always|when:<token> | <reason>`. `always` = must skip on
-   that OS; `when:<token>` = skips only when a condition holds (a tool absent, running as root, 8.3 names off) and
-   may run. The gate fails on an UNLISTED skip and on an `always` line that no skipped row matched. A missing OS
-   section FAILS CLOSED and prints every skip in paste-ready line format. Wildcards (`-like`) are allowed so 167
-   generated rows are two lines, still named. (Driver's call: the `when:` class - a row that stops skipping
-   because a tool got installed is progress, not a regression.)
+1. **Skip approval = tags + approved reasons + a generated inventory** (owner-accepted 2026-10-13 after an
+   AGY-NEGOTIATE of two rounds, `[VERDICT: ALIGNED]`; it replaces the hand-written baseline file the owner first
+   chose and the pure-tag gate agy first proposed, each of which fails one of the six criteria below).
+   - CLOSED VOCABULARY enforced by the runner: `WindowsOnly`, `LinuxOnly`, `NeedsTool:<name>`, `NotAsRoot`,
+     `FsFeature:<name>`. Nothing else approves a skip.
+   - STATIC skips (`-Skip:(-not $IsWindows)` on an It or a Context) carry `-Tag 'WindowsOnly'` (or `LinuxOnly`) on
+     the same It/Context; effective tags = the test's own plus every enclosing block's (Pester 6.2.0 exposes both;
+     measured 2026-10-13).
+   - RUN-TIME probe skips (`Set-ItResult -Skipped`) carry a reason beginning `APPROVED:<vocab-tag>: ` (the reason
+     survives in `ErrorRecord[0].Exception.Message`; measured). A discovery-time skip has NO reason text, which is
+     why it needs the tag - the runner's error names that rule.
+   - RUNNER RULES: a skipped row with neither → `UNAPPROVED SKIP <suite> :: <path>` exit 1; a `WindowsOnly` row
+     that RAN off-Windows or SKIPPED on Windows (mirror for `LinuxOnly`) → `OS-TAG MISMATCH` exit 1; the
+     conditional tags may go either way (their approval lives in the code and leaves with the test).
+   - GENERATED, COMMITTED INVENTORY `scripts/tests/_skip-inventory.md`, written by the runner
+     (`-WriteSkipInventory`), never hand-edited: per OS, a `static` table (every OS-tagged skipped row; must be
+     byte-equal to what the run produces, else `SKIP-INVENTORY STALE`) and a `conditional` table (every
+     probe-approved skip ever observed; a run may skip FEWER of them, never an unlisted one). No section for the
+     running OS → fail closed. This is the one reviewable PR diff.
+   - The six criteria the shape was negotiated against: every skip named and human-reviewed; per-OS; staleness
+     detected; unintended skips caught; fail closed on an unmeasured OS; one reviewable diff.
 2. **The gate engine** for `just test-scripts` becomes `scripts/run-pester-parallel.ps1` (already written to be
    "exactly as strict as a single Invoke-Pester" and pinned by its own suite), with a new `-Directory` input and a
    `-SkipBaseline` input. Plain `Invoke-Pester` has no hook to read skipped names across containers.
