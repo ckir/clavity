@@ -881,7 +881,8 @@ while IFS= read -r -d '' q; do files+=("$q"); done < <(find "$dir" -type f -prin
 n=$(PATH="$shim/bin:$PATH" bash -c '. "$1"; shift; agy_guard_hash_files "$@"' _ "$lib" "${files[@]}" | wc -l)
 echo "digests=$n calls=$(wc -l < "$count")"
 '@.Replace("`r`n", "`n"))
-            $out = & $script:Bash -lc "sh '$($probePath -replace '\\','/')' '$($script:Lib -replace '\\','/')' '$($files -replace '\\','/')'"
+            # bash, not sh: sh is dash on Linux and the lib is bash (measured: "agy-consult-guard-lib.sh: 94: Syntax error")
+            $out = & $script:Bash -lc "bash '$($probePath -replace '\\','/')' '$($script:Lib -replace '\\','/')' '$($files -replace '\\','/')'"
             # A box with no sha256sum - macOS ships shasum instead - cannot run this probe at all,
             # and the first version FAILED there rather than skipping: it printed 'no-sha256sum' and
             # both assertions went red. CI is windows-latest only (ci-scripts.yml), so it was never

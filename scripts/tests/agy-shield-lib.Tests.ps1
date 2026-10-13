@@ -99,7 +99,7 @@ Describe 'agy-shield-lib.sh' {
                 # -ArgumentList array, so an inline `-c 'exec dash ...'` is split on its spaces and dash never runs (measured - the first
                 # version of the rows below passed VACUOUSLY because of exactly that).
                 $launcher = "$sf.run.sh"
-                if ($Shell -eq 'dash') { [IO.File]::WriteAllText($launcher, "exec dash `"`$(cygpath -u `"`$1`")`"`n") }
+                if ($Shell -eq 'dash') { [IO.File]::WriteAllText($launcher, ((Get-BashCygpathPrelude) + '; ' + 'exec dash "$p"') + "`n") }
                 $argList = if ($Shell -eq 'dash') { @($launcher, $sf) } else { @($sf) }
                 $p = Start-Process -FilePath $script:Bash -ArgumentList $argList -WorkingDirectory $Root `
                         -RedirectStandardOutput $outF -RedirectStandardError $errF -NoNewWindow -Wait -PassThru

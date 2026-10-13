@@ -26,6 +26,7 @@ BeforeAll {
         # Fake gh: prints the asset list from $FAKE_GH_ASSETS (a file), exits $FAKE_GH_EXIT.
         $gh = "#!/usr/bin/env bash`n[ `"`${FAKE_GH_EXIT:-0}`" = 0 ] || exit `"`$FAKE_GH_EXIT`"`ncat `"`$FAKE_GH_ASSETS`"`n"
         [IO.File]::WriteAllText((Join-Path $shim 'gh'), $gh)
+        Set-ShimExecutable -Path (Join-Path $shim 'gh')
         return [pscustomobject]@{ Root = $root; Work = $work; Bare = $bare; Shim = $shim }
     }
     function Set-Manifest($Work, $Version) {
@@ -45,7 +46,7 @@ BeforeAll {
         try {
             # cygpath -u: a Windows-form "C:/..." PATH entry is split at its colon and the shim is never found -
             # MEASURED: every row then hit the REAL gh ("none of the git remotes ... point to a known GitHub host").
-            $out = & $script:Bash -c 'PATH="$(cygpath -u "$1"):$PATH" bash "$2" "$3" "$4"' _ $Fx.Shim $script:Script $Tag $Version 2>&1 | Out-String
+            $out = & $script:Bash -c ((Get-BashCygpathPrelude) + '; ' + 'PATH="$p:$PATH" bash "$2" "$3" "$4"') _ $Fx.Shim $script:Script $Tag $Version 2>&1 | Out-String
             return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Out = $out }
         } finally {
             Pop-Location

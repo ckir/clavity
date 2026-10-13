@@ -4,8 +4,12 @@
 # BRANCH 21: the hook now reads $OSTYPE/$HOSTTYPE (bash builtins) and only falls back to uname for a platform bash does
 # not name, so every row pins OSTYPE/HOSTTYPE (bash honours both from the environment - measured) and the fake uname
 # is exercised only by the rows that pick an unnamed OSTYPE on purpose.
+AfterAll {
+    if (-not $IsWindows -and $script:NoJqPath) { Remove-TestPath $script:NoJqPath }
+}
 BeforeAll {
     . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
+    $script:NoJqPath = New-NoJqPath
     $script:Hook = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'clavity-dotnet/plugin/hooks/fetch-clavity-ls.sh'
     $script:Bash = Get-GitBashOrThrow
     $script:Asset = 'clavity-ls-linux-x64-9.9.9.tar.gz'
@@ -37,9 +41,10 @@ case "${FAKE_CURL:-ok}" in
 esac
 '@
         [IO.File]::WriteAllText((Join-Path $fx.Shim 'curl'), $curl)
+        Set-ShimExecutable -Path (Join-Path $fx.Shim 'uname'), (Join-Path $fx.Shim 'curl')
         # FIXTURE SANITY: Git Bash must resolve the extension-less shims ahead of its own uname/curl, or every row
         # below fails for a reason that has nothing to do with the hook.
-        (& $script:Bash -c 'PATH="$(cygpath -u "$1"):$PATH"; uname -s; type -P curl' _ $fx.Shim | Out-String) | Should -Match '(?s)^Linux\s+\S*/shim/curl'
+        (& $script:Bash -c ((Get-BashCygpathPrelude) + '; ' + 'PATH="$p:$PATH"; uname -s; type -P curl') _ $fx.Shim | Out-String) | Should -Match '(?s)^Linux\s+\S*/shim/curl'
         return $fx
     }
     function Invoke-Fetch($Fx, [string]$Mode, [string]$Data = $Fx.Data, [switch]$NoPluginContext, [switch]$NoJq, [string]$OsType = 'linux-gnu', [string]$HostType = 'x86_64', [hashtable]$Extra = @{}) {
@@ -58,11 +63,10 @@ esac
             # -NoJq drops every PATH directory holding a jq, so the hook takes its grep fallback. MEASURED: this box's
             # Git Bash finds jq in the portable-tools dir, so without it the fallback never runs here.
             $cmd = if ($NoJq) {
-                'np=; IFS=:; for d in $PATH; do [ -x "$d/jq" ] || [ -x "$d/jq.exe" ] || np="$np${np:+:}$d"; done; unset IFS
-                 PATH="$(cygpath -u "$1"):$np"; command -v jq >/dev/null && { echo "fixture: jq still on PATH" >&2; exit 99; }
+                (Get-BashCygpathPrelude) + '; ' + 'PATH="$p:$3"; command -v jq >/dev/null && { echo "fixture: jq still on PATH" >&2; exit 99; }
                  bash "$2" </dev/null'
-            } else { 'PATH="$(cygpath -u "$1"):$PATH" bash "$2" </dev/null' }
-            $out = & $script:Bash -c $cmd _ $Fx.Shim ($script:Hook -replace '\\', '/') 2>$errFile | Out-String
+            } else { (Get-BashCygpathPrelude) + '; ' + 'PATH="$p:$PATH" bash "$2" </dev/null' }
+            $out = & $script:Bash -c $cmd _ $Fx.Shim ($script:Hook -replace '\\', '/') @(if ($NoJq) { $script:NoJqPath }) 2>$errFile | Out-String
             $code = $LASTEXITCODE
             return [pscustomobject]@{ StdOut = $out.Trim(); StdErr = "$(Get-Content -Raw -LiteralPath $errFile)".Trim(); ExitCode = $code }
         } finally {
@@ -235,6 +239,7 @@ Describe 'fetch-clavity-ls.sh tells the user what happened' {
         $fx = New-Fx
         try {
             [IO.File]::WriteAllText((Join-Path $fx.Shim 'mktemp'), "#!/usr/bin/env bash`nexit 1`n")
+            Set-ShimExecutable -Path (Join-Path $fx.Shim 'mktemp')
             $res = Invoke-Fetch $fx 'ok'
             $res.ExitCode | Should -Be 0
             Get-Message $res | Should -Match 'mktemp failed'
