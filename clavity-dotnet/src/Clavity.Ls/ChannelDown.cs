@@ -86,6 +86,13 @@ public static class ChannelDown
         _ => Status,
     };
 
+    /// <summary>Names the running build on the two faults a STALE installed client can cause (a transport death and a size/quota
+    /// refusal), so "the peer is down" is not the only hypothesis offered. Deliberately NOT on the busy-peer, stale-endpoint, auth
+    /// and bad-request hints: a newer client does not cure those, and a version in every error is noise (ROADMAP: stale client).</summary>
+    private static string StaleClientNote =>
+        $" Running client: clavity-ls {ClientStamp.Value}. If the cause above is already fixed in your source tree, this INSTALLED " +
+        "binary is stale: update the clavity plugin, then restart the session.";
+
     public static string Hint(ChannelDiagnostic d)
     {
         var prefix = $"clavity-ls -> agy channel call failed ([{d.StatusCode}] {d.Detail}). ";
@@ -111,7 +118,7 @@ public static class ChannelDown
                 "message SIZE, the response was too large for the channel's receive limit — start a fresh " +
                 "cascade, or raise MaxReceiveMessageSize in LsChannel.cs (trajectory size, not step count, is " +
                 "what crosses it). If it does not, this is upstream quota or rate-limit exhaustion — wait and " +
-                "retry, or check quota; raising the receive limit will not help.",
+                "retry, or check quota; raising the receive limit will not help." + StaleClientNote,
 
             Fault.AuthFailed =>
                 prefix + "The channel is UP and agy answered — it REFUSED the credential (CSRF token). agy 1.2.2+ " +
@@ -130,7 +137,7 @@ public static class ChannelDown
                 prefix + "agy's language server appears to have shut down or restarted (it does this " +
                 "intermittently). Restart the Claude Code session (or the clavity-ls MCP server) to re-establish " +
                 "the channel. agy's own logs are at ~/.gemini/antigravity-cli/ (cli.log + " +
-                "logs/clavity-<sessionId>.log) if you need to confirm the shutdown.",
+                "logs/clavity-<sessionId>.log) if you need to confirm the shutdown." + StaleClientNote,
         };
     }
 }

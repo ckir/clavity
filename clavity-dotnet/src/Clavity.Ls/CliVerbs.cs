@@ -5,6 +5,9 @@ namespace Clavity.Ls;
 /// <summary>Testable bodies for the non-host CLI verbs (kept out of Program.cs top-level for unit testing).</summary>
 public static class CliVerbs
 {
+    /// <summary>`clavity-ls --version` — the running build, the same stamp a transport error names (<see cref="ClientStamp"/>).</summary>
+    public static string VersionLine() => $"clavity-ls {ClientStamp.Value}";
+
     /// <summary>
     /// `curate-commit` — read the compiled golden-header from <paramref name="stdin"/> (NOT a shell arg: a
     /// multi-line markdown header blows past command-line quoting/length limits — F5) and atomically commit it

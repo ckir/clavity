@@ -59,6 +59,13 @@ if (args.Contains("--mcp"))
     return 0;
 }
 
+// `clavity-ls --version` - which build is installed (a stale client was once blamed on a healthy peer).
+if (args.Length == 1 && args[0] is "--version" or "-V")
+{
+    Console.WriteLine(CliVerbs.VersionLine());
+    return 0;
+}
+
 // `clavity-ls curate-commit [--cheatsheet]` — atomically write a compiled region (read from stdin) to the shared path.
 if (args.Length > 0 && args[0] == "curate-commit")
 {
@@ -93,5 +100,5 @@ if (args.Length > 0 && args[0] == "agy")
 if (args.Length > 0 && args[0] == "start")
     return StartFlow.Start(args.Skip(1).ToArray(), new Clavity.Cli.RealStartEffects());
 
-Console.WriteLine("clavity-ls — usage: clavity-ls start [folder] [--attach <session-id>] [claude-args...]   |   clavity-ls agy [folder]   (Linux/macOS: agy in this terminal)   |   clavity-ls --mcp   (MCP stdio server: agy_look / agy_status / agy_ask)");
+Console.WriteLine("clavity-ls — usage: clavity-ls start [folder] [--attach <session-id>] [claude-args...]   |   clavity-ls agy [folder]   (Linux/macOS: agy in this terminal)   |   clavity-ls --mcp   (MCP stdio server: agy_look / agy_status / agy_ask)   |   clavity-ls --version");
 return 0;

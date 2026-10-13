@@ -32,6 +32,37 @@ public class ChannelDownTests
     }
 
     [Fact]
+    public void Only_the_two_faults_a_stale_client_can_cause_name_the_running_client_build()
+    {
+        // A stale INSTALLED client was blamed on a healthy peer (2026-08-09). The build stamp is added only where a fix
+        // that is already in the source tree could be the real cause: a transport death and a size/quota refusal. A busy
+        // peer, a stale endpoint, a refused credential and a rejected request are not cured by a newer client, and a
+        // version string in them is noise the operator learns to ignore.
+        var note = $"Running client: clavity-ls {ClientStamp.Value}";
+        foreach (var f in Enum.GetValues<ChannelDown.Fault>())
+        {
+            var hint = ChannelDown.Hint(RepresentativeDiagnosticFor(f));
+            if (f is ChannelDown.Fault.TransportDown or ChannelDown.Fault.ResourceExhausted)
+                Assert.Contains(note, hint);
+            else
+                Assert.DoesNotContain("Running client", hint);
+        }
+        Assert.DoesNotContain("Running client", ChannelDown.Hint(new ChannelDiagnostic(ChannelDown.LsUnanswered, "busy")));
+        Assert.DoesNotContain("Running client", ChannelDown.Hint(new ChannelDiagnostic(ChannelDown.LsEndpointStale, "stale")));
+    }
+
+    [Fact]
+    public void The_stale_client_note_says_how_to_tell_and_what_to_do_and_stays_after_the_original_remedy()
+    {
+        var hint = ChannelDown.Hint(RepresentativeDiagnosticFor(ChannelDown.Fault.ResourceExhausted));
+        // The existing remedy text must survive and come FIRST; the note is an addition, not a replacement.
+        Assert.True(hint.IndexOf("raise MaxReceiveMessageSize", StringComparison.Ordinal) is var a and >= 0
+            && hint.IndexOf("Running client", StringComparison.Ordinal) is var b and >= 0 && a < b, hint);
+        Assert.Contains("this INSTALLED binary is stale", hint);
+        Assert.Contains("update the clavity plugin", hint);
+    }
+
+    [Fact]
     public void Every_fault_maps_to_its_own_status_so_a_new_arm_cannot_silently_report_channel_down()
     {
         // StatusFor's fallback is `_ => Status` ("channel_down"). A fault added to Classify and to Hint but

@@ -69,6 +69,17 @@ jobs:
         $job | Should -Match '(?m)^      ref: \$\{\{ github\.event\.inputs\.tag \|\| github\.ref_name \}\}[ ]*\r?$'
     }
 
+    It 'the dotnet publish stamps the plugin version, and the smoke step REJECTS a --version that does not name it (stale-client stamp)' {
+        $t = Read-Workflow 'build-dotnet.yml'
+        $t | Should -Match '(?m)^          v="\$\{\{ needs\.validate\.outputs\.version \}\}"\r?$'
+        # v must be set BEFORE the publish that uses it (it used to be assigned only after the publish).
+        $t.IndexOf('v="${{ needs.validate.outputs.version }}"') | Should -BeLessThan $t.IndexOf('dotnet publish src/Clavity.Cli')
+        $t | Should -Match '(?m)^\s+-p:Version="\$v" -p:PublishSingleFile=true'
+        # The accepted outputs are the bare version or version+metadata: a prefix match would also accept 0.11.00.
+        $t | Should -Match ([regex]::Escape('"clavity-ls $v"|"clavity-ls $v+"*)'))
+        $t | Should -Match "exit 1 ;;\r?\n\s+esac"
+    }
+
     It 'republish-member.yml passes NO ref to its dotnet build (a hotfix rebuilds the dispatch branch on purpose)' {
         $job = Get-JobText (Read-Workflow 'republish-member.yml') 'dotnet'
         $job | Should -Match '(?m)^    uses: \./\.github/workflows/build-dotnet\.yml'
