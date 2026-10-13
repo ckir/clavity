@@ -923,7 +923,7 @@ echo "digests=$n calls=$(wc -l < "$count")"
         $abc | Should -Be 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
     }
 
-    It 'agy_guard_hash_files gives the same digests as the old cut|sed pipeline' -Skip:$IsWindows {
+    It 'agy_guard_hash_files gives the same digests as the old cut|sed pipeline' -Skip:$IsWindows -Tag 'LinuxOnly' {
         # Section 70: no `cut` or `sed` per chunk. 300 files crosses the 256-path chunk boundary, and
         # `back\slash` makes coreutils prefix its output line with a filename escape.
         $d = New-TestTempPath 'hf'
@@ -1074,7 +1074,9 @@ echo "digests=$n calls=$(wc -l < "$count")"
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'WARNS when an existing hook becomes unreadable' -Skip:($IsWindows -or ((& id -u) -eq '0')) {
+    It 'WARNS when an existing hook becomes unreadable' {
+        if ($IsWindows) { Set-ItResult -Skipped -Because 'APPROVED:LinuxOnly: chmod 000 does not make a file unreadable to Git Bash on Windows'; return }
+        if ((& id -u) -eq '0') { Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: root reads a chmod 000 file, so the unreadable state is unreachable'; return }
         # An unreadable file drops out of a tool's output; the NAME list must still change the digest.
         $r = New-GuardRepo
         $hook = Join-Path $r '.git/hooks/hook1'
@@ -1148,7 +1150,9 @@ echo "digests=$n calls=$(wc -l < "$count")"
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'WARNS when an UNREADABLE hook is planted during a consult' -Skip:($IsWindows -or ((& id -u) -eq '0')) {
+    It 'WARNS when an UNREADABLE hook is planted during a consult' {
+        if ($IsWindows) { Set-ItResult -Skipped -Because 'APPROVED:LinuxOnly: chmod 000 does not make a file unreadable to Git Bash on Windows'; return }
+        if ((& id -u) -eq '0') { Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: root reads a chmod 000 file, so the unreadable state is unreachable'; return }
         # A newly planted chmod-000 hook yields no digest line, so only the NAME list can see it.
         $r = New-GuardRepo
         $hook = Join-Path $r '.git/hooks/planted'

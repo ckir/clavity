@@ -446,7 +446,8 @@ Describe 'agy-ledger-lib.sh' {
                 $probe = Start-Process -FilePath $script:Bash -ArgumentList @('probe-readable.sh') `
                             -WorkingDirectory $r.Dir -NoNewWindow -Wait -PassThru
                 if ($probe.ExitCode -eq 0) {
-                    Set-ItResult -Skipped -Because 'the read-deny did not take for THIS bash (elevated token, or a filesystem that ignores ACLs), so the unreadable state is unreachable here'
+                    Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: the read-deny did not take for THIS bash (elevated token, or a filesystem that ignores ACLs), so the unreadable state is unreachable here'
+                    return
                 }
 
                 $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out

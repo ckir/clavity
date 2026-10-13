@@ -71,7 +71,7 @@ Describe 'agy-verify-reminder.sh' {
         $f = New-VerifyFx
         try {
             Remove-Item (Join-Path $f.Root 'fakebin/agy')
-            $r = Invoke-BashHook -HookPath $script:Hook -Payload ('{"cwd":"' + (($f.Cwd) -replace '\\', '\\') + '"}') -Env @{ PATH = ($script:GitUsr + ';' + $script:JqDir); LOCALAPPDATA = (Join-Path $f.Root 'lad') }
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload ('{"cwd":"' + (($f.Cwd) -replace '\\', '\\') + '"}') -Env @{ PATH = ($script:GitUsr + [IO.Path]::PathSeparator + $script:JqDir); LOCALAPPDATA = (Join-Path $f.Root 'lad') }
             $r.StdOut | Should -BeNullOrEmpty
             $r.StdErr | Should -BeNullOrEmpty
         } finally { Remove-Item $f.Root -Recurse -Force -ErrorAction SilentlyContinue }

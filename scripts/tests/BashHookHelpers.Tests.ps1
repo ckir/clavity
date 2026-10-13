@@ -132,6 +132,7 @@ Describe 'BashHookHelpers (harness validation)' {
             $f = Join-Path $script:xpDir 'secret.txt'; Set-Content -LiteralPath $f -Value 'x'
             $enforced = Set-TestPathUnreadable -Path $f
             try {
+                if ((-not $IsWindows) -and ((& id -u) -ne '0')) { $enforced | Should -BeTrue -Because 'a non-root POSIX user must be bound by chmod 000 / 444 - if this fails the helper is broken and every NotAsRoot row would silently skip' }
                 if (-not $enforced) { Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: this user (root?) is not bound by the deny'; return }
                 & (Get-GitBashOrThrow) -c 'cat "$1" >/dev/null 2>&1 && echo READ || echo blocked' _ ($f -replace '\\','/') | Should -Be 'blocked'
             } finally { Restore-TestPathReadable -Path $f }
@@ -141,6 +142,7 @@ Describe 'BashHookHelpers (harness validation)' {
             $f = Join-Path $script:xpDir 'ro.txt'; Set-Content -LiteralPath $f -Value 'x'
             $enforced = Set-TestFileReadOnly -Path $f
             try {
+                if ((-not $IsWindows) -and ((& id -u) -ne '0')) { $enforced | Should -BeTrue -Because 'a non-root POSIX user must be bound by chmod 000 / 444 - if this fails the helper is broken and every NotAsRoot row would silently skip' }
                 if (-not $enforced) { Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: this user (root?) is not bound by read-only'; return }
                 & (Get-GitBashOrThrow) -c 'echo y >> "$1" 2>/dev/null && echo WROTE || echo blocked' _ ($f -replace '\\','/') | Should -Be 'blocked'
             } finally { Clear-TestFileReadOnly -Path $f }
