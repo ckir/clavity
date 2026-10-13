@@ -289,6 +289,7 @@ Describe 'd' {
         $r = Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', $inv)
         $r.Exit | Should -Be 1
         $r.Out | Should -Match "SKIP-INVENTORY: no `"## $($script:Os)`" section"
+        $r.Out | Should -Match 'WriteSkipInventory'
     }
     It 'checks only the suites this run covered (a subset run does not report other suites as vanished)' {
         $d = New-Dir 'p1' $script:Good; $inv = Join-Path $script:Work 'p1.md'; (Write-Inv $d $inv) | Out-Null

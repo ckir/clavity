@@ -56,8 +56,10 @@ running, and no coverage lost on either OS without a NAMED, reviewed skip.
      survives in `ErrorRecord[0].Exception.Message`; measured). A discovery-time skip has NO reason text, which is
      why it needs the tag - the runner's error names that rule.
    - RUNNER RULES: a skipped row with neither → `UNAPPROVED SKIP <suite> :: <path>` exit 1; a `WindowsOnly` row
-     that RAN off-Windows or SKIPPED on Windows (mirror for `LinuxOnly`) → `OS-TAG MISMATCH` exit 1; the
-     conditional tags may go either way (their approval lives in the code and leaves with the test).
+     that RAN off-Windows → `OS-TAG MISMATCH` exit 1 (mirror for `LinuxOnly`); a row tagged for the RUNNING OS
+     that skipped is a mismatch unless it carries its OWN `APPROVED:<tag>:` reason, in which case it is
+     classified by that reason's tag (so it is a conditional row, not a static one); the conditional tags may
+     go either way (their approval lives in the code and leaves with the test).
    - GENERATED, COMMITTED INVENTORY `scripts/tests/_skip-inventory.md`, written by the runner
      (`-WriteSkipInventory`), never hand-edited: per OS, a `static` table (every OS-tagged skipped row; must be
      byte-equal to what the run produces, else `SKIP-INVENTORY STALE`) and a `conditional` table (every
@@ -67,19 +69,28 @@ running, and no coverage lost on either OS without a NAMED, reviewed skip.
      detected; unintended skips caught; fail closed on an unmeasured OS; one reviewable diff.
 2. **The gate engine** for `just test-scripts` becomes `scripts/run-pester-parallel.ps1` (already written to be
    "exactly as strict as a single Invoke-Pester" and pinned by its own suite), with a new `-Directory` input and a
-   `-SkipBaseline` input. Plain `Invoke-Pester` has no hook to read skipped names across containers.
+   `-SkipInventory` input (check mode; `-WriteSkipInventory` writes the file and requires `-Directory` and `-SkipInventory`). Plain `Invoke-Pester` has no hook to read skipped names across containers.
    `.github/workflows/ci-scripts.yml:307` (Windows) keeps its plain `Invoke-Pester` this round; a NEW
-   `ubuntu-latest` job runs the runner with the baseline. The parallel engine is measured on Linux only; the
+   `ubuntu-latest` job runs the runner with the committed inventory. The parallel engine is measured on Linux only; the
    recipe accepts `-ThrottleLimit 1` as the serial fallback for the owner's first Windows runs.
 3. **Shared helpers live in `scripts/tests/BashHookHelpers.ps1`** (already dot-sourced by every family A-F
    suite and it dot-sources `TestTemp.ps1`), plus one link helper in `TestTemp.ps1` for the suites that do not
    load BashHookHelpers. No new helper file (the inventory and registration suites pin the file set).
 4. **Windows baseline section is UNMEASURED here.** The driver cannot run Windows. The `## windows` section ships
-   with a header comment only; the owner's first `just test-scripts` on Windows fails closed and prints the lines
-   to paste. Nothing is fabricated.
-5. **Product changes are limited to one**: `installer/_shared/register-plugin.ps1:59-60` reads
-   `$env:USERPROFILE`, which is unset on Linux; `$HOME` is the same directory on Windows (PowerShell 5.1 and 7)
-   and exists on Linux. Everything else is test-side.
+   with a header comment only; the owner's first `just test-scripts` on Windows fails closed and prints the
+   generator command to run on that machine (`-WriteSkipInventory`), whose result is reviewed and committed.
+   Nothing is fabricated.
+5. **Product changes are limited to one**: `installer/_shared/register-plugin.ps1:59-60` read `$env:USERPROFILE`,
+   which is unset on Linux. The shipped product resolves the home directory USERPROFILE-first and uses `$HOME`
+   only as the fallback (`if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }`). A plain `$HOME` was
+   REFUTED by measurement (ruling R14): `$HOME` is not guaranteed to equal `%USERPROFILE%` on Windows (a redirected
+   home), so it would have changed Windows behaviour. A child-process row pins the precedence. Everything else
+   is test-side.
+5b. **The register-plugin hash pin is the SHA-256 of the CRLF form** (ruling R15). `register-plugin.ps1` is
+   `text eol=crlf`, and `installer/_shared/register-plugin-hash.iss` pins the hash of those CRLF bytes.
+   `scripts/sync-register-hash.ps1` and `scripts/check-register-hash-synced.ps1` hash CRLF-normalised bytes on
+   EVERY OS, so a Linux working tree (LF bytes) neither reports a false stale nor writes a wrong pin; the pin was
+   regenerated with the sync script after the product edit.
 6. **Non-vacuity is proven per port** with a logic mutant of the guarded code or fixture (the repo's
    PINNING-ASSERTION-STRENGTH bar): a PORT that stays green under its mutant is not accepted.
 7. **Integration order.** Work on `sweep/linux-pester-suites` branched from current `main` (`a9f5b644`, which is

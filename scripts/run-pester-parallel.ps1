@@ -251,7 +251,11 @@ function Test-SkipGate {
 
     if (-not (Test-Path -LiteralPath $invPath)) { Write-Host "SKIP-INVENTORY: file not found: $SkipInventory"; return $true }
     $sec = Read-InvSection @([IO.File]::ReadAllLines($invPath)) $script:Os
-    if (-not $sec) { Write-Host "SKIP-INVENTORY: no `"## $($script:Os)`" section in $SkipInventory"; return $true }
+    if (-not $sec) {
+        Write-Host "SKIP-INVENTORY: no `"## $($script:Os)`" section in $SkipInventory"
+        Write-Host "  regenerate on this OS (review the diff before committing): pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory $SkipInventory -WriteSkipInventory"
+        return $true
+    }
     $comS = @($sec.static | Where-Object { & $inCovered $_ }); $comC = @($sec.conditional | Where-Object { & $inCovered $_ })
     $diff = @()
     foreach ($l in $obsStatic) { if ($l -cnotin $comS) { $diff += "+ $l" } }
