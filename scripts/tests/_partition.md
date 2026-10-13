@@ -1173,6 +1173,7 @@ check-tracker-format-excerpt.Tests.ps1       UNMEASURED  9 tests    <- SLOW, NEW
 run-pester-parallel.Tests.ps1                    55,0s  17 tests   <- SLOW, NEW 2026-10-12 (prototype runner; +6 rows for -Exclude, +3 for -ShowMessages, +1 for error-preference parity, same day; a child pwsh per row, each starting its own children; two solo runs 56,9s and 53,1s, box load uncontrolled - xrdp/Xorg and other sessions)
 TestTemp.Tests.ps1                         UNMEASURED  16 tests   <- FAST, NEW 2026-10-08 (in-process, sub-second rows: Remove-TestPath, the shared temp root, the sweep, its once-per-run flag, the killed-run backup restore)
 test-temp-discipline.Tests.ps1             UNMEASURED  4 tests    <- FAST, NEW 2026-10-08 (in-process scan of ~76 suite files, a few seconds)
+clavity-dotnet-setup.Tests.ps1             UNMEASURED  11 tests   <- FAST, NEW 2026-10-13 (ROADMAP section 68, Branch R: one bash child per row with a logging agy shim, ~0.7s each, 8,6s wall for the file solo on a loaded Linux box; the driver measures it idle with the Branch R gates)
 ```
 
 Every FAST row above was re-measured in ONE sweep on 2026-08-05 (the 292,09s sample below). The SLOW rows

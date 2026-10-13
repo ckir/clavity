@@ -38,15 +38,30 @@ case "$(uname -s 2>/dev/null)" in
     fi ;;
 esac
 
-# --- 3. agy-side registration via `agy plugin` (best-effort, gated once, idempotent) ---
+# --- 3. agy-side registration via `agy plugin` (best-effort, gated per plugin VERSION, idempotent) ---
 # agy takes a plugin DIRECTORY; ${CLAUDE_PLUGIN_ROOT} is the installed plugin dir. Idempotency is
 # structural (uninstall-then-install), matching the retired installer/_shared/register-plugin.ps1. Only
 # attempted when the `agy` CLI is present; never blocks, never re-touches the Claude side.
+# The stamp holds the plugin VERSION it registered. CLAUDE_PLUGIN_DATA survives plugin upgrades, so a stamp that
+# only said "done" meant no upgrade ever reached agy's copy (ROADMAP section 68). A stamp that differs from the
+# manifest's version - including the EMPTY stamp the old hook wrote - registers again; when the manifest has no
+# readable version, an existing stamp is left alone (register once, as before).
 _agy_stamp="$DATA/.agy-registered"
-if command -v agy >/dev/null 2>&1 && [ -n "$ROOT" ] && [ ! -f "$_agy_stamp" ]; then
+_ver=""
+if [ -f "$ROOT/plugin.json" ]; then
+  re_ver='.*"version"[[:space:]]*:[[:space:]]*"([^"]*)"'
+  while IFS= read -r _l || [ -n "$_l" ]; do
+    if [[ $_l =~ $re_ver ]]; then _ver=${BASH_REMATCH[1]}; break; fi
+  done 2>/dev/null < "$ROOT/plugin.json"
+fi
+_stamped=""
+[ -f "$_agy_stamp" ] && { IFS= read -r _stamped < "$_agy_stamp" || true; } 2>/dev/null
+_registered=0
+if [ -f "$_agy_stamp" ] && { [ -z "$_ver" ] || [ "$_stamped" = "$_ver" ]; }; then _registered=1; fi
+if command -v agy >/dev/null 2>&1 && [ -n "$ROOT" ] && [ "$_registered" -eq 0 ]; then
   agy plugin uninstall clavity >/dev/null 2>&1
   if agy plugin install "$ROOT" >/dev/null 2>&1; then
-    : > "$_agy_stamp"
+    printf '%s' "$_ver" > "$_agy_stamp"
     echo "[clavity] registered the plugin with agy (agy plugin install)" >&2
   else
     # Do not stamp on failure so a later session retries. Never block.
