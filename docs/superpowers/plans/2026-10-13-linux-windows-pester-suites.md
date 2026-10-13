@@ -74,7 +74,9 @@ Describe 'd' {
         $r.Out | Should -Match 'passed=1 failed=0 skipped=3'
     }
     It 'exits 1 when -Directory does not exist' {
-        (Invoke-Runner -ExtraArgs @('-Directory', (Join-Path $script:Work 'nope'))).Exit | Should -Be 1
+        $r = Invoke-Runner -ExtraArgs @('-Directory', (Join-Path $script:Work 'nope'))
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match "-Directory '.*nope' does not exist"   # an unknown PARAMETER also exits 1 today, so the exit code alone would pass vacuously at Step 2
     }
     It '-WriteSkipInventory requires -Directory and -SkipInventory' {
         $r = Invoke-Runner -ExtraArgs @('-Files', $script:Pass1, '-WriteSkipInventory')
@@ -182,6 +184,12 @@ Describe 'd' {
         (Write-Inv $d $inv).Exit | Should -Be 0
         (Get-Content -LiteralPath $inv -Raw) | Should -Match ([regex]::Escape('| fx.Tests.ps1 | d.host dependent | NotAsRoot | seen once as root |'))
     }
+    It 'writes LF line endings and no BOM' {
+        $d = New-Dir 'lf1' $script:Good; $inv = Join-Path $script:Work 'lf1.md'; (Write-Inv $d $inv) | Out-Null
+        $b = [IO.File]::ReadAllBytes($inv)
+        ($b -contains 13) | Should -BeFalse -Because 'no CR byte: the repo pins eol=lf'
+        ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF) | Should -BeFalse -Because 'no UTF-8 BOM'
+    }
     It 'writing preserves another OS section byte-for-byte' {
         $d = New-Dir 'k1' $script:Good; $inv = Join-Path $script:Work 'k1.md'
         Set-Content -LiteralPath $inv -Value @('# inventory', '## plan9', '### static', '| Suite | Row | Tag | Reason |', '| --- | --- | --- | --- |', '| x.Tests.ps1 | a.b | WindowsOnly | - |')
@@ -191,7 +199,7 @@ Describe 'd' {
 }
 ```
 
-- [ ] **Step 2: Run the suite; expect the 18 new rows to FAIL** (`-Directory` / `-SkipInventory` are unknown parameters today; the Context's `It` lines minus the four inside the `$Good` fixture string): `pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Files scripts/tests/run-pester-parallel.Tests.ps1 -ShowMessages` → `FAIL run-pester-parallel.Tests.ps1 ... failed=18`. (Rows that merely assert exit 0 on a valid fixture may already pass for the wrong reason before the implementation exists - e.g. none do here, because the parameters are unknown and the runner exits 1; if any passes at Step 2, STOP: its fixture is vacuous.)
+- [ ] **Step 2: Run the suite; expect the 19 new rows to FAIL** (`-Directory` / `-SkipInventory` are unknown parameters today; the Context's `It` lines minus the four inside the `$Good` fixture string): `pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Files scripts/tests/run-pester-parallel.Tests.ps1 -ShowMessages` → `FAIL run-pester-parallel.Tests.ps1 ... failed=19`. (Rows that merely assert exit 0 on a valid fixture may already pass for the wrong reason before the implementation exists - e.g. none do here, because the parameters are unknown and the runner exits 1; if any passes at Step 2, STOP: its fixture is vacuous.)
 
 - [ ] **Step 3: Implement in `scripts/run-pester-parallel.ps1`:**
   - params: add `[string]$Directory`, `[string]$SkipInventory`, `[switch]$WriteSkipInventory`; document all three (`.PARAMETER`) and note `-Files` > `-Directory` > `-Recipe`.
@@ -199,10 +207,11 @@ Describe 'd' {
   - resolution (:80-84): `elseif ($Directory) { $dirPath = if ([IO.Path]::IsPathRooted($Directory)) { $Directory } else { Join-Path $root $Directory }; if (-not (Test-Path -LiteralPath $dirPath)) { Write-Host "run-pester-parallel: -Directory '$dirPath' does not exist"; exit 1 }; $suites = @(Get-ChildItem -LiteralPath $dirPath -Recurse -Filter '*.Tests.ps1' -File | Sort-Object FullName | ForEach-Object FullName) }`.
   - after the TOTAL line and before the exit (:138): when `$SkipInventory` or `$WriteSkipInventory` is set, collect `$skips` / `$osTagged` (with the suite leaf) from every child summary and run `Test-SkipGate`: (1) vocabulary and approval rule; (2) OS-TAG rules; (3) in write mode (only after 1-2 pass) generate and write the file, print `SKIP-INVENTORY written: <file> (<n> static, <m> conditional)`; in check mode compare per Interfaces and print `SKIP-INVENTORY ok os=<os> static=<n> conditional=<m>`. Set `$gateFailed` on any failure; the final exit is `1` when `$tot.failed -gt 0 -or $tot.bad -gt 0 -or $tot.noresult -gt 0 -or $gateFailed`. Without `-SkipInventory`/`-WriteSkipInventory` the approval and OS-tag rules still run (they need no file) - only the inventory comparison is skipped.
   - Pester's `ExpandedPath` for a skipped It is `<Describe>.<Context>.<It>` with `.` separators (as `failedNames` already uses).
+  - WRITE the inventory with LF line endings on every OS: build the text with `-join "`n"` and write it with `[IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))` (no BOM, no `Set-Content`/`Out-File`, which emit CRLF on Windows). `.gitattributes:9` pins `* text=auto eol=lf`, so a CRLF write would show every preserved section as modified. Read the file with `[IO.File]::ReadAllLines` (accepts both endings) when parsing.
 
 - [ ] **Step 4: Create `scripts/tests/_skip-inventory.md`**: a prose header stating that the file is GENERATED by `pwsh scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -WriteSkipInventory`, never hand-edited, reviewed in the PR diff; the rules (the gate fails on an unapproved skip, on an OS-tag mismatch, on a stale static table and on an unlisted conditional skip); the vocabulary; and `<!-- UNMEASURED 2026-10-13: the windows section does not exist yet; the gate fails closed on Windows until the owner runs the generator there and commits the result -->`. No `## <os>` sections yet (Task 9 generates `## linux`).
 
-- [ ] **Step 5: Run the suite; expect all green:** same command → `ok   run-pester-parallel.Tests.ps1 passed=<N+18> failed=0 skipped=0`, where N is the suite's passed count at Step 2. Mutants (each must turn the NAMED row red; revert after each): (a) make the vocabulary check accept any tag → 'rejects a tag or an APPROVED: reason outside the closed vocabulary'; (b) drop the `Block.Parent` walk → 'accepts a tag inherited from the enclosing Context'; (c) compare `static` rows one-way instead of both ways → 'fails SKIP-INVENTORY STALE when a static row was un-skipped'; (d) make a missing OS section return success → 'fails CLOSED when the inventory has no section for this OS'.
+- [ ] **Step 5: Run the suite; expect all green:** same command → `ok   run-pester-parallel.Tests.ps1 passed=<N+19> failed=0 skipped=0`, where N is the suite's passed count at Step 2. Mutants (each must turn the NAMED row red; revert after each): (a) make the vocabulary check accept any tag → 'rejects a tag or an APPROVED: reason outside the closed vocabulary'; (b) drop the `Block.Parent` walk → 'accepts a tag inherited from the enclosing Context'; (c) compare `static` rows one-way instead of both ways → 'fails SKIP-INVENTORY STALE when a static row was un-skipped'; (d) make a missing OS section return success → 'fails CLOSED when the inventory has no section for this OS'.
 
 - [ ] **Step 6: Commit:** `test(runner): -Directory, an approved-skip gate and a generated skip inventory`.
 
