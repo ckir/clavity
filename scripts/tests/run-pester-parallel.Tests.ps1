@@ -166,4 +166,169 @@ test-y:
             @($lines | Where-Object { -not (Test-Path -LiteralPath (Join-Path $repo $_)) }) | Should -BeNullOrEmpty
         }
     }
+
+Context '-Directory, the skip-approval gate and the generated skip inventory' {
+    BeforeAll {
+        $script:Os      = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
+        $script:Native  = if ($IsWindows) { 'WindowsOnly' } else { 'LinuxOnly' }   # skips only where it is NOT native...
+        $script:Foreign = if ($IsWindows) { 'LinuxOnly' } else { 'WindowsOnly' }   # ...so THIS one must skip on this OS
+        function New-Dir([string]$Name, [string]$Body) {
+            $d = Join-Path $script:Work $Name; New-Item -ItemType Directory -Path $d -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $d 'fx.Tests.ps1') -Value $Body
+            $d
+        }
+        $script:Good = @"
+Describe 'd' {
+    It 'static ok' -Skip -Tag '$($script:Foreign)' { 1 | Should -Be 2 }
+    It 'probe ok' { Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: fixture' }
+    It 'needs tool' -Skip -Tag 'NeedsTool:ISCC' { 1 | Should -Be 2 }
+    It 'runs' { 1 | Should -Be 1 }
+}
+"@
+        function Write-Inv([string]$Dir, [string]$Inv) { Invoke-Runner -ExtraArgs @('-Directory', $Dir, '-SkipInventory', $Inv, '-WriteSkipInventory') }
+    }
+    It 'globs only *.Tests.ps1 under -Directory and counts the skipped rows' {
+        $d = New-Dir 'glob' $script:Good; Set-Content -LiteralPath (Join-Path $d 'not-a-suite.ps1') -Value "throw 'must not be globbed'"
+        $r = Invoke-Runner -ExtraArgs @('-Directory', $d)
+        $r.Exit | Should -Be 0 -Because $r.Out
+        $r.Out | Should -Match 'passed=1 failed=0 skipped=3'
+    }
+    It 'exits 1 when -Directory does not exist' {
+        $r = Invoke-Runner -ExtraArgs @('-Directory', (Join-Path $script:Work 'nope'))
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match "-Directory '.*nope' does not exist"   # an unknown PARAMETER also exits 1 today, so the exit code alone would pass vacuously at Step 2
+    }
+    It '-WriteSkipInventory requires -Directory and -SkipInventory' {
+        $r = Invoke-Runner -ExtraArgs @('-Files', $script:Pass1, '-WriteSkipInventory')
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match 'requires -Directory'
+    }
+    It 'writes an inventory with static and conditional tables, and the check then passes' {
+        $d = New-Dir 'w1' $script:Good; $inv = Join-Path $script:Work 'w1.md'
+        (Write-Inv $d $inv).Exit | Should -Be 0
+        $t = Get-Content -LiteralPath $inv -Raw
+        $t | Should -Match "(?m)^## $($script:Os)\r?$"
+        $t | Should -Match "(?s)### static.*\| fx\.Tests\.ps1 \| d\.static ok \| $($script:Foreign) \| - \|.*### conditional"
+        $t | Should -Match '\| fx\.Tests\.ps1 \| d\.probe ok \| NotAsRoot \| fixture \|'
+        $t | Should -Match '\| fx\.Tests\.ps1 \| d\.needs tool \| NeedsTool:ISCC \| - \|'
+        $r = Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', $inv)
+        $r.Exit | Should -Be 0 -Because $r.Out
+    }
+    It 'fails UNAPPROVED for an untagged discovery-time skip, and says why' {
+        $d = New-Dir 'u1' "Describe 'd' { It 'bare' -Skip { 1 | Should -Be 2 } }"
+        $r = Invoke-Runner -ExtraArgs @('-Directory', $d)
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match 'UNAPPROVED SKIP fx\.Tests\.ps1 :: d\.bare'
+        $r.Out | Should -Match 'discovery-time -Skip carries no reason text'
+    }
+    It 'rejects a tag or an APPROVED: reason outside the closed vocabulary' {
+        $d = New-Dir 'u2' "Describe 'd' { It 'tagged' -Skip -Tag 'Flaky' { 1 | Should -Be 2 }; It 'reasoned' { Set-ItResult -Skipped -Because 'APPROVED:Flaky: no' } }"
+        $r = Invoke-Runner -ExtraArgs @('-Directory', $d)
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match 'UNAPPROVED SKIP fx\.Tests\.ps1 :: d\.tagged'
+        $r.Out | Should -Match 'UNAPPROVED SKIP fx\.Tests\.ps1 :: d\.reasoned'
+    }
+    It 'accepts a tag inherited from the enclosing Context' {
+        $d = New-Dir 'u3' "Describe 'd' { Context 'c' -Tag 'NeedsTool:yq' { It 'inherits' -Skip { 1 | Should -Be 2 } } }"
+        (Invoke-Runner -ExtraArgs @('-Directory', $d)).Exit | Should -Be 0
+    }
+    It 'fails OS-TAG MISMATCH when a row tagged for another OS RAN here' {
+        $d = New-Dir 'm1' "Describe 'd' { It 'ran' -Tag '$($script:Foreign)' { 1 | Should -Be 1 } }"
+        $r = Invoke-Runner -ExtraArgs @('-Directory', $d)
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match 'OS-TAG MISMATCH fx\.Tests\.ps1 :: d\.ran'
+    }
+    It 'fails OS-TAG MISMATCH when a row tagged for THIS OS skipped without an APPROVED reason, and accepts one that says why' {
+        $bad = New-Dir 'm2' "Describe 'd' { It 'native skip' -Skip -Tag '$($script:Native)' { 1 | Should -Be 2 } }"
+        $r = Invoke-Runner -ExtraArgs @('-Directory', $bad)
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match 'OS-TAG MISMATCH fx\.Tests\.ps1 :: d\.native skip'
+        $ok = New-Dir 'm3' "Describe 'd' { It 'native probe' -Tag '$($script:Native)' { Set-ItResult -Skipped -Because 'APPROVED:NeedsTool:ISCC: not installed' } }"
+        (Invoke-Runner -ExtraArgs @('-Directory', $ok)).Exit | Should -Be 0
+    }
+    It 'fails SKIP-INVENTORY STALE when a static skip is added after the inventory was written' {
+        $d = New-Dir 's1' $script:Good; $inv = Join-Path $script:Work 's1.md'; (Write-Inv $d $inv) | Out-Null
+        Set-Content -LiteralPath (Join-Path $d 'fx.Tests.ps1') -Value ($script:Good -replace "It 'runs'", "It 'late static' -Skip -Tag '$($script:Foreign)' { 1 | Should -Be 2 }; It 'runs'")
+        $r = Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', $inv)
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match 'SKIP-INVENTORY STALE: regenerate with -WriteSkipInventory'
+        $r.Out | Should -Match 'late static'
+    }
+    It 'fails SKIP-INVENTORY STALE when a static row was un-skipped (a listed static row no longer skips)' {
+        $d = New-Dir 's2' $script:Good; $inv = Join-Path $script:Work 's2.md'; (Write-Inv $d $inv) | Out-Null
+        $was = [regex]::Escape("It 'static ok' -Skip -Tag '$($script:Foreign)' { 1 | Should -Be 2 }")
+        Set-Content -LiteralPath (Join-Path $d 'fx.Tests.ps1') -Value ($script:Good -replace $was, "It 'static ok' -Tag 'Plain' { 1 | Should -Be 1 }")   # a PASSING row, so exit 1 can only come from the inventory
+        $r = Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', $inv)
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match 'SKIP-INVENTORY STALE'
+    }
+    It 'fails when a conditional skip is not listed, but passes when a listed conditional row did not skip' {
+        $d = New-Dir 'c1' $script:Good; $inv = Join-Path $script:Work 'c1.md'; (Write-Inv $d $inv) | Out-Null
+        $keep = Get-Content -LiteralPath $inv | Where-Object { $_ -notmatch 'd\.needs tool' }
+        Set-Content -LiteralPath $inv -Value $keep
+        $r = Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', $inv)
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match 'needs tool'
+        Set-Content -LiteralPath $inv -Value ($keep + '| fx.Tests.ps1 | d.never skipped here | NotAsRoot | host-dependent |')
+        # re-add the row we removed so only the extra, non-skipping row differs
+        Set-Content -LiteralPath $inv -Value (Get-Content -LiteralPath $inv | ForEach-Object { $_; if ($_ -match 'd\.probe ok') { '| fx.Tests.ps1 | d.needs tool | NeedsTool:ISCC | - |' } })
+        (Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', $inv)).Exit | Should -Be 0
+    }
+    It 'fails CLOSED when the inventory has no section for this OS' {
+        $d = New-Dir 'f1' $script:Good; $inv = Join-Path $script:Work 'f1.md'
+        Set-Content -LiteralPath $inv -Value @('# inventory', '## plan9', '### static', '| Suite | Row | Tag | Reason |', '| --- | --- | --- | --- |')
+        $r = Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', $inv)
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match "SKIP-INVENTORY: no `"## $($script:Os)`" section"
+    }
+    It 'checks only the suites this run covered (a subset run does not report other suites as vanished)' {
+        $d = New-Dir 'p1' $script:Good; $inv = Join-Path $script:Work 'p1.md'; (Write-Inv $d $inv) | Out-Null
+        Add-Content -LiteralPath $inv -Value '| other.Tests.ps1 | o.elsewhere | WindowsOnly | - |'
+        (Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', $inv)).Exit | Should -Be 0
+    }
+    It '-Files takes precedence over -Directory' {
+        $d = New-Dir 'pr1' $script:Good
+        $r = Invoke-Runner -ExtraArgs @('-Files', $script:Pass1, '-Directory', $d)
+        $r.Exit | Should -Be 0 -Because $r.Out
+        $r.Out | Should -Match 'passed=2 failed=0 skipped=0'
+    }
+    It 'escapes a pipe in a row name when writing, and the check then still passes' {
+        $d = New-Dir 'e1' "Describe 'd' { It 'a | b' -Skip -Tag '$($script:Foreign)' { 1 | Should -Be 2 } }"; $inv = Join-Path $script:Work 'e1.md'
+        (Write-Inv $d $inv).Exit | Should -Be 0
+        (Get-Content -LiteralPath $inv -Raw) | Should -Match ([regex]::Escape('| fx.Tests.ps1 | d.a \| b |'))
+        (Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', $inv)).Exit | Should -Be 0
+    }
+    It 'writing keeps an existing conditional row that did not skip in this run (the table only accumulates)' {
+        $d = New-Dir 'k2' $script:Good; $inv = Join-Path $script:Work 'k2.md'; (Write-Inv $d $inv) | Out-Null
+        Set-Content -LiteralPath $inv -Value (Get-Content -LiteralPath $inv | ForEach-Object { $_; if ($_ -match 'd\.probe ok') { '| fx.Tests.ps1 | d.host dependent | NotAsRoot | seen once as root |' } })
+        (Write-Inv $d $inv).Exit | Should -Be 0
+        (Get-Content -LiteralPath $inv -Raw) | Should -Match ([regex]::Escape('| fx.Tests.ps1 | d.host dependent | NotAsRoot | seen once as root |'))
+    }
+    It 'accepts a tag inherited from a Describe two levels up (the .Parent walk)' {
+        $d = New-Dir 'u4' "Describe 'd' -Tag 'NeedsTool:yq' { Context 'c' { It 'deep' -Skip { 1 | Should -Be 2 } } }"
+        $r = Invoke-Runner -ExtraArgs @('-Directory', $d)
+        $r.Exit | Should -Be 0 -Because $r.Out
+    }
+    It 'classifies a native-OS-tagged probe skip by its APPROVED reason: conditional, never static' {
+        $d = New-Dir 'cl1' "Describe 'd' { It 'native probe' -Tag '$($script:Native)' { Set-ItResult -Skipped -Because 'APPROVED:NeedsTool:ISCC: not installed' } }"; $inv = Join-Path $script:Work 'cl1.md'
+        (Write-Inv $d $inv).Exit | Should -Be 0
+        $t = Get-Content -LiteralPath $inv -Raw
+        $t | Should -Match '(?s)### conditional.*\| fx\.Tests\.ps1 \| d\.native probe \| NeedsTool:ISCC \| not installed \|'
+        $t | Should -Not -Match '(?s)### static.*d\.native probe.*### conditional'
+        $r = Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', $inv)
+        $r.Exit | Should -Be 0 -Because $r.Out
+    }
+    It 'writes LF line endings and no BOM' {
+        $d = New-Dir 'lf1' $script:Good; $inv = Join-Path $script:Work 'lf1.md'; (Write-Inv $d $inv) | Out-Null
+        $b = [IO.File]::ReadAllBytes($inv)
+        ($b -contains 13) | Should -BeFalse -Because 'no CR byte: the repo pins eol=lf'
+        ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF) | Should -BeFalse -Because 'no UTF-8 BOM'
+    }
+    It 'writing preserves another OS section byte-for-byte' {
+        $d = New-Dir 'k1' $script:Good; $inv = Join-Path $script:Work 'k1.md'
+        Set-Content -LiteralPath $inv -Value @('# inventory', '## plan9', '### static', '| Suite | Row | Tag | Reason |', '| --- | --- | --- | --- |', '| x.Tests.ps1 | a.b | WindowsOnly | - |')
+        (Write-Inv $d $inv).Exit | Should -Be 0
+        (Get-Content -LiteralPath $inv -Raw) | Should -Match '(?s)## plan9\r?\n### static\r?\n\| Suite \| Row \| Tag \| Reason \|\r?\n\| --- \| --- \| --- \| --- \|\r?\n\| x\.Tests\.ps1 \| a\.b \| WindowsOnly \| - \|'
+    }
+}
 }
