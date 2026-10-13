@@ -537,7 +537,7 @@ _m=".clavity/.clavity-shield-swept-$k"
             [IO.File]::WriteAllText($stale, "x`n")
             [IO.File]::WriteAllText($fresh, "x`n")
             # -mtime +30 is measured against the file's modification time, so age the stale one past it.
-            (Get-Item -LiteralPath $stale).LastWriteTime = (Get-Date).AddDays(-40)
+            (Get-Item -LiteralPath $stale -Force).LastWriteTime = (Get-Date).AddDays(-40)
 
             # A FRESH key, so the sweep gate has not latched yet for this "session" and the sweep runs.
             $k = 'sweepwork-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
@@ -807,7 +807,7 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             $r = New-FixtureRepo -Shield "!local-anomalies.md`n"
             $old = Join-Path $r '.clavity/.clavity-shield-persistent-oldkey'
             [IO.File]::WriteAllText($old, '')
-            (Get-Item -LiteralPath $old).LastWriteTimeUtc = [datetime]::UtcNow.AddDays(-40)
+            (Get-Item -LiteralPath $old -Force).LastWriteTimeUtc = [datetime]::UtcNow.AddDays(-40)
             $call = 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
             $null = Invoke-Shield -Root $r -Body $call
             (Get-Shield $r) | Should -Match '(?m)^\*\r?$' -Because 'the first call must have PREPENDED, or this row does not measure the prepending call'
@@ -829,8 +829,8 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
                 $mid = Join-Path $r ".clavity/.clavity-shield-persistent-mid-$phase"
                 $old = Join-Path $r ".clavity/.clavity-shield-persistent-old-$phase"
                 [IO.File]::WriteAllText($mid, ''); [IO.File]::WriteAllText($old, '')
-                (Get-Item -LiteralPath $mid).LastWriteTimeUtc = [datetime]::UtcNow.AddDays(-10)
-                (Get-Item -LiteralPath $old).LastWriteTimeUtc = [datetime]::UtcNow.AddDays(-40)
+                (Get-Item -LiteralPath $mid -Force).LastWriteTimeUtc = [datetime]::UtcNow.AddDays(-10)
+                (Get-Item -LiteralPath $old -Force).LastWriteTimeUtc = [datetime]::UtcNow.AddDays(-40)
                 $null = Invoke-Shield -Root $r -Body $bodies[$phase]
                 (Test-Path -LiteralPath $old) | Should -BeFalse -Because "the 40-day marker must be swept in the '$phase' call, or the sweep never ran and this phase proves nothing"
                 (Test-Path -LiteralPath $mid) | Should -BeTrue -Because "a 10-day marker is younger than the 30-day threshold (the '$phase' call)"

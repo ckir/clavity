@@ -450,13 +450,21 @@ Please review this.
         Test-Path (Join-Path $script:RoundDir 'collected.md') | Should -BeTrue
         $oldReply = Join-Path $script:RoundDir 'replies' '01-gemini-inline.md'
         Test-Path $oldReply | Should -BeTrue
-        $stream = [IO.File]::Open($oldReply, 'Open', 'Read', 'None')
+        # Windows: an exclusive handle on the old reply. Elsewhere: an unwritable replies directory, which makes the
+        # rebuild's Remove-Item of the old copy (collect.ps1:107-109) fail.
+        $repliesDir = Join-Path $script:RoundDir 'replies'
+        if ((-not $IsWindows) -and ((& id -u) -eq '0')) {
+            Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: root is not bound by directory permissions'
+            return
+        }
+        $stream = $null
+        if ($IsWindows) { $stream = [IO.File]::Open($oldReply, 'Open', 'Read', 'None') } else { & chmod 555 $repliesDir }
         try {
             $r2 = Invoke-Relay $script:Collect @('-Review', 'demo', '-ProjectRoot', $script:P, '-Inbox', $script:Inbox)
             $r2.Exit | Should -Not -Be 0
             Test-Path (Join-Path $script:RoundDir 'collected.md') | Should -BeFalse
         } finally {
-            $stream.Dispose()
+            if ($IsWindows) { $stream.Dispose() } else { & chmod 755 $repliesDir }
         }
     }
     It 'collects only the captures saved during that round, not after the next round started' {

@@ -36,8 +36,10 @@ Describe 'check-installer-ascii.ps1' {
             # colour codes are stripped first - Fail writes in red, and a host that renders colour into
             # redirected output would put an escape sequence where the anchor expects the line to end.
             $plain = $out -replace "`e\[[0-9;]*m", ''
-            $plain | Should -Match '(?m)^  installer\\offender\.ps1 - 1 non-ASCII byte\(s\)\r?$'
-            $plain | Should -Match '(?m)^  installer\\sub\\second\.ps1 - 2 non-ASCII byte\(s\)\r?$'
+            $rel1 = [regex]::Escape((Join-Path 'installer' 'offender.ps1'))
+            $rel2 = [regex]::Escape((Join-Path (Join-Path 'installer' 'sub') 'second.ps1'))
+            $plain | Should -Match "(?m)^  $rel1 - 1 non-ASCII byte\(s\)\r?$"
+            $plain | Should -Match "(?m)^  $rel2 - 2 non-ASCII byte\(s\)\r?$"
         }
         finally { Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -67,10 +69,12 @@ Describe 'check-installer-ascii.ps1' {
             # The COM object does not exist off Windows, so an unguarded New-Object THROWS before the skip
             # check can run - a crash where a skip was intended. try/catch collapses "no COM" and "8.3
             # disabled" into the same skip.
+            if (-not $IsWindows) { Set-ItResult -Skipped -Because 'APPROVED:WindowsOnly: 8.3 short names are a Windows filesystem feature'; return }
             $short = $null
             try { $short = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($root).ShortPath } catch { $short = $null }
             if (-not $short -or $short -eq $root) {
-                Set-ItResult -Skipped -Because '8.3 short-name generation is disabled on this volume, so the state under test is unreachable here'
+                Set-ItResult -Skipped -Because 'APPROVED:FsFeature:8dot3-names: 8.3 short-name generation is disabled on this volume, so the state under test is unreachable here'
+                return
             }
             $short | Should -Not -Be $root
 

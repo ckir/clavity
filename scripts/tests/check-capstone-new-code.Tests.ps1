@@ -815,7 +815,8 @@ Describe 'check-capstone-new-code' {
             $gitDir = Split-Path -Parent (Get-Command git).Source
             $savedPath = $env:PATH
             try {
-                $env:PATH = "$pwshDir;$gitDir;$env:SystemRoot;$env:SystemRoot\System32"
+                $parts = @($pwshDir, $gitDir); if ($IsWindows) { $parts += @($env:SystemRoot, (Join-Path $env:SystemRoot 'System32')) }
+                $env:PATH = ($parts -join [IO.Path]::PathSeparator)
                 $res = Invoke-Checker $r 'HEAD~1'
             } finally {
                 $env:PATH = $savedPath
@@ -841,7 +842,7 @@ Describe 'check-capstone-new-code' {
         $shim = New-TestTempPath 'agshim'
         try {
             New-Item -ItemType Directory -Path $shim -Force | Out-Null
-            Set-Content -Path (Join-Path $shim 'ast-grep.cmd') -Value @('@echo off', 'exit /b 8')
+            if ($IsWindows) { Set-Content -Path (Join-Path $shim 'ast-grep.cmd') -Value @('@echo off', 'exit /b 8') } else { Set-Content -Path (Join-Path $shim 'ast-grep') -Value @('#!/usr/bin/env bash', 'exit 8'); & bash -c 'chmod +x "$1"' _ (Join-Path $shim 'ast-grep') }
             Push-Location $r
             New-Item -ItemType Directory -Path (Join-Path $r 'src') -Force | Out-Null
             Set-Content -Path 'src/T.cs' -Value @('public class T', '{', '}')
@@ -851,7 +852,7 @@ Describe 'check-capstone-new-code' {
             Pop-Location
             $savedPath = $env:PATH
             try {
-                $env:PATH = "$shim;$env:PATH"
+                $env:PATH = "$shim$([IO.Path]::PathSeparator)$env:PATH"
                 $res = Invoke-Checker $r 'HEAD~1'
             } finally { $env:PATH = $savedPath }
             $res.ExitCode | Should -Be 2 -Because 'an ast-grep that FAILS has not answered the question, and an unanswered question is not a no'

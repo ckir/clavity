@@ -527,11 +527,21 @@ exit 0
         # whole `foreach ($name in @('clavity-ls','clavity'))` block left both green. accept-drain then
         # gets $null, warns "no driver installed" and PROCEEDS - so a reviewed GROWTH proposal silently
         # never reaches the runtime header, on every box, with the suite green.
-        # .cmd stubs are enough: Get-Command -CommandType Application resolves them via PATHEXT.
+        # Native stubs are enough. Windows: .cmd, which Get-Command -CommandType Application resolves via PATHEXT
+        # (PATHEXT is Windows-only). Elsewhere: an extensionless executable bash script.
         $binDir = Join-Path $script:Work 'bin'
         New-Item -ItemType Directory -Path $binDir | Out-Null
-        Set-Content -LiteralPath (Join-Path $binDir 'clavity-ls.cmd') -Value '@echo dotnet' -Encoding ascii
-        Set-Content -LiteralPath (Join-Path $binDir 'clavity.cmd')    -Value '@echo classic' -Encoding ascii
+        $ext = if ($IsWindows) { '.cmd' } else { '' }
+        $dotnetStub  = Join-Path $binDir "clavity-ls$ext"
+        $classicStub = Join-Path $binDir "clavity$ext"
+        if ($IsWindows) {
+            Set-Content -LiteralPath $dotnetStub  -Value '@echo dotnet' -Encoding ascii
+            Set-Content -LiteralPath $classicStub -Value '@echo classic' -Encoding ascii
+        } else {
+            Set-Content -LiteralPath $dotnetStub  -Value @('#!/usr/bin/env bash', 'echo dotnet')
+            Set-Content -LiteralPath $classicStub -Value @('#!/usr/bin/env bash', 'echo classic')
+            & bash -c 'chmod +x "$@"' _ $dotnetStub $classicStub
+        }
 
         # Unquoted saves on purpose: "$env:X" coerces an ABSENT variable to '', and restoring that
         # re-creates it as present-but-empty. See BashHookHelpers.ps1 for the CI failure that caused.
@@ -540,11 +550,11 @@ exit 0
         try {
             $env:CLAVITY_CURATE_COMMIT_EXE = $null
             $env:PATH = $binDir
-            (Resolve-CurateCommitExe) | Should -BeLike '*clavity-ls.cmd' -Because 'with BOTH on PATH the dotnet CLI must win - the documented preference order'
+            (Resolve-CurateCommitExe) | Should -Be (Join-Path $binDir "clavity-ls$ext") -Because 'with BOTH on PATH the dotnet CLI must win - the documented preference order'
 
             # Now only classic is reachable, so discovery must fall through to it rather than return null.
-            Remove-Item -LiteralPath (Join-Path $binDir 'clavity-ls.cmd') -Force
-            (Resolve-CurateCommitExe) | Should -BeLike '*clavity.cmd' -Because 'with only classic present the loop must still discover it'
+            Remove-Item -LiteralPath $dotnetStub -Force
+            (Resolve-CurateCommitExe) | Should -Be (Join-Path $binDir "clavity$ext") -Because 'with only classic present the loop must still discover it'
         } finally { $env:PATH = $savedPath; $env:CLAVITY_CURATE_COMMIT_EXE = $savedOverride }
     }
 
