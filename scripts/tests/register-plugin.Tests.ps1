@@ -24,7 +24,7 @@ Describe 'Test-AgentPresent' {
     }
     It 'reports agy present when only its config dir exists' {
         Mock Test-CliPresent { $false }
-        Mock Test-Path { $true } -ParameterFilter { $Path -like '*\.gemini' }
+        Mock Test-Path { $true } -ParameterFilter { $Path -like '*.gemini' }
         Test-AgentPresent 'agy' | Should -BeTrue
     }
     It 'reports absent when neither signal fires' {
@@ -85,9 +85,10 @@ Describe 'Install-AgyPlugin - vectors' {
     It 'uninstall-then-install the local plugin dir; non-zero install fails' {
         $script:calls = New-Object System.Collections.Generic.List[object]
         Mock Invoke-AgentCli { $script:calls.Add(($CliArgs -join ' ')); return @{ ExitCode = 0; Output = '' } }
-        $r = Install-AgyPlugin -PluginName 'commonmemory' -AppDir 'C:\app'
+        $appDir = Join-Path $TestDrive 'app'
+        $r = Install-AgyPlugin -PluginName 'commonmemory' -AppDir $appDir
         $r.Ok | Should -BeTrue
-        $script:calls.ToArray() | Should -Be @('plugin uninstall commonmemory', 'plugin install C:\app\plugins\commonmemory')
+        $script:calls.ToArray() | Should -Be @('plugin uninstall commonmemory', "plugin install $(Join-Path (Join-Path $appDir 'plugins') 'commonmemory')")
     }
 }
 
@@ -143,13 +144,14 @@ Describe 'register-plugin.ps1 - exit code survives the -File wrapper (end-to-end
         $tmpHome = Join-Path $TestDrive 'home'; New-Item -ItemType Directory -Path $tmpHome -Force | Out-Null
         $script = (Resolve-Path ([System.IO.Path]::Combine($PSScriptRoot, '..', '..', 'installer', '_shared', 'register-plugin.ps1'))).Path
         $pwshExe = (Get-Command powershell -CommandType Application | Select-Object -First 1).Source
-        $oldProfile = $env:USERPROFILE; $oldPath = $env:PATH
+        $oldProfile = $env:USERPROFILE; $oldHome = $env:HOME; $oldPath = $env:PATH
         try {
-            $env:USERPROFILE = $tmpHome
+            $env:USERPROFILE = $tmpHome   # Windows: what $HOME resolves to
+            $env:HOME = $tmpHome          # elsewhere: what $HOME resolves to
             $env:PATH = ''
             $out = & $pwshExe -NoProfile -ExecutionPolicy Bypass -File $script -Install -PluginName x -MarketplaceName m -AppDir C:\a -Agent all 2>&1
             $LASTEXITCODE | Should -Be 4   # deterministic: nothing detected, no real CLI touched
         }
-        finally { $env:USERPROFILE = $oldProfile; $env:PATH = $oldPath }
+        finally { $env:USERPROFILE = $oldProfile; $env:HOME = $oldHome; $env:PATH = $oldPath }
     }
 }

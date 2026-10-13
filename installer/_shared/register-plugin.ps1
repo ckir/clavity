@@ -56,8 +56,8 @@ function Test-CliPresent {
 function Test-AgentPresent {
     param([string]$Name)
     switch ($Name) {
-        'claude' { return (Test-CliPresent 'claude') -or (Test-Path (Join-Path $env:USERPROFILE '.claude')) }
-        'agy'    { return (Test-CliPresent 'agy')    -or (Test-Path (Join-Path $env:USERPROFILE '.gemini')) }
+        'claude' { return (Test-CliPresent 'claude') -or (Test-Path (Join-Path $HOME '.claude')) }
+        'agy'    { return (Test-CliPresent 'agy')    -or (Test-Path (Join-Path $HOME '.gemini')) }
     }
     return $false
 }
