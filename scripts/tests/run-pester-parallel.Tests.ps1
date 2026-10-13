@@ -283,7 +283,9 @@ Describe 'd' {
     }
     It 'checks only the suites this run covered (a subset run does not report other suites as vanished)' {
         $d = New-Dir 'p1' $script:Good; $inv = Join-Path $script:Work 'p1.md'; (Write-Inv $d $inv) | Out-Null
-        Add-Content -LiteralPath $inv -Value '| other.Tests.ps1 | o.elsewhere | WindowsOnly | - |'
+        # The foreign row goes UNDER ### static (the two-way table); at end of file it would land in the one-way conditional table.
+        $ls = @(Get-Content -LiteralPath $inv); $ci = [array]::IndexOf($ls, '### conditional'); $at = $ci - 1; while ($ls[$at] -eq '') { $at-- }
+        Set-Content -LiteralPath $inv -Value (@($ls[0..$at]) + '| other.Tests.ps1 | o.elsewhere | WindowsOnly | - |' + @($ls[($at + 1)..($ls.Count - 1)]))
         (Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', $inv)).Exit | Should -Be 0
     }
     It '-Files takes precedence over -Directory' {
@@ -317,6 +319,36 @@ Describe 'd' {
         $t | Should -Not -Match '(?s)### static.*d\.native probe.*### conditional'
         $r = Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', $inv)
         $r.Exit | Should -Be 0 -Because $r.Out
+    }
+    It 'refuses -WriteSkipInventory on a red run and leaves the file untouched' {
+        $d = New-Dir 'rf1' "Describe 'd' { It 'boom' { 1 | Should -Be 2 }; It 'st' -Skip -Tag '$($script:Foreign)' { 1 | Should -Be 2 } }"; $inv = Join-Path $script:Work 'rf1.md'
+        $known = "# known`n## $($script:Os)`n### static`n| Suite | Row | Tag | Reason |`n| --- | --- | --- | --- |`n| fx.Tests.ps1 | d.st | $($script:Foreign) | - |`n"
+        [IO.File]::WriteAllText($inv, $known)
+        $r = Write-Inv $d $inv
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match 'SKIP-INVENTORY: refusing to write: the run had failing tests, bad containers or missing results'
+        [IO.File]::ReadAllText($inv) | Should -BeExactly $known
+    }
+    It 'is case-exact: a lower-case tag or APPROVED: reason is UNAPPROVED' {
+        $d = New-Dir 'cx1' "Describe 'd' { It 'lowtag' -Skip -Tag 'windowsonly' { 1 | Should -Be 2 }; It 'lowreason' { Set-ItResult -Skipped -Because 'approved:NotAsRoot: x' } }"
+        $r = Invoke-Runner -ExtraArgs @('-Directory', $d)
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match 'UNAPPROVED SKIP fx\.Tests\.ps1 :: d\.lowtag'
+        $r.Out | Should -Match 'UNAPPROVED SKIP fx\.Tests\.ps1 :: d\.lowreason'
+    }
+    It 'fails closed when the -SkipInventory file does not exist (check mode)' {
+        $d = New-Dir 'nf1' $script:Good
+        $r = Invoke-Runner -ExtraArgs @('-Directory', $d, '-SkipInventory', (Join-Path $script:Work 'no-such-inventory.md'))
+        $r.Exit | Should -Be 1
+        $r.Out | Should -Match 'SKIP-INVENTORY: file not found: .*no-such-inventory\.md'
+    }
+    It 'writing twice produces a byte-identical file (idempotent)' {
+        $d = New-Dir 'id1' $script:Good; $inv = Join-Path $script:Work 'id1.md'
+        (Write-Inv $d $inv).Exit | Should -Be 0
+        $one = [IO.File]::ReadAllBytes($inv)
+        (Write-Inv $d $inv).Exit | Should -Be 0
+        $two = [IO.File]::ReadAllBytes($inv)
+        [Convert]::ToBase64String($two) | Should -BeExactly ([Convert]::ToBase64String($one))
     }
     It 'writes LF line endings and no BOM' {
         $d = New-Dir 'lf1' $script:Good; $inv = Join-Path $script:Work 'lf1.md'; (Write-Inv $d $inv) | Out-Null

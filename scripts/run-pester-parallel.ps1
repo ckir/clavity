@@ -9,7 +9,7 @@
   (~32 s) bounds the speed-up, so more cores stop helping early. Windows (CI) is unmeasured.
 
   The suite list is read from a justfile recipe (default test-scripts-fast), so there is ONE list; this script never
-  carries its own. Exit 1 when ANY of: a test failed; a container did not end Passed (a container that fails
+  carries its own. Exit 1 when ANY of: a test failed; a container did not end Passed or Skipped (a container that fails
   DISCOVERY contributes 0 failed tests, so counting failures alone would call a broken suite green); a named file is
   missing; a child produced no result; or there were no files at all.
 
@@ -64,7 +64,7 @@ if ($Child) {
         file = $Child
         passed = $r.PassedCount; failed = $r.FailedCount; skipped = $r.SkippedCount; notrun = $r.NotRunCount
         # A container whose every test skipped ends 'Skipped', not 'Passed': that is not a broken container (each skip is gated by the parent).
-        badContainers = @($r.Containers | Where-Object { $_.Result -notin 'Passed', 'Skipped' } | ForEach-Object { [string]$_.Name }).Count
+        badContainers = @($r.Containers | Where-Object { $_.Result -cnotin 'Passed', 'Skipped' } | ForEach-Object { [string]$_.Name }).Count
         failedNames = @($r.Failed | ForEach-Object { [string]$_.ExpandedPath })
         # Always captured (cheap); the parent decides whether to print. One line, bounded, so a 2000-char assertion dump cannot flood a log.
         failedMessages = @($r.Failed | ForEach-Object {
@@ -79,7 +79,7 @@ if ($Child) {
         # Rows that did NOT skip but carry an OS tag (a WindowsOnly row that ran on Linux is a lie in the tag).
         osTagged = @(@($r.Passed) + @($r.Failed) | Where-Object { $_ } | ForEach-Object {
             $tg = @(Get-EffectiveTags $_ | ForEach-Object { [string]$_ })
-            if ($tg -contains 'WindowsOnly' -or $tg -contains 'LinuxOnly') { [ordered]@{ path = [string]$_.ExpandedPath; tags = $tg } }
+            if ($tg -ccontains 'WindowsOnly' -or $tg -ccontains 'LinuxOnly') { [ordered]@{ path = [string]$_.ExpandedPath; tags = $tg } }
         })
         secs = [math]::Round($sw.Elapsed.TotalSeconds, 1)
     }
@@ -161,7 +161,7 @@ function Sort-InvRows($Rows) {
 # This OS's committed section -> @{ static = rows; conditional = rows; start; end } ; $null when there is none.
 function Read-InvSection([string[]]$Lines, [string]$Os) {
     $start = -1
-    for ($i = 0; $i -lt $Lines.Count; $i++) { if ($Lines[$i] -match "^##\s+$([regex]::Escape($Os))\s*$") { $start = $i; break } }
+    for ($i = 0; $i -lt $Lines.Count; $i++) { if ($Lines[$i] -cmatch "^##\s+$([regex]::Escape($Os))\s*$") { $start = $i; break } }
     if ($start -lt 0) { return $null }
     $end = $Lines.Count
     for ($i = $start + 1; $i -lt $Lines.Count; $i++) { if ($Lines[$i] -match '^##\s') { $end = $i; break } }
@@ -179,15 +179,15 @@ function Read-InvSection([string[]]$Lines, [string]$Os) {
 function Test-SkipGate {
     $failed = $false
     $nativeTag = if ($IsWindows) { 'WindowsOnly' } elseif ($IsMacOS) { $null } else { 'LinuxOnly' }
-    $foreign = @(@('WindowsOnly', 'LinuxOnly') | Where-Object { $_ -ne $nativeTag })
+    $foreign = @(@('WindowsOnly', 'LinuxOnly') | Where-Object { $_ -cne $nativeTag })
 
     # 1. every skipped row must be approved; remember the approving tag + the reason text for the inventory.
     $unapproved = 0; $observed = @()
     foreach ($k in $allSkips) {
-        $rm = [regex]::Match($k.Reason, $script:ApprovedRx)
+        $rm = [regex]::Match($k.Reason, $script:ApprovedRx, [Text.RegularExpressions.RegexOptions]::None)
         # A valid APPROVED:<tag>: reason is the row's OWN approval and wins over an inherited tag: a native-OS-tagged probe skip
         # (WindowsOnly Context, 'APPROVED:NeedsTool:ISCC: ...') is conditional, not static, or a host that has the tool would see a false STALE.
-        $tag = @(if ($rm.Success) { $rm.Groups[1].Value } else { $k.Tags | Where-Object { $_ -match $script:VocabRx } | Select-Object -First 1 })
+        $tag = @(if ($rm.Success) { $rm.Groups[1].Value } else { $k.Tags | Where-Object { $_ -cmatch $script:VocabRx } | Select-Object -First 1 })
         if (-not $tag) { Write-Host "UNAPPROVED SKIP $($k.Suite) :: $($k.Path)"; $unapproved++; continue }
         $why = if ($rm.Success) { $k.Reason.Substring($rm.Length) } else { $k.Reason }
         $observed += [pscustomobject]@{ Suite = $k.Suite; Path = $k.Path; Tag = [string]$tag[0]; Why = $why }
@@ -199,12 +199,12 @@ function Test-SkipGate {
 
     # 2. OS tags must tell the truth.
     foreach ($k in $allOsTagged) {
-        $bad = @($k.Tags | Where-Object { $_ -in $foreign })
+        $bad = @($k.Tags | Where-Object { $_ -cin $foreign })
         if ($bad.Count -gt 0) { Write-Host "OS-TAG MISMATCH $($k.Suite) :: $($k.Path) (tagged $($bad[0]) but it ran on $($script:Os))"; $failed = $true }
     }
     if ($nativeTag) {
         foreach ($k in $allSkips) {
-            if ($k.Tags -contains $nativeTag -and $k.Reason -notmatch $script:ApprovedRx) {
+            if ($k.Tags -ccontains $nativeTag -and $k.Reason -cnotmatch $script:ApprovedRx) {
                 Write-Host "OS-TAG MISMATCH $($k.Suite) :: $($k.Path) (tagged $nativeTag but skipped on $($script:Os) without an APPROVED: reason)"; $failed = $true
             }
         }
@@ -216,13 +216,16 @@ function Test-SkipGate {
     foreach ($o in $observed) {
         $esc = { param($x) ([string]$x).Replace('|', '\|') }
         $line = "| $($o.Suite) | $(& $esc $o.Path) | $($o.Tag) | $(if ($o.Why) { & $esc $o.Why } else { '-' }) |"
-        if ($o.Tag -in 'WindowsOnly', 'LinuxOnly') { $obsStatic += $line } else { $obsCond += $line }
+        if ($o.Tag -cin 'WindowsOnly', 'LinuxOnly') { $obsStatic += $line } else { $obsCond += $line }
     }
     $obsStatic = @($obsStatic | Select-Object -Unique); $obsCond = @($obsCond | Select-Object -Unique)
     $covered = @($coveredSuites)
-    $inCovered = { param($l) (Get-InvRowKey $l).Suite -in $covered }
+    $inCovered = { param($l) (Get-InvRowKey $l).Suite -cin $covered }
 
     if ($WriteSkipInventory) {
+        if ($tot.failed -gt 0 -or $tot.bad -gt 0 -or $tot.noresult -gt 0) {
+            Write-Host 'SKIP-INVENTORY: refusing to write: the run had failing tests, bad containers or missing results (a partial run would drop rows)'; return $true
+        }
         if ($failed) { Write-Host 'SKIP-INVENTORY not written: fix the skip-approval / OS-tag failures above first'; return $true }
         $lines = if (Test-Path -LiteralPath $invPath) { @([IO.File]::ReadAllLines($invPath)) } else { @() }
         $sec = Read-InvSection $lines $script:Os
@@ -246,14 +249,14 @@ function Test-SkipGate {
         return $false
     }
 
-    if (-not (Test-Path -LiteralPath $invPath)) { Write-Host "SKIP-INVENTORY: $SkipInventory does not exist"; return $true }
+    if (-not (Test-Path -LiteralPath $invPath)) { Write-Host "SKIP-INVENTORY: file not found: $SkipInventory"; return $true }
     $sec = Read-InvSection @([IO.File]::ReadAllLines($invPath)) $script:Os
     if (-not $sec) { Write-Host "SKIP-INVENTORY: no `"## $($script:Os)`" section in $SkipInventory"; return $true }
     $comS = @($sec.static | Where-Object { & $inCovered $_ }); $comC = @($sec.conditional | Where-Object { & $inCovered $_ })
     $diff = @()
-    foreach ($l in $obsStatic) { if ($l -notin $comS) { $diff += "+ $l" } }
-    foreach ($l in $comS) { if ($l -notin $obsStatic) { $diff += "- $l" } }
-    foreach ($l in $obsCond) { if ($l -notin $comC) { $diff += "+ $l" } }
+    foreach ($l in $obsStatic) { if ($l -cnotin $comS) { $diff += "+ $l" } }
+    foreach ($l in $comS) { if ($l -cnotin $obsStatic) { $diff += "- $l" } }
+    foreach ($l in $obsCond) { if ($l -cnotin $comC) { $diff += "+ $l" } }
     if ($diff.Count -gt 0) {
         Write-Host 'SKIP-INVENTORY STALE: regenerate with -WriteSkipInventory and review the diff'
         $diff | ForEach-Object { Write-Host "    $_" }
