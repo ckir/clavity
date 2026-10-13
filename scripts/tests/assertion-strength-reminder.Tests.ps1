@@ -37,13 +37,13 @@ BeforeAll {
         $Payload | & $script:Bash $script:Hook 2>&1
     }
 
-    # Degraded path: a PATH that still carries coreutils (the hook's own grep/find) but NOT jq.
-    # MEASURED 2026-08-08: jq lives outside /usr/bin on this machine, so /usr/bin:/bin hides it while
-    # keeping grep/find/mkdir. The 'jq is genuinely absent' test below is the CONTROL for this - without
-    # it, a PATH that still reached jq would make every degraded test pass through the jq path instead.
+    # Degraded path: the real PATH minus jq (New-NoJqPath), so the hook's own grep/find still resolve.
+    # The 'jq is genuinely absent' test below is the CONTROL for this - without it, a PATH that still
+    # reached jq would make every degraded test pass through the jq path instead.
+    $script:NoJqPath = New-NoJqPath
     function Invoke-HookNoJq {
         param([string]$Payload)
-        $Payload | & $script:Bash -c 'PATH=/usr/bin:/bin; export PATH; exec bash "$0"' $script:Hook 2>&1
+        $Payload | & $script:Bash -c 'PATH="$1"; export PATH; exec bash "$2"' _ $script:NoJqPath $script:Hook 2>&1
     }
 
     # Each test gets a private marker location so a debounce marker never leaks between tests.
@@ -81,6 +81,7 @@ Describe 'assertion-strength-reminder.sh' {
     AfterAll {
         if ($script:TmpDirWasPresent) { $env:TMPDIR = $script:TmpDirOriginal }
         else { Remove-Item Env:TMPDIR -ErrorAction SilentlyContinue }
+        if (-not $IsWindows) { Remove-TestPath $script:NoJqPath }
     }
 
     # GUARD, added after the suite was measured passing with NO HOOK ON DISK. Every assertion below runs
@@ -243,7 +244,7 @@ Describe 'assertion-strength-reminder.sh' {
     # optional coverage: its own template carries four such tests.
     Context 'degraded path (jq absent)' {
         It 'jq is genuinely absent under the reduced PATH (CONTROL for every test below)' {
-            $probe = & $script:Bash -c 'PATH=/usr/bin:/bin; export PATH; command -v jq >/dev/null && echo REACHABLE || echo absent'
+            $probe = & $script:Bash -c 'PATH="$1"; export PATH; command -v jq >/dev/null && echo REACHABLE || echo absent' _ $script:NoJqPath
             ($probe -join '') | Should -Match 'absent' -Because 'if jq were still reachable, every degraded test would silently exercise the jq path instead'
         }
 
@@ -295,8 +296,7 @@ Describe 'assertion-strength-reminder.sh' {
             # `grep` and stay silent for the wrong reason. Claude Code runs Git\usr\bin\bash.exe, which does not.
             function Invoke-HookEmptyPath {
                 param([string]$Payload, [string]$HomeDir)
-                $usrBash = Join-Path (Split-Path -Parent (Split-Path -Parent $script:Bash)) 'usr\bin\bash.exe'
-                if (-not (Test-Path -LiteralPath $usrBash)) { throw "needs the non-wrapper Git Bash at $usrBash" }
+                $usrBash = Get-GitBashCoreOrThrow
                 $psi = [Diagnostics.ProcessStartInfo]::new($usrBash)
                 $psi.ArgumentList.Add(($script:Hook -replace '\\', '/'))
                 $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true

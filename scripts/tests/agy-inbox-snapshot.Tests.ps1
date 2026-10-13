@@ -1,6 +1,7 @@
 Describe 'agy-inbox-snapshot' {
     BeforeAll {
         . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
+        $script:NoJqPath = New-NoJqPath   # the real PATH minus jq (a temp symlink dir off-Windows; removed in AfterAll)
         $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Hook = Join-Path $repoRoot 'agy-autotrain/hooks/agy-inbox-snapshot.sh'
 
@@ -264,13 +265,13 @@ Describe 'agy-inbox-snapshot' {
     # jq resolves here to the operator's portable toolchain, so every test above exercises ONLY the jq
     # branch. On a stock end-user box jq is absent and the field-bounded-grep fallback is the path that
     # actually runs - i.e. the branch most installs depend on was the one branch with no coverage.
-    # PATH=/usr/bin removes jq while keeping grep/cp/date/ls/cmp/head/tail/rm, all of which live there.
+    # New-NoJqPath is the real PATH minus jq, so grep/cp/date/ls/cmp/head/tail/rm all stay reachable.
 
     It 'snapshots via the fallback when jq is absent' {
         $r = New-PluginRoot $script:Good
         try {
             Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') `
-                -Env (HookEnv $r @{ PATH = '/usr/bin' }) | Out-Null
+                -Env (HookEnv $r @{ PATH = $script:NoJqPath }) | Out-Null
             BakCount $r | Should -Be 1
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -279,7 +280,7 @@ Describe 'agy-inbox-snapshot' {
         $r = New-PluginRoot $script:Good
         try {
             Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'superpowers:brainstorming') `
-                -Env (HookEnv $r @{ PATH = '/usr/bin' }) | Out-Null
+                -Env (HookEnv $r @{ PATH = $script:NoJqPath }) | Out-Null
             BakCount $r | Should -Be 0
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -291,7 +292,7 @@ Describe 'agy-inbox-snapshot' {
 
     It 'does NOT snapshot when another skill merely MENTIONS agy-curate in its args' -ForEach @(
         @{ Branch = 'jq';       PathEnv = $null }
-        @{ Branch = 'fallback'; PathEnv = '/usr/bin' }
+        @{ Branch = 'fallback'; PathEnv = 'nojq' }   # sentinel: $script:NoJqPath does not exist at discovery
     ) {
         $payload = @{
             tool_name  = 'Skill'
@@ -301,7 +302,7 @@ Describe 'agy-inbox-snapshot' {
         $r = New-PluginRoot $script:Good
         try {
             $envs = (HookEnv $r)
-            if ($PathEnv) { $envs['PATH'] = $PathEnv }
+            if ($PathEnv) { $envs['PATH'] = if ($PathEnv -eq 'nojq') { $script:NoJqPath } else { $PathEnv } }
             Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env $envs | Out-Null
             BakCount $r | Should -Be 0 -Because "the $Branch branch must key on the skill FIELD, not a substring"
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
@@ -460,8 +461,8 @@ Describe 'agy-inbox-snapshot' {
         # above, "the path that actually runs" on a stock end-user box - and it had no prompt coverage
         # at all. MEASURED at f29cd42: deleting that elif arm left all 24 tests green while
         # `/agy-autotrain:agy-curate` stopped snapshotting on any box without jq.
-        # PATH=/usr/bin removes jq while keeping grep/cp/date/ls/cmp/head/tail/rm, all of which live there.
-        $fallback = @{ PATH = '/usr/bin' }
+        # New-NoJqPath is the real PATH minus jq, so grep/cp/date/ls/cmp/head/tail/rm all stay reachable.
+        $fallback = @{ PATH = $script:NoJqPath }
 
         # ASSERT THE ARM, do not assume it. Every bit of this test's discriminating power rests on jq
         # being unreachable under that PATH - an assumption about the MACHINE, not about the code. If jq
@@ -477,7 +478,7 @@ Describe 'agy-inbox-snapshot' {
         Set-Content -LiteralPath $probe -Value "command -v jq 2>/dev/null || true" -Encoding ascii -NoNewline
         try {
             $jq = Invoke-BashHook -HookPath $probe -Payload '{}' -Env $fallback
-            $jq.StdOut | Should -BeNullOrEmpty -Because 'PATH=/usr/bin must make jq UNREACHABLE, or these three cells silently retest the jq arm and the fallback branch is uncovered again'
+            $jq.StdOut | Should -BeNullOrEmpty -Because 'the no-jq PATH must make jq UNREACHABLE, or these three cells silently retest the jq arm and the fallback branch is uncovered again'
         } finally { Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue }
 
         $r1 = New-PluginRoot $script:Good
@@ -625,4 +626,5 @@ Describe 'agy-inbox-snapshot' {
             BakCount $r | Should -Be 0
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
+    AfterAll { if (-not $IsWindows) { Remove-TestPath $script:NoJqPath } }
 }

@@ -19,6 +19,8 @@ BeforeDiscovery {
     . (Join-Path $PSScriptRoot 'hook-spawn-budget.Rows.ps1')
 }
 
+# The spawn counter is a Win32 Job Object, so the 167 row/compat/scaling rows skip off-Windows; they are
+# approved by their 'WindowsOnly' tag (listed in the generated _skip-inventory.md).
 Describe 'hook spawn budget' {
     BeforeAll {
         . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
@@ -47,7 +49,7 @@ Describe 'hook spawn budget' {
         (@($script:B21Debt | ForEach-Object { "$($_.Hook) [$($_.Path)] measured $($_.Total) total" }) -join '; ') | Should -BeExactly '' -Because 'each listed path is over the 16-process ceiling; Branch 21 removes an entry in the commit that brings its path under it'
     }
 
-    It '<Hook>: <Name> starts at most <Max> processes beyond bash boot' -ForEach $Rows -Tag 'row' {
+    It '<Hook>: <Name> starts at most <Max> processes beyond bash boot' -ForEach $Rows -Tag 'row', 'WindowsOnly' -Skip:(-not $IsWindows) {
         $fx = New-HookFixture @Fixture
         try {
             $payload = & $Setup $fx
@@ -71,7 +73,7 @@ Describe 'hook spawn budget' {
         } finally { Remove-Item -LiteralPath $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It '<Hook>: <Name> prints the same on the bash 3.2 code path' -ForEach $Rows -Tag 'compat' {
+    It '<Hook>: <Name> prints the same on the bash 3.2 code path' -ForEach $Rows -Tag 'compat', 'WindowsOnly' -Skip:(-not $IsWindows) {
         # Capstone R1 (owner ruling 2026-10-06, hybrid): on bash < 4.1 every hook falls back to its pre-Branch-20
         # stdin read (and curate to `date` for its clock). CLAVITY_HOOK_BASH3=1 forces that path here, which has no
         # bash 3.2. Same fixture shape both times; paths normalised, because each fixture has its own temp root.
@@ -97,7 +99,7 @@ Describe 'hook spawn budget' {
         }
     }
 
-    It 'agy-consult-recovery.sh costs the same with 1 seam and with 1000 (the cost must not scale with the seam count)' -Tag 'scaling' {
+    It 'agy-consult-recovery.sh costs the same with 1 seam and with 1000 (the cost must not scale with the seam count)' -Tag 'scaling', 'WindowsOnly' -Skip:(-not $IsWindows) {
         $one = $null; $big = $null
         try {
             $one = New-HookFixture; $big = New-HookFixture

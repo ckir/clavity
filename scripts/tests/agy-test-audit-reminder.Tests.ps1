@@ -4,8 +4,7 @@ Describe 'agy-test-audit-reminder.sh' {
         $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Hook = Join-Path $repoRoot 'clavity-dotnet/plugin/hooks/agy-test-audit-reminder.sh'
 
-        $bashDir = Split-Path -Parent (Get-GitBashOrThrow)                       # ...\Git\bin
-        $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')   # ...\Git\usr\bin
+        $script:NoJqPath = New-NoJqPath   # the real PATH minus jq (a temp symlink dir off-Windows; removed in AfterAll)
 
         # ASSERT THE FIXTURE'S POSTCONDITION, NOT `$LASTEXITCODE`. Both builders below stage with
         # `git add -A` then commit, and NEITHER command's status was checked. That is not merely untidy:
@@ -189,6 +188,7 @@ Describe 'agy-test-audit-reminder.sh' {
         # [NullString]::Value DELETES the variable; $null would leave it present-and-empty (see BashHookHelpers.ps1).
         if ($null -eq $script:savedTmpdir) { [Environment]::SetEnvironmentVariable('TMPDIR', [NullString]::Value) } else { $env:TMPDIR = $script:savedTmpdir }
         Remove-Item -LiteralPath $script:suiteTmp -Recurse -Force -ErrorAction SilentlyContinue
+        if (-not $IsWindows) { Remove-TestPath $script:NoJqPath }
     }
 
     It 'FIRES the audit nudge when capstone.head==HEAD, no audit marker, code changed' {

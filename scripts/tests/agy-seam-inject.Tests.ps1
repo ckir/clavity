@@ -8,8 +8,7 @@ BeforeAll {
     . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
     $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
     $script:Hook = Join-Path $RepoRoot 'clavity-dotnet/plugin/hooks/agy-seam-inject.sh'
-    $bashDir = Split-Path -Parent (Get-GitBashOrThrow)
-    $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')
+    $script:NoJqPath = New-NoJqPath   # the real PATH minus jq (a temp symlink dir off-Windows; removed in AfterAll)
     # An empty HOME fixture so a real global ~/.claude/.no-agy on the dev box can't suppress the hook mid-test.
     $script:CleanHome = New-TestTempPath "sp-c-home"
     New-Item -ItemType Directory -Path (Join-Path $script:CleanHome '.claude') -Force | Out-Null
@@ -36,7 +35,10 @@ BeforeAll {
         Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env $env
     }
 }
-AfterAll { Remove-Item -LiteralPath $script:CleanHome -Recurse -Force -ErrorAction SilentlyContinue }
+AfterAll {
+    Remove-Item -LiteralPath $script:CleanHome -Recurse -Force -ErrorAction SilentlyContinue
+    if (-not $IsWindows) { Remove-TestPath $script:NoJqPath }
+}
 
 Describe 'agy-seam-inject.sh' {
     # --- .no-agy at the REPO ROOT, session cwd in a SUBDIRECTORY ---------------------------------

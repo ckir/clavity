@@ -168,9 +168,8 @@ Describe 'agy-anomaly-reminder.sh' {
     # `line 33: cat: command not found` to stderr.
     It 'writes NOTHING to stderr with an EMPTY PATH, and still says jq is missing (section 32b)' {
         $h = New-CleanHome
-        $usrBash = Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin\bash.exe'
+        $usrBash = Get-GitBashCoreOrThrow
         try {
-            Test-Path -LiteralPath $usrBash | Should -BeTrue -Because 'the row needs the non-wrapper Git Bash'
             $psi = [Diagnostics.ProcessStartInfo]::new($usrBash)
             $psi.ArgumentList.Add(($script:Hook -replace '\\', '/'))
             $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true

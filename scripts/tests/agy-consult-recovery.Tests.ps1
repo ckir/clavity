@@ -304,10 +304,12 @@ Describe 'agy-consult-recovery test-audit coverage (verified gaps 2026-09-14)' {
     function Seam($repo,$name,$body='body'){ Set-Content (Join-Path $repo ".clavity\seams\$name") $body }
     function Marker($repo,$tok,$sha='0000000000000000000000000000000000000000'){ Set-Content (Join-Path $repo ".clavity\agy-marks\$tok.head") $sha -NoNewline }
     function Run($repo){ (@{cwd=$repo;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & $script:bash $script:hook 2>$null }
-    # Run the hook under a minimal PATH that has NO jq (bash/date/ls remain; git degrades harmlessly),
-    # forcing the jq-ABSENT envelope branch (G5). MEASURED: /usr/bin:/bin excludes the portable jq.
-    function RunNoJq($repo){ (@{cwd=$repo;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & $script:bash -c 'PATH=/usr/bin:/bin exec bash "$1"' _ $script:hook 2>$null }
+    # Run the hook under the real PATH minus jq (New-NoJqPath: every other tool stays reachable), forcing
+    # the jq-ABSENT envelope branch (G5).
+    $script:NoJqPath = New-NoJqPath
+    function RunNoJq($repo){ (@{cwd=$repo;session_id='s';source='compact'}|ConvertTo-Json -Compress) | & $script:bash -c 'PATH="$1"; export PATH; exec bash "$2"' _ $script:NoJqPath $script:hook 2>$null }
   }
+  AfterAll { if (-not $IsWindows) { Remove-TestPath $script:NoJqPath } }
   It 'G3: _age_of degrades - a seam in a COMMITLESS repo is reported WITHOUT a commits-ago suffix' {
     # Mutant: drop the `|| return 0` degrade in _age_of so a failed `git rev-list` prints ', written  commits ago' -> the suffix appears -> reds. Reachable: git repo, .clavity/seams, zero commits.
     $r = New-RepoNoCommit; Seam $r 'agy-capstone-r5-x.md'
