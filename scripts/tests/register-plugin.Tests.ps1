@@ -27,6 +27,22 @@ Describe 'Test-AgentPresent' {
         Mock Test-Path { $true } -ParameterFilter { $Path -like '*.gemini' }
         Test-AgentPresent 'agy' | Should -BeTrue
     }
+    It 'looks under USERPROFILE first, and HOME only as the fallback (no mocks, child process)' {
+        # $HOME is fixed when a PowerShell process starts, so changing $env:HOME in-process proves nothing:
+        # the probe runs in a CHILD whose environment is set here. PATH is blanked so no CLI signal fires.
+        $profileDir = Join-Path $TestDrive 'profile'; $emptyHome = Join-Path $TestDrive 'emptyhome'
+        New-Item -ItemType Directory -Path (Join-Path $profileDir '.gemini') -Force | Out-Null
+        New-Item -ItemType Directory -Path $emptyHome -Force | Out-Null
+        $script = (Resolve-Path ([System.IO.Path]::Combine($PSScriptRoot, '..', '..', 'installer', '_shared', 'register-plugin.ps1'))).Path
+        $exe = (Get-Process -Id $PID).Path
+        $oldProfile = $env:USERPROFILE; $oldHome = $env:HOME; $oldPath = $env:PATH
+        try {
+            $env:USERPROFILE = $profileDir; $env:HOME = $emptyHome; $env:PATH = ''
+            $out = & $exe -NoProfile -Command ". '$script'; Test-AgentPresent 'agy'" 2>&1
+            "$out".Trim() | Should -Be 'True' -Because 'USERPROFILE wins when set, even if HOME points at an empty dir'
+        }
+        finally { $env:USERPROFILE = $oldProfile; $env:HOME = $oldHome; $env:PATH = $oldPath }
+    }
     It 'reports absent when neither signal fires' {
         Mock Test-CliPresent { $false }
         Mock Test-Path { $false }

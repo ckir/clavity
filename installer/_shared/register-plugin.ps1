@@ -55,9 +55,12 @@ function Test-CliPresent {
 # Detection mirrors Clavity.Ls.Install.AgentDetection: present iff CLI on PATH OR config dir exists.
 function Test-AgentPresent {
     param([string]$Name)
+    # Windows: the profile dir, exactly as before (the agents' runtimes use it; $HOME can differ on a
+    # domain machine with a redirected home). USERPROFILE does not exist on Linux/macOS: fall back to $HOME.
+    $userHome = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
     switch ($Name) {
-        'claude' { return (Test-CliPresent 'claude') -or (Test-Path (Join-Path $HOME '.claude')) }
-        'agy'    { return (Test-CliPresent 'agy')    -or (Test-Path (Join-Path $HOME '.gemini')) }
+        'claude' { return (Test-CliPresent 'claude') -or (Test-Path (Join-Path $userHome '.claude')) }
+        'agy'    { return (Test-CliPresent 'agy')    -or (Test-Path (Join-Path $userHome '.gemini')) }
     }
     return $false
 }
