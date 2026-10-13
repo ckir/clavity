@@ -6,6 +6,12 @@ name: build-review-relay
 # registered; the umbrella release `needs:` it, so a version-inconsistent member still fails the release.
 on:
   workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref (tag, branch or SHA) to build. Empty = the ref the run started on. umbrella-release.yml passes the release tag so a workflow_dispatch release builds the TAG, not the dispatch branch (ROADMAP section 92, as section 63 for dotnet).'
+        required: false
+        type: string
+        default: ''
     outputs:
       version:
         value: ${{ jobs.validate.outputs.version }}
@@ -21,6 +27,8 @@ jobs:
       sha: ${{ steps.sha.outputs.sha }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Record the built commit
         id: sha

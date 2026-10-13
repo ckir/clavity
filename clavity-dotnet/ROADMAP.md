@@ -4392,7 +4392,10 @@ Fix direction: per row, launch with `bash`, give each run its own session id, re
 
 ### §92 — The other member builds and the release's own checkouts also build the dispatch branch (formerly part of §63)
 
-**Status:** OPEN 2026-10-13 - found while fixing section 63; needs an owner ruling (extend the same `ref` input, or accept)
+**Status:** IMPLEMENTED 2026-10-13 - owner ruled 'fix in Branch R': the same `ref` input on the four builds, passed by umbrella-release.yml, and on the notes checkout; awaiting the release
+> **Previous status:** OPEN 2026-10-13 - found while fixing section 63; needs an owner ruling (extend the same `ref` input, or accept)
+
+**Scope of the fix:** the four builds and the `publish` job's release-notes checkout now take the tag. The `release-channel` job's checkout stays on the dispatch branch on purpose: it runs `scripts/ci/advance-release-channel.sh`, release infrastructure that should be the current version, and the script reads the tag's own `plugin.json` through git.
 
 Section 63 fixed only `build-dotnet.yml`, the scope the sweep named. The same naked `actions/checkout@v7` (no `ref:`) is in `build-classic.yml:28`, `build-agy-autotrain.yml:25`, `build-commonmemory.yml:23` and `build-review-relay.yml:23`, and in the `publish` and `release-channel` jobs of `umbrella-release.yml` (`:145`, `:250`). On a `workflow_dispatch` release, every member that records or publishes a built commit therefore builds the dispatch branch, not the tag. The release channel is protected the same way as in section 63 (`advance-release-channel.sh` compares versions), but the release page can still carry assets that do not match the tag. `republish-member.yml` must keep building the dispatch branch on purpose (a hotfix). Fix direction: the same optional `ref` input on each build workflow, passed by `umbrella-release.yml` only, with a row per workflow in `scripts/tests/release-workflow-refs.Tests.ps1`; only a real release proves it.
 

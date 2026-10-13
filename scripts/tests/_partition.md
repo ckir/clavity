@@ -1174,7 +1174,7 @@ run-pester-parallel.Tests.ps1                    55,0s  17 tests   <- SLOW, NEW 
 TestTemp.Tests.ps1                         UNMEASURED  16 tests   <- FAST, NEW 2026-10-08 (in-process, sub-second rows: Remove-TestPath, the shared temp root, the sweep, its once-per-run flag, the killed-run backup restore)
 test-temp-discipline.Tests.ps1             UNMEASURED  4 tests    <- FAST, NEW 2026-10-08 (in-process scan of ~76 suite files, a few seconds)
 clavity-dotnet-setup.Tests.ps1             UNMEASURED  11 tests   <- FAST, NEW 2026-10-13 (ROADMAP section 68, Branch R: one bash child per row with a logging agy shim, ~0.7s each, 8,6s wall for the file solo on a loaded Linux box; the driver measures it idle with the Branch R gates)
-release-workflow-refs.Tests.ps1             UNMEASURED  6 tests    <- FAST, NEW 2026-10-13 (ROADMAP section 63, Branch R; 5 -> 6 same day: +the dotnet --version stamp wiring row, stale-client item: in-process regex over three workflow files, sub-second rows; 2,2s for the file solo including pwsh start)
+release-workflow-refs.Tests.ps1             UNMEASURED  20 tests   <- FAST, NEW 2026-10-13 (ROADMAP section 63, Branch R; 6 -> 20 same day: section 92 generalises the rows over the five member builds, +the notes checkout, +republish-member's two jobs; before that 5 -> 6: +the dotnet --version stamp wiring row, stale-client item: in-process regex over three workflow files, sub-second rows; 2,2s for the file solo including pwsh start)
 ```
 
 Every FAST row above was re-measured in ONE sweep on 2026-08-05 (the 292,09s sample below). The SLOW rows
