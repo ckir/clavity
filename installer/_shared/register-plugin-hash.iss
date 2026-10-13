@@ -7,4 +7,4 @@
   brace-wrapped Inno constant here (the app-dir one especially) or the comment terminates early and
   EVERY installer build breaks. Validate with ISCC locally after editing this text.
   Regenerate whenever the .ps1 changes: just sync-register-hash (checked by just check-register-hash). }
-#define ExpectedRegisterPs1Sha256 "325F8F60A617394FF2C242ACA73AFF09B7A918780A53A595C9C70050A41CC193"
+#define ExpectedRegisterPs1Sha256 "B8AF8AA26EB9B2329D0D9389B8DC82874DF2601C053D38C30A0AA9F38D3C034A"
