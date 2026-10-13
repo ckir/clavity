@@ -10,6 +10,12 @@ name: build-dotnet
 # every `dotnet-bin-*` artifact and attaches the tarballs to the GitHub release the fetch hook reads.
 on:
   workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref (tag, branch or SHA) to build. Empty = the ref the run started on. umbrella-release.yml passes the release tag so a workflow_dispatch release builds the TAG, not the dispatch branch (ROADMAP section 63); republish-member.yml passes nothing on purpose, a hotfix rebuilds the dispatch branch.'
+        required: false
+        type: string
+        default: ''
     outputs:
       version:
         value: ${{ jobs.validate.outputs.version }}
@@ -25,6 +31,8 @@ jobs:
       version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v6
@@ -66,6 +74,8 @@ jobs:
         working-directory: clavity-dotnet
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v6

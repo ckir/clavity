@@ -107,7 +107,11 @@ jobs:
 
   dotnet:
     needs: [guard]
-    uses: ./.github/workflows/build-dotnet.yml   # FILE ref = this tag's main commit (dotnet is already pinned by the tag)
+    uses: ./.github/workflows/build-dotnet.yml
+    with:
+      # The release TAG: the dispatch input on workflow_dispatch, the pushed tag's name on a tag push. Without this a dispatch built
+      # the dispatch branch (normally main HEAD) and attached binaries that did not match the tag (ROADMAP section 63).
+      ref: ${{ github.event.inputs.tag || github.ref_name }}
 
   classic:
     needs: [guard]
