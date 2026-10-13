@@ -362,6 +362,7 @@ Describe 'check-plugin-drift.ps1' {
         # 8.3 generation can be disabled per volume. If it is, this row must SKIP VISIBLY rather than
         # pass without testing anything - a silent pass is the fail-open class this whole suite exists to
         # close.
+        if (-not $IsWindows) { Set-ItResult -Skipped -Because 'APPROVED:WindowsOnly: 8.3 short names are a Windows filesystem feature'; return }
         $short = $null
         try {
             $fso = New-Object -ComObject Scripting.FileSystemObject

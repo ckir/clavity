@@ -1443,10 +1443,12 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
         foreach ($dr in $domainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $root $dr) | Out-Null }
         New-Item -ItemType Directory -Force -Path (Join-Path $root 'clavity-dotnet/plugin/dist') | Out-Null
         try {
+            if (-not $IsWindows) { Set-ItResult -Skipped -Because 'APPROVED:WindowsOnly: 8.3 short names are a Windows filesystem feature'; return }
             $short = $null
             try { $short = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($root).ShortPath } catch { $short = $null }
             if (-not $short -or $short -eq $root) {
                 Set-ItResult -Skipped -Because 'APPROVED:FsFeature:8dot3-names: 8.3 short-name generation is disabled on this volume, so the state under test is unreachable here'
+                return
             }
             $short | Should -Not -Be $root
 

@@ -32,10 +32,12 @@ Describe 'Get-RootRelativePath' {
         # The COM object does not exist off Windows, so an unguarded New-Object THROWS before the skip check
         # can run - a crash where a skip was intended. try/catch collapses "no COM" and "8.3 disabled" into
         # the same skip.
+        if (-not $IsWindows) { Set-ItResult -Skipped -Because 'APPROVED:WindowsOnly: 8.3 short names are a Windows filesystem feature'; return }
         $short = $null
         try { $short = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($script:Root).ShortPath } catch { $short = $null }
         if (-not $short -or $short -eq $script:Root) {
             Set-ItResult -Skipped -Because 'APPROVED:FsFeature:8dot3-names: 8.3 short-name generation is disabled on this volume, so the state under test is unreachable here'
+            return
         }
         # PRECONDITION, asserted not assumed - otherwise this row passes for the wrong reason.
         $short | Should -Not -Be $script:Root
@@ -137,6 +139,7 @@ Describe 'Get-RootRelativePath' {
         # fail-closed property even where the 8.3 row skips.
         if (-not $IsWindows) {
             Set-ItResult -Skipped -Because 'APPROVED:WindowsOnly: mklink is a Windows shell builtin, so a junction cannot be created here'
+            return
         }
         $real = Join-Path $script:Parent 'a-very-long-real-target-directory-name'
         New-Item -ItemType Directory -Force -Path (Join-Path $real 'installer') | Out-Null
@@ -145,6 +148,7 @@ Describe 'Get-RootRelativePath' {
         & cmd.exe /c mklink /J "$link" "$real" 2>&1 | Out-Null
         if (-not (Test-Path -LiteralPath $link)) {
             Set-ItResult -Skipped -Because 'APPROVED:FsFeature:junction: the junction could not be created on this filesystem'
+            return
         }
         try {
             $childViaLink = (Get-ChildItem -LiteralPath $link -Recurse -File | Select-Object -First 1).FullName
