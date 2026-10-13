@@ -651,19 +651,10 @@ Describe 'agy-anomaly-reminder.sh' {
         try {
             $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
             $f = Join-Path $w '.clavity/local-anomalies.md'
-            & icacls $f /deny "$($env:USERNAME):(R)" 2>&1 | Out-Null
-            # Probe readability from the BASH process the hook actually runs in, NOT from PowerShell.
-            # These diverge, and the old guard probed the wrong one: on the GitHub windows-latest runner
-            # the deny bound pwsh (so [IO.File]::ReadAllText threw and the test did NOT skip) while the
-            # hook read the file fine and reported "1 untriaged" - a red test on a host that simply does
-            # not enforce the deny against the subject of the assertion. Probe the subject.
-            $bashExe = Get-GitBashOrThrow
-            $posix = ($f -replace '\\','/')
-            & $bashExe -lc "cat '$posix' > /dev/null 2>&1"
-            if ($LASTEXITCODE -eq 0) {
-                Set-ItResult -Skipped -Because 'this host does not enforce the read deny against the hook process'
-                return
-            }
+            # Set-TestPathUnreadable probes readability from the BASH process the hook actually runs in, NOT from PowerShell
+            # (BashHookHelpers.ps1). These diverge: on the GitHub windows-latest runner the deny bound pwsh while the hook
+            # read the file fine and reported "1 untriaged". Probe the subject; skip where the deny does not bind it.
+            if (-not (Set-TestPathUnreadable -Path $f)) { Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: this host does not enforce the read deny against the hook process'; return }
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
 
@@ -681,7 +672,7 @@ Describe 'agy-anomaly-reminder.sh' {
             $j.hookSpecificOutput.additionalContext | Should -Match 'cannot be read'
         } finally {
             # $w is $null when New-Workspace itself threw: Join-Path would then throw inside this finally and skip the cleanup of $h.
-            if ($w) { & icacls (Join-Path $w '.clavity/local-anomalies.md') /remove:d "$($env:USERNAME)" 2>&1 | Out-Null }
+            if ($w) { Restore-TestPathReadable -Path (Join-Path $w '.clavity/local-anomalies.md') }
             Remove-TestPath $w, $h
         }
     }

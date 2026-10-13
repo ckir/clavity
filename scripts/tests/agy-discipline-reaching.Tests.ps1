@@ -459,7 +459,7 @@ Describe 'agy-discipline-reaching.sh' {
             try {
                 # PLATFORM-BRANCHED, AND THE STDERR REDIRECT IS NOT DECORATION. This row first shipped
                 # calling `icacls` bare and ungated, while the CORRECT idiom already sat in a sibling
-                # suite this same session (agy-ledger-lib.Tests.ps1:413). On a host without icacls the
+                # suite this same session (agy-ledger-lib.Tests.ps1, It 'answers UNREADABLE - not ABSENT - when the ledger cannot be OPENED'). On a host without icacls the
                 # bare call raises CommandNotFoundException, and under Pester's $ErrorActionPreference
                 # that TERMINATES - inside the finally below it would abort teardown midway and leak the
                 # temp dir and the stderr file. WSL is a supported platform here, so that host is real.
@@ -478,7 +478,7 @@ Describe 'agy-discipline-reaching.sh' {
                 $pr = Start-Process -FilePath (Get-GitBashOrThrow) -ArgumentList @('probe-writable.sh') `
                         -WorkingDirectory $d -NoNewWindow -Wait -PassThru
                 if ($pr.ExitCode -eq 0) {
-                    Set-ItResult -Skipped -Because 'the write-deny did not take for THIS bash (elevated token, or a filesystem that ignores ACLs), so the unassertable-shield state is unreachable here'
+                    Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: the write-deny did not take for THIS bash (elevated token, or a filesystem that ignores ACLs), so the unassertable-shield state is unreachable here'
                 }
                 $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-deny'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
                 $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2> $errF | Out-Null
@@ -567,7 +567,7 @@ Describe 'agy-discipline-reaching.sh' {
             # the mechanism is exact - so this skips on Windows rather than pretending to cover it. A row
             # that is honest about where it applies beats one that is green for the wrong reason.
             if ($IsWindows) {
-                Set-ItResult -Skipped -Because 'denying WRITE on a directory is not dependable on Windows (an elevated token ignores the ACE); this row is measured under POSIX, where chmod is exact'
+                Set-ItResult -Skipped -Because 'APPROVED:FsFeature:dir-write-deny: denying WRITE on a directory is not dependable on Windows (an elevated token ignores the ACE); this row is measured under POSIX, where chmod is exact'
             }
             try {
                 & chmod 500 $cl 2>&1 | Out-Null
@@ -592,7 +592,7 @@ Describe 'agy-discipline-reaching.sh' {
                     # split the probe above exists to detect - so the throw is the RULE here, not an edge.
                     # Same discipline as the teardown at :475: each step independently guarded.
                     try { Remove-Item -LiteralPath $gi -Force -ErrorAction SilentlyContinue } catch { }
-                    Set-ItResult -Skipped -Because 'the directory write-deny did not take for THIS bash (elevated token, or a filesystem that ignores ACLs), so an uncreatable shield is unreachable here'
+                    Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: the directory write-deny did not take for THIS bash (elevated token, or a filesystem that ignores ACLs), so an uncreatable shield is unreachable here'
                 }
                 $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-nocreate'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
                 $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2> $errF | Out-Null

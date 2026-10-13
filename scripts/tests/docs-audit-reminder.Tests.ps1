@@ -144,12 +144,10 @@ Describe 'docs-audit-reminder.sh' {
         $d = New-Workspace -Lines @($script:Header, '', "## A.md $($script:Dash) FINDINGS", '', '- one')
         $f = Join-Path $d 'docs/docs-audit-findings.md'
         try {
-            & icacls $f /deny "$($env:USERNAME):(R)" 2>&1 | Out-Null
-            & (Get-GitBashOrThrow) -lc "cat '$($f -replace '\\','/')' > /dev/null 2>&1"
-            if ($LASTEXITCODE -eq 0) { Set-ItResult -Skipped -Because 'this host does not enforce the read deny against the hook process'; return }
+            if (-not (Set-TestPathUnreadable -Path $f)) { Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: this host does not enforce the read deny against the hook process'; return }
             $r = Invoke-Hook $d
             $r.ExitCode | Should -Be 0
             (($r.StdOut | ConvertFrom-Json).systemMessage) | Should -Match ([regex]::Escape('not a recognisable generated view'))
-        } finally { & icacls $f /remove:d "$($env:USERNAME)" 2>&1 | Out-Null }
+        } finally { Restore-TestPathReadable -Path $f }
     }
 }

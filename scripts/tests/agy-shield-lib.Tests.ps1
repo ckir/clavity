@@ -877,9 +877,10 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             [void]$script:Fixtures.Add($d)
             $shieldPath = Join-Path $d '.clavity/.gitignore'
             [IO.File]::WriteAllText($shieldPath, "keep-me.txt`n")
-            & attrib +R ($shieldPath -replace '/','\') 2>$null
+            $enforced = Set-TestFileReadOnly -Path $shieldPath
+            if (-not $enforced) { Clear-TestFileReadOnly -Path $shieldPath; Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: read-only is not enforced for this user'; return }
             try   { $res = Invoke-Shield -Root $d -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' }
-            finally { & attrib -R ($shieldPath -replace '/','\') 2>$null }
+            finally { Clear-TestFileReadOnly -Path $shieldPath }
             # CONTROL: the append must really have failed, or the branch under test was never reached.
             (Get-Content -Raw -LiteralPath $shieldPath) | Should -Not -Match '(?m)^\*$' -Because 'the fixture must make the write fail, or this row is testing nothing'
             # THE PRECONDITION: if this ever became a git repository the row would be testing Stage B's
@@ -941,10 +942,11 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             # nothing outside this body is affected.
             #
             # TWO STATED LIMITS, both raised by capstone round 4 and both left as limits deliberately.
-            # (a) `attrib` is Windows-only, and so is this suite - it resolves Git Bash through
-            #     Get-GitBashOrThrow and CI runs windows-latest. Somewhere the read-only attribute did not
-            #     take, the append would SUCCEED, and the control below would fail: the row goes RED rather
-            #     than passing on a branch it never reached. That is the safe direction, and it is why the
+            # (a) The read-only fixture goes through Set-TestFileReadOnly / Clear-TestFileReadOnly
+            #     (BashHookHelpers.ps1: attrib on Windows, chmod elsewhere); this suite runs on both OSes. Where
+            #     the helper reports the read-only state is not enforced (root, an elevated token) the row SKIPS
+            #     with an approved reason; where it claims enforcement but the append still SUCCEEDS, the control
+            #     below fails: the row goes RED rather than passing on a branch it never reached. That is the safe direction, and it is why the
             #     control is first rather than an afterthought.
             # (b) A mutant that replaced the checked write with a PREDICATE - `if [ -w "$_as_shield" ]` -
             #     would keep this row green while misreporting a write that fails on a writable file, disk
@@ -955,7 +957,8 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             #     that anyone proposing it reads why it was rejected before they make it.
             $r = New-FixtureRepo -Shield "!keep.md`n"
             $shield = Join-Path $r '.clavity/.gitignore'
-            & attrib +R ($shield -replace '/','\') 2>$null
+            $enforced = Set-TestFileReadOnly -Path $shield
+            if (-not $enforced) { Clear-TestFileReadOnly -Path $shield; Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: read-only is not enforced for this user'; return }
             try {
                 $body = @(
                     'mktemp() { return 1; }',
@@ -963,7 +966,7 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
                 ) -join "`n"
                 $res = Invoke-Shield -Root $r -Body $body
             }
-            finally { & attrib -R ($shield -replace '/','\') 2>$null }
+            finally { Clear-TestFileReadOnly -Path $shield }
             # THE CONTROL FIRST. If the append actually SUCCEEDED, this fixture never reached the branch
             # under test and every assertion below would be vacuous - which is exactly how a row certifies
             # a behaviour it never exercised.

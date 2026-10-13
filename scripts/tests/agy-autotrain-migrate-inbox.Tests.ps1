@@ -43,14 +43,10 @@ BeforeAll {
         @(Get-Content -LiteralPath $Path | Where-Object { $_ -eq $Needle }).Count
     }
 
-    # Makes $Path unreadable to THIS user, then probes from the BASH process the hook runs in (the deny can bind pwsh and not
-    # bash on some hosts - see agy-anomaly-reminder.Tests.ps1). Returns $false when the host does not enforce it.
-    function Deny-Read { param([string]$Path)
-        & icacls $Path /deny "$($env:USERNAME):(R)" 2>&1 | Out-Null
-        & $script:Bash -lc "cat '$($Path -replace '\\','/')' > /dev/null 2>&1"
-        return ($LASTEXITCODE -ne 0)
-    }
-    function Restore-Read { param([string]$Path) & icacls $Path /remove:d "$($env:USERNAME)" 2>&1 | Out-Null }
+    # Thin wrappers over the shared helpers (BashHookHelpers.ps1): deny/restore read on $Path, probed from the BASH process the hook runs in.
+    # Deny-Read returns $false when the host does not enforce the deny.
+    function Deny-Read { param([string]$Path) Set-TestPathUnreadable -Path $Path }
+    function Restore-Read { param([string]$Path) Restore-TestPathReadable -Path $Path }
 }
 
 Describe 'agy-autotrain migrate-inbox hook' {
@@ -215,7 +211,7 @@ Describe 'agy-autotrain migrate-inbox hook' {
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $f.New) | Out-Null
             Set-Content -LiteralPath $f.New -Value 'LIVE'
             Set-Content -LiteralPath $f.Old -Value 'KEEPME' -NoNewline
-            if (-not (Deny-Read $f.New)) { Set-ItResult -Skipped -Because 'this host does not enforce the read deny against the hook process'; return }
+            if (-not (Deny-Read $f.New)) { Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: this host does not enforce the read deny against the hook process'; return }
             $r = Invoke-BashHook -HookPath $script:Hook -Env $f.Env
             $r.ExitCode | Should -Be 0
             $r.StdErr | Should -Match 'could not be read' -Because 'the -r builtin does not consult Windows ACLs; only an actual open does'
@@ -228,7 +224,7 @@ Describe 'agy-autotrain migrate-inbox hook' {
         $f = New-Fixture
         try {
             Set-Content -LiteralPath $f.Aside -Value 'RESCUE' -NoNewline        # source already claimed, destination absent
-            if (-not (Deny-Read $f.Aside)) { Set-ItResult -Skipped -Because 'this host does not enforce the read deny against the hook process'; return }
+            if (-not (Deny-Read $f.Aside)) { Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: this host does not enforce the read deny against the hook process'; return }
             $r = Invoke-BashHook -HookPath $script:Hook -Env $f.Env
             $r.ExitCode | Should -Be 0
             $r.StdErr | Should -Match 'their size could not be read' -Because 'an unreadable sidecar must be reported, not read as an empty one and silently skipped'
