@@ -43,6 +43,26 @@ Describe 'Test-AgentPresent' {
         }
         finally { $env:USERPROFILE = $oldProfile; $env:HOME = $oldHome; $env:PATH = $oldPath }
     }
+    It 'falls back to HOME when USERPROFILE is unset (the Linux/macOS case; no mocks, child process)' {
+        # Pins the else-branch on purpose: the mocked rows above only trip on a broken fallback by accident (a null Join-Path).
+        $homeDir = Join-Path $TestDrive 'fbhome'; $emptyDir = Join-Path $TestDrive 'fbempty'
+        New-Item -ItemType Directory -Path (Join-Path $homeDir '.gemini') -Force | Out-Null
+        New-Item -ItemType Directory -Path $emptyDir -Force | Out-Null
+        $script = (Resolve-Path ([System.IO.Path]::Combine($PSScriptRoot, '..', '..', 'installer', '_shared', 'register-plugin.ps1'))).Path
+        $exe = (Get-Process -Id $PID).Path
+        $oldProfile = $env:USERPROFILE; $oldHome = $env:HOME; $oldPath = $env:PATH
+        try {
+            $env:PATH = ''
+            $env:USERPROFILE = $null
+            $env:HOME = $homeDir
+            $with = & $exe -NoProfile -Command ". '$script'; Test-AgentPresent 'agy'" 2>&1
+            "$with".Trim() | Should -Be 'True' -Because 'HOME holds .gemini and USERPROFILE is unset'
+            $env:HOME = $emptyDir
+            $without = & $exe -NoProfile -Command ". '$script'; Test-AgentPresent 'agy'" 2>&1
+            "$without".Trim() | Should -Be 'False' -Because 'distractor: HOME without .gemini must not report the agent present'
+        }
+        finally { $env:USERPROFILE = $oldProfile; $env:HOME = $oldHome; $env:PATH = $oldPath }
+    }
     It 'reports absent when neither signal fires' {
         Mock Test-CliPresent { $false }
         Mock Test-Path { $false }

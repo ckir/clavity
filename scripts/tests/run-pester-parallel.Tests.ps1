@@ -339,6 +339,26 @@ Describe 'd' {
         $r.Out | Should -Match 'SKIP-INVENTORY: refusing to write: the run had failing tests, bad containers or missing results'
         [IO.File]::ReadAllText($inv) | Should -BeExactly $known
     }
+    It 'refuses -WriteSkipInventory when the run passes but a skip is UNAPPROVED, and leaves the file untouched' {
+        $d = New-Dir 'rf2' "Describe 'd' { It 'bare' -Skip { 1 | Should -Be 2 }; It 'st' -Skip -Tag '$($script:Foreign)' { 1 | Should -Be 2 } }"; $inv = Join-Path $script:Work 'rf2.md'
+        $known = "# known`n## $($script:Os)`n### static`n| Suite | Row | Tag | Reason |`n| --- | --- | --- | --- |`n| fx.Tests.ps1 | d.other | $($script:Foreign) | - |`n"
+        [IO.File]::WriteAllText($inv, $known)
+        $r = Write-Inv $d $inv
+        $r.Exit | Should -Be 1 -Because $r.Out
+        $r.Out | Should -Match 'UNAPPROVED SKIP fx\.Tests\.ps1 :: d\.bare'
+        $r.Out | Should -Match 'SKIP-INVENTORY not written: fix the skip-approval / OS-tag failures above first'
+        [IO.File]::ReadAllText($inv) | Should -BeExactly $known
+    }
+    It 'refuses -WriteSkipInventory when the run passes but an OS tag lies (OS-TAG MISMATCH), and leaves the file untouched' {
+        $d = New-Dir 'rf3' "Describe 'd' { It 'ran' -Tag '$($script:Foreign)' { 1 | Should -Be 1 }; It 'st' -Skip -Tag '$($script:Foreign)' { 1 | Should -Be 2 } }"; $inv = Join-Path $script:Work 'rf3.md'
+        $known = "# known`n## $($script:Os)`n### static`n| Suite | Row | Tag | Reason |`n| --- | --- | --- | --- |`n| fx.Tests.ps1 | d.other | $($script:Foreign) | - |`n"
+        [IO.File]::WriteAllText($inv, $known)
+        $r = Write-Inv $d $inv
+        $r.Exit | Should -Be 1 -Because $r.Out
+        $r.Out | Should -Match 'OS-TAG MISMATCH fx\.Tests\.ps1 :: d\.ran'
+        $r.Out | Should -Match 'SKIP-INVENTORY not written: fix the skip-approval / OS-tag failures above first'
+        [IO.File]::ReadAllText($inv) | Should -BeExactly $known
+    }
     It 'is case-exact: a lower-case tag or APPROVED: reason is UNAPPROVED' {
         $d = New-Dir 'cx1' "Describe 'd' { It 'lowtag' -Skip -Tag 'windowsonly' { 1 | Should -Be 2 }; It 'lowreason' { Set-ItResult -Skipped -Because 'approved:NotAsRoot: x' } }"
         $r = Invoke-Runner -ExtraArgs @('-Directory', $d)
