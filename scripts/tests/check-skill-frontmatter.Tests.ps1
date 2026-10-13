@@ -336,7 +336,7 @@ Describe 'check-skill-frontmatter.ps1' {
 
     # BOTH halves of the version check: the python wrapper fails 'mikefarah', a future mikefarah v5 fails
     # 'version v4.' - either alone would let an `-or` weakened to `-and` pass (test audit 2026-09-24).
-    It 'CANNOT ANSWER (exit 2) when the yq on PATH is not mikefarah v4 (<Version>)' -Skip:(-not $IsWindows) -ForEach @(
+    It 'CANNOT ANSWER (exit 2) when the yq on PATH is not mikefarah v4 (<Version>)' -Skip:(-not $IsWindows) -Tag 'WindowsOnly' -ForEach @(
         @{ Version = 'yq 3.4.3' }
         @{ Version = 'yq (https://github.com/mikefarah/yq/) version v5.0.0' }
     ) {

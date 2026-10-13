@@ -118,7 +118,7 @@ Describe 'install-extension.ps1' {
         Test-Path $f.Dest | Should -BeFalse
         (Invoke-Install $f.Script @('-Destination', $f.Dest, '-WhatIf')).Exit | Should -Be 1
     }
-    It 'leaves the previous install intact and exits 1 when the swap is blocked by an open file' -Skip:(-not $IsWindows) {
+    It 'leaves the previous install intact and exits 1 when the swap is blocked by an open file' -Skip:(-not $IsWindows) -Tag 'WindowsOnly' {
         $f = New-FakePlugin 'locked'
         (Invoke-Install $f.Script @('-Destination', $f.Dest)).Exit | Should -Be 0
         $before = (Get-FileHash (Join-Path $f.Dest 'content.js')).Hash
@@ -133,7 +133,7 @@ Describe 'install-extension.ps1' {
         $r.Out | Should -Match 'unchanged|restored'
         (Get-FileHash (Join-Path $f.Dest 'content.js')).Hash | Should -Be $before
     }
-    It 'refuses to swap, and keeps the live install, when a leftover dest.old beside it cannot be cleared' -Skip:(-not $IsWindows) {
+    It 'refuses to swap, and keeps the live install, when a leftover dest.old beside it cannot be cleared' -Skip:(-not $IsWindows) -Tag 'WindowsOnly' {
         # A leftover .old must go BEFORE the swap: Move-Item onto an existing folder nests the live install
         # INSIDE it. On the happy path the final cleanup hides that, so the guard is visible only here.
         $f = New-FakePlugin 'leftoverold'

@@ -69,9 +69,10 @@ Describe 'agy-liveness-check.sh' {
         #
         # The command is assembled INSIDE a .sh file rather than as Start-Process arguments, because the
         # interpreter lives under "C:\Program Files" and the space defeats argument quoting through env.exe.
+        if (-not $IsWindows) { Set-ItResult -Skipped -Because 'APPROVED:WindowsOnly: the raw MSYS shell is a Git for Windows layout'; return }
         $rawBash = Join-Path (Split-Path -Parent (Split-Path -Parent (Get-GitBashOrThrow))) 'usr\bin\bash.exe'
         if (-not (Test-Path -LiteralPath $rawBash)) {
-            Set-ItResult -Skipped -Because 'the raw MSYS shell is not present; the wrapper always restores /usr/bin, so the empty-PATH case cannot be reproduced through it'
+            Set-ItResult -Skipped -Because 'APPROVED:NeedsTool:msys-bash: the raw MSYS shell is not present; the wrapper always restores /usr/bin, so the empty-PATH case cannot be reproduced through it'
             return
         }
         $cfg = $null; $h = $null

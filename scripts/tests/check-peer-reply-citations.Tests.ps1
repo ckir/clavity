@@ -17,9 +17,12 @@ BeforeAll {
     # and launches the Microsoft Store instead, so a `.Source` check proves nothing either way. Only an
     # actual invocation distinguishes the two.
     $script:Py = $null
-    $cand = (Get-Command python -ErrorAction SilentlyContinue)?.Source
-    if ($cand) {
-        try { $null = & $cand --version 2>&1; if ($LASTEXITCODE -eq 0) { $script:Py = $cand } } catch { }
+    # Try `python` first (Windows, and the existing behaviour), then `python3` (Linux distros ship only that).
+    foreach ($name in 'python', 'python3') {
+        $cand = (Get-Command $name -ErrorAction SilentlyContinue)?.Source
+        if ($cand) {
+            try { $null = & $cand --version 2>&1; if ($LASTEXITCODE -eq 0) { $script:Py = $cand; break } } catch { }
+        }
     }
 
     # SKIP LOCALLY, FAIL IN CI - capstone R3, class 4. Skipping is right on a developer box without
@@ -48,7 +51,8 @@ AfterAll { foreach ($f in $script:Made) { Remove-Item -LiteralPath $f -Force -Er
 Describe 'check-peer-reply-citations' {
     BeforeEach {
         if (-not $script:Py) {
-            Set-ItResult -Skipped -Because 'python is not on PATH, so the checker cannot be exercised here'
+            Set-ItResult -Skipped -Because 'APPROVED:NeedsTool:python: python is not on PATH, so the checker cannot be exercised here'
+            return
         }
     }
 

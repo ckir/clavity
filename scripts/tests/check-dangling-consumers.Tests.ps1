@@ -318,10 +318,12 @@ Describe 'check-dangling-consumers' {
         $d = New-Tree
         Set-Reader $d 'public const string GrowthFileName = "thing.growth.md";'
         try {
+            if (-not $IsWindows) { Set-ItResult -Skipped -Because 'APPROVED:WindowsOnly: 8.3 short names are a Windows filesystem feature'; return }
             $short = $null
             try { $short = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($d).ShortPath } catch { $short = $null }
             if (-not $short -or $short -eq $d) {
-                Set-ItResult -Skipped -Because '8.3 short-name generation is disabled on this volume, so the state under test is unreachable here'
+                Set-ItResult -Skipped -Because 'APPROVED:FsFeature:8dot3-names: 8.3 short-name generation is disabled on this volume, so the state under test is unreachable here'
+                return
             }
             # PRECONDITION, asserted not assumed - otherwise this row passes for the wrong reason.
             $short | Should -Not -Be $d
