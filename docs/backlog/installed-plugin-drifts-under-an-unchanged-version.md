@@ -1,6 +1,8 @@
 # Backlog stub — the installed plugin silently drifts from source under an UNCHANGED version
 
-**Status:** SCHEDULED 2026-09-29 - scheduled - see the legacy status below
+**Status:** KILLED 2026-10-13 - superseded: installs now come from the release branch and every release bumps the version, so an installed cache can no longer differ from its source at an equal version
+> **Previous status:** SCHEDULED 2026-09-29 - scheduled - see the legacy status below
+> **Kill measurement (2026-10-13, Branch R start):** the installed `clavity` 0.11.0 cache is byte-identical to `origin/release` (36 of 36 files, `git show origin/release:<file> | cmp`); it differs from the working tree in 7 files only because `main` is ahead of the last release. Since Branch 17 (section 61) `release` is what users install, and the release workflow bumps the version. The 2026-08/09 instances were measured on the retired hand-installed `agy-autotrain` layout.
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** 🔴 **OPEN.** Verified by measurement, re-confirmed 2026-08-24. · ▶ **SCHEDULED [sweep-step0 2026-09-29]: ROADMAP sweep new Branch 13 - a check that compares the installed plugin cache with the tree at equal versions (the recorded instance measured IDENTICAL on 2026-09-29; runs before Branch 8)**
 
 **Raised:** 2026-08-19. Promoted from `.clavity/local-anomalies.md` at the 2026-08-25 triage.

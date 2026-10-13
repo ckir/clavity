@@ -4367,6 +4367,26 @@ In section 78's second probe the baseline already contained the first probe's fi
 
 Measured in Branch 20 Task 11 (2026-10-06): with every SessionStart hook started together and 1031 seams, `agy-consult-recovery.sh` took 6.2 / 6.0 s although it starts only 8 processes beyond boot. The time is bash's own per-seam loop (glob + keyword match + `-nt` per file), which a process budget cannot see. Its timeout was raised 10 -> 30 s for now; bounding that loop (or pruning concluded seams) is the real fix. Not yet scheduled.
 
+### §89 — Four Pester rows fail on Linux by construction (a shell, a path, a shared session id and a file lock)
+
+**Status:** SCHEDULED 2026-10-13 - scheduled - after the first release of the sweep (owner-approved triage of the local anomalies, 2026-10-13)
+
+Promoted from four local anomalies, each measured on this Linux box on 2026-10-12 and 2026-10-13. None is a product defect; each makes a suite report a failure (or collide with a second run) that Windows does not. (a) `scripts/tests/agy-consult-guard.Tests.ps1:870`, row `actually splits a large file set into chunks`, launches its probe with `sh` (dash on Linux) but the probe sources `agy-consult-guard-lib.sh`, whose bash-only `local batch=()` (`:93`) then fails, leaving `digests=` empty; launching it with `bash` is the candidate fix. (b) The same suite hard-codes `session_id guardtest` (`:31`) and shares the guard state directory under `TMPDIR`, so two concurrent runs collide (measured: solo 58 passed / 1 failed, two concurrent 57 passed / 2 failed each). (c) `scripts/tests/BashHookHelpers.ps1:271`, `Invoke-BashHookEmptyPath`, derives the non-wrapper Git Bash as `usr\bin\bash.exe` two levels above `Get-GitBashOrThrow`, a Windows-only layout: on Linux it yields `/usr/usr/bin/bash.exe` (does not exist), so every row that calls it fails there (`agy-anomaly-dispatch-reminder.Tests.ps1:273`, `agy-anomaly-model-notice.Tests.ps1:217`, and the `agy-anomaly-reminder` empty-PATH row). (d) `scripts/tests/review-relay-scripts.Tests.ps1:370`, row `a failed rebuild leaves no stale collected.md (G4)`, relies on a `FileShare.None` handle blocking deletion, which Linux does not enforce, so the second collect exits 0; it also fails on `main`.
+
+Fix direction: per row, launch with `bash`, give each run its own session id, resolve the bash path by platform, and skip or re-express the lock row on a platform that cannot enforce the lock (the skip must say why). Each change needs a failing control on Linux and a check that the row still runs on Windows semantics where it can be run.
+
+### §90 — The consult guard's git-metadata axis misses a symlinked hook (formerly a local anomaly)
+
+**Status:** SCHEDULED 2026-10-13 - scheduled - after the first release of the sweep (deferred by the owner at Branch H's test-audit; a source change needs an AGY-CAPSTONE re-run)
+
+`agy_guard_quad` lists `.git/hooks` with `find ... -type f` (`clavity-dotnet/plugin/hooks/agy-consult-guard-lib.sh:451`), and `find -type f` does not list a symlink, but git runs a symlinked hook (measured 2026-10-12: a symlink hook executed on commit). A peer that replaces a hook with a symlink is therefore invisible to the guard. Pre-existing: the library before section 70 had the identical `find` (old line 431). Fix direction: `find ... \( -type f -o -type l \)` (or `-L`), with a failing control that creates a symlinked hook, shows the guard silent, then red-green; the classic twin must be changed in the same commit where it exists.
+
+### §91 — No row pins the 120000 ms boundary of the inconclusive-duration fallback (formerly a local anomaly)
+
+**Status:** SCHEDULED 2026-10-13 - scheduled - after the first release of the sweep (not scoped by the owner at Branch H's test-audit)
+
+`clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh:80` decides the inconclusive-duration fallback with a comparison against 120000 ms; the suite exercises only 120005 and 40000, so changing `>=` to `>` (or the threshold by a few ms) passes every row. Fix direction: one row each at 120000 and 119999 ms, each proven red under the matching mutant. Low value; it is recorded so the gap is visible, not because a defect is known.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
