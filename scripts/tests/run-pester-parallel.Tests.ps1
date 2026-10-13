@@ -167,6 +167,15 @@ test-y:
         }
     }
 
+    It 'the ci-scripts.yml Linux job runs the runner with the committed inventory' {
+        $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        $wf = Get-Content -LiteralPath (Join-Path $repo '.github/workflows/ci-scripts.yml') -Raw
+        $job = [regex]::Match($wf, '(?ms)^  dev-scripts-linux:\r?\n.*?(?=^  [A-Za-z0-9_-]+:\r?\n|\z)')
+        $job.Success | Should -BeTrue -Because 'ci-scripts.yml must define the dev-scripts-linux job'
+        $job.Value | Should -Match 'runs-on: ubuntu-latest'
+        $job.Value | Should -Match ([regex]::Escape('run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md'))
+    }
+
 Context '-Directory, the skip-approval gate and the generated skip inventory' {
     BeforeAll {
         $script:Os      = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }

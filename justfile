@@ -131,11 +131,15 @@ test-scripts-slow:
 
 # Every suite UNDER scripts/tests, which is not quite "everything": it globs a directory, so it cannot
 # reach clavity-dotnet/install/clavity-install.Tests.ps1, which test-scripts-slow names explicitly and
-# ci-scripts.yml gates separately. Called "the whole suite" until 2026-08-26, which is the kind of claim
-# someone reaches for when they want one command that proves the tree is green. Same cap warning as
-# test-scripts-slow.
-test-scripts:
-    pwsh -NoProfile -c "Invoke-Pester scripts/tests -Output Detailed -CI"
+# ci-scripts.yml gates separately. Runs ONE pwsh process per file, 4 at once, through
+# scripts/run-pester-parallel.ps1, and enforces the approved-skip gate: every skipped row must be approved
+# in the test itself, and the generated per-OS inventory scripts/tests/_skip-inventory.md must match. An OS
+# with no section in that inventory FAILS CLOSED, printing the generator command. The parallel engine is
+# MEASURED on Linux only (~651 s wall at throttle 4, 2026-10-13, background load uncontrolled) and
+# UNMEASURED on Windows: `just test-scripts -ThrottleLimit 1` is the serial fallback. Called by
+# scripts/release.ps1 with no args. Same cap warning as test-scripts-slow: background it.
+test-scripts *args:
+    pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -ShowMessages {{args}}
 
 # Gate the Windows PowerShell 5.1 domain (the end-user installer surface) to pure ASCII.
 # ~6s, and the ONLY local check that can catch a CP1252 mangling: pwsh 7 defaults to UTF-8, so a

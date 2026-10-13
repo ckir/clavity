@@ -348,6 +348,46 @@ jobs:
           if ($bad.Count -gt 0) { throw "$($bad.Count) container(s) failed to run or discover" }
           if ($r.TotalCount -lt 12) { throw "only $($r.TotalCount) tests discovered - expected the clavity-install suite (>=12)" }
 
+  dev-scripts-linux:
+    name: dev scripts (pwsh 7, linux)
+    runs-on: ubuntu-latest
+    # The same suites as dev-scripts, run through scripts/run-pester-parallel.ps1 so the approved-skip gate and the
+    # committed per-OS inventory (scripts/tests/_skip-inventory.md, `## linux` section) apply. dev-scripts (Windows)
+    # keeps its plain Invoke-Pester until the owner has generated and measured the `## windows` section.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Deepen history for the ROADMAP claims gate
+        # Same reason as the dev-scripts job: check B of scripts/check-roadmap-claims.ps1 resolves every cited sha,
+        # and a shallow clone makes every one of them a phantom.
+        run: git fetch --unshallow --quiet || git fetch --quiet --depth=2147483647
+        shell: bash
+
+      - name: Install the tools the suites call (ripgrep, lefthook, ast-grep) and check the preinstalled ones
+        shell: bash
+        # ubuntu-latest already carries pwsh 7, git, jq, python3, dash and mikefarah yq v4; ripgrep is installed only if
+        # missing. lefthook and ast-grep come from npm with the same major-line pins as the Windows job (lefthook ^2.1.10,
+        # ast-grep ^0.45.1: npm verifies the package integrity hash, so there is no binary download to checksum here).
+        # The ORACLE for each tool is the tool answering on PATH, and a missing one fails HERE by name rather than
+        # surfacing later as an unrelated-looking suite failure.
+        run: |
+          set -euo pipefail
+          command -v rg >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep; }
+          sudo npm install -g '@evilmartians/lefthook@^2.1.10' '@ast-grep/cli@^0.45.1'
+          for t in rg lefthook ast-grep jq yq python3 dash git pwsh; do
+            command -v "$t" >/dev/null || { echo "::error::$t is not on PATH"; exit 1; }
+          done
+          yq --version | grep -E 'mikefarah.*version v4\.' || { echo "::error::need mikefarah yq v4 on PATH"; exit 1; }
+          rg --version | head -1; lefthook version; ast-grep --version; jq --version
+
+      - name: Install Pester v6
+        shell: pwsh
+        run: Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
+
+      - name: Pester - full scripts suite, approved-skip gate + committed inventory (pwsh 7, linux)
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -ShowMessages
+
   review-relay-extension:
     name: review-relay capture extension (node)
     # windows-latest on purpose: its checkout uses core.autocrlf, so this job also proves the

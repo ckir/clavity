@@ -4380,6 +4380,8 @@ Promoted from four local anomalies, each measured on this Linux box on 2026-10-1
 
 Fix direction: per row, launch with `bash`, give each run its own session id, resolve the bash path by platform, and skip or re-express the lock row on a platform that cannot enforce the lock (the skip must say why). Each change needs a failing control on Linux and a check that the row still runs on Windows semantics where it can be run.
 
+2026-10-13 progress on branch `sweep/linux-pester-suites` (the shared `guardtest` session id, item (b) in the list above, is NOT addressed and stays open, so the status above is unchanged): item (a), the `sh` probe in the consult-guard chunking row, now launches with `bash` (`220f9283`); item (c), `Get-GitBashCoreOrThrow` and `Invoke-BashHookEmptyPath`, work off Windows through the shared fixture helpers (`8a6b51be`); item (d), the G4 collect row, uses an unwritable replies directory off Windows and carries an approved NotAsRoot skip as root (`5aa56387`); item (e), the `fetch-clavity-ls` shims, get their exec bit and the `uname` stub is platform neutral (`220f9283`). The same branch added the approved-skip gate and the generated per-OS skip inventory to `scripts/run-pester-parallel.ps1` (`2bb2cf9e`, `45edb952`), generated the Linux inventory (`ec90e3fe`), and `just test-scripts` now runs through that gate.
+
 ### §90 — The consult guard's git-metadata axis misses a symlinked hook (formerly a local anomaly)
 
 **Status:** SCHEDULED 2026-10-13 - scheduled - after the first release of the sweep (deferred by the owner at Branch H's test-audit; a source change needs an AGY-CAPSTONE re-run)

@@ -100,6 +100,9 @@ load once and accumulates across files.
   directory, so it cannot reach `clavity-dotnet/install/clavity-install.Tests.ps1`, which the slow half
   names explicitly. Called "still every test" here until 2026-08-26 - the `justfile` copy of that same
   claim was corrected a commit earlier and this one was not.
+  Since 2026-10-13 it runs through `scripts/run-pester-parallel.ps1` (one pwsh per file, 4 at once) and
+  gates on approved skips (a closed tag vocabulary or `APPROVED:<tag>:` reason in the test itself) plus the
+  generated per-OS inventory `scripts/tests/_skip-inventory.md`; an OS with no section there fails closed.
 
 **The runtime target is ~120s, and it is a TARGET, not an enforceable invariant.** Do not gate anything on
 it. Day-to-day variance on this machine exceeds the margin it would police: the SAME 162-test fast half
@@ -1170,7 +1173,7 @@ clavity-install.Tests.ps1                         7,9s   12 tests   <- SLOW, ADD
                                                                       blind spot itself was closed.
 check-tracker-status.Tests.ps1                UNMEASURED  36 tests   <- SLOW, NEW 2026-10-08 (a child pwsh per row, ~3.5s each: ~90-110s contended; SLOW on purpose - the fast half is cap-adjacent. The driver measures it idle at the Task 10 gates.)
 check-tracker-format-excerpt.Tests.ps1       UNMEASURED  9 tests    <- SLOW, NEW 2026-10-08 (a child pwsh per row, ~2s each; the driver measures it idle at the Task 10 gates.)
-run-pester-parallel.Tests.ps1                    55,0s  42 tests   <- SLOW, NEW 2026-10-12 (prototype runner; +6 rows for -Exclude, +3 for -ShowMessages, +1 for error-preference parity, same day; a child pwsh per row, each starting its own children; two solo runs 56,9s and 53,1s, box load uncontrolled - xrdp/Xorg and other sessions)
+run-pester-parallel.Tests.ps1                    55,0s  43 tests   <- SLOW, NEW 2026-10-12 (+1 row 2026-10-13: the ci-scripts.yml Linux job text pin; prototype runner; +6 rows for -Exclude, +3 for -ShowMessages, +1 for error-preference parity, same day; a child pwsh per row, each starting its own children; two solo runs 56,9s and 53,1s, box load uncontrolled - xrdp/Xorg and other sessions)
 TestTemp.Tests.ps1                         UNMEASURED  16 tests   <- FAST, NEW 2026-10-08 (in-process, sub-second rows: Remove-TestPath, the shared temp root, the sweep, its once-per-run flag, the killed-run backup restore)
 test-temp-discipline.Tests.ps1             UNMEASURED  4 tests    <- FAST, NEW 2026-10-08 (in-process scan of ~76 suite files, a few seconds)
 clavity-dotnet-setup.Tests.ps1             UNMEASURED  11 tests   <- FAST, NEW 2026-10-13 (ROADMAP section 68, Branch R: one bash child per row with a logging agy shim, ~0.7s each, 8,6s wall for the file solo on a loaded Linux box; the driver measures it idle with the Branch R gates)
