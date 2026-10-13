@@ -1,4 +1,11 @@
 # agy-autotrain - changelog
+## 0.7.1 - 2026-10-13
+
+### Fixes
+- fix(hooks): agy-curate-nudge snooze follows a symlinked marker like date -r did (section 75 final review)
+- fix(hooks): agy-inbox-snapshot snapshots a UTF-8-BOM inbox (section 75)
+- fix(hooks): agy-curate-nudge reads a CRLF inbox and ages the snooze without GNU-only date -r (section 75)
+
 ## 0.7.0 - 2026-10-11
 
 ### Features

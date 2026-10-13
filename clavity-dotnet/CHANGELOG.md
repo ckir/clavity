@@ -1,4 +1,16 @@
 # dotnet changelog
+## 0.12.0 - 2026-10-13
+
+### Features
+- feat(clavity-ls): name the running build in the hints a stale client can cause, add --version, stamp the release build (stale-client backlog item)
+
+### Fixes
+- fix(release): the four other member builds and the release notes checkout also take the tag (section 92)
+- fix(clavity-dotnet): re-register agy's plugin copy whenever the plugin version changes (section 68)
+- fix(hooks): .no-agy makes the liveness hook silent; ownership notes still reach the owner (section 80)
+- fix(hooks): the consult guard says NOT VERIFIED when the consult has not finished (section 78, H)
+- fix(dotnet): name a stale endpoint file in channel_down and say relaunch agy
+
 ## 0.11.0 - 2026-10-11
 
 ### Features

@@ -1,4 +1,13 @@
 # classic changelog
+## 0.10.1 - 2026-10-13
+
+### Fixes
+- fix(installer): re-pin register-plugin.ps1 (CRLF bytes) and hash the CRLF form on every OS
+- fix(installer): resolve the home dir USERPROFILE-first, HOME as the fallback
+- fix(installer): register-plugin resolves the home dir through $HOME
+- fix(hooks): .no-agy makes the liveness hook silent; ownership notes still reach the owner (section 80)
+- fix(hooks): the consult guard says NOT VERIFIED when the consult has not finished (section 78, H)
+
 ## 0.10.0 - 2026-10-11
 
 ### Features

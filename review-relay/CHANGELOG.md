@@ -1,5 +1,12 @@
 # review-relay changelog
 
+## 0.3.1 - 2026-10-13
+
+### Fixes
+- fix(review-relay): the console warning drops 'saved before the model finished' when collect blames the site (R1 capstone round 2)
+- fix(review-relay): the site-changed hint needs a complete skeleton with no human or assistant marker (R1 capstone round 1)
+- fix(review-relay): collect blames the site, not the format, for an AiSaveDev capture with no turns (R1)
+
 ## 0.3.0 - 2026-10-11
 
 ### Features
