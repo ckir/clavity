@@ -67,7 +67,7 @@ Describe 'clavity-dotnet-setup.sh keeps agy registered at the CURRENT plugin ver
             $res.ExitCode | Should -Be 0
             $res.Calls | Should -HaveCount 2
             $res.Calls[0] | Should -BeExactly 'plugin uninstall clavity'
-            $res.Calls[1] | Should -BeExactly "plugin install $($fx.PluginRoot -replace '\\', '/')"
+            $res.Calls[1] | Should -BeExactly "plugin install $($fx.PluginRoot)"   # the hook passes CLAUDE_PLUGIN_ROOT through verbatim: backslashes stay on Windows
             Get-Stamp $fx | Should -BeExactly '9.9.9'
             $res.StdErr | Should -Match 'registered the plugin with agy'
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }

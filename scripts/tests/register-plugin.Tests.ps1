@@ -43,7 +43,8 @@ Describe 'Test-AgentPresent' {
         }
         finally { $env:USERPROFILE = $oldProfile; $env:HOME = $oldHome; $env:PATH = $oldPath }
     }
-    It 'falls back to HOME when USERPROFILE is unset (the Linux/macOS case; no mocks, child process)' {
+    # LinuxOnly: on Windows PowerShell derives $HOME from USERPROFILE itself, so an unset USERPROFILE leaves no fallback to test there.
+    It 'falls back to HOME when USERPROFILE is unset (the Linux/macOS case; no mocks, child process)' -Tag 'LinuxOnly' -Skip:([Environment]::OSVersion.Platform -eq 'Win32NT') {
         # Pins the else-branch on purpose: the mocked rows above only trip on a broken fallback by accident (a null Join-Path).
         $homeDir = Join-Path $TestDrive 'fbhome'; $emptyDir = Join-Path $TestDrive 'fbempty'
         New-Item -ItemType Directory -Path (Join-Path $homeDir '.gemini') -Force | Out-Null
@@ -179,7 +180,9 @@ Describe 'register-plugin.ps1 - exit code survives the -File wrapper (end-to-end
         # box with Claude installed). Launch powershell by FULL PATH so a blanked PATH cannot break the launch.
         $tmpHome = Join-Path $TestDrive 'home'; New-Item -ItemType Directory -Path $tmpHome -Force | Out-Null
         $script = (Resolve-Path ([System.IO.Path]::Combine($PSScriptRoot, '..', '..', 'installer', '_shared', 'register-plugin.ps1'))).Path
-        $pwshExe = (Get-Command powershell -CommandType Application | Select-Object -First 1).Source
+        # Windows PowerShell where it exists (the wrapper this row is about); elsewhere the running pwsh, which has the same -File exit-code contract.
+        $psCmd = Get-Command powershell -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        $pwshExe = if ($psCmd) { $psCmd.Source } else { (Get-Process -Id $PID).Path }
         $oldProfile = $env:USERPROFILE; $oldHome = $env:HOME; $oldPath = $env:PATH
         try {
             $env:USERPROFILE = $tmpHome   # Windows: what $HOME resolves to
