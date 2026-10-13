@@ -325,7 +325,7 @@ fn ring_min_interval() -> Duration {
 /// so the debounce is shared across *independent* `clavity ring` processes — that is the whole
 /// point: one rate limit no single caller can bypass by re-invoking. Override the location with
 /// `AGY_RING_STATE_FILE` (used by tests for isolation).
-/// 
+///
 /// The filename includes a hash of the session name to avoid collisions where different sessions
 /// sanitize to the same string (e.g. "foo" and "foo_" both become "foo_").
 fn ring_state_path(session: &str) -> PathBuf {
