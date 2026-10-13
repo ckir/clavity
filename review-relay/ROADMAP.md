@@ -39,7 +39,9 @@ Resume when the manual paste is the bottleneck. review-relay's templates, read p
 
 ### R1 - collect gives the wrong advice for an AiSaveDev capture whose scraper fell back
 
-**Status:** IMPLEMENTED 2026-10-13 - Read-AiSaveCapture exposes DeclaredFormat and collect says the site may have changed; awaiting the release
+**Status:** SHIPPED 2026-10-13 - collect blames the site for an AiSaveDev capture with no turns (`cf53a345`, `be5b52de`, `e7e2f088`)
+**Released:** clavity-v26
+> **Previous status:** IMPLEMENTED 2026-10-13 - Read-AiSaveCapture exposes DeclaredFormat and collect says the site may have changed; awaiting the release
 > **Previous status:** SCHEDULED 2026-09-29 - scheduled - Branch RR
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** promoted from the anomalies conveyor 2026-09-29, not yet planned.
 

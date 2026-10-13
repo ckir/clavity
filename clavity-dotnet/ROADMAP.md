@@ -3897,7 +3897,9 @@ macOS (`open -a Terminal`?) is untested and explicitly out of the first cut unle
 
 ### §63 — A `workflow_dispatch` release builds `clavity-ls` from the dispatch branch, not the tag
 
-**Status:** IMPLEMENTED 2026-10-13 - build-dotnet.yml takes a `ref` input for both checkouts and umbrella-release.yml passes the tag; awaiting the release, the only thing that proves GitHub resolves the expression
+**Status:** SHIPPED 2026-10-13 - a workflow_dispatch release builds clavity-ls from the tag (`b47771f8`)
+**Released:** clavity-v26
+> **Previous status:** IMPLEMENTED 2026-10-13 - build-dotnet.yml takes a `ref` input for both checkouts and umbrella-release.yml passes the tag; awaiting the release, the only thing that proves GitHub resolves the expression
 > **Previous status:** SCHEDULED 2026-10-02 - scheduled - Branch R
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (AGY-CAPSTONE Branch 17 round 2, owner-deferred), not yet planned**
 
@@ -4007,7 +4009,9 @@ Built from agy's own per-session log (the file clavity-ls already reads for disc
 
 ### §67 — `lefthook run pre-commit --all-files` is not read-only: its ruff job reformats and stages `telemetry.py`
 
-**Status:** IMPLEMENTED 2026-10-13 - telemetry.py ruff-formatted (AST identical, `ruff format --check` now 0); awaiting the merge to main
+**Status:** SHIPPED 2026-10-13 - telemetry.py is ruff-formatted so the pre-commit ruff job is a no-op (`27a51adb`)
+**Released:** clavity-v26
+> **Previous status:** IMPLEMENTED 2026-10-13 - telemetry.py ruff-formatted (AST identical, `ruff format --check` now 0); awaiting the merge to main
 > **Previous status:** SCHEDULED 2026-10-03 - scheduled - Branch R
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-03, Branch 19 Task 7 gates), not yet planned**
 
@@ -4021,7 +4025,9 @@ on a clean tree. Optionally add a `ruff format --check` over the bridge to CI so
 
 ### §68 — agy's copy of the plugin is registered ONCE and never refreshed, so plugin upgrades do not reach agy
 
-**Status:** IMPLEMENTED 2026-10-13 - the stamp holds the plugin version and a differing stamp (including the empty legacy one) registers again, pinned by scripts/tests/clavity-dotnet-setup.Tests.ps1; reaches users with the next release
+**Status:** SHIPPED 2026-10-13 - the setup hook re-registers agy whenever the plugin version differs from the stamp (`5baf7ada`)
+**Released:** clavity-v26
+> **Previous status:** IMPLEMENTED 2026-10-13 - the stamp holds the plugin version and a differing stamp (including the empty legacy one) registers again, pinned by scripts/tests/clavity-dotnet-setup.Tests.ps1; reaches users with the next release
 > **Previous status:** SCHEDULED 2026-10-04 - scheduled - Branch R
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-04 in agy's log while testing the owner's ECONNRESET hypothesis), not yet planned**
 
@@ -4396,7 +4402,9 @@ Fix direction: per row, launch with `bash`, give each run its own session id, re
 
 ### §92 — The other member builds and the release's own checkouts also build the dispatch branch (formerly part of §63)
 
-**Status:** IMPLEMENTED 2026-10-13 - owner ruled 'fix in Branch R': the same `ref` input on the four builds, passed by umbrella-release.yml, and on the notes checkout; awaiting the release
+**Status:** SHIPPED 2026-10-13 - the four other member builds and the notes checkout take the tag (`f9218a8a`)
+**Released:** clavity-v26
+> **Previous status:** IMPLEMENTED 2026-10-13 - owner ruled 'fix in Branch R': the same `ref` input on the four builds, passed by umbrella-release.yml, and on the notes checkout; awaiting the release
 > **Previous status:** OPEN 2026-10-13 - found while fixing section 63; needs an owner ruling (extend the same `ref` input, or accept)
 
 **Scope of the fix:** the four builds and the `publish` job's release-notes checkout now take the tag. The `release-channel` job's checkout stays on the dispatch branch on purpose: it runs `scripts/ci/advance-release-channel.sh`, release infrastructure that should be the current version, and the script reads the tag's own `plugin.json` through git.
