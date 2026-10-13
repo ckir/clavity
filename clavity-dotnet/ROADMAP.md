@@ -3897,7 +3897,8 @@ macOS (`open -a Terminal`?) is untested and explicitly out of the first cut unle
 
 ### §63 — A `workflow_dispatch` release builds `clavity-ls` from the dispatch branch, not the tag
 
-**Status:** SCHEDULED 2026-10-02 - scheduled - Branch R
+**Status:** IMPLEMENTED 2026-10-13 - build-dotnet.yml takes a `ref` input for both checkouts and umbrella-release.yml passes the tag; awaiting the release, the only thing that proves GitHub resolves the expression
+> **Previous status:** SCHEDULED 2026-10-02 - scheduled - Branch R
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-02 from the anomalies conveyor (AGY-CAPSTONE Branch 17 round 2, owner-deferred), not yet planned**
 
 **Verified by reading at `b6c2d87d`.** `.github/workflows/umbrella-release.yml` takes a free-text `inputs.tag` on
@@ -4006,7 +4007,8 @@ Built from agy's own per-session log (the file clavity-ls already reads for disc
 
 ### §67 — `lefthook run pre-commit --all-files` is not read-only: its ruff job reformats and stages `telemetry.py`
 
-**Status:** SCHEDULED 2026-10-03 - scheduled - Branch R
+**Status:** IMPLEMENTED 2026-10-13 - telemetry.py ruff-formatted (AST identical, `ruff format --check` now 0); awaiting the merge to main
+> **Previous status:** SCHEDULED 2026-10-03 - scheduled - Branch R
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-03, Branch 19 Task 7 gates), not yet planned**
 
 **Measured 2026-10-04:** `ruff format --check clavity-classic/agy-mcp-bridge/telemetry.py` -> "Would reformat", exit
@@ -4019,7 +4021,8 @@ on a clean tree. Optionally add a `ruff format --check` over the bridge to CI so
 
 ### §68 — agy's copy of the plugin is registered ONCE and never refreshed, so plugin upgrades do not reach agy
 
-**Status:** SCHEDULED 2026-10-04 - scheduled - Branch R
+**Status:** IMPLEMENTED 2026-10-13 - the stamp holds the plugin version and a differing stamp (including the empty legacy one) registers again, pinned by scripts/tests/clavity-dotnet-setup.Tests.ps1; reaches users with the next release
+> **Previous status:** SCHEDULED 2026-10-04 - scheduled - Branch R
 > **Legacy status (verbatim, before the 2026-10-08 normalisation):** ▶ **PROMOTED 2026-10-04 from the anomalies conveyor (observed 2026-10-04 in agy's log while testing the owner's ECONNRESET hypothesis), not yet planned**
 
 **Measured 2026-10-04:** `clavity-dotnet-setup.sh:44-45` registers the plugin with agy (`agy plugin uninstall` +
@@ -4386,6 +4389,15 @@ Fix direction: per row, launch with `bash`, give each run its own session id, re
 **Status:** SCHEDULED 2026-10-13 - scheduled - after the first release of the sweep (not scoped by the owner at Branch H's test-audit)
 
 `clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh:80` decides the inconclusive-duration fallback with a comparison against 120000 ms; the suite exercises only 120005 and 40000, so changing `>=` to `>` (or the threshold by a few ms) passes every row. Fix direction: one row each at 120000 and 119999 ms, each proven red under the matching mutant. Low value; it is recorded so the gap is visible, not because a defect is known.
+
+### §92 — The other member builds and the release's own checkouts also build the dispatch branch (formerly part of §63)
+
+**Status:** IMPLEMENTED 2026-10-13 - owner ruled 'fix in Branch R': the same `ref` input on the four builds, passed by umbrella-release.yml, and on the notes checkout; awaiting the release
+> **Previous status:** OPEN 2026-10-13 - found while fixing section 63; needs an owner ruling (extend the same `ref` input, or accept)
+
+**Scope of the fix:** the four builds and the `publish` job's release-notes checkout now take the tag. The `release-channel` job's checkout stays on the dispatch branch on purpose: it runs `scripts/ci/advance-release-channel.sh`, release infrastructure that should be the current version, and the script reads the tag's own `plugin.json` through git.
+
+Section 63 fixed only `build-dotnet.yml`, the scope the sweep named. The same naked `actions/checkout@v7` (no `ref:`) is in `build-classic.yml:28`, `build-agy-autotrain.yml:25`, `build-commonmemory.yml:23` and `build-review-relay.yml:23`, and in the `publish` and `release-channel` jobs of `umbrella-release.yml` (`:145`, `:250`). On a `workflow_dispatch` release, every member that records or publishes a built commit therefore builds the dispatch branch, not the tag. The release channel is protected the same way as in section 63 (`advance-release-channel.sh` compares versions), but the release page can still carry assets that do not match the tag. `republish-member.yml` must keep building the dispatch branch on purpose (a hotfix). Fix direction: the same optional `ref` input on each build workflow, passed by `umbrella-release.yml` only, with a row per workflow in `scripts/tests/release-workflow-refs.Tests.ps1`; only a real release proves it.
 
 ## Non-goals / accepted limitations
 

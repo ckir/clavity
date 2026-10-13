@@ -3,10 +3,12 @@ slug: stale-client-binary-blamed-on-the-peer
 variant: both
 observed: 2026-08-09
 source-inbox-entry: "When the channel to a peer fails, suspect the LOCAL CLIENT BINARY before the peer"
-status: SCHEDULED
+status: IMPLEMENTED
 ---
 
 # A transport error carries no build provenance, so a stale installed client is diagnosed as a peer fault
+
+**Implemented 2026-10-13 on `sweep/branch-r-release-path` (Branch R; awaiting the release).** Design by AGY-FIRST (agy NEGOTIATE, owner chose the targeted stamp): `build-dotnet.yml` passes `-p:Version=<plugin version>` (the .NET SDK already appends the commit); `clavity-ls --version` prints `clavity-ls <ver>+<sha8>`; the transport-down and ResourceExhausted hints in `ChannelDown.Hint` append "Running client: clavity-ls ... this INSTALLED binary is stale"; the other hints do not (a newer client does not cure them); the CI smoke step rejects a `--version` that does not name the plugin version. Classic needs no change: it has no gRPC channel and already prints its version through clap `--version`. Not built: a build-age warning (needs a build-date stamp).
 
 **Re-routed 2026-10-09 at the start of Branch C to Branch R (owner delegated, AGY-FIRST aligned).** Measured: the dotnet binary carries no runtime version surface at all (no `InformationalVersion`, no `--version` verb) and the default assembly version is uninformative, so the fix is a build-time stamp that the release workflow must set; that is Branch R's domain. Still SCHEDULED.
 

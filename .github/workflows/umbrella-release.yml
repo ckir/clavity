@@ -107,11 +107,17 @@ jobs:
 
   dotnet:
     needs: [guard]
-    uses: ./.github/workflows/build-dotnet.yml   # FILE ref = this tag's main commit (dotnet is already pinned by the tag)
+    uses: ./.github/workflows/build-dotnet.yml
+    with:
+      # The release TAG: the dispatch input on workflow_dispatch, the pushed tag's name on a tag push. Without this a dispatch built
+      # the dispatch branch (normally main HEAD) and attached binaries that did not match the tag (ROADMAP section 63).
+      ref: ${{ github.event.inputs.tag || github.ref_name }}
 
   classic:
     needs: [guard]
     uses: ./.github/workflows/build-classic.yml
+    with:
+      ref: ${{ github.event.inputs.tag || github.ref_name }}
 
   # ghidrust was fully retired from this monorepo (2026-09-14) — superseded by re-ghidra-mcp-cc in
   # ckir/aiplugins. Its build + BLOCKING live-E2E jobs were removed with it.
@@ -119,14 +125,20 @@ jobs:
   agy-autotrain:
     needs: [guard]
     uses: ./.github/workflows/build-agy-autotrain.yml
+    with:
+      ref: ${{ github.event.inputs.tag || github.ref_name }}
 
   commonmemory:
     needs: [guard]
     uses: ./.github/workflows/build-commonmemory.yml
+    with:
+      ref: ${{ github.event.inputs.tag || github.ref_name }}
 
   review-relay:
     needs: [guard]
     uses: ./.github/workflows/build-review-relay.yml
+    with:
+      ref: ${{ github.event.inputs.tag || github.ref_name }}
 
   publish:
     # Atomic all-or-nothing: any failed member build blocks the whole clavity release (no continue-on-error).
@@ -141,6 +153,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
 
       - name: Download dotnet binaries (all RIDs)
         uses: actions/download-artifact@v8

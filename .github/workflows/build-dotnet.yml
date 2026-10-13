@@ -10,6 +10,12 @@ name: build-dotnet
 # every `dotnet-bin-*` artifact and attaches the tarballs to the GitHub release the fetch hook reads.
 on:
   workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref (tag, branch or SHA) to build. Empty = the ref the run started on. umbrella-release.yml passes the release tag so a workflow_dispatch release builds the TAG, not the dispatch branch (ROADMAP section 63); republish-member.yml passes nothing on purpose, a hotfix rebuilds the dispatch branch.'
+        required: false
+        type: string
+        default: ''
     outputs:
       version:
         value: ${{ jobs.validate.outputs.version }}
@@ -25,6 +31,8 @@ jobs:
       version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v6
@@ -66,6 +74,8 @@ jobs:
         working-directory: clavity-dotnet
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v6
@@ -76,8 +86,11 @@ jobs:
         shell: bash
         run: |
           set -e
+          v="${{ needs.validate.outputs.version }}"
+          # -p:Version stamps the binary with the plugin version (the SDK appends the commit), so `clavity-ls --version` and a
+          # transport error can name the build: a stale installed client was once blamed on a healthy peer.
           dotnet publish src/Clavity.Cli -c Release -r ${{ matrix.rid }} --self-contained true \
-            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -o publish
+            -p:Version="$v" -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -o publish
           # win-x64 publishes clavity-ls.exe; every other RID publishes clavity-ls.
           bin=clavity-ls; [ -f publish/clavity-ls.exe ] && bin=clavity-ls.exe
           test -f "publish/$bin" || { echo "publish/$bin was not produced for ${{ matrix.rid }}" >&2; exit 1; }
@@ -87,13 +100,21 @@ jobs:
           out=$("publish/$bin" --help 2>&1) || { echo "clavity-ls --help exited $?" >&2; exit 1; }
           [ -n "$out" ] || { echo "clavity-ls --help produced no output" >&2; exit 1; }
           echo "smoke OK (${{ matrix.rid }}): ${out:0:90}"
+          # The stamp reached the NATIVE binary: `--version` must name the plugin version this build was asked for.
+          ver_out=$("publish/$bin" --version 2>&1) || { echo "clavity-ls --version exited $?" >&2; exit 1; }
+          case "$ver_out" in
+            "clavity-ls $v"|"clavity-ls $v+"*) echo "version OK (${{ matrix.rid }}): $ver_out" ;;
+            *) echo "clavity-ls --version printed '$ver_out', expected it to start with 'clavity-ls $v'" >&2; exit 1 ;;
+          esac
+          # The short flag routes through the same verb; it must print exactly what --version printed.
+          short_out=$("publish/$bin" -V 2>&1) || { echo "clavity-ls -V exited $?" >&2; exit 1; }
+          [ "$short_out" = "$ver_out" ] || { echo "clavity-ls -V printed '$short_out', expected '$ver_out'" >&2; exit 1; }
           # Ship the binary under its NATIVE name: clavity-ls.exe from win-x64, clavity-ls from every
           # other RID. An extensionless PE is NOT executable through PATHEXT, so normalising the name
           # away handed anyone who downloads the win-x64 asset directly a binary Windows will not run.
           # The fetch hook accepts either name and places it at ${CLAUDE_PLUGIN_DATA}/bin/clavity-ls.exe
           # (the .exe suffix is required only on Windows).
           mkdir -p dist
-          v="${{ needs.validate.outputs.version }}"
           pkg="clavity-ls-${{ matrix.rid }}-$v.tar.gz"
           tar -C publish -czf "dist/$pkg" "$bin"
           ( cd dist && sha256sum "$pkg" > "$pkg.sha256" )
