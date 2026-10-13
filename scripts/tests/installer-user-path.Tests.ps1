@@ -78,7 +78,7 @@ Describe 'installer user PATH handling' {
         }
     }
 
-    Context 'behavioural - the include, compiled by ISCC and run' {
+    Context 'behavioural - the include, compiled by ISCC and run' -Skip:(-not $IsWindows) -Tag 'WindowsOnly' {
         BeforeAll {
             $script:Work = New-TestTempPath 'userpath'
             $script:RegKey = 'Software\ClavityUserPathProbe-' + [guid]::NewGuid().ToString('N')
@@ -219,7 +219,7 @@ end;
         }
 
         It 'RebuildUserPath returns the expected value for every case' {
-            if (-not $script:Iscc) { Set-ItResult -Skipped -Because 'ISCC (Inno Setup) is not installed, so the Pascal cannot be run here' }
+            if (-not $script:Iscc) { Set-ItResult -Skipped -Because 'APPROVED:NeedsTool:ISCC: ISCC (Inno Setup) is not installed, so the Pascal cannot be run here'; return }
             $script:CompileExit | Should -Be 0 -Because "the probe must compile against the include; ISCC said:`n$($script:CompileOut)"
             # PRECONDITION: the probe RAN and wrote one line per case plus the four registry lines. Without
             # this, an empty result would fail every case for the wrong reason - or, compared loosely, pass.
@@ -233,7 +233,7 @@ end;
         }
 
         It 'the registry half heals duplicates, writes REG_EXPAND_SZ, and writes only on a change' {
-            if (-not $script:Iscc) { Set-ItResult -Skipped -Because 'ISCC (Inno Setup) is not installed, so the Pascal cannot be run here' }
+            if (-not $script:Iscc) { Set-ItResult -Skipped -Because 'APPROVED:NeedsTool:ISCC: ISCC (Inno Setup) is not installed, so the Pascal cannot be run here'; return }
             $n = $script:Cases.Count
             $d = $script:Dir
             $script:Results[$n]     | Should -Be 'ADD-WROTE=1' -Because 'the seeded value held the directory twice, so the add must rewrite it'
@@ -248,14 +248,14 @@ end;
             # left it green, because Inno keeps REG_EXPAND_SZ when the value ALREADY has that type. Only a
             # value that does not exist yet - a fresh profile with no user PATH - shows the difference, and a
             # REG_SZ PATH silently stops expanding every %VARIABLE% entry any other tool adds later.
-            if (-not $script:Iscc) { Set-ItResult -Skipped -Because 'ISCC (Inno Setup) is not installed, so the Pascal cannot be run here' }
+            if (-not $script:Iscc) { Set-ItResult -Skipped -Because 'APPROVED:NeedsTool:ISCC: ISCC (Inno Setup) is not installed, so the Pascal cannot be run here'; return }
             $script:Results[$script:Cases.Count + 4] | Should -Be 'CREATE-WROTE=1'
             $script:FreshValue | Should -Be $script:Dir
             $script:FreshKind | Should -Be 'ExpandString'
         }
 
         It 'never touches the real user PATH' {
-            if (-not $script:Iscc) { Set-ItResult -Skipped -Because 'ISCC (Inno Setup) is not installed, so the probe was not run' }
+            if (-not $script:Iscc) { Set-ItResult -Skipped -Because 'APPROVED:NeedsTool:ISCC: ISCC (Inno Setup) is not installed, so the probe was not run'; return }
             $script:RealPathAfter | Should -BeExactly $script:RealPathBefore
         }
     }

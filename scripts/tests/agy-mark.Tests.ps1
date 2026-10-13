@@ -63,7 +63,7 @@ Describe 'agy-mark.sh' {
     }
 
     Context 'head mode' {
-        It 'RESOLVES ITS OWN HELPERS when invoked by an all-BACKSLASH Windows path' {
+        It 'RESOLVES ITS OWN HELPERS when invoked by an all-BACKSLASH Windows path' -Skip:(-not $IsWindows) -Tag 'WindowsOnly' {
             # NO ROW ANYWHERE INVOKED THIS HOOK BY A WINDOWS PATH, and that gap cost a red pipeline.
             # `$script:Mark` above ends with `-replace '\\','/'`, so every other row in this suite hands
             # bash a forward-slash path. agy-mark-stamp.Tests.ps1:2 does NOT normalise, and PowerShell's
