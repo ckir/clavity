@@ -7,6 +7,7 @@ BeforeAll { . (Join-Path $PSScriptRoot 'TestTemp.ps1'); . (Join-Path $PSScriptRo
 
 Describe 'Get-RootRelativePath' {
     BeforeEach {
+        $script:Expected = Join-Path 'installer' 'probe.ps1'
         $script:Parent = New-TestTempPath 's28'
         $script:Root   = Join-Path $script:Parent 'a-very-long-directory-name-that-gets-shortened'
         New-Item -ItemType Directory -Force -Path (Join-Path $script:Root 'installer') | Out-Null
@@ -19,7 +20,7 @@ Describe 'Get-RootRelativePath' {
 
     It 'returns the relative path for an ordinary root (the success-path control)' {
         # WITHOUT THIS ROW every row below could pass because the helper is broken in some other way.
-        Get-RootRelativePath -Root $script:Root -Path $script:Child | Should -Be 'installer\probe.ps1'
+        Get-RootRelativePath -Root $script:Root -Path $script:Child | Should -Be $script:Expected
     }
 
     It 'normalises an 8.3 SHORT root' {
@@ -34,19 +35,19 @@ Describe 'Get-RootRelativePath' {
         $short = $null
         try { $short = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($script:Root).ShortPath } catch { $short = $null }
         if (-not $short -or $short -eq $script:Root) {
-            Set-ItResult -Skipped -Because '8.3 short-name generation is disabled on this volume, so the state under test is unreachable here'
+            Set-ItResult -Skipped -Because 'APPROVED:FsFeature:8dot3-names: 8.3 short-name generation is disabled on this volume, so the state under test is unreachable here'
         }
         # PRECONDITION, asserted not assumed - otherwise this row passes for the wrong reason.
         $short | Should -Not -Be $script:Root
-        Get-RootRelativePath -Root $short -Path $script:Child | Should -Be 'installer\probe.ps1'
+        Get-RootRelativePath -Root $short -Path $script:Child | Should -Be $script:Expected
     }
 
-    It 'normalises an UPPERCASE root' {
+    It 'normalises an UPPERCASE root' -Skip:(-not $IsWindows) -Tag 'FsFeature:case-insensitive' {
         Get-RootRelativePath -Root $script:Root.ToUpperInvariant() -Path $script:Child |
-            Should -Be 'installer\probe.ps1'
+            Should -Be $script:Expected
     }
 
-    It 'accepts a PATH spelled in different casing from the disk, because NTFS is case-insensitive' {
+    It 'accepts a PATH spelled in different casing from the disk, because NTFS is case-insensitive' -Skip:(-not $IsWindows) -Tag 'FsFeature:case-insensitive' {
         # THE ROW ABOVE CANNOT PIN THIS. Get-Item normalises the ROOT to its on-disk casing, and
         # $script:Child comes from Get-ChildItem, which also returns on-disk casing - MEASURED, even when the
         # enumeration starts from a mis-cased root. Both sides already agree, so a case-SENSITIVE prefix test
@@ -60,12 +61,12 @@ Describe 'Get-RootRelativePath' {
 
     It 'normalises a root carrying a trailing separator' {
         Get-RootRelativePath -Root ($script:Root + [char]92) -Path $script:Child |
-            Should -Be 'installer\probe.ps1'
+            Should -Be $script:Expected
     }
 
     It 'normalises a root written with forward slashes' {
         Get-RootRelativePath -Root ($script:Root.Replace([char]92, '/')) -Path $script:Child |
-            Should -Be 'installer\probe.ps1'
+            Should -Be $script:Expected
     }
 
     It 'normalises a PROVIDER-PREFIXED root' {
@@ -76,7 +77,7 @@ Describe 'Get-RootRelativePath' {
         # and Task 4 makes that row unable to fail (see Task 4 Step 5) - so the guarantee moves here,
         # where the mechanism actually is, and now covers all four gates instead of one.
         Get-RootRelativePath -Root ('Microsoft.PowerShell.Core\FileSystem::' + $script:Root) -Path $script:Child |
-            Should -Be 'installer\probe.ps1'
+            Should -Be $script:Expected
     }
 
     It 'normalises a root addressed through a PSDRIVE to its real filesystem path' {
@@ -93,7 +94,7 @@ Describe 'Get-RootRelativePath' {
         try {
             $r = New-RootRelativePathResolver -Root "${drive}:\"
             $r.Root | Should -Be ((Get-Item -LiteralPath $script:Root).FullName)
-            $r.Resolve($script:Child) | Should -Be 'installer\probe.ps1'
+            $r.Resolve($script:Child) | Should -Be $script:Expected
         }
         finally { Remove-PSDrive -Name $drive -ErrorAction SilentlyContinue }
     }
@@ -135,7 +136,7 @@ Describe 'Get-RootRelativePath' {
         # instead. This row is volume-independent (a junction needs no elevation), so it covers the
         # fail-closed property even where the 8.3 row skips.
         if (-not $IsWindows) {
-            Set-ItResult -Skipped -Because 'mklink is a Windows shell builtin, so a junction cannot be created here'
+            Set-ItResult -Skipped -Because 'APPROVED:WindowsOnly: mklink is a Windows shell builtin, so a junction cannot be created here'
         }
         $real = Join-Path $script:Parent 'a-very-long-real-target-directory-name'
         New-Item -ItemType Directory -Force -Path (Join-Path $real 'installer') | Out-Null
@@ -143,11 +144,11 @@ Describe 'Get-RootRelativePath' {
         $link = Join-Path $script:Parent 'lnk'
         & cmd.exe /c mklink /J "$link" "$real" 2>&1 | Out-Null
         if (-not (Test-Path -LiteralPath $link)) {
-            Set-ItResult -Skipped -Because 'the junction could not be created on this filesystem'
+            Set-ItResult -Skipped -Because 'APPROVED:FsFeature:junction: the junction could not be created on this filesystem'
         }
         try {
             $childViaLink = (Get-ChildItem -LiteralPath $link -Recurse -File | Select-Object -First 1).FullName
-            Get-RootRelativePath -Root $link -Path $childViaLink | Should -Be 'installer\probe.ps1'
+            Get-RootRelativePath -Root $link -Path $childViaLink | Should -Be $script:Expected
 
             $childViaReal = (Get-ChildItem -LiteralPath $real -Recurse -File | Select-Object -First 1).FullName
             # PRECONDITION, asserted not assumed: the two spellings must actually differ, or the throw

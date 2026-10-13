@@ -296,14 +296,14 @@ Describe 'check-plugin-drift.ps1' {
         # and exists in every session, which is also what makes the real-world case reachable.
         $r = New-FixtureRepo $script:Payload
         $leaf = "drive-" + [Guid]::NewGuid().ToString('N')
-        $i = Join-Path $env:TEMP $leaf
+        $i = Join-Path (Get-PSDrive -Name Temp).Root $leaf
         $null = New-Item -ItemType Directory -Path (Join-Path $i 'skills' 'a') -Force
         $null = New-Item -ItemType Directory -Path (Join-Path $i 'hooks') -Force
         [IO.File]::WriteAllText((Join-Path $i 'skills' 'a' 'SKILL.md'), "line one`nline two`n")
         [IO.File]::WriteAllText((Join-Path $i 'hooks' 'h.sh'), "#!/usr/bin/env bash`necho hi`n")
         [IO.File]::WriteAllText((Join-Path $i 'plugin.json'), "{`n  `"version`": `"0.7.0`"`n}`n")
         try {
-            $viaDrive = "Temp:\$leaf"
+            $viaDrive = Join-Path 'Temp:' $leaf
             $rp = Resolve-Path -LiteralPath $viaDrive
             $rp.Path | Should -Not -Be $rp.ProviderPath -Because 'this row only means something while .Path and .ProviderPath differ - if they ever stop differing it is proving nothing'
 
@@ -368,7 +368,7 @@ Describe 'check-plugin-drift.ps1' {
             $short = $fso.GetFolder($i).ShortPath
         } catch { $short = $null }
         if (-not $short -or $short -eq $i) {
-            Set-ItResult -Skipped -Because "8.3 short-name generation is not available for $i, so the divergence this row pins cannot be constructed here"
+            Set-ItResult -Skipped -Because "APPROVED:FsFeature:8dot3-names: 8.3 short-name generation is not available for $i, so the divergence this row pins cannot be constructed here"
             return
         }
         $short.Length | Should -BeLessThan $i.Length -Because 'the fixture is only meaningful while the short and long forms differ'

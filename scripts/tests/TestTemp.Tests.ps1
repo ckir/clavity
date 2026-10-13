@@ -49,12 +49,12 @@ Describe 'the shared test temp root' {
         (Get-Item $victim).LastWriteTime = (Get-Date).AddHours(-99)
         $savedRoot = $env:CLAVITY_TEST_TEMP_ROOT
         try {
-            $linkRoot = Join-Path $TestDrive 'link-root'; New-Item -ItemType Junction -Path $linkRoot -Target $target | Out-Null
+            $linkRoot = Join-Path $TestDrive 'link-root'; New-TestDirectoryLink -Path $linkRoot -Target $target | Out-Null
             $env:CLAVITY_TEST_TEMP_ROOT = $linkRoot
             Invoke-TestTempSweep -MaxAgeHours 24
             Test-Path $victim | Should -BeTrue -Because 'a junction root must not be swept'
         } finally { $env:CLAVITY_TEST_TEMP_ROOT = $savedRoot }
-        $kid = Join-Path (Get-TestTempRoot) 'kid-link'; New-Item -ItemType Junction -Path $kid -Target $target | Out-Null
+        $kid = Join-Path (Get-TestTempRoot) 'kid-link'; New-TestDirectoryLink -Path $kid -Target $target | Out-Null
         (Get-Item $kid -Force).LastWriteTime = (Get-Date).AddHours(-99)
         Invoke-TestTempSweep -MaxAgeHours 24
         Test-Path $victim | Should -BeTrue -Because 'Remove-Item on a child junction must delete the link, not the target'
@@ -71,12 +71,19 @@ Describe 'the shared test temp root' {
         $held = Join-Path $locked 'held.txt'; 'x' | Set-Content $held
         $free = Join-Path $root 'free-child'; New-Item -ItemType Directory $free | Out-Null
         foreach ($d in $locked, $free) { (Get-Item $d).LastWriteTime = (Get-Date).AddHours(-99) }
-        $fs = [IO.File]::Open($held, 'Open', 'Read', 'None')   # exclusive handle: Windows cannot delete it, so the sweep's Remove-Item fails on this child
+        if ((-not $IsWindows) -and ((& id -u) -eq '0')) {
+            Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: root is not bound by directory permissions'
+            return
+        }
+        # Windows: an exclusive handle, so the sweep's Remove-Item fails on this child. Elsewhere: an unwritable
+        # directory, which makes held.txt undeletable.
+        $fs = $null
+        if ($IsWindows) { $fs = [IO.File]::Open($held, 'Open', 'Read', 'None') } else { & chmod 555 $locked }
         try {
             { Invoke-TestTempSweep -MaxAgeHours 24 } | Should -Not -Throw
             Test-Path $held | Should -BeTrue -Because 'the locked child must survive (proves the delete really failed)'
             Test-Path $free | Should -BeFalse -Because 'one undeletable child must not stop the sweep reaching the others'
-        } finally { $fs.Dispose() }
+        } finally { if ($IsWindows) { $fs.Dispose() } else { & chmod 755 $locked } }
     }
 }
 Describe 'the once-per-run sweep flag' {

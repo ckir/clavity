@@ -1125,7 +1125,7 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
                 foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
                 Set-Content -LiteralPath (Join-Path $d 'seed/a.md') -Value 'hello' -Encoding ascii
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'seed/sub') | Out-Null
-                cmd /c mklink /J "$(Join-Path $d 'seed\sub\loop')" "$(Join-Path $d 'seed')" | Out-Null
+                New-TestDirectoryLink -Path (Join-Path $d 'seed/sub/loop') -Target (Join-Path $d 'seed') | Out-Null
                 # A junction needs no elevation, but if the filesystem ever refuses one this row would pass
                 # vacuously against a walk that never met a cycle. Fail loudly instead.
                 (Test-Path -LiteralPath (Join-Path $d 'seed/sub/loop')) |
@@ -1139,7 +1139,8 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
                 # REMOVE THE LINK ITSELF FIRST. A recursive delete that follows a junction deletes the
                 # TARGET's contents, and the target here is the fixture's own seed/ - rmdir removes the
                 # reparse point without touching what it points at.
-                cmd /c rmdir "$(Join-Path $d 'seed\sub\loop')" 2>&1 | Out-Null
+                if ($IsWindows) { cmd /c rmdir "$(Join-Path $d 'seed\sub\loop')" 2>&1 | Out-Null }
+                else { Remove-Item -LiteralPath (Join-Path $d 'seed/sub/loop') -Force -ErrorAction SilentlyContinue }
                 Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue
             }
         }
@@ -1164,7 +1165,7 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
                 Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
                 foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
                 Set-Content -LiteralPath (Join-Path $d 'commonmemory/shared.md') -Value 'shared' -Encoding ascii
-                cmd /c mklink /J "$(Join-Path $d 'seed\alias')" "$(Join-Path $d 'commonmemory')" | Out-Null
+                New-TestDirectoryLink -Path (Join-Path $d 'seed/alias') -Target (Join-Path $d 'commonmemory') | Out-Null
                 (Test-Path -LiteralPath (Join-Path $d 'seed/alias')) |
                     Should -BeTrue -Because 'the fixture needs a REAL junction or this row proves nothing'
 
@@ -1175,7 +1176,8 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
                 $corpus | Should -Not -Contain 'seed/alias/shared.md' -Because 'the alias must not displace the canonical path, whichever root is walked first'
             } finally {
                 # Remove the LINK first: a recursive delete that follows a junction deletes the TARGET.
-                cmd /c rmdir "$(Join-Path $d 'seed\alias')" 2>&1 | Out-Null
+                if ($IsWindows) { cmd /c rmdir "$(Join-Path $d 'seed\alias')" 2>&1 | Out-Null }
+                else { Remove-Item -LiteralPath (Join-Path $d 'seed/alias') -Force -ErrorAction SilentlyContinue }
                 Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue
             }
         }
@@ -1444,7 +1446,7 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
             $short = $null
             try { $short = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($root).ShortPath } catch { $short = $null }
             if (-not $short -or $short -eq $root) {
-                Set-ItResult -Skipped -Because '8.3 short-name generation is disabled on this volume, so the state under test is unreachable here'
+                Set-ItResult -Skipped -Because 'APPROVED:FsFeature:8dot3-names: 8.3 short-name generation is disabled on this volume, so the state under test is unreachable here'
             }
             $short | Should -Not -Be $root
 
@@ -1481,13 +1483,13 @@ Describe 'ConvertTo-GateRepoRoot (ROADMAP §42)' {
         ConvertTo-GateRepoRoot 'C:\repo'    | Should -BeExactly 'C:\repo'
     }
 
-    It 'walks the drive root, not the cwd, when the root IS a drive root' -Skip:(-not $IsWindows) {
+    It 'walks the drive root, not the cwd, when the root IS a drive root' -Skip:(-not $IsWindows) -Tag 'WindowsOnly' {
         $letter = $null
         foreach ($l in 'Q'..'Z') {
             if (-not (Test-Path "${l}:\")) { $letter = $l; break }
         }
         if (-not $letter) {
-            Set-ItResult -Skipped -Because 'no free drive letter'
+            Set-ItResult -Skipped -Because 'APPROVED:FsFeature:free-drive-letter: no free drive letter'
             return
         }
         $tree = New-TestTempPath 'gate-driveroot'
