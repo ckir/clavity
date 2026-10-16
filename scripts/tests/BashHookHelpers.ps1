@@ -190,14 +190,17 @@ function Invoke-JobCountedBash {
         # PATH and MSYSTEM AS GIT'S LAUNCHER SETS THEM. Started directly, usr\bin\bash.exe does not put /mingw64/bin
         # on PATH: MEASURED 2026-10-05 (agy panel R3) in a clean environment it resolved NO git at all, so every git
         # call in a hook would fail and the hook degrade silently - a count of nothing. The launcher (how hooks
-        # really run) puts /mingw64/bin:/usr/bin first; so does this.
+        # really run) puts the real git's directory and /usr/bin first; so does this. Git for Windows 2.56 moved git.exe from
+        # /mingw64/bin to /ucrt64/bin (MEASURED on the runner 2026-10-16: mingw64 absent, `command -v git` with /mingw64/bin first
+        # gave /cmd/git, the launcher, which starts the real git as a child = ONE EXTRA PROCESS per git call). Both are listed, the
+        # absent one is harmless in a PATH, and the test is a builtin - no process.
         # core.fsmonitor OFF for the hook's git calls (capstone R6 HB1, owner ruling 2026-10-06, agreed with agy): with
         # it on, `git status` starts git's fsmonitor daemon INSIDE the job and the drain below waited 30 s and threw
         # (MEASURED). A real user pays that daemon once per repo, not once per hook call, so it is not the hook's cost.
         # Env config outranks system/global/local config, and this reaches the hook's process only. APPENDED after any
         # GIT_CONFIG_* the caller passed through -Env, never over it (capstone R7, owner ruling): the last entry wins, so
         # fsmonitor stays off, and the caller's own entries still reach the hook. Builtins only - no process.
-        $boot = "while [ ! -e $(& $sq $go) ]; do :; done; _gcn=`${GIT_CONFIG_COUNT:-0}; export `"GIT_CONFIG_KEY_`$_gcn=core.fsmonitor`" `"GIT_CONFIG_VALUE_`$_gcn=false`" GIT_CONFIG_COUNT=`$((_gcn + 1)); export MSYSTEM=MINGW64 PATH=/mingw64/bin:/usr/bin:`$PATH; exec `"`$BASH`" $(& $sq ($ScriptPath -replace '\\', '/')) $argStr < $(& $sq ($payloadFile -replace '\\', '/'))"
+        $boot = "while [ ! -e $(& $sq $go) ]; do :; done; _gcn=`${GIT_CONFIG_COUNT:-0}; export `"GIT_CONFIG_KEY_`$_gcn=core.fsmonitor`" `"GIT_CONFIG_VALUE_`$_gcn=false`" GIT_CONFIG_COUNT=`$((_gcn + 1)); export MSYSTEM=MINGW64 PATH=/ucrt64/bin:/mingw64/bin:/usr/bin:`$PATH; exec `"`$BASH`" $(& $sq ($ScriptPath -replace '\\', '/')) $argStr < $(& $sq ($payloadFile -replace '\\', '/'))"
         $psi = [Diagnostics.ProcessStartInfo]::new($Bash)
         $psi.ArgumentList.Add('-c'); $psi.ArgumentList.Add($boot)
         $psi.UseShellExecute = $false

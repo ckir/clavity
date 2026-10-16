@@ -236,7 +236,7 @@ Describe 'BashHookHelpers (harness validation)' {
         It 'resolves the real git a hook gets under Git''s launcher, even from a bare PATH and no MSYSTEM' {
             # agy panel R3: without the launcher's PATH setup a hook found no git and degraded silently.
             $r = Measure-BashHookProcesses -HookPath $script:whichGit -Env @{ MSYSTEM = $null; PATH = 'C:\Windows\System32' }
-            $r.StdOut | Should -BeExactly '/mingw64/bin/git'
+            $r.StdOut | Should -BeIn @('/ucrt64/bin/git', '/mingw64/bin/git') -Because 'Git for Windows 2.56 moved git.exe to /ucrt64/bin; /cmd/git is the launcher and costs an extra process'
         }
     }
 }
