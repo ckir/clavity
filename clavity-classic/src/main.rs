@@ -45,8 +45,7 @@ const MASTER_AGENT: &str = "claude";
 #[command(
     name = "clavity",
     version,
-    about = "Remote control for a live Antigravity (agy) session in the same folder.",
-    args_conflicts_with_subcommands = true
+    about = "Remote control for a live Antigravity (agy) session in the same folder."
 )]
 struct Cli {
     /// psmux session name (overrides $AGY_SESSION; default "claude_agy")
@@ -1050,5 +1049,22 @@ mod tests {
     fn global_session_flag_parses() {
         let c = parse(&["clavity", "--session", "foo", "state"]);
         assert_eq!(c.session.as_deref(), Some("foo"));
+        assert!(matches!(c.cmd, Some(Cmd::State)));
+        assert!(c.start_args.is_empty());
+    }
+
+    #[test]
+    fn session_flag_before_a_subcommand_with_args() {
+        let c = parse(&["clavity", "--session=foo", "req-id", "hi"]);
+        assert_eq!(c.session.as_deref(), Some("foo"));
+        assert!(matches!(c.cmd, Some(Cmd::ReqId { .. })));
+    }
+
+    #[test]
+    fn session_flag_before_a_start_folder_still_routes_to_start() {
+        let c = parse(&["clavity", "--session", "foo", "C:/x", "-c"]);
+        assert_eq!(c.session.as_deref(), Some("foo"));
+        assert!(c.cmd.is_none());
+        assert_eq!(c.start_args, vec!["C:/x".to_string(), "-c".to_string()]);
     }
 }
