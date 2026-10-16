@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>clavity User Guide</title>
+<style>
+@page { size: A4; margin: 18mm 16mm; }
+body { font: 10.5pt/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color:#1b1f24; }
+h1 { font-size: 24pt; margin: 0 0 4pt; } h2 { font-size: 16pt; border-bottom: 1px solid #d0d7de; padding-bottom: 3pt; margin-top: 22pt; break-after: avoid; }
+h3 { font-size: 12.5pt; margin-top: 14pt; break-after: avoid; }
+pre { background:#f6f8fa; border:1px solid #d0d7de; border-radius:5px; padding:8pt 10pt; font: 9pt/1.4 "DejaVu Sans Mono", Menlo, Consolas, monospace; white-space: pre-wrap; word-wrap: break-word; break-inside: avoid; }
+code { font: 9.5pt "DejaVu Sans Mono", Menlo, Consolas, monospace; background:#f6f8fa; padding:1pt 3pt; border-radius:3px; } pre code { background:none; padding:0; }
+table { border-collapse: collapse; width:100%; margin: 8pt 0; break-inside: avoid; } th,td { border:1px solid #d0d7de; padding:4pt 7pt; text-align:left; vertical-align:top; } th { background:#f6f8fa; }
+.output::before { content:"Output"; display:block; font:600 8pt sans-serif; color:#57606a; margin-bottom:3pt; }
+.output { background:#fff; border-left:3px solid #2da44e; }
+.note { border-left:3px solid #0969da; background:#ddf4ff; padding:6pt 10pt; margin:8pt 0; break-inside: avoid; }
+.warn { border-left:3px solid #bf8700; background:#fff8c5; padding:6pt 10pt; margin:8pt 0; break-inside: avoid; }
+.cover { padding: 60mm 0 20mm; break-after: page; } .cover .sub { color:#57606a; font-size:13pt; }
+nav.toc { break-after: page; } nav.toc ol { line-height:1.9; }
+a { color:#0969da; text-decoration:none; }
+.tag { font: 600 7.5pt sans-serif; padding: 1pt 5pt; border-radius: 8pt; vertical-align: middle; margin-left: 6pt; }
+.ran { background:#dafbe1; color:#116329; } .ill { background:#fff8c5; color:#7d4e00; }
+</style></head><body>
+
+<section class="cover"><h1>clavity</h1>
+<div class="sub">User Guide &middot; release clavity-v26 (dotnet 0.12.0, classic 0.10.1, agy-autotrain 0.7.1, review-relay 0.3.1, commonmemory 0.4.1) &middot; 2026-10-16</div>
+<p style="margin-top:30pt;color:#57606a">Pair Claude Code with a live Antigravity (<code>agy</code>) peer, and keep the pairing sharp.<br>
+Each example is tagged <span class="tag ran">ran</span> (executed while writing this guide) or <span class="tag ill">illustrative</span> (needs a signed-in agy, a network or your Claude Code settings, so it was derived from the docs and source and not run).</p></section>
+
+<nav class="toc"><h2>Contents</h2><ol>
+<li><a href="#overview">Overview: which product do I need?</a></li>
+<li><a href="#install">Installation</a></li>
+<li><a href="#quickstart">Quick start</a></li>
+<li><a href="#concepts">Core concepts</a></li>
+<li><a href="#dotnet">clavity-dotnet in depth</a></li>
+<li><a href="#classic">clavity-classic in depth</a></li>
+<li><a href="#disciplines">The review disciplines (skills)</a></li>
+<li><a href="#autotrain">agy-autotrain: teaching the loop</a></li>
+<li><a href="#commonmemory">commonmemory: a shared notebook</a></li>
+<li><a href="#relay">review-relay: web-model review rounds</a></li>
+<li><a href="#config">Configuration reference</a></li>
+<li><a href="#trouble">Troubleshooting</a></li>
+<li><a href="#appendix">Appendix: command quick reference</a></li>
+</ol></nav>
+
+<h2 id="overview">1. Overview: which product do I need?</h2>
+<p>clavity is an umbrella of five independent products. They all revolve around one idea: Claude Code is the <b>driver</b> (implements, verifies) and <code>agy</code>, Google's Antigravity CLI, is a live <b>peer</b> (reviews, recommends). You install only what you need.</p>
+<table>
+<tr><th>Product</th><th>What it gives you</th><th>Install</th></tr>
+<tr><td><b>clavity-dotnet</b> (primary)</td><td>Three MCP tools (<code>agy_look</code>, <code>agy_status</code>, <code>agy_ask</code>) plus the review-discipline skills. Cross-platform, .NET 10.</td><td><code>claude plugin install clavity@clavity</code></td></tr>
+<tr><td><b>clavity-classic</b> (failover)</td><td>A Rust CLI, <code>clavity</code>, that drives agy through a psmux/tmux "doorbell" and the agentmemory bus. Windows verified; Linux compiles.</td><td>Windows installer, or <code>cargo build --release</code></td></tr>
+<tr><td><b>agy-autotrain</b></td><td>Opt-in learning loop: capture what you learn about agy, curate it, inject it into future asks.</td><td><code>claude plugin install agy-autotrain@clavity</code></td></tr>
+<tr><td><b>commonmemory</b></td><td>A convention so Claude and agy tag and recall shared <code>[common]</code> notes.</td><td><code>claude plugin install commonmemory@clavity</code></td></tr>
+<tr><td><b>review-relay</b></td><td>Copy-paste review rounds with web AI models (ChatGPT, Gemini, Meta AI, ...).</td><td><code>claude plugin install review-relay@clavity</code></td></tr>
+</table>
+<div class="warn"><b>dotnet and classic are mutually exclusive.</b> Pick exactly one driver. The classic installer will not co-install with clavity-dotnet. agy-autotrain, commonmemory and review-relay work alongside either.</div>
+<p><b>The intended workflow</b> (from the project README) is: install <a href="https://github.com/obra/superpowers">superpowers</a>, start with <code>/brainstorming</code>, and let the disciplines run. The design document is reviewed by an adversarial panel via agy, then the implementation plan gets the same treatment, then you implement, then <code>agy-capstone</code> reviews the committed code and <code>agy-test-audit</code> hardens the tests. Any step can be waived by saying so ("Waive agy for this step", or "Waive agy for this and use subagents" if agy is down or out of quota).</p>
+<p>The licence is PolyForm Noncommercial 1.0.0: free for personal, academic and non-profit use.</p>
+
+<h2 id="install">2. Installation</h2>
+<h3>2.1 Prerequisites</h3>
+<table>
+<tr><th>You need</th><th>For</th></tr>
+<tr><td>Claude Code and/or <code>agy</code> (Antigravity) installed and signed in</td><td>everything</td></tr>
+<tr><td>superpowers plugin</td><td>auto-firing of the disciplines (without it they stay manually invokable)</td></tr>
+<tr><td>.NET 10 SDK</td><td>only to build clavity-dotnet from source</td></tr>
+<tr><td><code>cargo</code> (Rust), <code>tmux</code>/<code>psmux</code></td><td>clavity-classic from source</td></tr>
+<tr><td><a href="https://www.npmjs.com/package/@agentmemory/agentmemory">@agentmemory/agentmemory</a> MCP server in <i>both</i> Claude and agy</td><td>clavity-classic (required), commonmemory (required)</td></tr>
+<tr><td>PowerShell 7 (<code>pwsh</code>)</td><td>review-relay scripts</td></tr>
+</table>
+
+<h3>2.2 Plugins (dotnet, autotrain, commonmemory, review-relay) <span class="tag ill">illustrative</span></h3>
+<pre><code>claude plugin marketplace add ckir/clavity
+claude plugin install clavity@clavity          # clavity-dotnet
+claude plugin install agy-autotrain@clavity
+claude plugin install commonmemory@clavity
+claude plugin install review-relay@clavity</code></pre>
+<p>clavity-dotnet does not bundle its <code>clavity-ls</code> binary. A SessionStart hook fetches the one matching your platform (win-x64, linux-x64, osx-arm64, osx-x64) from the matching <code>clavity-v&lt;N&gt;</code> GitHub release the first time a session starts. It is checksum-verified when a <code>.sha256</code> asset exists. If the fetch fails (offline, rate-limited) the session start message tells you where to place the binary by hand.</p>
+<p>To remove a plugin: <code>claude plugin uninstall clavity@clavity</code> (likewise for the others).</p>
+
+<h3>2.3 clavity-dotnet from source <span class="tag ran">ran</span></h3>
+<p>Run from <code>clavity-dotnet/</code>. This is the same single-file publish the release workflow uses, for <code>linux-x64</code>:</p>
+<pre><code>dotnet publish src/Clavity.Cli -c Release -r linux-x64 --self-contained true \
+  -p:PublishSingleFile=true -o ./publish
+./publish/clavity-ls --version</code></pre>
+<pre class="output raw"><code>clavity-ls 1.0.0+7c69e369</code></pre>
+<p>(The suffix is the commit the binary was built from.)</p>
+
+<h3>2.4 clavity-classic <span class="tag ran">ran</span></h3>
+<p>On Windows, download <code>clavity-classic-setup-&lt;version&gt;.exe</code> and its <code>.sha256</code> from the latest <code>clavity-v&lt;N&gt;</code> release (unsigned: SmartScreen will warn, choose More info, then Run anyway). From source, run in <code>clavity-classic/</code>:</p>
+<pre><code>cargo build --release
+cp target/release/clavity ~/.local/bin/        # any directory on PATH
+clavity --version</code></pre>
+<pre class="output raw"><code>clavity 0.10.1</code></pre>
+<p>Then do the one-time wiring in <a href="#classic">section 6</a>: register agentmemory in both agents and give agy its trigger rule.</p>
+
+<h2 id="quickstart">3. Quick start</h2>
+<h3>3.1 clavity-dotnet: pair Claude with agy in a folder <span class="tag ill">illustrative</span></h3>
+<pre><code>clavity-ls start ~/projects/myapp</code></pre>
+<p>This opens a visible agy tab in that folder, waits until agy has paired, then launches Claude Code in the foreground. After 10 seconds without a pairing it reminds you to look at agy's tab (it may be asking you to trust the folder). Ctrl+C aborts. In a folder neither tool has seen before, <b>both</b> ask you to trust it, each in its own window; if you do not answer agy's, it never pairs.</p>
+<p>Inside Claude Code you do not call anything by hand. Ask in plain language, for example <i>"get agy's second opinion on this design"</i>, and Claude uses the <code>agy_ask</code> tool.</p>
+
+<h3>3.2 clavity-classic: the same, over psmux <span class="tag ill">illustrative</span></h3>
+<pre><code>clavity C:\projects\myapp          # bare folder = start
+clavity -c                         # current folder, forwards -c (continue) to claude</code></pre>
+<p>The folder must be the <b>first</b> argument. A leading flag means "current folder" and everything is forwarded to <code>claude</code>, so write <code>clavity C:\proj --resume</code>, not <code>clavity --resume C:\proj</code>.</p>
+
+<h2 id="concepts">4. Core concepts</h2>
+<ul>
+<li><b>Driver and peer.</b> Claude drives, agy peers. A review is advisory: Claude verifies every finding against the real code before folding it in, and verifies the peer's <i>suggested fix</i> too.</li>
+<li><b>Two transports, one idea.</b> dotnet talks to agy's local Language Server over gRPC and exposes it as MCP tools. classic types a short "doorbell" into agy's terminal (psmux <code>send-keys</code>) and moves the real payload over the agentmemory signal bus.</li>
+<li><b><code>agy_ask</code> / <code>clavity ask</code> is a write.</b> It consumes agy quota and posts a visible message in agy's tab. Use look/status/capture to observe for free.</li>
+<li><b>Golden header.</b> Curated agy-driving wisdom that the driver binary prepends to every ask automatically (see <a href="#autotrain">section 8</a>). Never prepend it yourself.</li>
+<li><b>Disciplines.</b> Skills that gate decisions and completion: agy-first, adversarial-panel-review, agy-capstone, agy-test-audit.</li>
+</ul>
+<div class="warn"><b>Running economically.</b> Every turn re-reads the whole context, so a review fired at the end of a long session costs several times what it does fresh (the project measured about 9x the tokens read for identical work). Habits, in order of payoff: (1) implement and commit in one session, then <code>/compact</code> or open a fresh chat and say <i>"run agy-capstone on &lt;range&gt;"</i>; (2) match the ceremony to the stakes; (3) when you notice a missing test while implementing, just ask for it then. Check <code>/usage</code> before a long review.</div>
+
+<h2 id="dotnet">5. clavity-dotnet in depth</h2>
+<h3>5.1 The MCP tools <span class="tag ran">ran</span></h3>
+<p>Claude starts <code>clavity-ls --mcp</code> itself (via the plugin's <code>.mcp.json</code>); you never run it by hand. To see what it exposes, speak MCP to it over stdio. This drives the real binary (no agy is running here, which is why the status is a failure state):</p>
+<pre><code>{"jsonrpc":"2.0","id":2,"method":"tools/list"}</code></pre>
+<pre class="output raw"><code>agy_status | Report whether the active agy conversation is idle, working, or unknown (pre-fire check), plus cascade id and step count. | arguments: none
+agy_look   | Look at the active agy conversation's cascade trajectory as a size-bounded JSON summary (no verbose ids). | arguments: none
+agy_ask    | Send a message to the active agy conversation and return agy's reply (size-bounded JSON) once the conversation goes idle. WRITE: consumes quota and po... | arguments: message (required), discipline, artifactPath</code></pre>
+<p>(Output is the tool list reformatted one tool per line, descriptions cut at 150 characters.)</p>
+
+<h3>5.2 Reading the results <span class="tag ran">ran</span></h3>
+<p><b>No agy to talk to.</b> <code>agy_status</code> called with no paired agy:</p>
+<pre class="output raw"><code>{"CascadeId":"","TotalSteps":0,"State":"channel_down","LastStepKind":0,"Diagnostic":{"StatusCode":"LsDiscovery","Detail":"agy Language Server not reachable within 00:00:10 via &lt;scratch&gt;/home/.gemini/antigravity-cli/cli.log; the agy session is still starting or has exited."},"Hint":"clavity-ls -&gt; agy channel call failed ([LsDiscovery] agy Language Server not reachable within 00:00:10 via ..."}</code></pre>
+<p>(The <code>Hint</code> text is cut here; it continues with advice to check agy's session.)</p>
+<p>Fix: start agy with <code>clavity-ls start &lt;folder&gt;</code>, or wait for it if it is still starting.</p>
+<p><b>A malformed call</b> is refused before anything reaches agy:</p>
+<pre><code>{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"agy_ask","arguments":{"payload":"hi"}}}</code></pre>
+<pre class="output raw"><code>agy_ask: missing required argument 'message'; unknown argument 'payload'. The arguments are: message (required), artifactPath, discipline. Argument names are case-sensitive.</code></pre>
+<table>
+<tr><th>Result</th><th>Meaning and what to do</th></tr>
+<tr><td><code>waiting_for_human</code></td><td>agy is up but has no conversation yet. Start one in its tab. Do not loop-retry.</td></tr>
+<tr><td><code>possible_modal</code></td><td>Idle-wait timed out. agy may be stuck on a modal (auth, quota, consent) <i>or</i> the turn is just long. Compare <code>TotalSteps</code> before and after: if it moved, wait.</td></tr>
+<tr><td><code>Answer: null</code></td><td>Not an error. agy ended its turn on a tool step; read the last assistant step in <code>Activity</code>.</td></tr>
+<tr><td><code>[PEER QUOTA STOP]</code></td><td>agy ran out of quota during this ask. Wait for the reset it names; retrying early has pushed the reset further out.</td></tr>
+<tr><td><code>model_unavailable</code></td><td>The conversation's model is deprecated. Send a message in agy's tab with the model you want.</td></tr>
+</table>
+
+<h3>5.3 Launching on Linux and macOS <span class="tag ill">illustrative</span></h3>
+<p><code>start</code> opens agy as a new tab in the terminal you ran it from (mate-terminal, gnome-terminal, konsole, xfce4-terminal), otherwise <code>xdg-terminal-exec</code> or <code>x-terminal-emulator</code>. Set <code>CLAVITY_TERMINAL</code> to choose one. With no display (ssh, say), split it in two:</p>
+<pre><code># terminal 1: run agy here
+clavity-ls agy ~/projects/myapp
+# terminal 2: pair Claude with it (add the session id agy printed if several wait in that folder)
+clavity-ls start ~/projects/myapp --attach
+clavity-ls start ~/projects/myapp --attach 7f3a9c</code></pre>
+<p>Each agy accepts one Claude; a second <code>--attach</code> to the same agy is refused.</p>
+
+<h3>5.4 install, uninstall, is-installed <span class="tag ran">ran</span></h3>
+<p>The normal path is <code>claude plugin install</code>. <code>clavity-ls install</code> is the manual route that registers a plugin with every detected agent. It refuses while Claude Code is running, because a running Claude overwrites the registration. This was run from inside a Claude Code session:</p>
+<pre><code>clavity-ls install
+echo "exit=$?"
+clavity-ls is-installed clavity
+echo "exit=$?"</code></pre>
+<pre class="output raw"><code>clavity-ls: Claude Code is running — close Claude Code completely, then re-run. A running Claude overwrites the plugin registration (leaving the bridge unregistered).
+exit=5
+clavity is not installed
+exit=1</code></pre>
+<p><code>uninstall [--purge-data]</code> behaves the same way (exit 5 while Claude runs); <code>--purge-data</code> also deletes the per-session logs and the golden-header directory.</p>
+
+<h2 id="classic">6. clavity-classic in depth</h2>
+<h3>6.1 One-time wiring <span class="tag ill">illustrative</span></h3>
+<ol>
+<li><b>agentmemory in both agents.</b> The same MCP server, the same daemon (default <code>:3111</code>). For Claude Code: <code>claude mcp add agentmemory -s user -- npx -y @agentmemory/agentmemory mcp</code>. Do the equivalent in agy's MCP config. Nothing works without it.</li>
+<li><b>agy's trigger rule.</b> Put the rule from <code>clavity-classic/plugin/README.md</code> ("agy's responder trigger") into <code>~/.gemini/GEMINI.md</code>. <code>clavity start</code> installs and refreshes the responder skill on every launch, but agy will not fire it without that pointer.</li>
+<li><b>Esc responsiveness (optional).</b> Add <code>set -g escape-time 10</code> and <code>set -s escape-time 10</code> to <code>~/.tmux.conf</code>; the binary now sets this itself on session creation.</li>
+</ol>
+<p>First launch opens a visible watch tab (Windows Terminal) so you can answer agy's login prompts; disable with <code>AGY_WATCH=0</code>. Detach with <code>Ctrl-b d</code> to hide it; <b>closing</b> the tab tears the session down.</p>
+
+<h3>6.2 Preflight: doctor and info <span class="tag ran">ran</span></h3>
+<pre><code>clavity doctor
+clavity info</code></pre>
+<pre class="output raw"><code>[ ok ]  tmux/psmux  /usr/bin/tmux
+[ ok ]  claude      /home/user/.local/bin/claude
+[ ok ]  agy         /home/user/.local/bin/agy
+[warn]  session     'claude_agy' = dead (start one with `clavity start &lt;folder&gt;`)
+[ -- ]  golden-hdr  none (&lt;scratch&gt;/home/.clavity)
+
+os             = unix
+agy_shell      = bash
+session        = claude_agy
+tmux_bin       = tmux
+doorbell       = claudavity: check your inbox and act on any request from claude, then reply on the bus.
+idle_marker    = ? for shortcuts
+busy_marker    = esc to cancel
+agy_start_args = --dangerously-skip-permissions</code></pre>
+<p><code>dead</code> only means no session exists yet. Both commands exit 0.</p>
+
+<h3>6.3 Observing agy: state, capture, wait-idle <span class="tag ran">ran</span></h3>
+<p>These read agy's pane and are free. State is decided by footer text: <code>? for shortcuts</code> means idle, <code>esc to cancel</code> means busy. To demo without a real agy, a tmux session named <code>claude_agy</code> was started with a pane that prints each footer:</p>
+<pre><code>tmux new-session -d -s claude_agy 'printf "agy&gt; working on it\n\n  ? for shortcuts\n"; sleep 600'
+clavity state
+clavity wait-idle --timeout 3
+clavity capture --viewport</code></pre>
+<pre class="output raw"><code>idle
+idle
+agy&gt; working on it
+
+  ? for shortcuts</code></pre>
+<p>(Assembled from three real runs. <code>capture --viewport</code> also printed blank lines down to the bottom of the pane, omitted here.)</p>
+<p>With the busy footer instead (<code>esc to cancel</code>):</p>
+<pre><code>clavity state; clavity wait-idle --timeout 2; echo "exit=$?"
+clavity cancel</code></pre>
+<pre class="output raw"><code>busy
+timeout
+exit=1
+cancel sent (Escape) to 'claude_agy'</code></pre>
+<table>
+<tr><th>Exit code</th><th><code>wait-idle</code></th></tr>
+<tr><td>0</td><td>idle (prints <code>idle</code>)</td></tr>
+<tr><td>1</td><td>timeout (prints <code>timeout</code>)</td></tr>
+<tr><td>2</td><td>the session is gone</td></tr>
+</table>
+<p>Note that <code>capture --lines N</code> counts physical pane lines, trailing blanks included, so on a short pane it may return only blank lines. Use <code>--viewport</code> or a larger N.</p>
+
+<h3>6.4 Asking agy: req-id, ask, ping <span class="tag ran">ran</span></h3>
+<p>You normally do not run these: Claude does, once it knows the protocol (<code>clavity-classic/docs/agy-remote-control-protocol.md</code>). They are shown here so you can test the plumbing. A real agentmemory daemon was not available, so a small local stub stood in for the daemon <i>and</i> for agy (it answers any request to <code>agy</code> with a fixed line). The real <code>clavity</code> binary was used unchanged, pointed at the stub with <code>AGENTMEMORY_URL</code>.</p>
+<pre><code>clavity req-id
+clavity req-id "refactor foo() to return Result"</code></pre>
+<pre class="output raw"><code>req-dm5wpbpoo8v7
+[req_id=req-dm5wpbps1bhj] refactor foo() to return Result</code></pre>
+<pre><code>export AGENTMEMORY_URL=http://127.0.0.1:3199
+clavity ask --no-ring "refactor foo() to return Result"</code></pre>
+<pre class="output raw"><code> INFO sent req-dm5wppo29rwm to agy (signal sig_1, thread Some("thr_1"))
+[req_id=req-dm5wppo29rwm] (stub agy) received: 57 chars. No blockers.
+
+[driver_guidance]
+Driving the agy peer - TACTICAL reminders only (tendencies; verify against the live peer). NOTHING HERE IS A SAFETY BOUNDARY, ...
+</code></pre>
+<p>The guidance block continues for several more long bullet lines, omitted here (output trimmed to whole lines).</p>
+<p>The reply line is on stdout, diagnostics on stderr. The <code>[driver_guidance]</code> block is printed on the <b>first</b> ask of a session only. The next ask in the same session, with <code>--review-only</code>, which prepends the "no edits, verdict only" banner:</p>
+<pre><code>clavity ask --no-ring --review-only "review src/foo.rs vs the spec; verdict only, no edits"</code></pre>
+<pre class="output raw"><code> INFO sent req-dm5wppo7r5fw to agy (signal sig_3, thread Some("thr_3"))
+[req_id=req-dm5wppo7r5fw] (stub agy) received: 328 chars. No blockers.</code></pre>
+<p>The 328 chars against 57 for the same-size instruction shows the banner being added. <code>ping</code> is the readiness gate: send <code>[ping]</code>, ring, wait for <code>READY</code>. Retry it after launch until it exits 0, because agy loads its MCP servers a few seconds after starting:</p>
+<pre><code>clavity ping --timeout 3</code></pre>
+<pre class="output raw"><code> INFO sent req-dm5wpyw9txf5 to agy (signal sig_9, thread Some("thr_9"))
+ WARN ring debounced: last doorbell 10ms ago &lt; min 2000ms (set AGY_RING_MIN_INTERVAL_MS=0 to disable)
+[req_id=req-dm5wpyw9txf5] READY</code></pre>
+<p>The debounce warning is a safety feature: rings closer together than 2 seconds are coalesced so a runaway loop cannot burn agy's quota.</p>
+
+<h3>6.5 When the plumbing is down <span class="tag ran">ran</span></h3>
+<pre><code>clavity ask --timeout 2 "hello"            # no daemon listening
+clavity await-reply --req-id req-nope --thread-id thr_x --timeout 2
+clavity wait-idle --timeout 1              # no session</code></pre>
+<pre class="output raw"><code>agentmemory daemon unreachable at http://127.0.0.1:3111: io: Connection refused (os error 111)
+timeout after 2s waiting for reply to req-nope
+session "claude_agy" is gone while waiting for idle</code></pre>
+<p>Their exit codes, in order, were 2, 1 and 2.</p>
+<p><code>ask</code> exits 0 on a reply, 1 on timeout, 2 when the daemon is unreachable. <code>ping</code> exits 3 when the ring fails because the session is gone. <code>await-reply</code> is for a request you sent yourself over the MCP bus; <code>--thread-id</code> is required so the read cannot consume unrelated inbox messages.</p>
+
+<h3>6.6 Other sessions, and stopping <span class="tag ran">ran</span></h3>
+<pre><code>clavity state --session other
+clavity stop
+clavity stop</code></pre>
+<pre class="output raw"><code>dead
+stopped session 'claude_agy'
+no session 'claude_agy' to stop</code></pre>
+<div class="note"><b><code>--session</code> goes before or after the subcommand.</b> <code>clavity --session other state</code>, <code>clavity --session=other state</code> and <code>clavity state --session other</code> all work (checked on the fixed build). Releases up to 0.10.1 misread the first form as "start in a folder named <code>state</code>" and failed with <code>folder not found</code>; on those, put the flag after the subcommand or set <code>AGY_SESSION</code>.</div>
+
+<h2 id="disciplines">7. The review disciplines (skills)</h2>
+<p>These ship with the dotnet and classic plugins. Each can be invoked by name in chat, or fired by a hook when superpowers is installed. Each consult is sent review-only: <code>agy_ask</code> with <code>discipline</code> and <code>artifactPath</code> on dotnet, <code>clavity ask --review-only</code> on classic. The driver then checks the reply quoted the last line of your artifact, which proves agy read to the end.</p>
+<table>
+<tr><th>Skill</th><th>Use it when</th><th>Say</th></tr>
+<tr><td><code>agy-first</code></td><td>You face a design, scope or sequencing fork. Claude consults agy, verifies its factual claims, then presents <b>both</b> agy's recommendation and its own. You decide.</td><td><i>"run agy-first on this fork"</i></td></tr>
+<tr><td><code>adversarial-panel-review</code></td><td>A spec or plan was just drafted or materially edited. Multiple expert "seats" each hunt a different defect class over one or more rounds.</td><td><i>"convene a panel review on docs/spec.md"</i> (add <code>--solo</code>/<code>--low</code> for one cheap pass)</td></tr>
+<tr><td><code>agy-capstone</code></td><td>Once, before declaring a plan or implementation done. Reviews the <b>committed code and tests</b>, round after round, until a round is green.</td><td><i>"run agy-capstone on main~5..HEAD"</i></td></tr>
+<tr><td><code>agy-test-audit</code></td><td>After the capstone passes. Asks "would the tests catch the next regression?" Each claimed gap is verified by measurement.</td><td><i>"run agy-test-audit"</i></td></tr>
+<tr><td><code>open-issues</code></td><td>Claude noticed a defect that is not the task at hand. It captures one line now; you triage later.</td><td><i>"start the triage"</i></td></tr>
+<tr><td><code>ls-driving</code> / <code>driving</code></td><td>Reference for how Claude drives agy: look vs ask, banner and phase rules. Loaded automatically.</td><td>-</td></tr>
+</table>
+<div class="note"><b>Waiving and silencing.</b> Say "Waive agy for this step" to run one step solo. <code>.no-agy</code> in the project root or in <code>~/.claude/</code> silences <b>every</b> discipline (there is deliberately no per-hook switch); treat it as a last resort. A capstone that stops at its round cap and is waived by you also counts as "gate passed", so <code>agy-test-audit</code> asks whether it was a real green.</div>
+<p><b>Hook ownership.</b> A discipline hook shipped by the plugin has exactly one owner: the plugin. If you registered your own hook of the same name in <code>settings.json</code>, remove that registration (the file may stay). Do not register hooks that run from <code>.clavity/</code>, the directory agy may write to; the startup check reports any that do.</p>
+
+<h2 id="autotrain">8. agy-autotrain: teaching the loop</h2>
+<p>The loop is capture, then curate, then verify, then compile. Capture happens through the <code>agy-learn</code> skill the moment you learn something general about agy; curation through <code>agy-curate</code>, which drains the inbox (<code>~/.clavity/agy-observations.md</code>) into the <b>GROWTH</b> region of the golden header and commits it with your driver's <code>curate-commit</code> verb. The shipped baseline (<b>SEED</b>) is never edited. It needs a driver (dotnet or classic) installed, otherwise nothing injects the header.</p>
+
+<h3>8.1 Capture and curate <span class="tag ill">illustrative</span></h3>
+<pre><code>claude plugin install agy-autotrain@clavity
+# in Claude, when you learn something general about agy:
+"capture that with agy-learn"
+# periodically, when the inbox has grown:
+"run agy-curate"</code></pre>
+
+<h3>8.2 What curate-commit writes <span class="tag ran">ran</span></h3>
+<p>The verb reads a compiled region on stdin and atomically writes it plus a SHA-256 sidecar into the golden-header directory (<code>CLAVITY_GOLDEN_HEADER</code>, default <code>~/.clavity</code>). You do not normally run it; <code>agy-curate</code> does after your approval.</p>
+<pre><code>export CLAVITY_GOLDEN_HEADER=/tmp/gh
+printf '## Learned\n- Name the oracle in every delegated task.\n' | clavity curate-commit
+ls /tmp/gh
+cat /tmp/gh/golden-header.growth.md.sha256
+sha256sum /tmp/gh/golden-header.growth.md</code></pre>
+<pre class="output raw"><code>golden-header.growth.md
+golden-header.growth.md.sha256
+3a155563fd2d31accb10aea1987b45c1bf9121d4ff32b499a8af9a4af745f39a
+3a155563fd2d31accb10aea1987b45c1bf9121d4ff32b499a8af9a4af745f39a  /tmp/gh/golden-header.growth.md</code></pre>
+
+<h3>8.3 Integrity check <span class="tag ran">ran</span></h3>
+<p><code>clavity doctor</code> reports the header state. After a second commit it reads <code>active</code>; after a hand edit it no longer matches its sidecar and is skipped rather than injected:</p>
+<pre><code>clavity doctor | tail -1
+echo tampered &gt;&gt; /tmp/gh/golden-header.growth.md
+clavity doctor | tail -2</code></pre>
+<pre class="output raw"><code>[ ok ]  golden-hdr  active (89 content bytes; seed sidecar absent, growth sidecar present) /tmp/gh
+clavity: golden-header region at /tmp/gh/golden-header.growth.md did not match its .sha256 sidecar — skipped
+[ -- ]  golden-hdr  none (/tmp/gh)</code></pre>
+<p>Never hand-edit the header or its sidecar; re-commit through <code>curate-commit</code>. The driver cheatsheet works the same way via <code>curate-commit --cheatsheet</code>, writing <code>driver-cheatsheet.growth.md</code> and its sidecar. Limits: 32 KiB per region (and combined), 16 KiB for the cheatsheet growth file; over-cap files are skipped with a stderr warning.</p>
+
+<h3>8.4 Snapshots and recovery <span class="tag ran">ran</span></h3>
+<p>The clavity-ls (dotnet) verb snapshots the previous region before overwriting, keeping the newest five. After two commits:</p>
+<pre class="output raw"><code>golden-header.growth.md
+golden-header.growth.md.42a75fc60dbe31.bak
+golden-header.growth.md.42a75fc60dbe31.bak.sha256
+golden-header.growth.md.sha256</code></pre>
+<p>To restore, copy back <b>both</b> the file and its sidecar, or the hashes mismatch and the region is silently dropped (PowerShell shown; use <code>ls -t</code> and <code>cp</code> on Linux):</p>
+<pre><code>$k = "$HOME\.clavity"
+Get-ChildItem "$k\golden-header.growth.md.*.bak" | Sort-Object LastWriteTime -Descending
+Copy-Item "$k\golden-header.growth.md.&lt;stamp&gt;.bak"        "$k\golden-header.growth.md"
+Copy-Item "$k\golden-header.growth.md.&lt;stamp&gt;.bak.sha256" "$k\golden-header.growth.md.sha256"</code></pre>
+<p>The observations inbox is restored the same way from <code>agy-observations.md.&lt;stamp&gt;.bak</code>; afterwards, delete from <code>## Pending</code> anything already present in GROWTH before the next drain. The classic <code>curate-commit</code> did not create a snapshot in the same two-commit test.</p>
+
+<h2 id="commonmemory">9. commonmemory: a shared notebook</h2>
+<p>Both agents already share one agentmemory store; this plugin adds the convention that makes it useful: tag notes <code>[common]</code> and recall them at task start. There is no binary and no MCP server of its own. <span class="tag ill">illustrative</span> (needs a live agentmemory daemon)</p>
+<pre><code># Save (handoff, decision, gotcha, fixed bug):
+[common] (myapp) — switched CSV export to UTC · Why: reports differed across zones · Status: done · Next: update docs
+
+# Recall, at the start of a task (the agent runs this tool call):
+memory_smart_search query="[common] myapp"</code></pre>
+<p>Installing the plugin makes the skill <i>available</i> but does not make either agent search on its own. Add one line to each agent's global instructions:</p>
+<ul>
+<li><b>agy</b>, in <code>~/.gemini/GEMINI.md</code> inside <code>&lt;user_rules&gt;</code>: <i>"At the start of a task, <code>memory_smart_search</code> for <code>[common] &lt;repo&gt;</code> notes (repo = the current repository name) and read them before acting."</i></li>
+<li><b>Claude</b>: the same sentence in your <code>CLAUDE.md</code>.</li>
+</ul>
+<p>Honour the newest note's <code>Status:</code> and ignore stale handoffs. From a clone, install into both CLIs: <code>claude plugin marketplace add ./commonmemory</code>, <code>claude plugin install commonmemory@clavity-commonmemory-dev</code>, <code>agy plugin install ./commonmemory</code>.</p>
+
+<h2 id="relay">10. review-relay: web-model review rounds</h2>
+<p>For when you want ChatGPT, Gemini, Meta AI or any other site to review a spec, plan or diff. Claude prepares each round; you carry the text and save the replies; Claude collects, verifies each finding against the real text, folds the true ones and starts the next round. Files live in the reviewed project under <code>.review-relay/&lt;review-name&gt;/</code>. In normal use you just tell Claude <i>"start a review-relay review of docs/spec.md"</i>; the scripts below are what it runs (PowerShell 7). All outputs below were produced by the real scripts in a scratch project.</p>
+
+<h3>10.1 Start a spec round <span class="tag ran">ran</span></h3>
+<pre><code>pwsh -NoProfile -File new-round.ps1 -Review export-spec -Artifact docs/export-spec.md -NoClipboard</code></pre>
+<pre class="output raw"><code>review-relay: round 1 of 'export-spec' is ready
+  upload this file : &lt;scratch&gt;/rrproj/.review-relay/export-spec/round-01/upload/export-spec.md
+  short prompt     : &lt;scratch&gt;/rrproj/.review-relay/export-spec/round-01/prompt-upload.md
+  all-in-one text  : &lt;scratch&gt;/rrproj/.review-relay/export-spec/round-01/prompt-inline.md</code></pre>
+<p>Upload the file plus the short prompt to sites that accept files, or paste the all-in-one text where pasting is easier (without <code>-NoClipboard</code> it is already on your clipboard). The round's <code>round.json</code> records the random end marker the reviewer must quote back:</p>
+<pre class="output raw"><code>{
+  "round": 1,
+  "startedAt": "2026-10-16T02:30:57.0338065Z",
+  "artifactFile": "export-spec.md",
+  "artifactSha256": "1f222821d6341fb5985ff147b7115ddec78843cbeed2893573ec5bca9c5daa7a",
+  "endMarker": "362D-7F12",
+  "expectedLastLine": "- A missing `--out` flag prints usage and exits 2.",
+  "expectedLineCount": 11
+}</code></pre>
+
+<h3>10.2 Code rounds and guard rails <span class="tag ran">ran</span></h3>
+<p>For code, give a git range instead of a file. A range starting with <code>-</code> is refused because it would reach git as an option; an uncollected round blocks the next one; names must be lower-case kebab-case:</p>
+<pre><code>new-round.ps1 -Review export-code -Diff HEAD~1..HEAD -NoClipboard
+new-round.ps1 -Review export-bad  -Diff --output=x
+new-round.ps1 -Review export-spec -NoClipboard
+new-round.ps1 -Review "Bad Name"  -Artifact docs/export-spec.md</code></pre>
+<pre class="output raw"><code>review-relay: round 1 of 'export-code' is ready
+  upload this file : &lt;scratch&gt;/rrproj/.review-relay/export-code/round-01/upload/export-code.diff
+  short prompt     : &lt;scratch&gt;/rrproj/.review-relay/export-code/round-01/prompt-upload.md
+  all-in-one text  : &lt;scratch&gt;/rrproj/.review-relay/export-code/round-01/prompt-inline.md
+new-round: refusing git range '--output=x': a range cannot start with '-'
+new-round: round 1 has not been collected yet (run collect.ps1, or pass -Force)
+Cannot validate argument on parameter 'Review'. The argument "Bad Name" does not match the "^[a-z0-9][a-z0-9-]*$" pattern. Supply an argument that matches "^[a-z0-9][a-z0-9-]*$" and try the command again.</code></pre>
+<p>The last three commands each exit 1.</p>
+
+<h3>10.3 Collect <span class="tag ran">ran</span></h3>
+<p><code>collect.ps1</code> looks in your AiSave inbox (default Downloads, or <code>-Inbox</code> / <code>REVIEW_RELAY_INBOX</code>). With nothing saved yet it exits 2:</p>
+<pre class="output raw"><code>collect: no AiSave captures in &lt;scratch&gt;/inbox saved after 2026-10-16T02:30:57.0338065Z</code></pre>
+<p>After a reply was saved (here a hand-written capture in the AiSaveDev format stood in for a real ChatGPT reply, so the verdict below is a test fixture, not a real review), assembled from real runs:</p>
+<pre><code>pwsh -NoProfile -File collect.ps1 -Review export-spec -Inbox ~/Downloads</code></pre>
+<pre class="output raw"><code>collect: 1 capture(s) -&gt; &lt;scratch&gt;/rrproj/.review-relay/export-spec/round-01/collected.md
+
+| # | Site | Read proof | Reported lines | Verdict | BLOCKING | MATERIAL | MINOR | UNKNOWN |
+|---|---|---|---|---|---|---|---|---|
+| 1 | chatgpt | PASS | - | NOT READY | 1 | 0 | 1 | 0 |</code></pre>
+<p>(The table is the one in <code>collected.md</code>; the rest of that file lays out each reviewer's findings in full.) <b>Read proof</b> <code>PASS</code> means the reply quoted the end marker and the artifact's last content line. <code>NO-MARKER</code> or <code>MISSING</code> means a truncated copy or a skipped Step 0. Each finding then gets exactly one disposition in <code>ledger.md</code>: <code>FOLDED</code>, <code>REJECTED</code>, <code>DUPLICATE</code>, <code>DEFERRED</code> or <code>OWNER-DECISION</code>. Stop when every reviewer says <code>VERDICT: READY</code>; at round 6 Claude asks whether to continue.</p>
+
+<h3>10.4 The capture extension <span class="tag ran">ran</span></h3>
+<p>AiSaveDev saves each reply with per-turn markers a reply's own text cannot fake. It is not in the Chrome Web Store, so you load it unpacked once:</p>
+<pre><code>pwsh -NoProfile -File install-extension.ps1 -Destination ~/relay-ext -WhatIf
+pwsh -NoProfile -File install-extension.ps1 -Destination ~/relay-ext</code></pre>
+<pre class="output raw"><code>What if: Performing the operation "install AiSaveDev 0.3.1 (stage it in &lt;scratch&gt;/ext.new with its marker file, then swap it in)" on target "&lt;scratch&gt;/ext".
+installed AiSaveDev 0.3.1 at &lt;scratch&gt;/ext (first install)
+Next, once: open chrome://extensions (or edge://extensions), turn on Developer mode, click Load unpacked, and pick &lt;scratch&gt;/ext</code></pre>
+<p>Without <code>-Destination</code> it installs to <code>%LOCALAPPDATA%\review-relay\aisavedev</code>. After a review-relay update, run it again and click <b>Reload</b> on the extension. Plain AiSave also works, but a reply that quotes a <code>## Human</code> heading is then misread.</p>
+
+<h2 id="config">11. Configuration reference</h2>
+<h3>clavity-dotnet / clavity-ls</h3>
+<table>
+<tr><th>Variable</th><th>Default</th><th>Meaning</th></tr>
+<tr><td><code>CLAVITY_GOLDEN_HEADER</code></td><td><code>~/.clavity</code></td><td>Directory (not a file) holding the golden-header SEED/GROWTH files.</td></tr>
+<tr><td><code>CLAVITY_TERMINAL</code></td><td>auto-detected</td><td>Linux: terminal command <code>start</code> uses, run by <code>/bin/sh</code> with the script path appended, e.g. <code>gnome-terminal --tab --</code>.</td></tr>
+<tr><td><code>CLAVITY_DATA_DIR</code></td><td><code>~/.clavity</code></td><td>Directory removed by <code>uninstall --purge-data</code>; mainly for tests.</td></tr>
+<tr><td><code>CLAVITY_AGY_IDLE_MAX_SECONDS</code></td><td>600 (plugin sets 1800)</td><td>Ceiling on <code>agy_ask</code>'s idle wait. Read only when the MCP server starts.</td></tr>
+<tr><td><code>CLAVITY_AGY_IDLE_STALL_SECONDS</code></td><td>120</td><td>Seconds with no agy step progress before <code>possible_modal</code> (stall). Raise for long single steps. </td></tr>
+<tr><td><code>CLAVITY_AGY_LOG</code>, <code>CLAVITY_SESSION_ID</code>, <code>CLAVITY_AGY_ENDPOINT</code></td><td>set by <code>start</code></td><td>Per-session agy log, session id and pairing rendezvous file. Do not set by hand.</td></tr>
+</table>
+<h3>clavity-classic / clavity</h3>
+<table>
+<tr><th>Variable</th><th>Default</th><th>Meaning</th></tr>
+<tr><td><code>AGY_SESSION</code></td><td><code>claude_agy</code></td><td>psmux session name.</td></tr>
+<tr><td><code>AGY_TMUX_BIN</code></td><td><code>tmux</code></td><td>psmux/tmux binary if not on PATH.</td></tr>
+<tr><td><code>AGY_DOORBELL</code></td><td>canonical line</td><td>Wake string the responder skill keys on.</td></tr>
+<tr><td><code>AGY_START_ARGS</code></td><td><code>--dangerously-skip-permissions</code></td><td>Flags <code>start</code> passes to agy.</td></tr>
+<tr><td><code>AGY_WATCH</code></td><td>enabled</td><td><code>0</code>/<code>false</code>/<code>no</code> disables the first-launch watch tab.</td></tr>
+<tr><td><code>AGY_IDLE_MARKER</code> / <code>AGY_BUSY_MARKER</code></td><td><code>? for shortcuts</code> / <code>esc to cancel</code></td><td>Footer text meaning idle / busy. Change these if an agy update changes its footer.</td></tr>
+<tr><td><code>AGY_RING_MIN_INTERVAL_MS</code></td><td>2000</td><td>Minimum gap between doorbells; <code>0</code> disables. </td></tr>
+<tr><td><code>AGENTMEMORY_URL</code></td><td><code>http://127.0.0.1:3111</code></td><td>agentmemory daemon base URL.</td></tr>
+<tr><td><code>AGENTMEMORY_SECRET</code></td><td>none</td><td>Bearer token, sent only when set.</td></tr>
+<tr><td><code>RUST_LOG</code></td><td><code>clavity=info</code></td><td>Log verbosity, e.g. <code>clavity=debug</code>.</td></tr>
+<tr><td><code>CLAVITY_GOLDEN_HEADER</code></td><td><code>~/.clavity</code></td><td>As above.</td></tr>
+</table>
+<h3>review-relay</h3>
+<table>
+<tr><th>Setting</th><th>Meaning</th></tr>
+<tr><td><code>REVIEW_RELAY_INBOX</code></td><td>Where <code>collect.ps1</code> looks for captures (default: Downloads).</td></tr>
+<tr><td><code>.review-relay/templates/spec-review.md</code> or <code>code-review.md</code></td><td>Project-level override of the bundled round prompt.</td></tr>
+</table>
+
+<h2 id="trouble">12. Troubleshooting</h2>
+<table>
+<tr><th>Symptom</th><th>Cause and fix</th></tr>
+<tr><td><code>clavity-ls install</code> / <code>uninstall</code> says "Claude Code is running" (exit 5)</td><td>Close Claude Code completely, then re-run. Seen in <a href="#dotnet">5.4</a>.</td></tr>
+<tr><td><code>agy_status</code> returns <code>channel_down</code> / "agy Language Server not reachable"</td><td>No paired agy yet, or it exited. Start with <code>clavity-ls start &lt;folder&gt;</code>. Seen in 5.2.</td></tr>
+<tr><td>agy never pairs in a new folder</td><td>agy is waiting for you to trust the folder in its own tab.</td></tr>
+<tr><td>"No valid send-model can be resolved"</td><td>Send one message in agy's tab with the model you want; changing the dropdown alone does not count.</td></tr>
+<tr><td><code>golden-header ... did not match its .sha256 sidecar — skipped</code></td><td>The header was hand-edited or a write was torn. Re-commit with <code>curate-commit</code>. Seen in 8.3.</td></tr>
+<tr><td>Learned rules quietly stop applying</td><td>The driver-cheatsheet growth file is over 16 KiB or lacks its sidecar; republish through <code>curate-commit --cheatsheet</code>.</td></tr>
+<tr><td><code>clavity ask</code> exits 2, "agentmemory daemon unreachable"</td><td>Start the daemon, or set <code>AGENTMEMORY_URL</code>. Seen in 6.5.</td></tr>
+<tr><td><code>clavity --session X state</code> says "folder not found"</td><td>A clavity 0.10.1 or older bug. Update, or put <code>--session</code> after the subcommand. See 6.6.</td></tr>
+<tr><td><code>clavity ping</code> exits 3</td><td>No psmux session to ring. <code>clavity start &lt;folder&gt;</code> first.</td></tr>
+<tr><td>Hand-started agy: a quota stop looks like a truncated reply</td><td>Only agy launched by <code>clavity start</code>/<code>agy</code> is covered by <code>[PEER QUOTA STOP]</code>. Check agy's tab.</td></tr>
+<tr><td>Nothing recalls <code>[common]</code> notes</td><td>agentmemory is not configured in one CLI, or the one-line recall rule is missing from that agent's global instructions.</td></tr>
+<tr><td><code>collect.ps1</code> exits 2 / <code>NO-MARKER</code> / "no reply"</td><td>Wrong inbox (<code>-Inbox</code>); a truncated copy (resend the upload variant); a reply quoting <code>## Human</code> (re-save with AiSaveDev).</td></tr>
+<tr><td>Something agy-facing broke after an agy update</td><td>Read <code>clavity-dotnet/plugin/knowledge/agy-assumptions.md</code>: each assumption lists how it was verified and how to re-verify. Most fixes are an <code>AGY_*</code> env override.</td></tr>
+</table>
+
+<h2 id="appendix">13. Appendix: command quick reference</h2>
+<table>
+<tr><th>Command</th><th>Does</th></tr>
+<tr><td><code>clavity-ls start &lt;folder&gt; [--attach [id]] [claude-args]</code></td><td>agy tab + Claude Code in the folder; <code>--attach</code> pairs Claude with an agy from <code>clavity-ls agy</code></td></tr>
+<tr><td><code>clavity-ls agy [folder]</code></td><td>Linux/macOS: run agy in this terminal</td></tr>
+<tr><td><code>clavity-ls --mcp</code></td><td>MCP stdio server (started by the plugin)</td></tr>
+<tr><td><code>clavity-ls install [--plugin n]</code> / <code>uninstall [--purge-data]</code> / <code>is-installed n</code></td><td>Manual registration (Claude must be closed); exit 0/1 for is-installed</td></tr>
+<tr><td><code>clavity-ls curate-commit [--cheatsheet]</code></td><td>Commit a compiled region from stdin</td></tr>
+<tr><td><code>clavity [folder] [claude flags]</code> / <code>start</code></td><td>Launch agy (psmux) + Claude</td></tr>
+<tr><td><code>clavity state | capture [--lines N|--viewport] | wait-idle [--timeout N]</code></td><td>Observe agy: idle/busy/dead, pane text, block until idle</td></tr>
+<tr><td><code>clavity ring [--no-idle-gate]</code> / <code>cancel</code> / <code>stop</code></td><td>Doorbell; send Escape; kill the session</td></tr>
+<tr><td><code>clavity req-id [text]</code></td><td>Mint a request id or wrap text in <code>[req_id=..]</code></td></tr>
+<tr><td><code>clavity ask "text" [--review-only] [--no-ring] [--to A] [--type T] [--timeout N]</code></td><td>Round trip; exit 0 reply, 1 timeout, 2 daemon down</td></tr>
+<tr><td><code>clavity await-reply --req-id ID --thread-id T [--timeout N]</code></td><td>Wait for a reply to a request you sent</td></tr>
+<tr><td><code>clavity ping [--timeout N]</code> / <code>doctor</code> / <code>info</code></td><td>Readiness, preflight, configuration</td></tr>
+<tr><td><code>new-round.ps1 -Review n (-Artifact path | -Diff range) [-Kind spec|code] [-NoClipboard] [-Force]</code></td><td>review-relay: start a round</td></tr>
+<tr><td><code>collect.ps1 -Review n [-Round k] [-Inbox dir]</code></td><td>review-relay: gather saved replies</td></tr>
+<tr><td><code>install-extension.ps1 [-Destination dir] [-WhatIf]</code></td><td>review-relay: stage AiSaveDev</td></tr>
+</table>
+<p style="color:#57606a;font-size:9pt">Paths such as <code>&lt;scratch&gt;</code> replace a temporary directory in the run outputs, and ANSI colour codes were stripped. Everything marked "ran" was executed against the release clavity-v26 sources on Linux; the Windows-only parts (installer, Windows Terminal watch tab) were not.</p>
+</body></html>
