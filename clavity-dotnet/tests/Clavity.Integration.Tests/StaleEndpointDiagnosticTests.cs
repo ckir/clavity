@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
 using Clavity.Ls;
 using Clavity.Mcp;
 
@@ -47,7 +48,8 @@ public class StaleEndpointDiagnosticTests
             var json = await McpTools.AgyStatus(view);
 
             Assert.Contains("channel_down", json);
-            Assert.Contains(epFile, json);
+            // The tool returns JSON, which escapes a Windows path's backslashes (C:\\Users\\...); compare the encoded form.
+            Assert.Contains(JsonEncodedText.Encode(epFile).ToString(), json);
             Assert.Contains($"port {deadEndpointPort}", json);
             Assert.Contains("not listening", json);
             Assert.Contains("Relaunch agy", json);
