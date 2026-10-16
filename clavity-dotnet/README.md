@@ -106,6 +106,9 @@ or it does not pair.
 - `CLAVITY_AGY_LOG` — set automatically by `clavity-ls start`; the per-session agy log path `--mcp`
   reads to resolve that session's Language Server port.
 - `CLAVITY_SESSION_ID` — set automatically by `clavity-ls start`; reserved for bus/memory scoping.
+- `CLAVITY_AGY_ENDPOINT` — set automatically by `clavity-ls start`; the per-session file agy publishes its endpoint to (the pairing rendezvous). Not normally set by hand.
+- `CLAVITY_AGY_IDLE_MAX_SECONDS` — ceiling on how long `agy_ask` waits for agy to go idle (default 600; the plugin's `.mcp.json` raises it to 1800). Read only when the MCP server starts.
+- `CLAVITY_AGY_IDLE_STALL_SECONDS` — how long agy may show no step progress before `agy_ask` reports `possible_modal` (stall). Default 120; raise it if your work has long single steps.
 - `CLAVITY_TERMINAL` — Linux: the terminal command `start` opens agy with, run by `/bin/sh` with the script path
   appended as its last argument, so shell quoting works (e.g. `gnome-terminal --tab --`).
 - `CLAVITY_DATA_DIR` — overrides the dir removed by `uninstall --purge-data` (default

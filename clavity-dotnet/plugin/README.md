@@ -119,6 +119,9 @@ only when the server process starts, so changing it takes a reconnect, not a res
 - **`agy_ask` is refused with "missing required argument", "unknown argument" or "must be string".** The call used a
   wrong argument name (case-sensitive: `message`, `discipline`, `artifactPath`) or a value of the wrong JSON type;
   nothing reached agy. Fix the name or the type.
+- **`agy_status` / `agy_look` / `agy_ask` returns `channel_down` (`StatusCode` `LsDiscovery`: "agy Language Server not reachable").** There is
+  no paired agy to talk to: it is still starting, has exited, or was never started for this session. Start it with
+  `clavity-ls start <folder>` (or `clavity-ls agy` plus `start --attach`) and retry once agy has paired.
 - **`agy_status` / `agy_ask` returns `waiting_for_human`.** agy is up but has no conversation yet.
   Start or continue the agy session yourself; do not loop-retry.
 - **`agy_ask` returns `possible_modal`.** The idle-wait hit its timeout — agy may be stuck on a

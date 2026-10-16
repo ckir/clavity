@@ -46,8 +46,8 @@ diagram and design detail: [`docs/how-it-works.md`](docs/how-it-works.md).
 - **`agy`** (Antigravity CLI) — signed in, with agentmemory configured too.
 - **[psmux](https://github.com/psmux/psmux)** (ships as `psmux`/`pmux`/`tmux`) on your `PATH`.
 - **Either** the [Windows installer](https://github.com/ckir/clavity/releases/latest) (no toolchain)
-  **or** **Rust** (`cargo`) to build from source — currently **Windows** only (see
-  [Platform support](#platform-support)).
+  **or** **Rust** (`cargo`) to build from source. The live end-to-end path is verified on **Windows** only; Linux builds and
+  its offline commands run (see [Platform support](#platform-support)).
 
 ### 1. Wire up the agentmemory bus (both agents)
 
@@ -148,7 +148,7 @@ hook that auto-primes Claude with a live-peer reminder:
 | `clavity cancel` | Interrupt agy's current turn (sends Escape to the pane; pair with a bus `alert` from Claude). |
 | `clavity stop` | Tear down the agy session (kill the psmux session) so it doesn't orphan. |
 | `clavity curate-commit` | Read the compiled golden header from stdin and atomically write it (+ a `.sha256` sidecar) to the resolved golden-header growth path — the write path `agy-curate` invokes. |
-| `clavity --session NAME …` | Target a non-default psmux session (global flag). |
+| `clavity --session NAME …` | Target a non-default psmux session (global flag; accepted before or after the subcommand, and as `--session=NAME`). |
 
 **Output discipline:** results go to **stdout** (machine-readable: `idle`, pane text, ids);
 diagnostics go to **stderr** via `tracing`. So tools can parse stdout cleanly.
@@ -166,6 +166,8 @@ All optional; sensible defaults. Environment variables:
 | `AGY_DOORBELL` | _canonical line_ | The single-line wake string the responder skill keys on. |
 | `AGY_START_ARGS` | `--dangerously-skip-permissions` | Flags `start` passes to `agy`. |
 | `AGY_WATCH` | _enabled_ | On first launch, `start` opens a visible terminal tab (Windows Terminal) attached to agy so you can answer its auth/login prompts. Set `0`/`false`/`no` to disable. |
+| `AGY_RING_MIN_INTERVAL_MS` | `2000` | Minimum gap between doorbells, shared across `clavity ring` processes; closer rings are coalesced into a no-op so a runaway loop cannot burn agy's quota. `0` disables. |
+| `AGY_RING_STATE_FILE` | _per-session file_ | Where the last-ring timestamp is kept; override only for test isolation. |
 | `AGY_IDLE_MARKER` | `? for shortcuts` | Footer text meaning agy is idle. |
 | `AGY_BUSY_MARKER` | `esc to cancel` | Footer text meaning agy is busy. |
 | `AGENTMEMORY_URL` | `http://127.0.0.1:3111` | agentmemory daemon REST base URL — used by `ask` / `await-reply` / `ping`. |

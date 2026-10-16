@@ -101,8 +101,9 @@ golden header.
 
 ## Recovering lost observations or a bad GROWTH region
 
-Both artifacts keep the newest 5 pre-mutation snapshots. A backup nobody can restore from is theatre, so
-both procedures are one command.
+Both artifacts keep the newest 5 pre-mutation snapshots, except that the GROWTH region's snapshots are written by
+clavity-dotnet's `clavity-ls curate-commit` only: clavity-classic's `curate-commit` does not create them, so the GROWTH
+procedure below applies to clavity-dotnet. A backup nobody can restore from is theatre, so both procedures are one command.
 
 **The observations inbox:**
 
