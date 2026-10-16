@@ -177,6 +177,25 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: DIAGNOSTIC - where does Git for Windows keep git.exe (TEMPORARY)
+        # TEMPORARY. Since the runner image moved to Git for Windows 2.56 the hook process-budget rows and
+        # the "resolves the real git" row fail; the harness (BashHookHelpers.ps1) puts /mingw64/bin first.
+        # This prints the layout so the fix is based on a measurement. Remove with the fix.
+        shell: pwsh
+        run: |
+          $gitExe = (Get-Command git -ErrorAction SilentlyContinue).Source
+          Write-Host "git on PATH: $gitExe"
+          git --version
+          $root = Split-Path -Parent (Split-Path -Parent $gitExe)
+          Write-Host "git root: $root"
+          foreach ($d in 'mingw64', 'ucrt64', 'clangarm64', 'usr', 'cmd') {
+            $p = Join-Path $root "$d\bin"
+            if (Test-Path $p) { Write-Host "== $p"; Get-ChildItem $p -Filter 'git*.exe' | ForEach-Object { Write-Host "   $($_.Name)" } }
+            else { Write-Host "== $p (absent)" }
+          }
+          $bash = Join-Path $root 'usr\bin\bash.exe'
+          & $bash -c 'echo "MSYSTEM=$MSYSTEM"; export PATH=/mingw64/bin:/usr/bin:$PATH; command -v git || echo "no git via /mingw64/bin"; export PATH=/ucrt64/bin:/usr/bin:$PATH; command -v git || echo "no git via /ucrt64/bin"'
+
       - name: Deepen history for the ROADMAP claims gate
         # actions/checkout is SHALLOW by default (fetch-depth 1), and check B of
         # scripts/check-roadmap-claims.ps1 resolves every sha the ROADMAP cites beside a closure word.
