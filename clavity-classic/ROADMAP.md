@@ -282,3 +282,20 @@ threadId); times out exit 1; `ask` unchanged.
 **Rejected alternatives:** (a) clavity-side thread *discovery* — racy, see above; (b) a daemon
 `GET /agentmemory/signals?peek=true` no-consume flag — clean but needs an **agentmemory** upstream
 change (out of clavity's control); revisit only if the daemon adds it.
+
+### `--session` before a subcommand is rejected by installed binaries (found 2026-10-16) · FIXED ON MAIN, NOT YET RELEASED
+
+**Symptom.** `clavity --session foo state` treats `state` as the start folder and exits 1 with "folder not
+found". The documented form `clavity state --session foo` always worked.
+
+**Cause.** `args_conflicts_with_subcommands = true` on the top-level clap command in
+`clavity-classic/src/main.rs` made the global `--session` flag, written before a subcommand, count as a
+start-mode argument.
+
+**Fixed** in `65edb772` (the attribute is removed). Pinned by `global_session_flag_parses`,
+`session_flag_before_a_subcommand_with_args` and `session_flag_before_a_start_folder_still_routes_to_start`
+in `clavity-classic/src/main.rs`.
+
+**Open.** Classic 0.10.1 binaries (the current release, `clavity-v26`) still carry the bug. Users of an
+installed 0.10.1 should put `--session` after the subcommand until the next classic release ships the fix.
+Close this entry, with the release tag, when that release is cut.
