@@ -113,6 +113,7 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
   Maintainer notes: the checker (.github/site-checks/check_site.py) enforces this markup.
   Run in CI by .github/workflows/pages.yml: python3 .github/site-checks/check_site.py --site site --readme README.md
   - The install section must have id="install".
+  - "claude plugin" text may appear only in <code data-cmd> inside this section (anywhere else on the page fails).
   - Every command is a <code data-cmd> in its own <li> with exactly one <button data-copy> whose value equals it.
   - Three elements carry data-readme-quote: warning, waiver-1, waiver-2. Their text must equal the README text.
   - Every pairing link (raw.githubusercontent.com or ending agy-pairing-INSTALL.md) equals the README's raw URL,

@@ -14,6 +14,10 @@ loads; 6 #install commands, copy buttons and pairing links equal the README;
 7 the three data-readme-quote texts equal the README. Two README facts are
 hard-coded here: the pairing path (RAW_PAIRING_PATH) and the two waiver opening
 phrases (WAIVER_OPENINGS). Exit codes: 0 clean, 1 problems, 2 unreadable input.
+Any <base href> is a problem (5 absolute, 2 relative); `claude plugin` text is
+allowed only inside <code data-cmd> in #install, anywhere else on the page is
+check 6; a repeated attribute keeps its first value (as HTML5 does); README
+folding strips * and ` and understands only inline [text](url) links.
 Unit tests: python3 -m unittest discover -s .github/site-checks
 """
 
@@ -76,7 +80,7 @@ class CannotAnswer(Exception):
 class Capture:
     """Text (and `<a href>`s) collected while one element is open."""
 
-    kind: str  # quote | cmd | code | prose
+    kind: str  # quote | cmd | code
     key: str  # data-readme-quote value ("" otherwise)
     li: int | None  # enclosing `<li>` of an #install element
     parts: list[str] = field(default_factory=list)
@@ -110,7 +114,7 @@ class PageParser(HTMLParser):
         self.commands: list[Capture] = []  # <code data-cmd> in #install
         self.bare_code: list[Capture] = []  # other <code> in #install
         self.copies: list[tuple[int | None, str]] = []  # (li, data-copy) in #install
-        self.prose: list[Capture] = []  # text of #install outside any data-cmd
+        self.page_text: list[str] = []  # all text except <code data-cmd> in #install
         self.hrefs: list[tuple[str, bool]] = []  # (href, inside #install), any tag
         self.inline_css: list[str] = []  # <style> texts and style="" values
 
@@ -118,11 +122,14 @@ class PageParser(HTMLParser):
         return [c for frame in self.stack for c in frame.captures]
 
     def _space(self) -> None:
+        self.page_text.append(" ")
         for capture in self._active():
             capture.parts.append(" ")
 
     def handle_starttag(self, tag, attrs):
-        values = {name: value or "" for name, value in attrs}
+        values: dict[str, str] = {}
+        for name, value in attrs:  # HTML5: the first of a repeated attribute wins
+            values.setdefault(name, value or "")
         self.elements.append((tag, values))
         if "id" in values:
             self.ids.add(values["id"])
@@ -144,9 +151,6 @@ class PageParser(HTMLParser):
             self.inline_css.append(values["style"])
         if tag == "style":
             self.inline_css.append("")
-        if values.get("id") == "install":
-            captures.append(Capture("prose", "", None))
-            self.prose.append(captures[-1])
         if in_install:
             if "data-cmd" in values:
                 captures.append(Capture("cmd", "", li))
@@ -177,10 +181,10 @@ class PageParser(HTMLParser):
         if self.stack and self.stack[-1].tag == "style":
             self.inline_css[-1] += data
         active = self._active()
-        in_cmd = any(c.kind == "cmd" for c in active)
+        if not any(c.kind == "cmd" for c in active):
+            self.page_text.append(data)
         for capture in active:
-            if capture.kind != "prose" or not in_cmd:
-                capture.parts.append(data)
+            capture.parts.append(data)
 
 
 def parse_page(text: str) -> PageParser:
@@ -330,6 +334,18 @@ def css_refs(css: str) -> list[tuple[str, str, bool]]:
     return refs
 
 
+def check_base(parser: PageParser, name: str, problems: list[Problem]) -> None:
+    """A <base href> re-bases every relative URL, so the other checks would be void."""
+    for tag, attrs in parser.elements:
+        if tag != "base" or "href" not in attrs:
+            continue
+        value = attrs["href"]
+        if classify(value) == "absolute":
+            problems.append((5, f"{name}: <base href> {value!r} re-bases every URL"))
+        else:
+            problems.append((2, f"{name}: <base href> {value!r} voids relative checks"))
+
+
 def check_rasters(site: Path, problems: list[Problem]) -> None:
     assets = site / "assets"
     if not assets.is_dir():
@@ -349,6 +365,7 @@ def check_structure(site: Path) -> list[Problem]:
     for page in sorted(site.glob("*.html")):
         parser = parse_page(read_text(page, f"site/{page.name}"))
         check_refs(html_refs(parser), parser.ids, site, page.name, problems)
+        check_base(parser, page.name, problems)
         for css in parser.inline_css:
             label = f"{page.name} (inline style)"
             check_refs(css_refs(css), set(), site, label, problems)
@@ -420,14 +437,15 @@ def readme_pairing_url(readme_text: str) -> str:
         if match:
             return match.group(1)
     raise CannotAnswer(
-        "README.md `### WARNING` section has no raw.githubusercontent.com link"
+        "README.md `### WARNING` section has no inline raw.githubusercontent.com link "
+        "(only inline markdown links [text](url) are understood)"
     )
 
 
 def plain(markdown: str) -> str:
     """Drop `[text](url)` link syntax (keeping text) and `*` emphasis, then fold."""
     markdown = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", markdown)
-    return fold(markdown.replace("*", ""))
+    return fold(markdown.replace("*", "").replace("`", ""))
 
 
 def readme_quote_units(readme_text: str) -> dict[str, str]:
@@ -508,11 +526,13 @@ def check_install(parser: PageParser, readme_text: str, name: str) -> list[Probl
             flag(f"data-copy {copies[0]!r} differs from displayed command {cmds[0]!r}")
     pairing = readme_pairing_url(readme_text)
     flag_pairing_links(parser, pairing, flag)
-    for prose in parser.prose:
-        hit = CLAUDE_PLUGIN.search(prose.text)
-        if hit:
-            near = prose.text[hit.start() : hit.start() + 60]
-            flag(f"Install prose mentions `claude plugin` outside data-cmd: {near!r}")
+    text = fold("".join(parser.page_text))
+    hit = CLAUDE_PLUGIN.search(text)
+    if hit:
+        near = text[hit.start() : hit.start() + 60]
+        flag(
+            f"page text mentions `claude plugin` outside an #install data-cmd: {near!r}"
+        )
     for quote in (q for q in parser.quotes if q.key == "warning"):
         if len(quote.hrefs) != 1:
             flag(f"warning quote must hold exactly one <a> (has {len(quote.hrefs)})")

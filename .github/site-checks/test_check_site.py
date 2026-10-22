@@ -222,6 +222,26 @@ class StructuralChecks(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIn(number, self.numbers(html))
 
+    def test_base_href_is_flagged(self):
+        absolute = page("", "<base href='https://attacker.example/'>")
+        self.assertIn(5, self.numbers(absolute))
+        self.assertIn(5, self.numbers(page("", "<base href='//attacker.example/'>")))
+        self.assertIn(2, self.numbers(page("", "<base href='./sub/'>")))
+        self.assertEqual(self.problems(page("", "<base target='_blank'>")), [])
+
+    def test_duplicate_attribute_first_wins(self):
+        evil = "https://evil.example/x"
+        for tag in (
+            f'<script src="{evil}.js" src="./style.css" defer></script>',
+            f'<img src="{evil}.png" src="./style.css">',
+        ):
+            with self.subTest(tag=tag):
+                self.assertIn(5, self.numbers(page(tag)))
+        local_first = f'<img src="./style.css" src="{evil}.png">'
+        self.assertEqual(self.problems(page(local_first)), [])
+        dup_a = f'<a href="./nope.html" href="{evil}">x</a>'
+        self.assertEqual(self.numbers(page(dup_a)), [2])
+
     def test_harmless_inline_style_passes(self):
         html = page("<p style='color:red'>a</p>", "<style>a{color:red}</style>")
         self.assertEqual(self.problems(html), [])
@@ -539,9 +559,44 @@ class ParityChecks(unittest.TestCase):
                 html = install_html().replace("</section>", f"{extra}</section>")
                 self.assertEqual(self.numbers(index_body(html)), [6])
 
-    def test_claude_plugin_outside_install_is_not_flagged(self):
-        body = index_body() + "<p>run claude plugin list</p>"
+    def test_claude_plugin_text_anywhere_on_page_flagged(self):
+        cases = {
+            "before install": "<p><code>claude plugin install evil@clavity</code></p>"
+            + index_body(),
+            "footer": index_body() + "<footer><p>claude plugin install x</p></footer>",
+            "title": None,
+        }
+        for name, body in cases.items():
+            with self.subTest(name=name):
+                if body is None:
+                    html = page(index_body(), "<title>claude plugin</title>")
+                    self.assertIn(6, self.numbers(html))
+                else:
+                    self.assertEqual(self.numbers(body), [6])
+
+    def test_claude_plugin_in_html_comment_is_not_text(self):
+        body = index_body() + "<!-- claude plugin install x -->"
         self.assertEqual(self.numbers(body), [])
+
+    def test_readme_backticks_match_plain_page_text(self):
+        readme = make_readme(
+            warning=README_WARNING.replace(
+                '"--prompt-interactive"', "`--prompt-interactive`"
+            )
+        )
+        self.assertNotEqual(readme, make_readme())
+        code = PAGE_WARNING.replace(
+            "&quot;--prompt-interactive&quot;", "<code>--prompt-interactive</code>"
+        )
+        self.assertEqual(self.run_case(index_body(warning=code), readme), [])
+
+    def test_reference_style_link_message_names_supported_form(self):
+        readme = make_readme(warning="See [pairing][1].\n\n[1]: " + PAIRING)
+        with self.assertRaises(CannotAnswer) as ctx:
+            readme_pairing_url(readme)
+        self.assertIn(
+            "only inline markdown links [text](url) are understood", str(ctx.exception)
+        )
 
     def test_readme_pairing_other_than_checker_constant_is_flagged_by_check_3(self):
         # The raw allowlist is fixed to the spec's one URL (RAW_PAIRING_PATH), not
