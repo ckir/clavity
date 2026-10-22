@@ -1,0 +1,79 @@
+:root {
+  --bg: #020713;
+  --bg-mid: #052b70;
+  --bg-deep: #001333;
+  --driver: #ff4b18;
+  --driver-soft: #ffb14a;
+  --peer: #00cfff;
+  --peer-soft: #00eaff;
+  --text: #eaf2ff;
+  --muted: #9db3d6;
+  --panel: rgba(5, 43, 112, 0.35);
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+* { box-sizing: border-box; }
+html { color-scheme: dark; scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg) linear-gradient(180deg, var(--bg) 0, var(--bg-deep) 60%, var(--bg) 100%) fixed;
+  overflow-wrap: anywhere;
+}
+img { max-width: 100%; height: auto; display: block; }
+a { color: var(--peer-soft); }
+a:hover { color: var(--driver-soft); }
+:focus-visible { outline: 3px solid var(--driver-soft); outline-offset: 3px; border-radius: 4px; }
+.wrap { max-width: 60rem; margin: 0 auto; padding: 0 1rem; }
+h1 { font-size: clamp(1.8rem, 6vw, 3rem); line-height: 1.15; margin: 1.5rem 0 0.5rem; }
+h2 { font-size: 1.6rem; margin: 3rem 0 1rem; border-bottom: 2px solid var(--bg-mid); padding-bottom: 0.4rem; }
+h3 { margin: 0 0 0.25rem; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; background: var(--bg-deep); padding: 0.1em 0.4em; border-radius: 4px; }
+.banner { width: 100%; }
+.subline { font-size: 1.2rem; color: var(--muted); margin: 0 0 1.5rem; }
+
+.stages { list-style: none; padding: 0; margin: 0 0 1.5rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.stages li { padding: 0.6rem 0.9rem; border-radius: 0.6rem; border: 2px solid; background: var(--panel); display: flex; flex-direction: column; }
+.stages .driver, .card.driver { border-color: var(--driver); }
+.stages .peer, .card.peer { border-color: var(--peer); }
+.stage { font-weight: 700; }
+.driver .role { color: var(--driver-soft); }
+.peer .role { color: var(--peer-soft); }
+.role { font-size: 0.85rem; }
+.stages code { align-self: flex-start; margin-top: 0.25rem; font-size: 0.75rem; }
+@media (min-width: 640px) {
+  .stages { flex-direction: row; flex-wrap: wrap; }
+  .stages li { flex: 1 1 8.5rem; }
+}
+
+.cta { display: inline-block; padding: 0.7rem 1.6rem; font-weight: 700; font-size: 1.1rem; color: var(--bg); background: linear-gradient(90deg, var(--driver), var(--driver-soft)); border-radius: 999px; text-decoration: none; transition: transform 0.15s; }
+.cta:hover { color: var(--bg); transform: translateY(-2px); }
+
+blockquote { margin: 1rem 0; padding: 0.1rem 1rem; border-left: 4px solid var(--peer); background: var(--panel); border-radius: 0 0.5rem 0.5rem 0; }
+blockquote[data-readme-quote="warning"] { border-left-color: var(--driver); }
+.art { margin: 2rem auto 0; border-radius: 0.6rem; }
+
+.cards { list-style: none; padding: 0; display: grid; gap: 1rem; grid-template-columns: 1fr; }
+@media (min-width: 640px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+.card { border: 2px solid; border-radius: 0.8rem; padding: 1rem; background: var(--panel); }
+.card p { margin: 0.3rem 0; }
+.tag { font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+
+.commands { list-style: none; padding: 0; display: grid; gap: 0.6rem; }
+.commands li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.6rem 0.8rem; background: var(--panel); border-radius: 0.5rem; }
+.commands code { font-size: 0.95em; }
+.commands small { color: var(--muted); }
+button { margin-left: auto; font: inherit; font-weight: 700; padding: 0.35rem 1rem; color: var(--bg); background: var(--peer); border: 0; border-radius: 0.4rem; cursor: pointer; transition: background 0.15s; }
+button:hover { background: var(--peer-soft); }
+
+footer { margin-top: 4rem; padding: 2rem 0; border-top: 2px solid var(--bg-mid); background: var(--bg-deep); }
+.footer-grid { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start; }
+.footer-grid img { border-radius: 50%; flex: none; }
+.footer-grid > div { flex: 1 1 16rem; }
+.fine { color: var(--muted); font-size: 0.85rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
