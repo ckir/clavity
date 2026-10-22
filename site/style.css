@@ -33,7 +33,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .banner { width: 100%; }
 .subline { font-size: 1.2rem; color: var(--muted); margin: 0 0 1.5rem; }
 
-.stages { list-style: none; padding: 0; margin: 0 0 1.5rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.stages { list-style: none; padding: 0; margin: 0 0 0.75rem; display: flex; flex-direction: column; gap: 1.4rem; }
 .stages li { padding: 0.6rem 0.9rem; border-radius: 0.6rem; border: 2px solid; background: var(--panel); display: flex; flex-direction: column; }
 .stages .driver, .card.driver { border-color: var(--driver); }
 .stages .peer, .card.peer { border-color: var(--peer); }
@@ -77,3 +77,21 @@ footer { margin-top: 4rem; padding: 2rem 0; border-top: 2px solid var(--bg-mid);
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* Arrow links between stage chips (decorative, not read by assistive tech) */
+.stages li { position: relative; }
+.stages li:not(:last-child)::after {
+  content: "\2193" / "";
+  position: absolute; left: 50%; bottom: -0.95rem; transform: translateX(-50%);
+  color: var(--peer-soft); font-weight: 700; line-height: 1;
+}
+@media (min-width: 640px) {
+  .stages { column-gap: 1.6rem; }
+  .stages li:not(:last-child)::after {
+    content: "\2192" / "";
+    left: auto; right: -1.3rem; bottom: auto; top: 50%; transform: translateY(-50%);
+  }
+}
+.legend { color: var(--muted); font-size: 0.95rem; margin: 0 0 1.5rem; }
+.note { padding: 0.6rem 0.9rem; border-left: 4px solid var(--driver); background: var(--panel); border-radius: 0 0.5rem 0.5rem 0; }
+.hero { overflow-x: clip; }

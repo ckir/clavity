@@ -47,6 +47,7 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
       <li class="peer"><span class="stage">Capstone</span><span class="role">agy (peer)</span><code>agy-capstone</code></li>
       <li class="peer"><span class="stage">Test audit</span><span class="role">agy (peer)</span><code>agy-test-audit</code></li>
     </ol>
+    <p class="legend">Claude Code is the driver (it implements and verifies). Antigravity (agy) is the peer (it reviews and recommends). Orange marks the driver, blue marks the peer.</p>
     <p><a class="cta" href="#install">Install</a></p>
   </div>
 </header>
@@ -58,7 +59,7 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
     <p>You need <a href="https://github.com/obra/superpowers">superpowers</a> installed first. You start with a brainstorm, which ends in a design document. That design goes to agy for an expert-panel review (<code>adversarial-panel-review</code>), and the implementation plan written from it gets the same treatment. You then choose how to implement: subagent-driven or inline. After the build, Claude runs <code>agy-capstone</code> to improve the code, and a final <code>agy-test-audit</code> hardens your test suites before the plan is declared complete.</p>
     <p>Bonus: automatic debugging. Claude captures pre-existing defects it finds in your repo, including those seen by subagents. At the end of a plan, say "start the triage" and the defects are organised into a ranked backlog.</p>
     <p>Every one of those review steps can be waived with a prompt, and there is a fallback if agy will not start. These three notes are quoted from the README.</p>
-    <blockquote data-readme-quote="warning">
+    <blockquote id="prompt-interactive-warning" data-readme-quote="warning">
       <p>In Latest versions of Antigravity the "--prompt-interactive" option is not working as expected. The workaround until I fix it is simple. Copy/paste the exact content of this file <a href="https://raw.githubusercontent.com/ckir/clavity/refs/heads/main/clavity-dotnet/pairing/agy-pairing-INSTALL.md">pairing</a> to Antigravity's prompt before start your work on Claude Code or use the classic version.</p>
     </blockquote>
     <blockquote data-readme-quote="waiver-1">
@@ -96,7 +97,7 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
       <li class="card peer">
         <h3>commonmemory</h3>
         <p class="tag">Opt-in add-on</p>
-        <p>A shared notebook so Claude and agy share facts across the pairing.</p>
+        <p>A shared notebook so Claude and agy share facts across the pairing. Needs <a href="https://www.npmjs.com/package/@agentmemory/agentmemory">@agentmemory/agentmemory</a>.</p>
         <a href="https://github.com/ckir/clavity/blob/main/commonmemory/README.md">commonmemory README</a>
       </li>
       <li class="card peer">
@@ -110,7 +111,7 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
 
   <section id="install">
     <h2>Install</h2>
-    <p>Install <a href="https://github.com/obra/superpowers">superpowers</a> first. clavity-dotnet and clavity-classic are mutually exclusive, so copy only the lines you want: the first line, then the one product line for each product you need.</p>
+    <p>Install <a href="https://github.com/obra/superpowers">superpowers</a> first. clavity-dotnet and clavity-classic are mutually exclusive, so copy only the lines you want. If you use the classic installer below, skip the <code>clavity@clavity</code> line.</p>
     <ul class="commands">
       <li><code data-cmd>claude plugin marketplace add ckir/clavity</code> <button type="button" data-copy="claude plugin marketplace add ckir/clavity">Copy</button></li>
       <li><code data-cmd>claude plugin install clavity@clavity</code> <small># clavity-dotnet</small> <button type="button" data-copy="claude plugin install clavity@clavity">Copy</button></li>
@@ -119,6 +120,7 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
       <li><code data-cmd>claude plugin install review-relay@clavity</code> <button type="button" data-copy="claude plugin install review-relay@clavity">Copy</button></li>
     </ul>
     <p>These commands work on Windows, Linux and macOS.</p>
+    <p class="note"><strong>Antigravity workaround:</strong> with recent versions of Antigravity the <code>--prompt-interactive</code> option does not work as expected. Until that is fixed, copy and paste the exact content of the <a href="https://raw.githubusercontent.com/ckir/clavity/refs/heads/main/clavity-dotnet/pairing/agy-pairing-INSTALL.md">pairing file</a> into agy's prompt before you start work in Claude Code. See the <a href="#prompt-interactive-warning">quoted README text</a> above.</p>
     <h3>clavity-classic (Windows only)</h3>
     <p>clavity-classic is installed differently, and only on Windows. Open the <a href="https://github.com/ckir/clavity/releases">Releases page</a>, take <code>clavity-classic-setup-&lt;version&gt;.exe</code> from the <code>clavity-v&lt;N&gt;</code> release, check it against its <code>.sha256</code> file, then run it.</p>
   </section>
