@@ -5,6 +5,16 @@ Usage: check_site.py --site site --readme README.md
 Prints one `CHECK<n>: <detail>` line per problem. Exit 0 clean, 1 on any
 problem, 2 when an input cannot be read (`CANNOT_ANSWER: <what>` on stderr).
 Standard library only.
+
+Maintainer notes. Checks: 1 no root-relative refs (HTML, CSS, inline styles);
+2 every local ref and anchor resolves inside site/; 3 repo links stay on the
+allowlist (repo root, /blob/main, /tree/main, /releases, /issues, the one raw
+pairing URL); 4 rasters under site/assets/ are <= 300 KB; 5 no third-party
+loads; 6 #install commands, copy buttons and pairing links equal the README;
+7 the three data-readme-quote texts equal the README. Two README facts are
+hard-coded here: the pairing path (RAW_PAIRING_PATH) and the two waiver opening
+phrases (WAIVER_OPENINGS). Exit codes: 0 clean, 1 problems, 2 unreadable input.
+Unit tests: python3 -m unittest discover -s .github/site-checks
 """
 
 import argparse
@@ -54,6 +64,8 @@ WAIVER_OPENINGS = {
     "waiver-2": "In case you have problem to start agy",
 }
 COMMAND_PREFIX = "claude plugin"
+CLAUDE_PLUGIN = re.compile(r"claude\s+plugin", re.IGNORECASE)
+PAIRING_FILE = "agy-pairing-INSTALL.md"
 
 
 class CannotAnswer(Exception):
@@ -64,7 +76,7 @@ class CannotAnswer(Exception):
 class Capture:
     """Text (and `<a href>`s) collected while one element is open."""
 
-    kind: str  # quote | cmd | code
+    kind: str  # quote | cmd | code | prose
     key: str  # data-readme-quote value ("" otherwise)
     li: int | None  # enclosing `<li>` of an #install element
     parts: list[str] = field(default_factory=list)
@@ -98,6 +110,9 @@ class PageParser(HTMLParser):
         self.commands: list[Capture] = []  # <code data-cmd> in #install
         self.bare_code: list[Capture] = []  # other <code> in #install
         self.copies: list[tuple[int | None, str]] = []  # (li, data-copy) in #install
+        self.prose: list[Capture] = []  # text of #install outside any data-cmd
+        self.hrefs: list[tuple[str, bool]] = []  # (href, inside #install), any tag
+        self.inline_css: list[str] = []  # <style> texts and style="" values
 
     def _active(self) -> list[Capture]:
         return [c for frame in self.stack for c in frame.captures]
@@ -123,6 +138,15 @@ class PageParser(HTMLParser):
         if "data-readme-quote" in values:
             captures.append(Capture("quote", values["data-readme-quote"], None))
             self.quotes.append(captures[-1])
+        if "href" in values:
+            self.hrefs.append((values["href"], in_install))
+        if "style" in values:
+            self.inline_css.append(values["style"])
+        if tag == "style":
+            self.inline_css.append("")
+        if values.get("id") == "install":
+            captures.append(Capture("prose", "", None))
+            self.prose.append(captures[-1])
         if in_install:
             if "data-cmd" in values:
                 captures.append(Capture("cmd", "", li))
@@ -150,8 +174,13 @@ class PageParser(HTMLParser):
             pass
 
     def handle_data(self, data):
-        for capture in self._active():
-            capture.parts.append(data)
+        if self.stack and self.stack[-1].tag == "style":
+            self.inline_css[-1] += data
+        active = self._active()
+        in_cmd = any(c.kind == "cmd" for c in active)
+        for capture in active:
+            if capture.kind != "prose" or not in_cmd:
+                capture.parts.append(data)
 
 
 def parse_page(text: str) -> PageParser:
@@ -320,6 +349,9 @@ def check_structure(site: Path) -> list[Problem]:
     for page in sorted(site.glob("*.html")):
         parser = parse_page(read_text(page, f"site/{page.name}"))
         check_refs(html_refs(parser), parser.ids, site, page.name, problems)
+        for css in parser.inline_css:
+            label = f"{page.name} (inline style)"
+            check_refs(css_refs(css), set(), site, label, problems)
     for sheet in sorted(site.glob("*.css")):
         check_refs(
             css_refs(read_text(sheet, f"site/{sheet.name}")),
@@ -421,6 +453,30 @@ def multiset_detail(page: list[str], readme: list[str]) -> list[str]:
     ]
 
 
+def is_pairing_link(href: str) -> bool:
+    """True for a raw.githubusercontent.com link or one ending agy-pairing-INSTALL.md."""
+    try:
+        parts = urlsplit(href.strip())
+        host = parts.hostname
+    except ValueError:
+        return False
+    return host == "raw.githubusercontent.com" or parts.path.endswith(PAIRING_FILE)
+
+
+def flag_pairing_links(parser: PageParser, pairing: str, flag) -> None:
+    """Every pairing-looking link equals the README URL; one sits in #install."""
+    in_install = 0
+    for href, inside in parser.hrefs:
+        if not is_pairing_link(href):
+            continue
+        if href != pairing:
+            flag(f"pairing link {href!r} is not {pairing!r}")
+        elif inside:
+            in_install += 1
+    if "install" in parser.ids and not in_install:
+        flag("Install section holds no pairing link equal to the README's")
+
+
 def check_install(parser: PageParser, readme_text: str, name: str) -> list[Problem]:
     """Check 6: install commands, copy buttons and pairing link match the README."""
     problems: list[Problem] = []
@@ -451,6 +507,12 @@ def check_install(parser: PageParser, readme_text: str, name: str) -> list[Probl
         elif copies[0] != cmds[0]:
             flag(f"data-copy {copies[0]!r} differs from displayed command {cmds[0]!r}")
     pairing = readme_pairing_url(readme_text)
+    flag_pairing_links(parser, pairing, flag)
+    for prose in parser.prose:
+        hit = CLAUDE_PLUGIN.search(prose.text)
+        if hit:
+            near = prose.text[hit.start() : hit.start() + 60]
+            flag(f"Install prose mentions `claude plugin` outside data-cmd: {near!r}")
     for quote in (q for q in parser.quotes if q.key == "warning"):
         if len(quote.hrefs) != 1:
             flag(f"warning quote must hold exactly one <a> (has {len(quote.hrefs)})")

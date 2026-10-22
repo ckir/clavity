@@ -1,5 +1,6 @@
 """Unit tests for check_site.py (structural checks 1-5, README parity checks 6-7)."""
 
+import re
 import subprocess
 import sys
 import tempfile
@@ -30,11 +31,12 @@ PAGES_PATHS = [
     ".github/workflows/pages.yml",
     ".github/site-checks/**",
 ]
-PINNED_ACTIONS = {
-    "actions/checkout@v7",
-    "actions/upload-pages-artifact@v5",
-    "actions/deploy-pages@v5",
+ACTION_NAMES = {
+    "actions/checkout",
+    "actions/upload-pages-artifact",
+    "actions/deploy-pages",
 }
+ACTION_REF = re.compile(r"^actions/(checkout|upload-pages-artifact|deploy-pages)@v\d+$")
 PAIRING = (
     "https://raw.githubusercontent.com/ckir/clavity/refs/heads/main/"
     "clavity-dotnet/pairing/agy-pairing-INSTALL.md"
@@ -120,13 +122,14 @@ def make_readme(
     return eol.join(lines) + eol
 
 
-def install_html(commands=CLEAN_COMMANDS) -> str:
+def install_html(commands=CLEAN_COMMANDS, pairing=PAIRING) -> str:
     items = "".join(
         f"<li><code data-cmd>{c}</code> <span>note</span>"
         f'<button data-copy="{c}">Copy</button></li>'
         for c in commands
     )
-    return f'<section id="install"><ul>{items}</ul></section>'
+    note = f'<p class="note">Workaround: <a href="{pairing}">pairing file</a></p>'
+    return f'<section id="install"><ul>{items}</ul>{note}</section>'
 
 
 def index_body(
@@ -196,6 +199,32 @@ class StructuralChecks(unittest.TestCase):
                 self.assertIn(
                     1, self.numbers(page(""), css=f"a {{ background: {url}; }}")
                 )
+
+    def test_inline_style_is_scanned(self):
+        cases = {
+            "import": (
+                page(
+                    "", "<style>@import url(https://fonts.googleapis.com/css);</style>"
+                ),
+                5,
+            ),
+            "attr": (
+                page("", "").replace(
+                    "<body>",
+                    "<body style='background:url(https://evil.example/x.png)'>",
+                ),
+                5,
+            ),
+            "root": (page("<p style='background:url(/x.png)'>a</p>"), 1),
+            "missing": (page("<style>a{background:url(./nope.png)}</style>"), 2),
+        }
+        for name, (html, number) in cases.items():
+            with self.subTest(name=name):
+                self.assertIn(number, self.numbers(html))
+
+    def test_harmless_inline_style_passes(self):
+        html = page("<p style='color:red'>a</p>", "<style>a{color:red}</style>")
+        self.assertEqual(self.problems(html), [])
 
     def test_protocol_relative_is_not_check_1(self):
         numbers = self.numbers(page('<script src="//cdn.x/y.js"></script>'))
@@ -469,6 +498,68 @@ class ParityChecks(unittest.TestCase):
         html = install_html().replace("</ul>", f"</ul>{extra}")
         self.assertEqual(self.numbers(index_body(html)), [6])
 
+    def test_any_pairing_link_must_equal_readme_url(self):
+        other = PAIRING.replace("INSTALL", "INSTALL-X")
+        github = (
+            "https://github.com/ckir/clavity/blob/main/"
+            "clavity-dotnet/pairing/agy-pairing-INSTALL.md"
+        )
+        for bad in (
+            "https://example.com/agy-pairing-INSTALL.md",
+            github,
+            other,
+        ):
+            with self.subTest(bad=bad):
+                html = install_html(pairing=bad)
+                self.assertIn(6, self.numbers(index_body(html)))
+
+    def test_install_without_pairing_link_flagged(self):
+        html = install_html().replace(f'<a href="{PAIRING}">pairing file</a>', "x")
+        self.assertNotEqual(html, install_html())
+        self.assertEqual(self.numbers(index_body(html)), [6])
+
+    def test_pairing_link_outside_install_does_not_count_for_install(self):
+        html = install_html().replace(f'<a href="{PAIRING}">pairing file</a>', "x")
+        body = index_body(html) + f"<a href='{PAIRING}'>elsewhere</a>"
+        self.assertEqual(self.numbers(body), [6])
+
+    def test_extra_pairing_link_outside_install_must_match_too(self):
+        other = PAIRING.replace("INSTALL", "OTHER")
+        body = index_body() + f"<a href='{other}'>elsewhere</a>"
+        self.assertIn(6, self.numbers(body))
+
+    def test_claude_plugin_in_any_install_element_flagged(self):
+        for extra in (
+            "<pre>claude plugin install evil@x</pre>",
+            "<p><kbd>claude plugin install evil@x</kbd></p>",
+            "<p>Claude   Plugin install evil@x</p>",
+            "<p>claude <b>plugin</b> install evil@x</p>",
+        ):
+            with self.subTest(extra=extra):
+                html = install_html().replace("</section>", f"{extra}</section>")
+                self.assertEqual(self.numbers(index_body(html)), [6])
+
+    def test_claude_plugin_outside_install_is_not_flagged(self):
+        body = index_body() + "<p>run claude plugin list</p>"
+        self.assertEqual(self.numbers(body), [])
+
+    def test_readme_pairing_other_than_checker_constant_is_flagged_by_check_3(self):
+        # The raw allowlist is fixed to the spec's one URL (RAW_PAIRING_PATH), not
+        # derived from the README, so a changed README URL flags the page links.
+        other = PAIRING.replace("INSTALL", "OTHER")
+        readme = make_readme(warning=README_WARNING.replace(PAIRING, other))
+        warning = PAGE_WARNING.replace(PAIRING, other)
+        body = index_body(install_html(pairing=other), warning=warning)
+        self.assertEqual(self.numbers(body, readme), [3])
+
+    def test_install_block_is_the_one_with_marketplace_add(self):
+        readme = make_readme().replace(
+            "### How to start\n",
+            "### How to start\n\n```bash\nclaude plugin install other@elsewhere\nls\n```\n",
+        )
+        self.assertEqual(readme_install_commands(readme), CLEAN_COMMANDS)
+        self.assertEqual(self.numbers(readme=readme), [])
+
     # -- check 7 -----------------------------------------------------------
 
     def test_exactly_three_quote_elements_required(self):
@@ -629,16 +720,29 @@ class WorkflowShape(unittest.TestCase):
     def test_jobs_are_build_and_deploy(self):
         self.assertEqual(set(self.jobs), {"build", "deploy"})
 
-    def test_every_uses_is_pinned(self):
-        uses = [
-            step["uses"]
-            for job in self.jobs.values()
-            for step in job["steps"]
-            if "uses" in step
-        ]
-        self.assertTrue(uses)
-        for ref in uses:
-            self.assertIn(ref, PINNED_ACTIONS)
+    def uses_by_job(self):
+        return {
+            name: [step["uses"] for step in job["steps"] if "uses" in step]
+            for name, job in self.jobs.items()
+        }
+
+    def test_every_uses_is_a_known_action_on_a_major_tag(self):
+        # Major tag shape only: Dependabot major bumps are auto-merged here.
+        every = []
+        for name, refs in self.uses_by_job().items():
+            for ref in refs:
+                self.assertRegex(ref, ACTION_REF, f"job {name!r}: {ref!r}")
+                every.append(ref.split("@")[0])
+        self.assertEqual(set(every), ACTION_NAMES)
+
+    def test_deploy_step_id_deployment_uses_deploy_pages(self):
+        steps = [s for s in self.jobs["deploy"]["steps"] if s.get("id") == "deployment"]
+        self.assertEqual(len(steps), 1, "job 'deploy': need one step id: deployment")
+        self.assertRegex(
+            steps[0].get("uses", ""),
+            r"^actions/deploy-pages@v\d+$",
+            "job 'deploy': step 'deployment' must use actions/deploy-pages",
+        )
 
 
 if __name__ == "__main__":

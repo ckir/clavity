@@ -11,6 +11,9 @@ name: pages
 # `github-pages` environment only accepts deployments from main). `concurrency` is on `deploy` ONLY,
 # so PR `build` runs stay parallel instead of queueing behind each other, while deployments are
 # serialised and never cancelled mid-flight.
+# The `github-pages` environment's deployment branch policy is custom and allows only `main` (measured
+# 2026-10-22 with `gh api repos/ckir/clavity/environments/github-pages`), so a workflow_dispatch from
+# another branch cannot deploy.
 #
 # The path filters list README.md because the site checks guard the page against README drift
 # (install commands, warning quote, pairing link), and .github/site-checks/** because a change to the
@@ -40,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # Stdlib only: nothing is installed. WorkflowShape skips itself here (no PyYAML).
+      # Stdlib only: nothing is installed. WorkflowShape skips itself when PyYAML is absent; this job does not rely on it.
       - name: Unit-test the site checker
         run: python3 -m unittest discover -s .github/site-checks
       - name: Check the page and README parity
