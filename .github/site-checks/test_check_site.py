@@ -6,6 +6,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
+try:
+    import yaml
+except ImportError:  # CI installs nothing; WorkflowShape is skipped without PyYAML.
+    yaml = None
+
 from check_site import (
     CannotAnswer,
     check_site,
@@ -17,6 +22,19 @@ from check_site import (
 )
 
 SCRIPT = Path(__file__).with_name("check_site.py")
+yaml_available = yaml is not None
+WORKFLOW = Path(__file__).resolve().parents[1] / "workflows" / "pages.yml"
+PAGES_PATHS = [
+    "site/**",
+    "README.md",
+    ".github/workflows/pages.yml",
+    ".github/site-checks/**",
+]
+PINNED_ACTIONS = {
+    "actions/checkout@v7",
+    "actions/upload-pages-artifact@v5",
+    "actions/deploy-pages@v5",
+}
 PAIRING = (
     "https://raw.githubusercontent.com/ckir/clavity/refs/heads/main/"
     "clavity-dotnet/pairing/agy-pairing-INSTALL.md"
@@ -542,6 +560,85 @@ class ParityChecks(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stdout, "")
         self.assertTrue(result.stderr.startswith("CANNOT_ANSWER: "), result.stderr)
+
+
+@unittest.skipUnless(yaml_available, "PyYAML not installed")
+class WorkflowShape(unittest.TestCase):
+    """Shape of .github/workflows/pages.yml, one test per spec constraint.
+
+    This is a LOCAL, AUTHORING-TIME gate: it needs PyYAML, and the spec forbids
+    installing anything in CI, so the CI `build` job SKIPS this class when
+    PyYAML is absent. A skip there is not coverage; a wrong pages.yml shows
+    itself on its first run. Run locally with:
+    uv run --with pyyaml python -m unittest discover -s .github/site-checks
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.wf = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+        cls.jobs = cls.wf["jobs"]
+
+    def triggers(self):
+        # PyYAML (YAML 1.1) parses the bare key `on` as the boolean True.
+        return self.wf.get("on", self.wf.get(True))
+
+    def test_pull_request_and_push_share_the_four_paths(self):
+        on = self.triggers()
+        self.assertEqual(on["pull_request"]["paths"], PAGES_PATHS)
+        self.assertEqual(on["push"]["paths"], PAGES_PATHS)
+
+    def test_push_is_scoped_to_main(self):
+        self.assertEqual(self.triggers()["push"]["branches"], ["main"])
+
+    def test_workflow_dispatch_present(self):
+        self.assertIn("workflow_dispatch", self.triggers())
+
+    def test_build_has_no_if(self):
+        self.assertNotIn("if", self.jobs["build"])
+
+    def test_deploy_needs_build(self):
+        self.assertEqual(self.jobs["deploy"]["needs"], "build")
+
+    def test_deploy_skipped_on_pull_request(self):
+        self.assertEqual(
+            self.jobs["deploy"]["if"], "github.event_name != 'pull_request'"
+        )
+
+    def test_deploy_environment_is_github_pages(self):
+        env = self.jobs["deploy"]["environment"]
+        self.assertEqual(env["name"], "github-pages")
+        self.assertEqual(env["url"], "${{ steps.deployment.outputs.page_url }}")
+
+    def test_deploy_permissions_exact(self):
+        self.assertEqual(
+            self.jobs["deploy"]["permissions"],
+            {"contents": "read", "pages": "write", "id-token": "write"},
+        )
+
+    def test_top_level_permissions_exact(self):
+        self.assertEqual(self.wf["permissions"], {"contents": "read"})
+
+    def test_concurrency_on_deploy_only(self):
+        self.assertEqual(
+            self.jobs["deploy"]["concurrency"],
+            {"group": "pages", "cancel-in-progress": False},
+        )
+        self.assertNotIn("concurrency", self.jobs["build"])
+        self.assertNotIn("concurrency", self.wf)
+
+    def test_jobs_are_build_and_deploy(self):
+        self.assertEqual(set(self.jobs), {"build", "deploy"})
+
+    def test_every_uses_is_pinned(self):
+        uses = [
+            step["uses"]
+            for job in self.jobs.values()
+            for step in job["steps"]
+            if "uses" in step
+        ]
+        self.assertTrue(uses)
+        for ref in uses:
+            self.assertIn(ref, PINNED_ACTIONS)
 
 
 if __name__ == "__main__":
