@@ -1,5 +1,5 @@
 // Copy buttons only. The page works without JS: every command is plain text.
-document.querySelectorAll('button[data-copy]').forEach(function (btn) {
+document.querySelectorAll('#install button[data-copy]').forEach(function (btn) {
   var label = btn.textContent;
   btn.addEventListener('click', function () {
     var done = function () {

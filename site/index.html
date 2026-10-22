@@ -17,13 +17,13 @@
 <script src="./script.js" defer></script>
 <!--
 Art conversion commands ($ART is the folder holding the original artwork):
-# Step 1 (quality 94)
+# Banner (WebP, quality 94)
 mkdir -p site/assets && uv run --with pillow python -c "
 from PIL import Image; import os, sys
 q = int(sys.argv[1]); im = Image.open(os.environ['ART'] + '/ClavityNeonConnectorBridge.png').convert('RGB')
 im.save('site/assets/banner.webp', 'WEBP', quality=q, method=6)
 print(q, os.path.getsize('site/assets/banner.webp'))" 94
-# Step 3
+# Social card, profile image, SVG
 uv run --with pillow python -c "
 import os
 from PIL import Image, ImageOps
@@ -109,6 +109,17 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
     </ul>
   </section>
 
+  <!--
+  Maintainer notes: the checker (.github/site-checks/check_site.py) enforces this markup.
+  Run in CI by .github/workflows/pages.yml: python3 .github/site-checks/check_site.py --site site --readme README.md
+  - The install section must have id="install".
+  - Every command is a <code data-cmd> in its own <li> with exactly one <button data-copy> whose value equals it.
+  - Three elements carry data-readme-quote: warning, waiver-1, waiver-2. Their text must equal the README text.
+  - Every pairing link (raw.githubusercontent.com or ending agy-pairing-INSTALL.md) equals the README's raw URL,
+    and at least one sits inside the install section.
+  - A README change to the install block, the "### WARNING" text, the two waiver lines or the pairing URL
+    requires this page to change in the same PR.
+  -->
   <section id="install">
     <h2>Install</h2>
     <p>Install <a href="https://github.com/obra/superpowers">superpowers</a> first. clavity-dotnet and clavity-classic are mutually exclusive, so copy only the lines you want. If you use the classic installer below, skip the <code>clavity@clavity</code> line.</p>
