@@ -172,6 +172,17 @@ class StructuralChecks(unittest.TestCase):
         )
         self.assertIn(3, self.numbers(page(f'<a href="{other}">o</a>')))
 
+    def test_malformed_absolute_url_never_raises(self):
+        cases = (
+            ('<a href="http://[::1">x</a>', 3),
+            ('<a href="https://[">x</a>', 3),
+            ('<a href="//[::1">x</a>', 3),
+            ('<link rel="stylesheet" href="http://[::1">', 5),
+        )
+        for body, number in cases:
+            with self.subTest(body=body):
+                self.assertIn(number, self.numbers(page(body)))
+
     # -- check 4 -----------------------------------------------------------
 
     def test_raster_size_boundary(self):

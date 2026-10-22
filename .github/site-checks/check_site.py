@@ -105,7 +105,10 @@ def resolve(ref: str, referrer: str) -> str:
 
 def github_problem(url: str) -> str | None:
     """Return why an absolute URL into the clavity repo is not allowed, else None."""
-    parts = urlsplit(url)
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "unparseable URL"
     host, path = parts.hostname, parts.path
     if host == "github.com" and path.lower().startswith(REPO_PATH):
         if path in (REPO_PATH, REPO_PATH + "/"):
