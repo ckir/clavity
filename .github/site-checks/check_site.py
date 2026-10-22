@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Structural checks for the one-page GitHub Pages site (checks 1-5).
+"""Structural (1-5) and README parity (6-7) checks for the one-page GitHub Pages site.
 
 Usage: check_site.py --site site --readme README.md
 Prints one `CHECK<n>: <detail>` line per problem. Exit 0 clean, 1 on any
@@ -8,9 +8,12 @@ Standard library only.
 """
 
 import argparse
+import html
 import posixpath
 import re
 import sys
+from collections import Counter
+from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -39,33 +42,132 @@ CSS_URL = re.compile(r"""url\(\s*(['"]?)(.*?)\1\s*\)""", re.IGNORECASE)
 CSS_IMPORT = re.compile(r"""@import\s+(['"])(.*?)\1""", re.IGNORECASE)
 SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:")
 
+# Tags whose boundaries separate words in quote text; inline tags add nothing.
+BLOCK_TAGS = frozenset(
+    "address article aside blockquote br dd details div dl dt fieldset figcaption "
+    "figure footer form h1 h2 h3 h4 h5 h6 header hr li main nav ol p pre section "
+    "table tbody td tfoot th thead tr ul".split()
+)
+QUOTE_KEYS = ("warning", "waiver-1", "waiver-2")
+WAIVER_OPENINGS = {
+    "waiver-1": "All the above can be waived by prompts.",
+    "waiver-2": "In case you have problem to start agy",
+}
+COMMAND_PREFIX = "claude plugin"
+
 
 class CannotAnswer(Exception):
     """An input the checks need is missing or unreadable (fail closed)."""
 
 
+@dataclass
+class Capture:
+    """Text (and `<a href>`s) collected while one element is open."""
+
+    kind: str  # quote | cmd | code
+    key: str  # data-readme-quote value ("" otherwise)
+    li: int | None  # enclosing `<li>` of an #install element
+    parts: list[str] = field(default_factory=list)
+    hrefs: list[str] = field(default_factory=list)
+
+    @property
+    def text(self) -> str:
+        return fold("".join(self.parts))
+
+
+@dataclass
+class Frame:
+    """One open element: its tag, #install context and the captures it started."""
+
+    tag: str
+    in_install: bool
+    li: int | None
+    captures: list[Capture]
+
+
 class PageParser(HTMLParser):
-    """Collects elements (tag, attrs) and element ids via an explicit stack."""
+    """Collects elements, ids, quote/command text and #install button payloads."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
-        self.stack: list[str] = []
+        self.stack: list[Frame] = []
         self.elements: list[tuple[str, dict[str, str]]] = []
         self.ids: set[str] = set()
+        self.lis = 0
+        self.quotes: list[Capture] = []
+        self.commands: list[Capture] = []  # <code data-cmd> in #install
+        self.bare_code: list[Capture] = []  # other <code> in #install
+        self.copies: list[tuple[int | None, str]] = []  # (li, data-copy) in #install
+
+    def _active(self) -> list[Capture]:
+        return [c for frame in self.stack for c in frame.captures]
+
+    def _space(self) -> None:
+        for capture in self._active():
+            capture.parts.append(" ")
 
     def handle_starttag(self, tag, attrs):
         values = {name: value or "" for name, value in attrs}
         self.elements.append((tag, values))
         if "id" in values:
             self.ids.add(values["id"])
+        parent = self.stack[-1] if self.stack else None
+        in_install = (parent is not None and parent.in_install) or (
+            values.get("id") == "install"
+        )
+        li = parent.li if parent else None
+        if tag == "li" and in_install:
+            li = self.lis
+            self.lis += 1
+        captures: list[Capture] = []
+        if "data-readme-quote" in values:
+            captures.append(Capture("quote", values["data-readme-quote"], None))
+            self.quotes.append(captures[-1])
+        if in_install:
+            if "data-cmd" in values:
+                captures.append(Capture("cmd", "", li))
+                self.commands.append(captures[-1])
+            elif tag == "code":
+                captures.append(Capture("code", "", li))
+                self.bare_code.append(captures[-1])
+            if "data-copy" in values:
+                self.copies.append((li, values["data-copy"]))
+        if tag == "a" and "href" in values:
+            for capture in self._active():
+                if capture.kind == "quote":
+                    capture.hrefs.append(values["href"])
         if tag not in VOID_TAGS:
-            self.stack.append(tag)
+            self.stack.append(Frame(tag, in_install, li, captures))
+        if tag in BLOCK_TAGS:
+            self._space()
 
     def handle_endtag(self, tag):
-        if tag in VOID_TAGS or tag not in self.stack:
+        if tag in VOID_TAGS or not any(f.tag == tag for f in self.stack):
             return
-        while self.stack.pop() != tag:
+        if tag in BLOCK_TAGS:
+            self._space()
+        while self.stack.pop().tag != tag:
             pass
+
+    def handle_data(self, data):
+        for capture in self._active():
+            capture.parts.append(data)
+
+
+def parse_page(text: str) -> PageParser:
+    parser = PageParser()
+    parser.feed(text)
+    parser.close()
+    return parser
+
+
+def fold(text: str) -> str:
+    """Decode entities, fold curly quotes to straight, collapse whitespace."""
+    text = html.unescape(text)
+    text = text.translate(
+        str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'})
+    )
+    return " ".join(text.split())
 
 
 def classify(value: str) -> str:
@@ -211,14 +313,12 @@ def check_rasters(site: Path, problems: list[Problem]) -> None:
                 problems.append((4, f"{rel}: {size} bytes exceeds {MAX_RASTER_BYTES}"))
 
 
-def check_site(site: Path, readme: Path) -> list[Problem]:
-    """Run the structural checks. `readme` is reserved for the parity checks (6-7)."""
+def check_structure(site: Path) -> list[Problem]:
+    """Run structural checks 1-5 over every page and stylesheet in site/."""
     read_text(site / "index.html", "site/index.html")
     problems: list[Problem] = []
     for page in sorted(site.glob("*.html")):
-        parser = PageParser()
-        parser.feed(read_text(page, f"site/{page.name}"))
-        parser.close()
+        parser = parse_page(read_text(page, f"site/{page.name}"))
         check_refs(html_refs(parser), parser.ids, site, page.name, problems)
     for sheet in sorted(site.glob("*.css")):
         check_refs(
@@ -230,6 +330,170 @@ def check_site(site: Path, readme: Path) -> list[Problem]:
         )
     check_rasters(site, problems)
     return problems
+
+
+def readme_lines(readme_text: str) -> list[str]:
+    return readme_text.splitlines()  # copes with LF and CRLF alike
+
+
+def readme_install_commands(readme_text: str) -> list[str]:
+    """`claude plugin` lines of the first fenced block with `marketplace add`."""
+    blocks: list[list[str]] = []
+    inside = False
+    for line in readme_lines(readme_text):
+        if line.lstrip().startswith("```"):
+            inside = not inside
+            if inside:
+                blocks.append([])
+        elif inside:
+            blocks[-1].append(line)
+    for block in blocks:
+        if any("claude plugin marketplace add" in line for line in block):
+            break
+    else:
+        raise CannotAnswer(
+            "README.md has no fenced block with `claude plugin marketplace add`"
+        )
+    commands = []
+    for line in block:
+        line = line.strip()
+        if line.startswith(COMMAND_PREFIX):
+            commands.append(re.sub(r"\s+#.*$", "", line).strip())
+    return commands
+
+
+def readme_warning_lines(readme_text: str) -> list[str]:
+    """Lines between `### WARNING` and the next heading (heading excluded)."""
+    lines = readme_lines(readme_text)
+    for start, line in enumerate(lines):
+        if line.strip() == "### WARNING":
+            break
+    else:
+        raise CannotAnswer("README.md has no `### WARNING` section")
+    body = []
+    for line in lines[start + 1 :]:
+        if re.match(r"#{1,3}\s", line):
+            break
+        body.append(line)
+    return body
+
+
+def readme_pairing_url(readme_text: str) -> str:
+    """The raw pairing URL from the markdown link in the `### WARNING` section."""
+    link = re.compile(
+        r"\[[^\]]*\]\((https://raw\.githubusercontent\.com/ckir/clavity/[^)\s]*)\)"
+    )
+    for line in readme_warning_lines(readme_text):
+        match = link.search(line)
+        if match:
+            return match.group(1)
+    raise CannotAnswer(
+        "README.md `### WARNING` section has no raw.githubusercontent.com link"
+    )
+
+
+def plain(markdown: str) -> str:
+    """Drop `[text](url)` link syntax (keeping text) and `*` emphasis, then fold."""
+    markdown = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", markdown)
+    return fold(markdown.replace("*", ""))
+
+
+def readme_quote_units(readme_text: str) -> dict[str, str]:
+    """Folded README text for the `warning`, `waiver-1` and `waiver-2` quotes."""
+    units = {"warning": plain(" ".join(readme_warning_lines(readme_text)))}
+    if not units["warning"]:
+        raise CannotAnswer("README.md `### WARNING` section is empty")
+    for key, opening in WAIVER_OPENINGS.items():
+        for line in readme_lines(readme_text):
+            if line.startswith(opening):
+                units[key] = plain(line)
+                break
+        else:
+            raise CannotAnswer(f"README.md has no line starting {opening!r}")
+    return units
+
+
+def multiset_detail(page: list[str], readme: list[str]) -> list[str]:
+    missing = Counter(readme) - Counter(page)
+    extra = Counter(page) - Counter(readme)
+    return [f"README has {c!r} x{n} more than the page" for c, n in missing.items()] + [
+        f"page has {c!r} x{n} more than the README" for c, n in extra.items()
+    ]
+
+
+def check_install(parser: PageParser, readme_text: str, name: str) -> list[Problem]:
+    """Check 6: install commands, copy buttons and pairing link match the README."""
+    problems: list[Problem] = []
+
+    def flag(detail: str) -> None:
+        problems.append((6, f"{name}: {detail}"))
+
+    if "install" not in parser.ids:
+        flag('no element with id="install"')
+    page_cmds = [c.text for c in parser.commands]
+    readme_cmds = readme_install_commands(readme_text)
+    if not page_cmds:
+        flag("Install section holds no <code data-cmd> commands")
+    if sorted(page_cmds) != sorted(readme_cmds):
+        for detail in multiset_detail(page_cmds, readme_cmds):
+            flag(detail)
+    for code in parser.bare_code:
+        if code.text.startswith(COMMAND_PREFIX):
+            flag(f"{code.text!r} is a claude plugin command without data-cmd")
+    for index in {c.li for c in parser.commands} | {li for li, _ in parser.copies}:
+        cmds = [c.text for c in parser.commands if c.li == index]
+        copies = [value for li, value in parser.copies if li == index]
+        if index is None or len(cmds) != 1 or len(copies) != 1:
+            flag(
+                f"<li> #{index} must hold exactly one data-cmd and one data-copy "
+                f"(has {len(cmds)} and {len(copies)})"
+            )
+        elif copies[0] != cmds[0]:
+            flag(f"data-copy {copies[0]!r} differs from displayed command {cmds[0]!r}")
+    pairing = readme_pairing_url(readme_text)
+    for quote in (q for q in parser.quotes if q.key == "warning"):
+        if len(quote.hrefs) != 1:
+            flag(f"warning quote must hold exactly one <a> (has {len(quote.hrefs)})")
+        elif quote.hrefs[0] != pairing:
+            flag(f"pairing href {quote.hrefs[0]!r} is not {pairing!r}")
+    return problems
+
+
+def check_quotes(parser: PageParser, readme_text: str, name: str) -> list[Problem]:
+    """Check 7: exactly three data-readme-quote elements equal to the README units."""
+    problems: list[Problem] = []
+    units = readme_quote_units(readme_text)
+    keys = sorted(q.key for q in parser.quotes)
+    if keys != sorted(QUOTE_KEYS):
+        problems.append(
+            (
+                7,
+                f"{name}: data-readme-quote values are {keys}, need {sorted(QUOTE_KEYS)}",
+            )
+        )
+    for quote in parser.quotes:
+        if quote.key in units and (not quote.text or quote.text != units[quote.key]):
+            problems.append(
+                (
+                    7,
+                    f"{name}: quote {quote.key!r} is {quote.text!r}, README has {units[quote.key]!r}",
+                )
+            )
+    return problems
+
+
+def check_parity(site: Path, readme: Path) -> list[Problem]:
+    """Checks 6-7: site/index.html against the README."""
+    parser = parse_page(read_text(site / "index.html", "site/index.html"))
+    readme_text = read_text(readme, "README.md")
+    return check_install(parser, readme_text, "index.html") + check_quotes(
+        parser, readme_text, "index.html"
+    )
+
+
+def check_site(site: Path, readme: Path) -> list[Problem]:
+    """Run every check: structure (1-5), then README parity (6-7)."""
+    return check_structure(site) + check_parity(site, readme)
 
 
 def main(argv: list[str] | None = None) -> int:
