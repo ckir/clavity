@@ -43,8 +43,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .role { font-size: 0.85rem; }
 .stages code { align-self: flex-start; margin-top: 0.25rem; font-size: 0.75rem; }
 @media (min-width: 640px) {
-  .stages { flex-direction: row; flex-wrap: wrap; }
-  .stages li { flex: 1 1 8.5rem; }
+  .stages { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.4rem 1.6rem; }
+}
+@media (min-width: 960px) {
+  .stages { grid-template-columns: repeat(6, 1fr); }
 }
 
 .cta { display: inline-block; padding: 0.7rem 1.6rem; font-weight: 700; font-size: 1.1rem; color: var(--bg); background: linear-gradient(90deg, var(--driver), var(--driver-soft)); border-radius: 999px; text-decoration: none; transition: transform 0.15s; }
@@ -86,12 +88,14 @@ footer { margin-top: 4rem; padding: 2rem 0; border-top: 2px solid var(--bg-mid);
   color: var(--peer-soft); font-weight: 700; line-height: 1;
 }
 @media (min-width: 640px) {
-  .stages { column-gap: 1.6rem; }
   .stages li:not(:last-child)::after {
     content: "\2192" / "";
-    left: auto; right: -1.3rem; bottom: auto; top: 50%; transform: translateY(-50%);
+    left: auto; right: -1.15rem; bottom: auto; top: 50%; transform: translateY(-50%);
   }
+  .stages li:nth-child(3n)::after { display: none; }
+}
+@media (min-width: 960px) {
+  .stages li:nth-child(3n):not(:last-child)::after { display: block; }
 }
 .legend { color: var(--muted); font-size: 0.95rem; margin: 0 0 1.5rem; }
 .note { padding: 0.6rem 0.9rem; border-left: 4px solid var(--driver); background: var(--panel); border-radius: 0 0.5rem 0.5rem 0; }
-.hero { overflow-x: clip; }
