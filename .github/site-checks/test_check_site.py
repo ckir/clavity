@@ -1191,6 +1191,43 @@ class SweepPins(unittest.TestCase):
         self.assertEqual(self.numbers(problems), [3])
         self.assertIn("unparseable URL", problems[0][1])
 
+    # -- README dialect limits (fail closed, accepted) ----------------------
+
+    def test_readme_closing_hashes_on_warning_heading_cannot_answer(self):
+        readme = make_readme().replace("### WARNING\n", "### WARNING ###\n")
+        self.assertNotEqual(readme, make_readme())
+        with self.assertRaises(CannotAnswer) as ctx:
+            self.parity(index_body(), readme)
+        self.assertIn("the heading must be exactly `### WARNING`", str(ctx.exception))
+
+    def test_readme_tilde_fence_cannot_answer(self):
+        readme = make_readme().replace("```", "~~~")
+        with self.assertRaises(CannotAnswer) as ctx:
+            self.parity(index_body(), readme)
+        self.assertIn("only ``` backtick fences are understood", str(ctx.exception))
+
+    def test_readme_underscore_emphasis_is_not_understood(self):
+        warning = README_WARNING.replace(
+            f"**[pairing]({PAIRING})**", f"__[pairing]({PAIRING})__"
+        )
+        self.assertNotEqual(warning, README_WARNING)
+        problems = self.parity(index_body(), make_readme(warning=warning))
+        self.assertEqual(self.numbers(problems), [7])
+
+    def test_readme_install_comment_may_change_freely(self):
+        commands = [c + "   # any new words" for c in CLEAN_COMMANDS]
+        self.assertEqual(self.parity(index_body(), make_readme(commands=commands)), [])
+
+    def test_image_set_url_function_in_any_case_is_reported_once(self):
+        evil = "https://evil.example/p.png"
+        html = page(f"<p style=\"background:image-set(URL('{evil}') 1x)\">a</p>")
+        problems = self.structure(html)
+        self.assertEqual(self.numbers(problems), [5])
+
+    def test_xlink_href_on_a_link_element_is_not_a_load(self):
+        head = '<link rel="stylesheet" xlink:href="https://evil.example/x.css">'
+        self.assertEqual(self.structure(page("", head)), [])
+
     # -- G14 CLI arguments -------------------------------------------------
 
     def test_cli_requires_site_and_readme(self):

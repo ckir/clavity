@@ -26,6 +26,10 @@ image/use (also xlink:href, feImage href), imagesrcset and quoted image-set()
 strings (a quoted string after `image-set(` in the same declaration, up to `;`,
 `{` or `}`, counts as an image-set URL: put other strings in a separate declaration).
 Form action, a ping and meta refresh are navigation and NOT checked.
+The README parser understands ``` fences, an ATX heading exactly `### WARNING`,
+inline `[text](url)` links and `*`/backtick emphasis; tilde fences, closing hashes,
+setext headings and `_`/`__` emphasis are NOT understood and fail the build
+(exit 2 or CHECK7): reword the README or extend the parser.
 Unit tests: python3 -m unittest discover -s .github/site-checks
 """
 
@@ -421,7 +425,8 @@ def readme_install_commands(readme_text: str) -> list[str]:
             break
     else:
         raise CannotAnswer(
-            "README.md has no fenced block with `claude plugin marketplace add`"
+            "README.md has no fenced block with `claude plugin marketplace add` "
+            "(only ``` backtick fences are understood, not ~~~)"
         )
     commands = []
     for line in block:
@@ -438,7 +443,10 @@ def readme_warning_lines(readme_text: str) -> list[str]:
         if line.strip() == "### WARNING":
             break
     else:
-        raise CannotAnswer("README.md has no `### WARNING` section")
+        raise CannotAnswer(
+            "README.md has no `### WARNING` section (the heading must be exactly "
+            "`### WARNING`: no closing hashes, no setext underline)"
+        )
     body = []
     for line in lines[start + 1 :]:
         if re.match(r"#{1,3}\s", line):
