@@ -17,6 +17,7 @@ from check_site import (
     check_site,
     check_structure,
     fold,
+    parse_page,
     readme_install_commands,
     readme_pairing_url,
     readme_quote_units,
@@ -1187,6 +1188,51 @@ class SweepPins(unittest.TestCase):
         bare = PAGE_WARNING.replace(link, "<a name='x'>pairing</a>")
         problems = self.parity(index_body(warning=bare))
         self.assertTrue(any("exactly one <a>" in d for n, d in problems if n == 6))
+
+
+REAL_SITE = Path(__file__).resolve().parents[2] / "site"
+
+
+class RealPageContract(unittest.TestCase):
+    """Accessibility contract of the real page's copy buttons (not a checker rule)."""
+
+    @classmethod
+    def setUpClass(cls):
+        text = (REAL_SITE / "index.html").read_text(encoding="utf-8")
+        cls.parser = parse_page(text)
+        cls.buttons = [
+            a for t, a in cls.parser.elements if t == "button" and "data-copy" in a
+        ]
+        cls.css = (REAL_SITE / "style.css").read_text(encoding="utf-8")
+
+    def test_five_copy_buttons_with_unique_labels_starting_with_copy(self):
+        self.assertEqual(len(self.buttons), 5)
+        labels = [b.get("aria-label", "") for b in self.buttons]
+        for label in labels:
+            self.assertTrue(label.startswith("Copy"), label)
+            self.assertNotIn("claude plugin", label.lower())
+        self.assertEqual(len(set(labels)), 5, labels)
+
+    def test_one_live_region_outside_any_list_item(self):
+        regions = [
+            a
+            for t, a in self.parser.elements
+            if a.get("role") == "status" and a.get("id") == "copy-status"
+        ]
+        self.assertEqual(len(regions), 1)
+        status = [a for _, a in self.parser.elements if a.get("role") == "status"]
+        self.assertEqual(len(status), 1)
+        text = (REAL_SITE / "index.html").read_text(encoding="utf-8")
+        text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+        before = text[: text.index('id="copy-status"')]
+        self.assertEqual(len(re.findall(r"<li[\s>]", before)), before.count("</li>"))
+
+    def test_sr_only_rule_hides_visually_not_from_assistive_tech(self):
+        match = re.search(r"\.sr-only\s*\{([^}]*)\}", self.css)
+        self.assertIsNotNone(match, ".sr-only rule missing")
+        body = match.group(1).replace(" ", "")
+        self.assertNotIn("display:none", body)
+        self.assertNotIn("visibility:hidden", body)
 
 
 @unittest.skipUnless(yaml_available, "PyYAML not installed")

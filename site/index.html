@@ -114,6 +114,7 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
   Run in CI by .github/workflows/pages.yml: python3 .github/site-checks/check_site.py --site site --readme README.md
   - The install section must have id="install".
   - "claude plugin" text may appear only in <code data-cmd> inside this section (anywhere else on the page fails).
+  - Each copy button carries a unique aria-label starting with Copy; the page keeps one role=status live region (id copy-status) outside any <li>.
   - Every command is a <code data-cmd> in its own <li> with exactly one <button data-copy> whose value equals it.
   - Three elements carry data-readme-quote: warning, waiver-1, waiver-2. Their text must equal the README text.
   - Every pairing link (raw.githubusercontent.com or ending agy-pairing-INSTALL.md) equals the README's raw URL,
@@ -125,12 +126,13 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
     <h2>Install</h2>
     <p>Install <a href="https://github.com/obra/superpowers">superpowers</a> first. clavity-dotnet and clavity-classic are mutually exclusive, so copy only the lines you want. If you use the classic installer below, skip the <code>clavity@clavity</code> line.</p>
     <ul class="commands">
-      <li><code data-cmd>claude plugin marketplace add ckir/clavity</code> <button type="button" data-copy="claude plugin marketplace add ckir/clavity">Copy</button></li>
-      <li><code data-cmd>claude plugin install clavity@clavity</code> <small># clavity-dotnet</small> <button type="button" data-copy="claude plugin install clavity@clavity">Copy</button></li>
-      <li><code data-cmd>claude plugin install agy-autotrain@clavity</code> <button type="button" data-copy="claude plugin install agy-autotrain@clavity">Copy</button></li>
-      <li><code data-cmd>claude plugin install commonmemory@clavity</code> <button type="button" data-copy="claude plugin install commonmemory@clavity">Copy</button></li>
-      <li><code data-cmd>claude plugin install review-relay@clavity</code> <button type="button" data-copy="claude plugin install review-relay@clavity">Copy</button></li>
+      <li><code data-cmd>claude plugin marketplace add ckir/clavity</code> <button type="button" data-copy="claude plugin marketplace add ckir/clavity" aria-label="Copy command: add the clavity marketplace">Copy</button></li>
+      <li><code data-cmd>claude plugin install clavity@clavity</code> <small># clavity-dotnet</small> <button type="button" data-copy="claude plugin install clavity@clavity" aria-label="Copy command: install clavity (clavity-dotnet)">Copy</button></li>
+      <li><code data-cmd>claude plugin install agy-autotrain@clavity</code> <button type="button" data-copy="claude plugin install agy-autotrain@clavity" aria-label="Copy command: install agy-autotrain">Copy</button></li>
+      <li><code data-cmd>claude plugin install commonmemory@clavity</code> <button type="button" data-copy="claude plugin install commonmemory@clavity" aria-label="Copy command: install commonmemory">Copy</button></li>
+      <li><code data-cmd>claude plugin install review-relay@clavity</code> <button type="button" data-copy="claude plugin install review-relay@clavity" aria-label="Copy command: install review-relay">Copy</button></li>
     </ul>
+    <p id="copy-status" class="sr-only" role="status"></p>
     <p>These commands work on Windows, Linux and macOS.</p>
     <p class="note"><strong>Antigravity workaround:</strong> with recent versions of Antigravity the <code>--prompt-interactive</code> option does not work as expected. Until that is fixed, copy and paste the exact content of the <a href="https://raw.githubusercontent.com/ckir/clavity/refs/heads/main/clavity-dotnet/pairing/agy-pairing-INSTALL.md">pairing file</a> into agy's prompt before you start work in Claude Code. See the <a href="#prompt-interactive-warning">quoted README text</a> above.</p>
     <h3>clavity-classic (Windows only)</h3>
