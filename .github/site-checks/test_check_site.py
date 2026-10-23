@@ -794,6 +794,262 @@ class ParityChecks(unittest.TestCase):
         self.assertTrue(result.stderr.startswith("CANNOT_ANSWER: "), result.stderr)
 
 
+BLOCK_TAG_LITERAL = (
+    "address article aside blockquote br dd details div dl dt fieldset figcaption "
+    "figure footer form h1 h2 h3 h4 h5 h6 header hr li main nav ol p pre section "
+    "table tbody td tfoot th thead tr ul"
+).split()
+
+
+class SweepPins(unittest.TestCase):
+    """Behaviours a line-level mutation sweep showed to be unpinned."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+        self.count = 0
+
+    def case(self, html, readme=None, files=None, css=""):
+        """check_site over a raw page (no wrapper) and README."""
+        self.count += 1
+        base = self.tmp / f"case{self.count}"
+        base.mkdir()
+        path = base / "README.md"
+        path.write_text(make_readme() if readme is None else readme, encoding="utf-8")
+        return check_site(make_site(base, html, css, files), path)
+
+    def parity(self, body, readme=None, files=None):
+        return self.case(page(body), readme, files)
+
+    def structure(self, html, css="", files=None):
+        self.count += 1
+        return check_structure(make_site(self.tmp / f"s{self.count}", html, css, files))
+
+    def numbers(self, problems):
+        return [n for n, _ in problems]
+
+    def text_flagged(self, problems):
+        return any(n == 6 and "page text mentions" in d for n, d in problems)
+
+    # -- G1 void elements stay off the stack -------------------------------
+
+    def test_unclosed_void_elements_do_not_disturb_quote_text(self):
+        voids = '<img src="./assets/a.webp" alt=""><br><meta name="m" content="c">'
+        body = voids + index_body()
+        self.assertEqual(self.parity(body, files={"assets/a.webp": b"x"}), [])
+
+    def test_void_element_in_install_li_keeps_the_pairing(self):
+        html = install_html().replace("</li>", "<br><img src='./a.png'></li>", 1)
+        problems = self.parity(index_body(html), files={"a.png": b"x"})
+        self.assertEqual(problems, [])
+
+    def test_many_void_elements_do_not_count_as_nesting(self):
+        self.assertEqual(self.structure("<br>" * 600), [])
+
+    # -- G2 / G4 block boundaries ------------------------------------------
+
+    def test_every_block_tag_separates_words(self):
+        for tag in BLOCK_TAG_LITERAL:
+            with self.subTest(tag=tag):
+                if tag in ("br", "hr"):
+                    extra = f"claude<{tag}>plugin install x"
+                else:
+                    extra = f"<{tag}>claude</{tag}>plugin install x"
+                self.assertTrue(
+                    self.text_flagged(self.parity(index_body() + extra)), tag
+                )
+
+    def test_inline_end_tag_adds_no_space(self):
+        extra = "cla<b>ude</b> plugin install x"
+        self.assertTrue(self.text_flagged(self.parity(index_body() + extra)))
+        readme = make_readme(warning=f"Intro abc [pairing]({PAIRING}) now.")
+        warning = (
+            f"<p data-readme-quote='warning'>Intro a<b>b</b>c "
+            f"<a href='{PAIRING}'>pairing</a> now.</p>"
+        )
+        self.assertEqual(self.parity(index_body(warning=warning), readme), [])
+
+    # -- G3 stray end tags -------------------------------------------------
+
+    def test_stray_end_tag_does_not_crash_and_still_flags(self):
+        extra = "<div><p>claude plugin install x</p></span>more</div>"
+        self.assertTrue(self.text_flagged(self.parity(index_body() + extra)))
+
+    def test_stray_end_tag_does_not_close_open_element(self):
+        w1 = f"{WAIVER_1[:10]}</span>{WAIVER_1[10:]}"
+        self.assertEqual(self.parity(index_body(w1=w1)), [])
+
+    def test_end_tag_of_void_element_is_ignored(self):
+        w1 = f"{WAIVER_1[:10]}</br></img>{WAIVER_1[10:]}"
+        self.assertEqual(self.parity(index_body(w1=w1)), [])
+
+    # -- G5 trailing text --------------------------------------------------
+
+    def test_trailing_text_without_closing_tag_is_scanned(self):
+        # A trailing "&" keeps the text buffered until parser.close() flushes it.
+        html = "<!doctype html><title>t</title><p>x</p>claude plugin install x&"
+        self.assertTrue(self.text_flagged(self.case(html)))
+
+    # -- G6 / G7 whitespace and case in URL values --------------------------
+
+    def test_whitespace_around_url_values_is_ignored(self):
+        cases = {
+            "script": '<script src="  https://evil.example/x.js "></script>',
+            "link": '<link rel="stylesheet" href="\nhttps://evil.example/x.css">',
+        }
+        for name, html in cases.items():
+            with self.subTest(name=name):
+                self.assertIn(5, self.numbers(self.structure(page(html))))
+        anchor = page('<a href=" #install "></a><div id="install"></div>')
+        self.assertEqual(self.structure(anchor), [])
+        self.assertEqual(self.structure(page('<a href=" # ">top</a>')), [])
+
+    def test_whitespace_around_local_css_reference_is_ignored(self):
+        files = {"assets/a.webp": b"x"}
+        inline = page("<p style=\"background:url(' ./assets/a.webp ')\">a</p>")
+        self.assertEqual(self.structure(inline, files=files), [])
+        imp = page("<style>@import ' ./style.css ';</style>")
+        self.assertEqual(self.structure(imp), [])
+
+    def test_repo_path_on_another_host_is_not_a_github_problem(self):
+        html = page('<a href="https://example.org/ckir/clavity/anything">x</a>')
+        self.assertEqual(self.structure(html), [])
+
+    def test_whitespace_inside_css_url_values_is_ignored(self):
+        url = page("<p style=\"background:url(' https://evil.example/x.png ')\">a</p>")
+        imp = page('<style>@import  " https://evil.example/y.css ";</style>')
+        for name, html in (("url", url), ("import", imp)):
+            with self.subTest(name=name):
+                self.assertIn(5, self.numbers(self.structure(html)))
+        sheet = self.structure(
+            page(""), css="a{background:url( https://evil.example/z.png )}"
+        )
+        self.assertIn(5, self.numbers(sheet))
+
+    def test_pairing_link_with_surrounding_spaces_is_flagged(self):
+        href = " https://example.com/agy-pairing-INSTALL.md "
+        problems = self.parity(index_body() + f"<a href='{href}'>x</a>")
+        self.assertTrue(any(n == 6 and "pairing link" in d for n, d in problems))
+
+    def test_scheme_case_does_not_hide_third_party_loads(self):
+        for html in (
+            '<script src="HTTPS://evil.example/x.js"></script>',
+            '<img src="Http://evil.example/a.png">',
+        ):
+            with self.subTest(html=html):
+                self.assertIn(5, self.numbers(self.structure(page(html))))
+
+    # -- G8 case in github hosts -------------------------------------------
+
+    def test_repo_path_case_does_not_bypass_the_allowlist(self):
+        html = page('<a href="https://github.com/CKIR/Clavity/pulls">x</a>')
+        self.assertEqual(self.numbers(self.structure(html)), [3])
+        raw = "https://raw.githubusercontent.com/CKIR/clavity/refs/heads/main/other.md"
+        problems = self.structure(page(f'<a href="{raw}">x</a>'))
+        self.assertEqual(self.numbers(problems), [3])
+        self.assertIn(raw, problems[0][1])
+        parity = self.parity(index_body() + f"<a href='{raw}'>x</a>")
+        self.assertTrue(any(raw in d for _, d in parity))
+
+    # -- G9 / G10 link rels and absolute metadata -----------------------------
+
+    def test_rel_case_does_not_hide_third_party_loads(self):
+        for html in (
+            '<link rel="STYLESHEET" href="https://evil.example/x.css">',
+            '<link rel="Icon" href="https://evil.example/i.png">',
+        ):
+            with self.subTest(html=html):
+                self.assertIn(5, self.numbers(self.structure(page("", html))))
+
+    def test_absolute_site_metadata_is_not_a_problem(self):
+        head = (
+            '<meta property="og:image" '
+            'content="https://ckir.github.io/clavity/assets/og.jpg">'
+            '<link rel="canonical" href="https://ckir.github.io/clavity/">'
+        )
+        self.assertEqual(self.structure(page("", head)), [])
+
+    # -- G11 relative resolution and base ----------------------------------
+
+    def test_escape_yields_exactly_one_problem(self):
+        self.assertEqual(
+            self.numbers(self.structure(page('<a href="../README.md">r</a>'))), [3]
+        )
+        self.assertEqual(
+            self.numbers(self.structure(page('<img src="../x.png">'))), [2]
+        )
+
+    def test_directory_reference_needs_an_index(self):
+        html = page('<a href="./assets/">a</a>')
+        files = {"assets/a.webp": b"x"}
+        self.assertEqual(self.numbers(self.structure(html, files=files)), [2])
+        html = page('<a href="./sub/">a</a>')
+        files = {"sub/index.html": b"<html></html>"}
+        self.assertEqual(self.structure(html, files=files), [])
+
+    def test_base_href_yields_exactly_one_problem(self):
+        absolute = page("", "<base href='https://attacker.example/'>")
+        self.assertEqual(self.numbers(self.structure(absolute)), [5])
+        self.assertEqual(
+            self.numbers(self.structure(page("", "<base href='./'>"))), [2]
+        )
+
+    # -- G12 README whitespace ---------------------------------------------
+
+    def test_indented_fence_lines_and_padded_warning_heading_parse(self):
+        padded = [f"    {c}   " for c in README_COMMANDS]
+        readme = make_readme(commands=padded).replace(
+            "### WARNING\n", "### WARNING   \n"
+        )
+        self.assertNotEqual(readme, make_readme())
+        self.assertEqual(readme_install_commands(readme), CLEAN_COMMANDS)
+        self.assertEqual(self.parity(index_body(), readme), [])
+
+    # -- G13 / G16 pairing link recognition ------------------------------------
+
+    def test_pairing_file_name_must_be_the_path_suffix(self):
+        href = "https://example.com/agy-pairing-INSTALL.md"
+        problems = self.parity(index_body() + f"<a href='{href}'>x</a>")
+        self.assertTrue(any(n == 6 and href in d for n, d in problems))
+        decoy = "https://example.com/agy-pairing-INSTALL.md/more"
+        self.assertEqual(self.parity(index_body() + f"<a href='{decoy}'>x</a>"), [])
+
+    def test_unparseable_url_is_exactly_one_problem(self):
+        problems = self.parity(index_body() + '<a href="http://[::1">x</a>')
+        self.assertEqual(self.numbers(problems), [3])
+        self.assertIn("unparseable URL", problems[0][1])
+
+    # -- G14 CLI arguments -------------------------------------------------
+
+    def test_cli_requires_site_and_readme(self):
+        self.count += 1
+        base = self.tmp / f"cli{self.count}"
+        base.mkdir()
+        site = make_site(base, page(index_body()))
+        readme = base / "README.md"
+        readme.write_text(make_readme(), encoding="utf-8")
+        for args in (["--readme", str(readme)], ["--site", str(site)]):
+            with self.subTest(args=args):
+                result = subprocess.run(
+                    [sys.executable, str(SCRIPT), *args], capture_output=True, text=True
+                )
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("usage", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+
+    # -- G15 anchors in the warning quote ----------------------------------
+
+    def test_anchor_without_href_in_warning_is_not_counted(self):
+        link = f"<a href='{PAIRING}'>pairing</a>"
+        warning = PAGE_WARNING.replace(link, f"<a name='x'></a>{link}")
+        self.assertNotEqual(warning, PAGE_WARNING)
+        self.assertEqual(self.parity(index_body(warning=warning)), [])
+        bare = PAGE_WARNING.replace(link, "<a name='x'>pairing</a>")
+        problems = self.parity(index_body(warning=bare))
+        self.assertTrue(any("exactly one <a>" in d for n, d in problems if n == 6))
+
+
 @unittest.skipUnless(yaml_available, "PyYAML not installed")
 class WorkflowShape(unittest.TestCase):
     """Shape of .github/workflows/pages.yml, one test per spec constraint.
