@@ -1228,6 +1228,39 @@ class SweepPins(unittest.TestCase):
         head = '<link rel="stylesheet" xlink:href="https://evil.example/x.css">'
         self.assertEqual(self.structure(page("", head)), [])
 
+    # -- case sensitivity of the parity gates ------------------------------
+
+    def test_warning_quote_differing_only_in_case_is_flagged(self):
+        warning = PAGE_WARNING.replace("In Latest versions", "In latest versions")
+        self.assertNotEqual(warning, PAGE_WARNING)
+        problems = self.parity(index_body(warning=warning))
+        self.assertEqual(self.numbers(problems), [7])
+        self.assertIn("quote 'warning'", problems[0][1])
+
+    def test_waiver_quote_differing_only_in_case_is_flagged(self):
+        problems = self.parity(index_body(w1=WAIVER_1.replace("All the", "all the")))
+        self.assertEqual(self.numbers(problems), [7])
+        self.assertIn("quote 'waiver-1'", problems[0][1])
+
+    def test_readme_unit_differing_only_in_case_is_flagged(self):
+        readme = make_readme(waivers=(WAIVER_1.replace("Say for", "say for"), WAIVER_2))
+        self.assertNotEqual(readme, make_readme())
+        problems = self.parity(index_body(), readme)
+        self.assertEqual(self.numbers(problems), [7])
+        self.assertIn("quote 'waiver-1'", problems[0][1])
+
+    def test_install_command_differing_only_in_case_is_flagged(self):
+        upper = "CLAUDE plugin install clavity@clavity"
+        html = install_html().replace(CLEAN_COMMANDS[1], upper)
+        self.assertEqual(html.count(upper), 2)  # the <code> text and its data-copy
+        problems = self.parity(index_body(html))
+        self.assertEqual(self.numbers(problems), [6, 6])
+        details = [d for _, d in problems]
+        self.assertTrue(
+            any(f"README has {CLEAN_COMMANDS[1]!r} x1" in d for d in details)
+        )
+        self.assertTrue(any(f"page has {upper!r} x1" in d for d in details))
+
     # -- G14 CLI arguments -------------------------------------------------
 
     def test_cli_requires_site_and_readme(self):
