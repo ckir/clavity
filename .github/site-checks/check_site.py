@@ -22,7 +22,8 @@ folding strips * and ` and understands only inline [text](url) links.
 Pages nested deeper than 512 elements fail closed with exit 2.
 Page loads that must not be third-party: every <link href> except canonical, and the
 attributes src, srcset, poster, object data, background, and href on svg
-image/use. Form action, a ping and meta refresh are navigation and NOT checked.
+image/use (also xlink:href, feImage href), imagesrcset and quoted image-set()
+strings. Form action, a ping and meta refresh are navigation and NOT checked.
 Unit tests: python3 -m unittest discover -s .github/site-checks
 """
 
@@ -59,6 +60,8 @@ RAW_PAIRING_PATH = (
 
 CSS_URL = re.compile(r"""url\(\s*(['"]?)(.*?)\1\s*\)""", re.IGNORECASE)
 CSS_IMPORT = re.compile(r"""@import\s+(['"])(.*?)\1""", re.IGNORECASE)
+CSS_IMAGE_SET = re.compile(r"""image-set\(([^;{}]*)""", re.IGNORECASE)
+CSS_QUOTED = re.compile(r"""(?<!url\()(['"])(.*?)\1""", re.IGNORECASE)
 SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:")
 
 # Tags whose boundaries separate words in quote text; inline tags add nothing.
@@ -322,17 +325,19 @@ def html_refs(parser: PageParser) -> list[tuple[str, str, bool]]:
     refs = []
     for tag, attrs in parser.elements:
         rels = set(attrs.get("rel", "").lower().split())
-        if "href" in attrs:
-            is_link = tag == "link" and "canonical" not in rels
-            is_load = is_link or tag in ("image", "use")
-            refs.append(("href", attrs["href"], is_load))
+        for attr in ("href", "xlink:href"):
+            if attr in attrs:
+                is_link = attr == "href" and tag == "link" and "canonical" not in rels
+                is_load = is_link or tag in ("image", "use", "feimage")
+                refs.append((attr, attrs[attr], is_load))
         if "src" in attrs:
             refs.append(("src", attrs["src"], True))
         for attr in ("poster", "data", "background"):
             if attr in attrs and (attr != "data" or tag == "object"):
                 refs.append((attr, attrs[attr], True))
-        if "srcset" in attrs:
-            refs.extend(("srcset", url, True) for url in srcset_urls(attrs["srcset"]))
+        for attr in ("srcset", "imagesrcset"):
+            if attr in attrs:
+                refs.extend((attr, url, True) for url in srcset_urls(attrs[attr]))
         if "content" in attrs and classify(attrs["content"]) == "root":
             refs.append(("content", attrs["content"], False))
     return refs
@@ -341,6 +346,9 @@ def html_refs(parser: PageParser) -> list[tuple[str, str, bool]]:
 def css_refs(css: str) -> list[tuple[str, str, bool]]:
     refs = [("url()", m.group(2).strip(), True) for m in CSS_URL.finditer(css)]
     refs += [("@import", m.group(2).strip(), True) for m in CSS_IMPORT.finditer(css)]
+    for group in CSS_IMAGE_SET.finditer(css):
+        for m in CSS_QUOTED.finditer(group.group(1)):
+            refs.append(("image-set()", m.group(2).strip(), True))
     return refs
 
 

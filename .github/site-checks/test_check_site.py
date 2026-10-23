@@ -997,6 +997,88 @@ class SweepPins(unittest.TestCase):
                 self.assertTrue(hits, problems)
                 self.assertIn(f"via {attr} ", hits[0])
 
+    def test_more_network_carriers_reject_third_party_urls(self):
+        evil = "https://evil.example/x"
+        style = "style=\"background:image-set('%s.webp' 1x)\""
+        cases = {
+            "svg use xlink": (
+                f'<svg><use xlink:href="{evil}.svg#s"/></svg>',
+                "xlink:href",
+            ),
+            "svg image xlink": (
+                f'<svg><image xlink:href="{evil}.png"/></svg>',
+                "xlink:href",
+            ),
+            "feImage href": (
+                f'<svg><filter><feImage href="{evil}.png"/></filter></svg>',
+                "href",
+            ),
+            "imagesrcset": (
+                f'<link rel="preload" as="image" href="./style.css" imagesrcset="{evil}.webp 1x">',
+                "imagesrcset",
+            ),
+            "image-set string": (f"<p {style % evil}>a</p>", "image-set()"),
+            "image-set second": (
+                f"<p style=\"background:image-set('./style.css' 1x, '{evil}.webp' 2x)\">a</p>",
+                "image-set()",
+            ),
+        }
+        for name, (fragment, label) in cases.items():
+            with self.subTest(name=name):
+                problems = self.structure(page(fragment))
+                hits = [d for n, d in problems if n == 5 and evil in d]
+                self.assertTrue(hits, problems)
+                self.assertIn(f"via {label} ", hits[0])
+        sheet = self.structure(
+            page(""), css=f"a {{ background: -WEBKIT-Image-Set('{evil}.webp' 1x); }}"
+        )
+        self.assertIn(5, self.numbers(sheet))
+
+    def test_more_network_carriers_resolve_local_files(self):
+        files = {"assets/p.png": b"x"}
+        local = {
+            "use": '<svg><use xlink:href="./assets/p.png"/></svg>',
+            "image": '<svg><image xlink:href="./assets/p.png"/></svg>',
+            "feimage": '<svg><filter><feImage href="./assets/p.png"/></filter></svg>',
+            "imagesrcset": '<link rel="preload" as="image" href="./style.css" imagesrcset="./assets/p.png 1x">',
+            "image-set": "<p style=\"background:image-set('./assets/p.png' 1x)\">a</p>",
+            "anchor xlink": '<a xlink:href="https://example.org/">x</a>',
+        }
+        for name, html in local.items():
+            with self.subTest(name=name):
+                self.assertEqual(self.structure(page(html), files=files), [])
+        missing = {
+            "use": '<svg><use xlink:href="./assets/no.png"/></svg>',
+            "feimage": '<svg><filter><feImage href="./assets/no.png"/></filter></svg>',
+            "imagesrcset": '<link rel="preload" as="image" href="./style.css" imagesrcset="./assets/no.png 1x">',
+            "image-set": "<p style=\"background:image-set('./assets/no.png' 1x)\">a</p>",
+        }
+        for name, html in missing.items():
+            with self.subTest(name=name):
+                self.assertEqual(self.numbers(self.structure(page(html))), [2])
+
+    def test_css_function_and_at_rule_names_are_case_insensitive(self):
+        evil = "https://evil.example/p.png"
+        inline = page(f'<p style="background:URL({evil})">a</p>')
+        self.assertIn(5, self.numbers(self.structure(inline)))
+        self.assertIn(
+            5,
+            self.numbers(self.structure(page(""), css=f"a{{background:URL({evil})}}")),
+        )
+        imp = self.structure(page(""), css='@IMPORT "https://evil.example/y.css";')
+        self.assertIn(5, self.numbers(imp))
+
+    def test_every_raster_suffix_is_size_checked(self):
+        limit = 300 * 1024
+        for ext in (".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif"):
+            with self.subTest(ext=ext):
+                big = self.structure(
+                    page(""), files={f"assets/big{ext}": b"x" * (limit + 1)}
+                )
+                self.assertEqual(self.numbers(big), [4])
+                ok = self.structure(page(""), files={f"assets/ok{ext}": b"x" * limit})
+                self.assertEqual(ok, [])
+
     def test_non_loading_references_stay_clean(self):
         head = '<link rel="canonical" href="https://ckir.github.io/clavity/">'
         self.assertEqual(self.structure(page("", head)), [])
