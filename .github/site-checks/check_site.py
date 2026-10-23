@@ -19,6 +19,7 @@ allowed only inside <code data-cmd> in #install, anywhere else on the page is
 check 6 (adjacent block elements are joined with a space, so a heading "Claude"
 followed by a paragraph starting "Plugin" is flagged: reword it); a repeated attribute keeps its first value (as HTML5 does); README
 folding strips * and ` and understands only inline [text](url) links.
+Pages nested deeper than 512 elements fail closed with exit 2.
 Unit tests: python3 -m unittest discover -s .github/site-checks
 """
 
@@ -41,6 +42,7 @@ VOID_TAGS = frozenset(
 LOAD_LINK_RELS = frozenset({"stylesheet", "icon", "preload"})
 RASTER_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif"})
 MAX_RASTER_BYTES = 300 * 1024
+MAX_NESTING = 512  # Chromium's open-element limit; deeper input fails closed
 
 REPO_PATH = "/ckir/clavity"
 GITHUB_PREFIXES = (
@@ -162,6 +164,10 @@ class PageParser(HTMLParser):
                 if capture.kind == "quote":
                     capture.hrefs.append(values["href"])
         if tag not in VOID_TAGS:
+            if len(self.stack) >= MAX_NESTING:
+                raise CannotAnswer(
+                    f"page nests elements deeper than {MAX_NESTING} levels"
+                )
             self.stack.append(Frame(tag, in_install, li, captures))
         if tag in BLOCK_TAGS:
             self._space()

@@ -329,6 +329,50 @@ class StructuralChecks(unittest.TestCase):
             with self.subTest(url=url):
                 self.assertIn(3, self.numbers(page(f'<a href="{url}">x</a>')))
 
+    def test_allowlisted_prefix_must_end_at_a_path_boundary(self):
+        base = "https://github.com/ckir/clavity"
+        for url in (
+            f"{base}/issues-evil/1",
+            f"{base}/releases_fake",
+            f"{base}/blob/mainx/LICENSE",
+            f"{base}/tree/main-x",
+        ):
+            with self.subTest(bad=url):
+                problems = self.problems(page(f'<a href="{url}">x</a>'))
+                self.assertEqual([n for n, _ in problems], [3])
+                self.assertIn("github.com URL is not", problems[0][1])
+        for url in (
+            f"{base}/issues",
+            f"{base}/issues/12",
+            f"{base}/releases/latest",
+            f"{base}/blob/main",
+            f"{base}/blob/main/LICENSE",
+        ):
+            with self.subTest(good=url):
+                self.assertEqual(self.problems(page(f'<a href="{url}">x</a>')), [])
+
+    def test_percent_encoded_local_reference_resolves_to_the_decoded_file(self):
+        html = page('<img src="./assets/test%20file.png">')
+        self.assertEqual(self.problems(html, files={"assets/test file.png": b"x"}), [])
+
+    def test_percent_encoded_dotdot_escape_is_still_an_escape(self):
+        html = page('<img src="./assets/%2e%2e/%2e%2e/README.md">')
+        # src climbing out of site/ is check 2 (an href would be check 3).
+        self.assertIn(2, self.numbers(html), "decoded ../.. escape must be check 2")
+
+    def test_nesting_limit_is_exact(self):
+        ok = make_site(self.tmp / "deep_ok", "<div>" * 512)
+        self.assertEqual(check_structure(ok), [])
+        deep = make_site(self.tmp / "deep_bad", "<div>" * 513)
+        with self.assertRaises(CannotAnswer) as ctx:
+            check_site(deep, self.readme)
+        self.assertIn("512", str(ctx.exception))
+        result = run_checker(deep, self.readme)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+        self.assertTrue(result.stderr.startswith("CANNOT_ANSWER: "), result.stderr)
+        self.assertIn("512", result.stderr)
+
     def test_raw_url_only_the_pairing_install_file(self):
         self.assertEqual(self.problems(page(f'<a href="{PAIRING}">p</a>')), [])
         other = (
@@ -445,6 +489,9 @@ class ParityChecks(unittest.TestCase):
     def numbers(self, body=None, readme=None):
         return sorted({n for n, _ in self.run_case(body, readme)})
 
+    def messages(self, body=None, readme=None):
+        return [d.split(": ", 1)[1] for _, d in self.run_case(body, readme)]
+
     # -- check 6 -----------------------------------------------------------
 
     def test_install_parity_clean(self):
@@ -457,12 +504,20 @@ class ParityChecks(unittest.TestCase):
     def test_extra_readme_command_missing_from_page_flagged(self):
         readme = make_readme(README_COMMANDS + ["claude plugin install extra@clavity"])
         self.assertEqual(self.numbers(readme=readme), [6])
+        self.assertIn(
+            "README has 'claude plugin install extra@clavity' x1 more than the page",
+            self.messages(readme=readme),
+        )
 
     def test_extra_page_command_missing_from_readme_flagged(self):
         body = index_body(
             install_html(CLEAN_COMMANDS + ["claude plugin install extra@clavity"])
         )
         self.assertEqual(self.numbers(body), [6])
+        self.assertIn(
+            "page has 'claude plugin install extra@clavity' x1 more than the README",
+            self.messages(body),
+        )
 
     def test_empty_install_section_flagged(self):
         body = index_body('<section id="install"><ul></ul></section>')
@@ -474,10 +529,18 @@ class ParityChecks(unittest.TestCase):
     def test_duplicate_page_command_flagged(self):
         body = index_body(install_html(CLEAN_COMMANDS + [CLEAN_COMMANDS[1]]))
         self.assertEqual(self.numbers(body), [6])
+        self.assertIn(
+            f"page has {CLEAN_COMMANDS[1]!r} x1 more than the README",
+            self.messages(body),
+        )
 
     def test_duplicate_readme_command_flagged(self):
         readme = make_readme(README_COMMANDS + [CLEAN_COMMANDS[1]])
         self.assertEqual(self.numbers(readme=readme), [6])
+        self.assertIn(
+            f"README has {CLEAN_COMMANDS[1]!r} x1 more than the page",
+            self.messages(readme=readme),
+        )
 
     def test_button_and_code_in_different_li_flagged(self):
         c = CLEAN_COMMANDS
