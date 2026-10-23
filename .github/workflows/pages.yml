@@ -1,0 +1,71 @@
+name: pages
+
+# Builds, checks and deploys the one-page site in site/ to GitHub Pages (source: "GitHub Actions").
+#
+# `build` has NO `if`: it must run for every trigger below. A skipped `build` also skips `deploy`,
+# which `needs` it. On a pull request `build` is the real check for a site/-only change - and the
+# check merge-gate.yml waits for, because merge-gate only waits for checks that actually registered;
+# without it such a PR would go unverified.
+#
+# `deploy` is skipped on pull requests (it only runs for push to main and workflow_dispatch; the
+# `github-pages` environment only accepts deployments from main). `concurrency` is on `deploy` ONLY,
+# so PR `build` runs stay parallel instead of queueing behind each other, while deployments are
+# serialised and never cancelled mid-flight.
+# The `github-pages` environment's deployment branch policy is custom and allows only `main` (measured
+# 2026-10-22 with `gh api repos/ckir/clavity/environments/github-pages`), so a workflow_dispatch from
+# another branch cannot deploy.
+#
+# The path filters list README.md because the site checks guard the page against README drift
+# (install commands, warning quote, pairing link), and .github/site-checks/** because a change to the
+# checker or its tests is otherwise a change no run exercises. `branches: [main]` keeps tag pushes
+# out (GitHub does not apply `paths:` to tag pushes).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'README.md'
+      - '.github/workflows/pages.yml'
+      - '.github/site-checks/**'
+  pull_request:
+    paths:
+      - 'site/**'
+      - 'README.md'
+      - '.github/workflows/pages.yml'
+      - '.github/site-checks/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Stdlib only: nothing is installed. WorkflowShape skips itself when PyYAML is absent; this job does not rely on it.
+      - name: Unit-test the site checker
+        run: python3 -m unittest discover -s .github/site-checks
+      - name: Check the page and README parity
+        run: python3 .github/site-checks/check_site.py --site site --readme README.md
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

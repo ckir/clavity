@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>clavity - Claude Code drives, Antigravity reviews</title>
+<meta name="description" content="clavity pairs Claude Code (the driver) with a live Antigravity peer in the same folder, so every step of your work is cross-checked.">
+<link rel="canonical" href="https://ckir.github.io/clavity/">
+<meta property="og:title" content="clavity - Claude Code drives. Antigravity reviews.">
+<meta property="og:description" content="Two AI agents, one folder, every step cross-checked.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://ckir.github.io/clavity/">
+<meta property="og:image" content="https://ckir.github.io/clavity/assets/og.jpg">
+<link rel="icon" type="image/svg+xml" href="./assets/clavity.svg">
+<link rel="stylesheet" href="./style.css">
+<script src="./script.js" defer></script>
+<!--
+Art conversion commands ($ART is the folder holding the original artwork):
+# Banner (WebP, quality 94)
+mkdir -p site/assets && uv run --with pillow python -c "
+from PIL import Image; import os, sys
+q = int(sys.argv[1]); im = Image.open(os.environ['ART'] + '/ClavityNeonConnectorBridge.png').convert('RGB')
+im.save('site/assets/banner.webp', 'WEBP', quality=q, method=6)
+print(q, os.path.getsize('site/assets/banner.webp'))" 94
+# Social card, profile image, SVG
+uv run --with pillow python -c "
+import os
+from PIL import Image, ImageOps
+im = Image.open(os.environ['ART'] + '/ClavityNeonConnectorBridge.png').convert('RGB')
+ImageOps.fit(im, (1200, 630), method=Image.LANCZOS).save('site/assets/og.jpg', 'JPEG', quality=85, optimize=True)"
+cp "$ART/profile_clavity.png" site/assets/profile.png
+cp "$ART/clavity.svg" site/assets/clavity.svg
+-->
+</head>
+<body>
+<header class="hero">
+  <img class="banner" src="./assets/banner.webp" width="1670" height="941" alt="Clavity: a glowing bridge connecting a Claude Code terminal on the left to a Google Antigravity terminal on the right.">
+  <div class="wrap">
+    <h1>Claude Code drives. Antigravity reviews.</h1>
+    <p class="subline">Two AI agents, one folder, every step cross-checked.</p>
+    <ol class="stages" aria-label="Workflow stages">
+      <li class="driver"><span class="stage">Brainstorm</span><span class="role">Claude (driver)</span></li>
+      <li class="peer"><span class="stage">Spec review</span><span class="role">agy panel (peer)</span><code>adversarial-panel-review</code></li>
+      <li class="peer"><span class="stage">Plan review</span><span class="role">agy panel (peer)</span><code>adversarial-panel-review</code></li>
+      <li class="driver"><span class="stage">Build</span><span class="role">Claude (driver)</span></li>
+      <li class="peer"><span class="stage">Capstone</span><span class="role">agy (peer)</span><code>agy-capstone</code></li>
+      <li class="peer"><span class="stage">Test audit</span><span class="role">agy (peer)</span><code>agy-test-audit</code></li>
+    </ol>
+    <p class="legend">Claude Code is the driver (it implements and verifies). Antigravity (agy) is the peer (it reviews and recommends). Orange marks the driver, blue marks the peer.</p>
+    <p><a class="cta" href="#install">Install</a></p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="how">
+    <h2>How it works</h2>
+    <p>clavity starts a Claude Code instance and an Antigravity (agy) instance in the same folder. Claude Code is the driver: it implements and verifies. Antigravity is the peer: it reviews and recommends.</p>
+    <p>You need <a href="https://github.com/obra/superpowers">superpowers</a> installed first. You start with a brainstorm, which ends in a design document. That design goes to agy for an expert-panel review (<code>adversarial-panel-review</code>), and the implementation plan written from it gets the same treatment. You then choose how to implement: subagent-driven or inline. After the build, Claude runs <code>agy-capstone</code> to improve the code, and a final <code>agy-test-audit</code> hardens your test suites before the plan is declared complete.</p>
+    <p>Bonus: automatic debugging. Claude captures pre-existing defects it finds in your repo, including those seen by subagents. At the end of a plan, say "start the triage" and the defects are organised into a ranked backlog.</p>
+    <p>Every one of those review steps can be waived with a prompt, and there is a fallback if agy will not start. These three notes are quoted from the README.</p>
+    <blockquote id="prompt-interactive-warning" data-readme-quote="warning">
+      <p>In Latest versions of Antigravity the "--prompt-interactive" option is not working as expected. The workaround until I fix it is simple. Copy/paste the exact content of this file <a href="https://raw.githubusercontent.com/ckir/clavity/refs/heads/main/clavity-dotnet/pairing/agy-pairing-INSTALL.md">pairing</a> to Antigravity's prompt before start your work on Claude Code or use the classic version.</p>
+    </blockquote>
+    <blockquote data-readme-quote="waiver-1">
+      <p>All the above can be waived by prompts. Say for example "Waive agy for this step" and claude will execute the step solo.</p>
+    </blockquote>
+    <blockquote data-readme-quote="waiver-2">
+      <p>In case you have problem to start agy (e.g. quota exhausted, Google's servers are down) you can switch to subagents mode by prompt. Say for example "Waive agy for this and use subagents".</p>
+    </blockquote>
+    <p>The full text is in the <a href="https://github.com/ckir/clavity/blob/main/README.md">README</a>.</p>
+    <img class="art" src="./assets/clavity.svg" width="1647" height="928" alt="The clavity wordmark above a bridge of light between an orange Claude Code panel and a blue Antigravity panel." loading="lazy">
+  </section>
+
+  <section id="products">
+    <h2>Which product do you need?</h2>
+    <p>Five independent products live in one repository. Install only the ones you want.</p>
+    <ul class="cards">
+      <li class="card driver">
+        <h3>clavity-dotnet</h3>
+        <p class="tag">Primary - pick exactly one</p>
+        <p>The modern .NET rebuild: pairs Claude with a live agy peer through a local Language Server that gives Claude agy_look, agy_status and agy_ask.</p>
+        <a href="https://github.com/ckir/clavity/blob/main/clavity-dotnet/README.md">clavity-dotnet README</a>
+      </li>
+      <li class="card driver">
+        <h3>clavity-classic</h3>
+        <p class="tag">Failover - pick exactly one</p>
+        <p>The original Rust-based bridge: Claude drives a live agy peer through a psmux doorbell and the agentmemory bus. Use it if clavity-dotnet is unavailable.</p>
+        <a href="https://github.com/ckir/clavity/blob/main/clavity-classic/README.md">clavity-classic README</a>
+      </li>
+      <li class="card peer">
+        <h3>agy-autotrain</h3>
+        <p class="tag">Opt-in add-on</p>
+        <p>Auto-trains clavity's agy knowledge from everyday usage: capture, curate, verify, then compile into a manual.</p>
+        <a href="https://github.com/ckir/clavity/blob/main/agy-autotrain/README.md">agy-autotrain README</a>
+      </li>
+      <li class="card peer">
+        <h3>commonmemory</h3>
+        <p class="tag">Opt-in add-on</p>
+        <p>A shared notebook so Claude and agy share facts across the pairing. Needs <a href="https://www.npmjs.com/package/@agentmemory/agentmemory">@agentmemory/agentmemory</a>.</p>
+        <a href="https://github.com/ckir/clavity/blob/main/commonmemory/README.md">commonmemory README</a>
+      </li>
+      <li class="card peer">
+        <h3>review-relay</h3>
+        <p class="tag">Opt-in add-on</p>
+        <p>Assisted copy-paste review rounds with web AI models, with Claude preparing each round and verifying the findings.</p>
+        <a href="https://github.com/ckir/clavity/blob/main/review-relay/README.md">review-relay README</a>
+      </li>
+    </ul>
+  </section>
+
+  <!--
+  Maintainer notes: the checker (.github/site-checks/check_site.py) enforces this markup.
+  Run in CI by .github/workflows/pages.yml: python3 .github/site-checks/check_site.py --site site --readme README.md
+  - The install section must have id="install".
+  - "claude plugin" text may appear only in <code data-cmd> inside this section (anywhere else on the page fails).
+  - Each copy button carries a unique aria-label starting with Copy; the page keeps one role=status live region (id copy-status) outside any <li>.
+  - Every command is a <code data-cmd> in its own <li> with exactly one <button data-copy> whose value equals it.
+  - Three elements carry data-readme-quote: warning, waiver-1, waiver-2. Their text must equal the README text.
+  - Every pairing link (raw.githubusercontent.com or ending agy-pairing-INSTALL.md) equals the README's raw URL,
+    and at least one sits inside the install section.
+  - A README change to the install block, the "### WARNING" text, the two waiver lines or the pairing URL
+    requires this page to change in the same PR.
+  -->
+  <section id="install">
+    <h2>Install</h2>
+    <p>Install <a href="https://github.com/obra/superpowers">superpowers</a> first. clavity-dotnet and clavity-classic are mutually exclusive, so copy only the lines you want. If you use the classic installer below, skip the <code>clavity@clavity</code> line.</p>
+    <ul class="commands">
+      <li><code data-cmd>claude plugin marketplace add ckir/clavity</code> <button type="button" data-copy="claude plugin marketplace add ckir/clavity" aria-label="Copy command: add the clavity marketplace">Copy</button></li>
+      <li><code data-cmd>claude plugin install clavity@clavity</code> <small># clavity-dotnet</small> <button type="button" data-copy="claude plugin install clavity@clavity" aria-label="Copy command: install clavity (clavity-dotnet)">Copy</button></li>
+      <li><code data-cmd>claude plugin install agy-autotrain@clavity</code> <button type="button" data-copy="claude plugin install agy-autotrain@clavity" aria-label="Copy command: install agy-autotrain">Copy</button></li>
+      <li><code data-cmd>claude plugin install commonmemory@clavity</code> <button type="button" data-copy="claude plugin install commonmemory@clavity" aria-label="Copy command: install commonmemory">Copy</button></li>
+      <li><code data-cmd>claude plugin install review-relay@clavity</code> <button type="button" data-copy="claude plugin install review-relay@clavity" aria-label="Copy command: install review-relay">Copy</button></li>
+    </ul>
+    <p id="copy-status" class="sr-only" role="status"></p>
+    <p>These commands work on Windows, Linux and macOS.</p>
+    <p class="note"><strong>Antigravity workaround:</strong> with recent versions of Antigravity the <code>--prompt-interactive</code> option does not work as expected. Until that is fixed, copy and paste the exact content of the <a href="https://raw.githubusercontent.com/ckir/clavity/refs/heads/main/clavity-dotnet/pairing/agy-pairing-INSTALL.md">pairing file</a> into agy's prompt before you start work in Claude Code. See the <a href="#prompt-interactive-warning">quoted README text</a> above.</p>
+    <h3>clavity-classic (Windows only)</h3>
+    <p>clavity-classic is installed differently, and only on Windows. Open the <a href="https://github.com/ckir/clavity/releases">Releases page</a>, take <code>clavity-classic-setup-&lt;version&gt;.exe</code> from the <code>clavity-v&lt;N&gt;</code> release, check it against its <code>.sha256</code> file, then run it.</p>
+  </section>
+
+  <section id="guides">
+    <h2>Guides</h2>
+    <ul>
+      <li><a href="https://github.com/ckir/clavity/blob/main/docs/USER_GUIDE.pdf">User guide (PDF)</a></li>
+      <li><a href="https://github.com/ckir/clavity/blob/main/docs/USER_GUIDE.html">User guide (HTML)</a></li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap footer-grid">
+    <img src="./assets/profile.png" width="96" height="96" alt="Clavity emblem">
+    <div>
+      <p>Licensed under <a href="https://github.com/ckir/clavity/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a>.</p>
+      <nav aria-label="Project links"><a href="https://github.com/ckir/clavity">Repository</a> | <a href="https://github.com/ckir/clavity/issues">Issues</a></nav>
+      <p class="fine">Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of Anthropic. This is an independent project, not affiliated with, endorsed by, or sponsored by Google or Anthropic.</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
