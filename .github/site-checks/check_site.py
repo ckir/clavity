@@ -16,7 +16,8 @@ hard-coded here: the pairing path (RAW_PAIRING_PATH) and the two waiver opening
 phrases (WAIVER_OPENINGS). Exit codes: 0 clean, 1 problems, 2 unreadable input.
 Any <base href> is a problem (5 absolute, 2 relative); `claude plugin` text is
 allowed only inside <code data-cmd> in #install, anywhere else on the page is
-check 6; a repeated attribute keeps its first value (as HTML5 does); README
+check 6 (adjacent block elements are joined with a space, so a heading "Claude"
+followed by a paragraph starting "Plugin" is flagged: reword it); a repeated attribute keeps its first value (as HTML5 does); README
 folding strips * and ` and understands only inline [text](url) links.
 Unit tests: python3 -m unittest discover -s .github/site-checks
 """
@@ -80,7 +81,7 @@ class CannotAnswer(Exception):
 class Capture:
     """Text (and `<a href>`s) collected while one element is open."""
 
-    kind: str  # quote | cmd | code
+    kind: str  # quote | cmd
     key: str  # data-readme-quote value ("" otherwise)
     li: int | None  # enclosing `<li>` of an #install element
     parts: list[str] = field(default_factory=list)
@@ -112,7 +113,6 @@ class PageParser(HTMLParser):
         self.lis = 0
         self.quotes: list[Capture] = []
         self.commands: list[Capture] = []  # <code data-cmd> in #install
-        self.bare_code: list[Capture] = []  # other <code> in #install
         self.copies: list[tuple[int | None, str]] = []  # (li, data-copy) in #install
         self.page_text: list[str] = []  # all text except <code data-cmd> in #install
         self.hrefs: list[tuple[str, bool]] = []  # (href, inside #install), any tag
@@ -155,9 +155,6 @@ class PageParser(HTMLParser):
             if "data-cmd" in values:
                 captures.append(Capture("cmd", "", li))
                 self.commands.append(captures[-1])
-            elif tag == "code":
-                captures.append(Capture("code", "", li))
-                self.bare_code.append(captures[-1])
             if "data-copy" in values:
                 self.copies.append((li, values["data-copy"]))
         if tag == "a" and "href" in values:
@@ -511,9 +508,6 @@ def check_install(parser: PageParser, readme_text: str, name: str) -> list[Probl
     if sorted(page_cmds) != sorted(readme_cmds):
         for detail in multiset_detail(page_cmds, readme_cmds):
             flag(detail)
-    for code in parser.bare_code:
-        if code.text.startswith(COMMAND_PREFIX):
-            flag(f"{code.text!r} is a claude plugin command without data-cmd")
     for index in {c.li for c in parser.commands} | {li for li, _ in parser.copies}:
         cmds = [c.text for c in parser.commands if c.li == index]
         copies = [value for li, value in parser.copies if li == index]

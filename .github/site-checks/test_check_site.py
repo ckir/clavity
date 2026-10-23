@@ -516,7 +516,9 @@ class ParityChecks(unittest.TestCase):
     def test_claude_plugin_text_without_data_cmd_flagged(self):
         extra = "<code>claude plugin install x@y</code>"
         html = install_html().replace("</ul>", f"</ul>{extra}")
-        self.assertEqual(self.numbers(index_body(html)), [6])
+        problems = self.run_case(index_body(html))
+        self.assertEqual([n for n, _ in problems], [6])
+        self.assertIn("page text mentions", problems[0][1])
 
     def test_any_pairing_link_must_equal_readme_url(self):
         other = PAIRING.replace("INSTALL", "INSTALL-X")
@@ -558,6 +560,27 @@ class ParityChecks(unittest.TestCase):
             with self.subTest(extra=extra):
                 html = install_html().replace("</section>", f"{extra}</section>")
                 self.assertEqual(self.numbers(index_body(html)), [6])
+
+    def test_claude_plugin_split_across_blocks_is_flagged(self):
+        body = index_body() + "<p>claude</p><p>plugin install x</p>"
+        problems = self.run_case(body)
+        self.assertEqual([n for n, _ in problems], [6])
+        self.assertIn("page text mentions", problems[0][1])
+
+    def test_heading_then_paragraph_false_alarm_is_accepted_fail_closed(self):
+        # Adjacent blocks are joined with a space, so this innocent pair reads
+        # "Claude Plugin" and is flagged. Loud and rewordable: accepted trade-off.
+        body = index_body() + "<h3>Claude</h3><p>Plugin names are listed below.</p>"
+        problems = self.run_case(body)
+        self.assertEqual([n for n, _ in problems], [6])
+        self.assertIn("page text mentions", problems[0][1])
+
+    def test_third_party_raw_githubusercontent_link_is_flagged(self):
+        href = "https://raw.githubusercontent.com/attacker/repo/main/payload.sh"
+        problems = self.run_case(index_body() + f"<a href='{href}'>x</a>")
+        hits = [(n, d) for n, d in problems if href in d]
+        self.assertTrue(hits, problems)
+        self.assertIn(hits[0][0], (3, 6))
 
     def test_claude_plugin_text_anywhere_on_page_flagged(self):
         cases = {
