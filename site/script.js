@@ -1,12 +1,17 @@
 // Copy buttons only. The page works without JS: every command is plain text.
+var statusTimers = [];
 document.querySelectorAll('#install button[data-copy]').forEach(function (btn) {
   var label = btn.textContent;
   var status = document.getElementById('copy-status');
   var what = (btn.getAttribute('aria-label') || '').replace(/^Copy command: /, '');
   var say = function (text) {
     if (!status) { return; }
-    status.textContent = text;
-    setTimeout(function () { status.textContent = ''; }, 1500);
+    statusTimers.forEach(clearTimeout);
+    status.textContent = '';
+    statusTimers = [
+      setTimeout(function () { status.textContent = text; }, 50),
+      setTimeout(function () { status.textContent = ''; }, 1550)
+    ];
   };
   btn.addEventListener('click', function () {
     var done = function () {
