@@ -236,6 +236,7 @@ def resolve(ref: str, referrer: str) -> str:
 
     Returns a normalised posix path; one starting with `..` escapes site/.
     """
+    ref = ref.strip()
     path = unquote(ref.split("#", 1)[0].split("?", 1)[0])
     base = posixpath.dirname(referrer)
     return posixpath.normpath(posixpath.join(base, path))

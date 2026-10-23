@@ -905,6 +905,16 @@ class SweepPins(unittest.TestCase):
         self.assertEqual(self.structure(anchor), [])
         self.assertEqual(self.structure(page('<a href=" # ">top</a>')), [])
 
+    def test_whitespace_around_relative_reference_still_resolves(self):
+        files = {"assets/profile.png": b"x"}
+        img = page('<img src=" ./assets/profile.png">')
+        self.assertEqual(self.structure(img, files=files), [])
+        link = page("", '<link rel="stylesheet" href="./style.css ">')
+        self.assertEqual(self.structure(link), [])
+        escape = page('<a href=" ../README.md ">r</a>')
+        self.assertEqual(self.numbers(self.structure(escape)), [3])
+        self.assertEqual(self.structure(page('<a href="   ">e</a>')), [])
+
     def test_whitespace_around_local_css_reference_is_ignored(self):
         files = {"assets/a.webp": b"x"}
         inline = page("<p style=\"background:url(' ./assets/a.webp ')\">a</p>")
