@@ -972,6 +972,53 @@ class SweepPins(unittest.TestCase):
             with self.subTest(html=html):
                 self.assertIn(5, self.numbers(self.structure(page("", html))))
 
+    def test_every_loading_carrier_rejects_third_party_urls(self):
+        evil = "https://evil.example/x"
+        cases = {
+            "poster": (f'<video poster="{evil}.png"></video>', "poster"),
+            "object data": (f'<object data="{evil}"></object>', "data"),
+            "table background": (
+                f'<table background="{evil}.png"></table>',
+                "background",
+            ),
+            "svg image": (f'<svg><image href="{evil}.png"/></svg>', "href"),
+            "svg use": (f'<svg><use href="{evil}.svg#x"/></svg>', "href"),
+        }
+        for rel in ("manifest", "modulepreload", "prefetch", "preconnect", "Manifest"):
+            cases[f"link {rel}"] = (f'<link rel="{rel}" href="{evil}">', "href")
+        cases["link apple-touch-icon"] = (
+            f'<link rel="apple-touch-icon" href="{evil}.png">',
+            "href",
+        )
+        for name, (fragment, attr) in cases.items():
+            with self.subTest(name=name):
+                problems = self.structure(page(fragment))
+                hits = [d for n, d in problems if n == 5 and evil in d]
+                self.assertTrue(hits, problems)
+                self.assertIn(f"via {attr} ", hits[0])
+
+    def test_non_loading_references_stay_clean(self):
+        head = '<link rel="canonical" href="https://ckir.github.io/clavity/">'
+        self.assertEqual(self.structure(page("", head)), [])
+        upper = head.replace('"canonical"', '"Canonical"')
+        self.assertEqual(self.structure(page("", upper)), [])
+        self.assertEqual(
+            self.structure(page('<a href="https://example.org/">x</a>')), []
+        )
+        files = {"assets/profile.png": b"x"}
+        poster = page('<video poster="./assets/profile.png"></video>')
+        self.assertEqual(self.structure(poster, files=files), [])
+        missing = page('<video poster="./assets/nope.png"></video>')
+        self.assertEqual(self.numbers(self.structure(missing)), [2])
+        local = '<link rel="icon" href="./style.css">'
+        self.assertEqual(self.structure(page("", local)), [])
+        self.assertIn(
+            5,
+            self.numbers(
+                self.structure(page("", '<link rel="icon" href="https://e.example/i">'))
+            ),
+        )
+
     def test_absolute_site_metadata_is_not_a_problem(self):
         head = (
             '<meta property="og:image" '

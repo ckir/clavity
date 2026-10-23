@@ -20,6 +20,9 @@ check 6 (adjacent block elements are joined with a space, so a heading "Claude"
 followed by a paragraph starting "Plugin" is flagged: reword it); a repeated attribute keeps its first value (as HTML5 does); README
 folding strips * and ` and understands only inline [text](url) links.
 Pages nested deeper than 512 elements fail closed with exit 2.
+Page loads that must not be third-party: every <link href> except canonical, and the
+attributes src, srcset, poster, object data, background, and href on svg
+image/use. Form action, a ping and meta refresh are navigation and NOT checked.
 Unit tests: python3 -m unittest discover -s .github/site-checks
 """
 
@@ -39,7 +42,6 @@ Problem = tuple[int, str]  # (check_number, "<path>: <detail>")
 VOID_TAGS = frozenset(
     "area base br col embed hr img input link meta source track wbr".split()
 )
-LOAD_LINK_RELS = frozenset({"stylesheet", "icon", "preload"})
 RASTER_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif"})
 MAX_RASTER_BYTES = 300 * 1024
 MAX_NESTING = 512  # Chromium's open-element limit; deeper input fails closed
@@ -321,10 +323,14 @@ def html_refs(parser: PageParser) -> list[tuple[str, str, bool]]:
     for tag, attrs in parser.elements:
         rels = set(attrs.get("rel", "").lower().split())
         if "href" in attrs:
-            is_load = tag == "link" and bool(rels & LOAD_LINK_RELS)
+            is_link = tag == "link" and "canonical" not in rels
+            is_load = is_link or tag in ("image", "use")
             refs.append(("href", attrs["href"], is_load))
         if "src" in attrs:
             refs.append(("src", attrs["src"], True))
+        for attr in ("poster", "data", "background"):
+            if attr in attrs and (attr != "data" or tag == "object"):
+                refs.append((attr, attrs[attr], True))
         if "srcset" in attrs:
             refs.extend(("srcset", url, True) for url in srcset_urls(attrs["srcset"]))
         if "content" in attrs and classify(attrs["content"]) == "root":
