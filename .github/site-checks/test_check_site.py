@@ -1058,6 +1058,37 @@ class SweepPins(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(self.numbers(self.structure(page(html))), [2])
 
+    def test_image_set_followed_by_a_quoted_string_in_the_same_declaration_is_an_accepted_false_alarm(
+        self,
+    ):
+        # Fail-closed trade-off: the scan runs to the end of the declaration, so a
+        # later quoted string is read as an image-set URL. Reword to avoid it.
+        html = page(
+            "<div style=\"background:image-set(url(./assets/profile.png) 1x) , 'Segoe UI'\">a</div>"
+        )
+        problems = self.structure(html, files={"assets/profile.png": b"x"})
+        self.assertEqual(self.numbers(problems), [2])
+        self.assertIn("image-set()", problems[0][1])
+
+    def test_quoted_string_in_an_earlier_declaration_does_not_trigger_the_image_set_scan(
+        self,
+    ):
+        html = page(
+            "<div style=\"font-family:'Segoe UI';background:image-set(url(./assets/profile.png) 1x)\">a</div>"
+        )
+        self.assertEqual(self.structure(html, files={"assets/profile.png": b"x"}), [])
+
+    def test_image_set_bare_string_resolves_like_a_url(self):
+        files = {"assets/profile.png": b"x"}
+        ok = page(
+            "<div style='background:image-set(\"./assets/profile.png\" 1x)'>a</div>"
+        )
+        self.assertEqual(self.structure(ok, files=files), [])
+        bad = page(
+            "<div style='background:image-set(\"./assets/nope.png\" 1x)'>a</div>"
+        )
+        self.assertEqual(self.numbers(self.structure(bad, files=files)), [2])
+
     def test_css_function_and_at_rule_names_are_case_insensitive(self):
         evil = "https://evil.example/p.png"
         inline = page(f'<p style="background:URL({evil})">a</p>')

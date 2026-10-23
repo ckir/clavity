@@ -23,7 +23,9 @@ Pages nested deeper than 512 elements fail closed with exit 2.
 Page loads that must not be third-party: every <link href> except canonical, and the
 attributes src, srcset, poster, object data, background, and href on svg
 image/use (also xlink:href, feImage href), imagesrcset and quoted image-set()
-strings. Form action, a ping and meta refresh are navigation and NOT checked.
+strings (a quoted string after `image-set(` in the same declaration, up to `;`,
+`{` or `}`, counts as an image-set URL: put other strings in a separate declaration).
+Form action, a ping and meta refresh are navigation and NOT checked.
 Unit tests: python3 -m unittest discover -s .github/site-checks
 """
 
