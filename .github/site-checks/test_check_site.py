@@ -498,6 +498,13 @@ class ParityChecks(unittest.TestCase):
     def test_install_parity_clean(self):
         self.assertEqual(self.run_case(), [])
 
+    def test_problems_from_checks_1_6_and_7_are_reported_together(self):
+        body = '<a href="/root-relative">x</a>' + index_body(
+            install_html(CLEAN_COMMANDS + ["claude plugin install extra@clavity"]),
+            w1="Changed waiver sentence.",
+        )
+        self.assertEqual(self.numbers(body), [1, 6, 7])
+
     def test_comment_stripped_from_readme_line_before_comparing(self):
         self.assertIn("# clavity-dotnet", make_readme())
         self.assertEqual(self.run_case(), [])
@@ -1313,6 +1320,11 @@ class RealPageContract(unittest.TestCase):
             self.assertTrue(label.startswith("Copy"), label)
             self.assertNotIn("claude plugin", label.lower())
         self.assertEqual(len(set(labels)), 5, labels)
+
+    def test_live_region_is_visually_hidden_by_class(self):
+        regions = [a for _, a in self.parser.elements if a.get("id") == "copy-status"]
+        self.assertEqual(len(regions), 1)
+        self.assertIn("sr-only", regions[0].get("class", "").split())
 
     def test_one_live_region_outside_any_list_item(self):
         regions = [
