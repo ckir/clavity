@@ -361,6 +361,19 @@ class StructuralChecks(unittest.TestCase):
         # src climbing out of site/ is check 2 (an href would be check 3).
         self.assertIn(2, self.numbers(html), "decoded ../.. escape must be check 2")
 
+    def test_non_utf8_readme_is_cannot_answer_exit_2(self):
+        site = make_site(self.tmp / "bad_readme", page(index_body()))
+        bad = self.tmp / "bad_readme" / "README.md"
+        bad.write_bytes(b"# T\n\xff\xfe\x80 not utf-8\n")
+        with self.assertRaises(CannotAnswer) as ctx:
+            check_site(site, bad)
+        self.assertIn(
+            "README.md cannot be read (UnicodeDecodeError)", str(ctx.exception)
+        )
+        result = run_checker(site, bad)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("CANNOT_ANSWER", result.stderr)
+
     def test_nesting_limit_is_exact(self):
         ok = make_site(self.tmp / "deep_ok", "<div>" * 512)
         self.assertEqual(check_structure(ok), [])
