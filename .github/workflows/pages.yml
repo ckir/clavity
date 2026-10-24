@@ -22,7 +22,7 @@ name: pages
 # another branch cannot deploy.
 #
 # The path filters list README.md because the site checks guard the page against README drift
-# (install commands, warning quote, pairing link), and .github/site-checks/** because a change to the
+# (install commands, the two waiver quotes), and .github/site-checks/** because a change to the
 # checker or its tests is otherwise a change no run exercises. `branches: [main]` keeps tag pushes
 # out (GitHub does not apply `paths:` to tag pushes).
 on:

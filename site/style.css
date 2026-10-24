@@ -61,7 +61,6 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .cta:hover { color: var(--bg); transform: translateY(-2px); }
 
 blockquote { margin: 1rem 0; padding: 0.1rem 1rem; border-left: 4px solid var(--peer); background: var(--panel); border-radius: 0 0.5rem 0.5rem 0; }
-blockquote[data-readme-quote="warning"] { border-left-color: var(--driver); }
 .art { margin: 2rem auto 0; border-radius: 0.6rem; }
 
 .cards { list-style: none; padding: 0; display: grid; gap: 1rem; grid-template-columns: 1fr; }
