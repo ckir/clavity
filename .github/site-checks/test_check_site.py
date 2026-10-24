@@ -376,6 +376,10 @@ class StructuralChecks(unittest.TestCase):
         self.assertTrue(result.stderr.startswith("CANNOT_ANSWER: "), result.stderr)
         self.assertIn("512", result.stderr)
 
+    def test_external_raw_githubusercontent_url_is_permitted(self):
+        other = "https://raw.githubusercontent.com/external/repo/main/p.sh"
+        self.assertEqual(self.problems(page(f'<a href="{other}">o</a>')), [])
+
     def test_raw_githubusercontent_urls_are_flagged(self):
         raw = "https://raw.githubusercontent.com/ckir/clavity/refs/heads/main/README.md"
         self.assertIn(3, self.numbers(page(f'<a href="{raw}">r</a>')))
@@ -646,7 +650,7 @@ class ParityChecks(unittest.TestCase):
 
     # -- check 7 -----------------------------------------------------------
 
-    def test_exactly_three_quote_elements_required(self):
+    def test_exactly_two_quote_elements_required(self):
         two = index_body(w2="")
         two = two.replace("<p data-readme-quote='waiver-2'></p>", "")
         self.assertEqual(self.numbers(two), [7])
@@ -657,6 +661,10 @@ class ParityChecks(unittest.TestCase):
         )
         dup = dup.replace(WAIVER_2, WAIVER_1)
         self.assertEqual(self.numbers(dup), [7])
+
+    def test_stray_warning_quote_key_flagged(self):
+        stray = index_body() + "<div data-readme-quote='warning'><p>x</p></div>"
+        self.assertEqual(self.numbers(stray), [7])
 
     def test_quote_matches_after_folding(self):
         w1 = "All the above can be waived by prompts. Say “Waive agy” it’s **fine** now."
@@ -1137,7 +1145,7 @@ class SweepPins(unittest.TestCase):
 
     # -- case sensitivity of the parity gates ------------------------------
 
-    def test_waiver_quote_differing_only_in_case_is_flagged(self):
+    def test_waiver_quote_differing_in_internal_case_is_flagged(self):
         w1 = WAIVER_1.replace("Say for example", "say for example")
         self.assertNotEqual(w1, WAIVER_1)
         problems = self.parity(index_body(w1=w1))
