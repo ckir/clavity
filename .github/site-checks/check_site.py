@@ -15,7 +15,7 @@ Standard library only.
 Maintainer notes. Checks: 1 no root-relative refs (HTML, CSS, inline styles);
 2 every local ref and anchor resolves inside site/; 3 repo links stay on the
 allowlist (repo root, /blob/main, /tree/main, /releases, /issues; no
-raw.githubusercontent.com URL); 4 rasters under site/assets/ are <= 300 KB; 5 no third-party
+raw.githubusercontent.com/ckir/clavity URL); 4 rasters under site/assets/ are <= 300 KB; 5 no third-party
 loads; 6 #install commands and copy buttons equal the README;
 7 the two data-readme-quote texts equal the README. One README fact is
 hard-coded here: the two waiver opening phrases (WAIVER_OPENINGS). Exit codes: 0 clean, 1 problems, 2 unreadable input.
@@ -32,9 +32,8 @@ strings (a quoted string after `image-set(` in the same declaration, up to `;`,
 `{` or `}`, counts as an image-set URL: put other strings in a separate declaration).
 Form action, a ping and meta refresh are navigation and NOT checked.
 The README parser understands ``` fences, inline `[text](url)` links and
-`*`/backtick emphasis; tilde fences, closing hashes,
-setext headings and `_`/`__` emphasis are NOT understood and fail the build
-(exit 2 or CHECK7): reword the README or extend the parser.
+`*`/backtick emphasis; tilde fences and `_`/`__` emphasis are NOT understood
+and fail the build (exit 2 or CHECK7): reword the README or extend the parser.
 Unit tests: python3 -m unittest discover -s .github/site-checks
 """
 
@@ -93,13 +92,12 @@ class CannotAnswer(Exception):
 
 @dataclass
 class Capture:
-    """Text (and `<a href>`s) collected while one element is open."""
+    """Text collected while one element is open."""
 
     kind: str  # quote | cmd
     key: str  # data-readme-quote value ("" otherwise)
     li: int | None  # enclosing `<li>` of an #install element
     parts: list[str] = field(default_factory=list)
-    hrefs: list[str] = field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -129,7 +127,6 @@ class PageParser(HTMLParser):
         self.commands: list[Capture] = []  # <code data-cmd> in #install
         self.copies: list[tuple[int | None, str]] = []  # (li, data-copy) in #install
         self.page_text: list[str] = []  # all text except <code data-cmd> in #install
-        self.hrefs: list[tuple[str, bool]] = []  # (href, inside #install), any tag
         self.inline_css: list[str] = []  # <style> texts and style="" values
 
     def _active(self) -> list[Capture]:
@@ -159,8 +156,6 @@ class PageParser(HTMLParser):
         if "data-readme-quote" in values:
             captures.append(Capture("quote", values["data-readme-quote"], None))
             self.quotes.append(captures[-1])
-        if "href" in values:
-            self.hrefs.append((values["href"], in_install))
         if "style" in values:
             self.inline_css.append(values["style"])
         if tag == "style":
@@ -171,10 +166,6 @@ class PageParser(HTMLParser):
                 self.commands.append(captures[-1])
             if "data-copy" in values:
                 self.copies.append((li, values["data-copy"]))
-        if tag == "a" and "href" in values:
-            for capture in self._active():
-                if capture.kind == "quote":
-                    capture.hrefs.append(values["href"])
         if tag not in VOID_TAGS:
             if len(self.stack) >= MAX_NESTING:
                 raise CannotAnswer(
