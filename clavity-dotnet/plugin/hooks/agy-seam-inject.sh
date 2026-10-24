@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # AGY auto-fire hook (plugin-shipped). PreToolUse(Skill): inject a best-effort directive at each
 # superpowers seam listed below. NO COUNT is written here on purpose -- the map IS the count, and
 # a number kept beside the list it duplicates is the first thing to rot (this comment has already

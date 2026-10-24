@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Shared test hygiene. Dot-sourced by BashHookHelpers.ps1 and by suites that do not use it.
 function Remove-TestPath {
     # MEASURED (pwsh 7): `Remove-Item $null,$x -ErrorAction SilentlyContinue` THROWS ParameterBindingValidationException

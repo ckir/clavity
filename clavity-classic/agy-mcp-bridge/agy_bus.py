@@ -1,3 +1,9 @@
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 """agentmemory signal-bus conventions for the agy remote control (components C5 + C1 core).
 
 The bus is driven by the MCP tools ``memory_signal_send`` / ``memory_signal_read``, which

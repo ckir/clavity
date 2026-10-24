@@ -1,4 +1,12 @@
 #!/usr/bin/env pwsh
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Verifies the ROADMAP's own MECHANICALLY CHECKABLE claims. It does not judge whether an item is done -
 # nothing can - it checks the evidence an entry cites about the repository.
 #

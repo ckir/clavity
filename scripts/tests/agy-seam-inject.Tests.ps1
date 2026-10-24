@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Focused synthetic-payload smoke for the SP-C auto-fire hook (agy-seam-inject.sh).
 # Pipes a synthetic PreToolUse(Skill) payload to the shipped bash hook and asserts its
 # behaviour: seam match -> the right discipline directive (once); debounce (marker==HEAD)

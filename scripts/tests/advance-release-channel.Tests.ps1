@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # ROADMAP section 61. advance-release-channel.sh is the ONLY thing that moves branch `release`, which the root
 # marketplace serves the clavity plugin from. It must refuse to move it while any clavity-ls asset is missing,
 # when the tag's plugin version disagrees, and for anything that is not a fast-forward.

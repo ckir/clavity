@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # AGY-DISCIPLINES liveness/degradation notice (plugin-shipped, SP-D / spec Decision 3). SessionStart(startup):
 # the agy-driving disciplines auto-fire only when superpowers is installed+enabled; if it is not, the user
 # must be told LOUDLY at boot, else the disciplines die silently. A .no-agy kill-switch is the opposite: the

@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # AGY-ANOMALIES dispatch reminder (plugin-shipped). PreToolUse(Agent|Task): carry the anomaly-relay
 # obligation into every subagent dispatch. ISOLATED BY DESIGN -- agy-seam-inject.sh is not modified and
 # not sourced. That hook is registered matcher "Skill" and keys its case on .tool_input.skill, which an

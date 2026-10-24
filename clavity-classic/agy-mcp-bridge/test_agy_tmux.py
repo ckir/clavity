@@ -1,3 +1,9 @@
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 """Unit tests for the C3 pane-state classifier (agy_tmux.classify_pane).
 
 Fixtures are verbatim captures from the live psmux/agy session taken during design

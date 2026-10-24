@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # scripts/check-agy-discipline-skills.ps1
 # Lints the shipped agy-driving discipline skills for their checkable invariants.
 # Byte-identity across plugins is enforced separately by scripts/check-seed-artifacts-synced.sh.

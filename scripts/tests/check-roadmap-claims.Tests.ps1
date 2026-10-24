@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Fixture ROADMAPs under $TestDrive plus a throwaway git repo for the sha-existence half. The real
 # ROADMAP is exercised by exactly one row, and only AFTER Task 4 reconciles it.
 BeforeAll {

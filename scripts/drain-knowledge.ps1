@@ -1,5 +1,13 @@
 #!/usr/bin/env pwsh
 <#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
+<#
 .SYNOPSIS
   Drain machine-local agy-learn captures into a reviewable GROWTH proposal (docs/agy-golden-header.growth.md) +
   docs side-artifacts via a headless claude -p curator (EXTEND model; the runtime header is published later by

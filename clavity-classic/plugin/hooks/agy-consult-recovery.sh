@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # AGY consult-recovery reader (plugin-shipped). SessionStart(startup|resume|clear|compact). READ ONLY.
 # section 15 workflow-position resilience. Design: docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md
 #

@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # The installer-ASCII gate had NO suite until ROADMAP section 28. It is the only local check that catches a
 # CP1252 mangling in the Windows PowerShell 5.1 domain, and nothing pinned any of its behaviour.
 Describe 'check-installer-ascii.ps1' {

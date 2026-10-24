@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Fixtures are a THROWAWAY git repo plus a fake install, both under $TestDrive. Nothing here reads the
 # real installed plugin: CI has no install, and a row that silently skips when the install is absent is
 # the exact fail-open this checker exists to close. The live check is a manual step in the plan, not a row.

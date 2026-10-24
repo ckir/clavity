@@ -1,5 +1,13 @@
 #!/usr/bin/env pwsh
 <#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
+<#
 .SYNOPSIS
   Stage-1 docs-rationalize audit: read-only `claude -p` doc-vs-code accuracy audit over the user-facing doc
   list, emitting a per-doc punch-list (JSON store + md view) and an append-only log. NO doc edits, NO commit.

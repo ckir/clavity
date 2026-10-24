@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Costas Kirgoussios
+//
+// This software is licensed under the PolyForm Noncommercial License 1.0.0.
+// You may obtain a copy of the License at:
+// https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 //! Shared, variant-agnostic golden-header contract — mirrors dotnet `GoldenHeader.cs` so a header
 //! written by either variant is read identically by the other. The wisdom is split into two
 //! independently-owned region files under a resolved directory (default `<home>/.clavity`):

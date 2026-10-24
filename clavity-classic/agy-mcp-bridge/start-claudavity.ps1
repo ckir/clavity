@@ -1,4 +1,12 @@
 #!/usr/bin/env pwsh
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # start-claudavity.ps1
 # Launch the Claude <-> agy "remote control" pair in one shared folder:
 #   1) agy (Antigravity CLI) in a detached psmux session, signed-in

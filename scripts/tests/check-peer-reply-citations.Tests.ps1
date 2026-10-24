@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # scripts/tests/check-peer-reply-citations.Tests.ps1
 # Pins the peer-reply citation checker: the DISCIPLINE declares the schema, the checker owns the
 # declaration, and citations resolve by QUOTED TEXT rather than by line number.

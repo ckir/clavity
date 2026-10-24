@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Costas Kirgoussios
+//
+// This software is licensed under the PolyForm Noncommercial License 1.0.0.
+// You may obtain a copy of the License at:
+// https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 //! Reads the shared driver-cheatsheet (peer-driving core reminders) from the golden-header directory,
 //! degrading to a shipped baseline floor when missing/oversized/unreadable. The delivered block is the
 //! text prefixed with a `[driver_guidance]` label (spec §5.C-C).

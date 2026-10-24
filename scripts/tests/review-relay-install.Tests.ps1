@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # End-to-end tests for review-relay/scripts/install-extension.ps1. The script runs in a CHILD pwsh so its
 # exit codes are observed exactly as a user sees them. Every test works on a COPY of the plugin layout in
 # $TestDrive and never touches %LOCALAPPDATA%.

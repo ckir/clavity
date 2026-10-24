@@ -1,4 +1,12 @@
 #!/usr/bin/env pwsh
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # The tracker-format excerpt in docs/tracker-format.md must appear, byte for byte, in the promote-step skills of BOTH plugins.
 # EXIT: 0 every copy equals the canonical block · 1 a copy is missing, duplicated or differs · 2 the canonical block cannot be read.
 [CmdletBinding()]

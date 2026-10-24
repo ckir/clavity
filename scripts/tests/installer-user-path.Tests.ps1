@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # The per-user PATH handling every member installer shares: installer/_shared/user-path.iss.
 #
 # THE DEFECT THIS PINS, MEASURED 2026-09-11. Every installer appended itself to PATH through a [Registry]

@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # AGY-ANOMALIES triage reminder (plugin-shipped). SessionStart(startup): an agent that notices a defect
 # while doing something ELSE appends one line to .clavity/local-anomalies.md; this hook is the drain side.
 # It COUNTS the untriaged entries and DEMANDS triage. Both halves matter: a reminder that only says

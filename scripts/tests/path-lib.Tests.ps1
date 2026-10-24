@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Unit tests for the shared path helper. ROADMAP section 28.
 #
 # THE ROOT-SHAPE MATRIX LIVES HERE, not in the four gate suites - each of those needs only one integration

@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Behavioural guards for agy-autotrain/hooks/migrate-inbox.sh — the SessionStart port of the RETIRED Inno
 # installer's `MigrateInboxToUserState` (Inno-retirement, 2026-09-14). Unlike the .iss version (Pascal,
 # which Pester could only line-INSPECT), the hook is bash and is RUN here against real fixtures, so every

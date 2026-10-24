@@ -1,4 +1,12 @@
 <#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
+<#
 .SYNOPSIS
 Generates a single-plugin scoped marketplace.json for one clavity member, from the non-addable
 build/members.json build source (docs/superpowers/specs/2026-07-11-cohesive-distribution-design.md,

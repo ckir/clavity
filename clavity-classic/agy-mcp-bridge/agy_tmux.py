@@ -1,3 +1,9 @@
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 """tmux/psmux primitives for the agy remote control (component C3).
 
 The live ``agy`` (Antigravity CLI) session runs inside a psmux/tmux session (default

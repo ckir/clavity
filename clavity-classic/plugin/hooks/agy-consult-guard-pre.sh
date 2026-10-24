@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # agy-consult VCS-diff guard, PRE half.
 # PreToolUse(Bash|PowerShell|<agy_ask MCP>): snapshot a VCS baseline for a consult so POST can
 # detect a mutation. Silent (emits nothing). Fail-open: any error -> exit 0.

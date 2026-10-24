@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # The ONE place the debounce-marker path is built (ROADMAP section 39).
 #
 # SOURCED, NEVER EXECUTED - it must not call `exit`: agy-mark.sh (a process) and three fail-open hooks

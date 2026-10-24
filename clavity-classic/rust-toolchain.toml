@@ -1,3 +1,9 @@
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # Pin the toolchain so the local ISCC gate and the release CI build the SAME binary, and a historic tag stays
 # rebuildable. Bump deliberately, never float. (Verified local rustc at authoring: 1.96.0.)
 [toolchain]

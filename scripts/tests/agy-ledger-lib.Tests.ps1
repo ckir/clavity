@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Tests for the shipped ledger reader, clavity-dotnet/plugin/hooks/agy-ledger-lib.sh (ROADMAP section 27).
 #
 # The reader is SOURCED by agy-mark.sh and answers a string; it never exits. These rows exercise it
