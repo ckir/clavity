@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # ROADMAP section 68. clavity-dotnet-setup.sh registers the plugin with agy (`agy plugin uninstall clavity` + `agy plugin install
 # <root>`) and used to do so ONCE, gated by an empty stamp in CLAUDE_PLUGIN_DATA - which survives plugin upgrades, so no upgrade
 # ever reached agy's copy. The stamp now holds the plugin version and the hook registers again whenever it differs.

@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # run-pester-parallel.ps1 runs each suite file in its OWN pwsh process, N at a time, and must be at least as strict
 # as one Invoke-Pester over the same files. The strictness rows are the point: a container that fails DISCOVERY
 # contributes 0 to FailedCount (the CI sweep documents this), so a naive "sum the failures" runner turns a broken

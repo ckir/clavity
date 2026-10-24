@@ -1,3 +1,9 @@
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 """Tests for the MCP-server wiring added to the delegated sub-agent.
 
 The existing integration tests short-circuit via MOCK_AGENT_RESPONSE before the

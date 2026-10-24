@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 """One-time normalisation of the four trackers to docs/tracker-format.md (Branch T, Task 4).
 
 Run:  python -I docs/superpowers/plans/2026-10-08-branch-t-normalise.py <repo-root> <table.tsv> <sha-overrides.tsv> [--dry-run]

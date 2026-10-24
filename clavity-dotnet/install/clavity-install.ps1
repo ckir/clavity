@@ -1,4 +1,12 @@
 <#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
+<#
 .SYNOPSIS  Download, SHA-256-verify, and run the clavity installer (dotnet or classic variant).
 .DESCRIPTION Run in PowerShell (NOT cmd.exe).
 .EXAMPLE   irm https://raw.githubusercontent.com/ckir/clavity/main/clavity-dotnet/install/clavity-install.ps1 | iex

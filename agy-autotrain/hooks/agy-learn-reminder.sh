@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # agy-LEARN reminder - shipped WITH the agy-autotrain plugin (portable: no machine-specific paths).
 #
 # The third agy discipline - CAPTURE general agy knowledge (agy-learn) - has no tool-event signal:

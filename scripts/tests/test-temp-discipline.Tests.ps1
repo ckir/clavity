@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # No suite may reach for the system temp directory directly: scratch goes through scripts/tests/TestTemp.ps1 so a killed
 # run orphans files under ONE swept parent. The two EXEMPT sites are listed below, each with its reason.
 BeforeAll {

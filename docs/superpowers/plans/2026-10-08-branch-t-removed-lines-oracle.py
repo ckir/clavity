@@ -1,3 +1,9 @@
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 """Task 4 step 4b oracle: after the normalisation apply, EVERY line the diff REMOVED must be a tracker heading line,
 a tracker status line, or a frontmatter status/fixed-by/fixed-on key. Anything else removed = body text lost.
 Usage: python -I removed-lines-oracle.py <repo-root> [<tracker path> ...]   (compares the working tree with HEAD; pass the tracker paths so unrelated edits are not judged)"""

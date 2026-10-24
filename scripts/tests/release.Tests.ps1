@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Pester v5. End-to-end tests for the release.ps1 ORCHESTRATOR (not the lib functions - see
 # release-lib.Tests.ps1 for those). release.ps1 computes $RepoRoot from $PSScriptRoot, so it always
 # operates on whatever repo the SCRIPT ITSELF sits in - to test it against a scratch repo we copy the

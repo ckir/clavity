@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # ROADMAP sections 63 and 92 (dotnet first, then the four other member builds and the release's own notes checkout). A workflow_dispatch release (umbrella-release.yml takes a free-text `tag`) used to build the dotnet binaries
 # from the DISPATCH branch, because the two actions/checkout steps in build-dotnet.yml carried no `ref:`; the version, the build
 # and the asset names then came from that branch, and `publish` attached them to the tag's release. build-dotnet.yml now takes an

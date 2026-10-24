@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # ROADMAP section 61. The root marketplace serves the clavity plugin from branch `release`, and only the final
 # umbrella-release job may advance that branch - after `publish` has attached every clavity-ls asset. These rows
 # pin both halves; neither is exercised by any other suite (no test read marketplace.json or umbrella-release.yml

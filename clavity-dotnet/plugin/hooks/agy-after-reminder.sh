@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # AGY-AFTER (plugin-shipped). PostToolUse(Write|Edit): when a SPEC or PLAN artifact is
 # authored/edited (docs/superpowers/specs/** or docs/superpowers/plans/**), inject a
 # reminder to route the FINISHED artifact through an adversarial panel BEFORE presenting

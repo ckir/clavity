@@ -1,4 +1,12 @@
 #!/usr/bin/env pwsh
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # check-control-bytes - fail when a TRACKED Markdown file carries a C0 control byte (other than TAB, LF, CR) or
 # DEL. ROADMAP §49: an edit that interprets backslash escapes turns a written '\u0000' or '\b' into a real control
 # byte; git then either reclassifies the file as binary (it renders as nothing on GitHub) or - for a backspace -

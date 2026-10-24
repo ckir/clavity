@@ -1,3 +1,9 @@
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 """Unit tests for check_site.py (structural checks 1-5, README parity checks 6-7)."""
 
 import re
@@ -19,7 +25,6 @@ from check_site import (
     fold,
     parse_page,
     readme_install_commands,
-    readme_pairing_url,
     readme_quote_units,
 )
 
@@ -38,11 +43,6 @@ ACTION_NAMES = {
     "actions/deploy-pages",
 }
 ACTION_REF = re.compile(r"^actions/(checkout|upload-pages-artifact|deploy-pages)@v\d+$")
-PAIRING = (
-    "https://raw.githubusercontent.com/ckir/clavity/refs/heads/main/"
-    "clavity-dotnet/pairing/agy-pairing-INSTALL.md"
-)
-
 
 def make_site(
     tmp: Path, html: str, css: str = "", files: dict[str, bytes] | None = None
@@ -77,12 +77,6 @@ README_COMMANDS = [
     CLEAN_COMMANDS[1] + "          # clavity-dotnet",
     *CLEAN_COMMANDS[2:],
 ]
-README_WARNING = (
-    'In Latest versions of Antigravity the "--prompt-interactive" option is not '
-    "working as expected. The workaround until I fix it is simple.\n"
-    "Copy/paste the exact content of this file "
-    f"**[pairing]({PAIRING})** to Antigravity's prompt before start your work."
-)
 WAIVER_1 = (
     "All the above can be waived by prompts. "
     'Say for example "Waive agy for this step" and claude will execute the step solo.'
@@ -91,26 +85,15 @@ WAIVER_2 = (
     "In case you have problem to start agy (e.g. quota exhausted, Google's servers "
     "are down) you can switch to subagents mode by prompt."
 )
-PAGE_WARNING = (
-    "<div data-readme-quote='warning'><p>In Latest versions of Antigravity the "
-    "&quot;--prompt-interactive&quot; option is not working as expected. "
-    "The workaround until I fix it is simple.</p><p>Copy/paste the exact content of "
-    f"this file <a href='{PAIRING}'>pairing</a> to Antigravity's prompt before "
-    "start your work.</p></div>"
-)
-
 
 def make_readme(
     commands=README_COMMANDS,
-    warning=README_WARNING,
     waivers=(WAIVER_1, WAIVER_2),
     eol="\n",
 ) -> str:
-    """A README shaped like the real one (fenced install block, WARNING, waivers)."""
-    lines = ["# Title", "", "## HUMAN ONLY", "", "### WARNING", *warning.split("\n")]
+    """A README shaped like the real one (fenced install block, waivers)."""
+    lines = ["# Title", "", "## HUMAN ONLY", ""]
     lines += [
-        "",
-        "",
         "### What it does",
         "Prose.",
         "",
@@ -123,27 +106,33 @@ def make_readme(
     return eol.join(lines) + eol
 
 
-def install_html(commands=CLEAN_COMMANDS, pairing=PAIRING) -> str:
+def install_html(commands=CLEAN_COMMANDS) -> str:
     items = "".join(
         f"<li><code data-cmd>{c}</code> <span>note</span>"
         f'<button data-copy="{c}">Copy</button></li>'
         for c in commands
     )
-    note = f'<p class="note">Workaround: <a href="{pairing}">pairing file</a></p>'
-    return f'<section id="install"><ul>{items}</ul>{note}</section>'
+    return f'<section id="install"><ul>{items}</ul></section>'
 
 
 def index_body(
     install: str | None = None,
-    warning: str = PAGE_WARNING,
     w1: str = WAIVER_1,
     w2: str = WAIVER_2,
 ) -> str:
     return (
         (install if install is not None else install_html())
-        + warning
         + f"<p data-readme-quote='waiver-1'>{w1}</p>"
         + f"<p data-readme-quote='waiver-2'>{w2}</p>"
+    )
+
+
+def quote1_body(quote_html: str) -> str:
+    """index_body with a hand-built waiver-1 element in place of the default <p>."""
+    return (
+        install_html()
+        + quote_html
+        + f"<p data-readme-quote='waiver-2'>{WAIVER_2}</p>"
     )
 
 
@@ -387,12 +376,13 @@ class StructuralChecks(unittest.TestCase):
         self.assertTrue(result.stderr.startswith("CANNOT_ANSWER: "), result.stderr)
         self.assertIn("512", result.stderr)
 
-    def test_raw_url_only_the_pairing_install_file(self):
-        self.assertEqual(self.problems(page(f'<a href="{PAIRING}">p</a>')), [])
-        other = (
-            "https://raw.githubusercontent.com/ckir/clavity/refs/heads/main/README.md"
-        )
-        self.assertIn(3, self.numbers(page(f'<a href="{other}">o</a>')))
+    def test_external_raw_githubusercontent_url_is_permitted(self):
+        other = "https://raw.githubusercontent.com/external/repo/main/p.sh"
+        self.assertEqual(self.problems(page(f'<a href="{other}">o</a>')), [])
+
+    def test_raw_githubusercontent_urls_are_flagged(self):
+        raw = "https://raw.githubusercontent.com/ckir/clavity/refs/heads/main/README.md"
+        self.assertIn(3, self.numbers(page(f'<a href="{raw}">r</a>')))
 
     def test_malformed_absolute_url_never_raises(self):
         cases = (
@@ -586,53 +576,12 @@ class ParityChecks(unittest.TestCase):
         self.assertNotEqual(html, install_html())
         self.assertEqual(self.numbers(index_body(html)), [6])
 
-    def test_pairing_href_must_equal_readme_raw_url(self):
-        other = PAIRING.replace("INSTALL", "OTHER")
-        warning = PAGE_WARNING.replace(f"href='{PAIRING}'", f"href='{other}'")
-        self.assertNotEqual(warning, PAGE_WARNING)
-        self.assertIn(6, self.numbers(index_body(warning=warning)))
-
-    def test_warning_quote_without_link_flagged(self):
-        warning = PAGE_WARNING.replace(f"<a href='{PAIRING}'>pairing</a>", "pairing")
-        problems = self.run_case(index_body(warning=warning))
-        self.assertIn(6, [n for n, _ in problems])
-
     def test_claude_plugin_text_without_data_cmd_flagged(self):
         extra = "<code>claude plugin install x@y</code>"
         html = install_html().replace("</ul>", f"</ul>{extra}")
         problems = self.run_case(index_body(html))
         self.assertEqual([n for n, _ in problems], [6])
         self.assertIn("page text mentions", problems[0][1])
-
-    def test_any_pairing_link_must_equal_readme_url(self):
-        other = PAIRING.replace("INSTALL", "INSTALL-X")
-        github = (
-            "https://github.com/ckir/clavity/blob/main/"
-            "clavity-dotnet/pairing/agy-pairing-INSTALL.md"
-        )
-        for bad in (
-            "https://example.com/agy-pairing-INSTALL.md",
-            github,
-            other,
-        ):
-            with self.subTest(bad=bad):
-                html = install_html(pairing=bad)
-                self.assertIn(6, self.numbers(index_body(html)))
-
-    def test_install_without_pairing_link_flagged(self):
-        html = install_html().replace(f'<a href="{PAIRING}">pairing file</a>', "x")
-        self.assertNotEqual(html, install_html())
-        self.assertEqual(self.numbers(index_body(html)), [6])
-
-    def test_pairing_link_outside_install_does_not_count_for_install(self):
-        html = install_html().replace(f'<a href="{PAIRING}">pairing file</a>', "x")
-        body = index_body(html) + f"<a href='{PAIRING}'>elsewhere</a>"
-        self.assertEqual(self.numbers(body), [6])
-
-    def test_extra_pairing_link_outside_install_must_match_too(self):
-        other = PAIRING.replace("INSTALL", "OTHER")
-        body = index_body() + f"<a href='{other}'>elsewhere</a>"
-        self.assertIn(6, self.numbers(body))
 
     def test_claude_plugin_in_any_install_element_flagged(self):
         for extra in (
@@ -659,13 +608,6 @@ class ParityChecks(unittest.TestCase):
         self.assertEqual([n for n, _ in problems], [6])
         self.assertIn("page text mentions", problems[0][1])
 
-    def test_third_party_raw_githubusercontent_link_is_flagged(self):
-        href = "https://raw.githubusercontent.com/attacker/repo/main/payload.sh"
-        problems = self.run_case(index_body() + f"<a href='{href}'>x</a>")
-        hits = [(n, d) for n, d in problems if href in d]
-        self.assertTrue(hits, problems)
-        self.assertIn(hits[0][0], (3, 6))
-
     def test_claude_plugin_text_anywhere_on_page_flagged(self):
         cases = {
             "before install": "<p><code>claude plugin install evil@clavity</code></p>"
@@ -687,32 +629,16 @@ class ParityChecks(unittest.TestCase):
 
     def test_readme_backticks_match_plain_page_text(self):
         readme = make_readme(
-            warning=README_WARNING.replace(
-                '"--prompt-interactive"', "`--prompt-interactive`"
+            waivers=(
+                WAIVER_1.replace('"Waive agy for this step"', "`Waive agy for this step`"),
+                WAIVER_2,
             )
         )
         self.assertNotEqual(readme, make_readme())
-        code = PAGE_WARNING.replace(
-            "&quot;--prompt-interactive&quot;", "<code>--prompt-interactive</code>"
+        code = WAIVER_1.replace(
+            '"Waive agy for this step"', "<code>Waive agy for this step</code>"
         )
-        self.assertEqual(self.run_case(index_body(warning=code), readme), [])
-
-    def test_reference_style_link_message_names_supported_form(self):
-        readme = make_readme(warning="See [pairing][1].\n\n[1]: " + PAIRING)
-        with self.assertRaises(CannotAnswer) as ctx:
-            readme_pairing_url(readme)
-        self.assertIn(
-            "only inline markdown links [text](url) are understood", str(ctx.exception)
-        )
-
-    def test_readme_pairing_other_than_checker_constant_is_flagged_by_check_3(self):
-        # The raw allowlist is fixed to the spec's one URL (RAW_PAIRING_PATH), not
-        # derived from the README, so a changed README URL flags the page links.
-        other = PAIRING.replace("INSTALL", "OTHER")
-        readme = make_readme(warning=README_WARNING.replace(PAIRING, other))
-        warning = PAGE_WARNING.replace(PAIRING, other)
-        body = index_body(install_html(pairing=other), warning=warning)
-        self.assertEqual(self.numbers(body, readme), [3])
+        self.assertEqual(self.run_case(index_body(w1=code), readme), [])
 
     def test_install_block_is_the_one_with_marketplace_add(self):
         readme = make_readme().replace(
@@ -724,7 +650,7 @@ class ParityChecks(unittest.TestCase):
 
     # -- check 7 -----------------------------------------------------------
 
-    def test_exactly_three_quote_elements_required(self):
+    def test_exactly_two_quote_elements_required(self):
         two = index_body(w2="")
         two = two.replace("<p data-readme-quote='waiver-2'></p>", "")
         self.assertEqual(self.numbers(two), [7])
@@ -736,14 +662,17 @@ class ParityChecks(unittest.TestCase):
         dup = dup.replace(WAIVER_2, WAIVER_1)
         self.assertEqual(self.numbers(dup), [7])
 
+    def test_stray_warning_quote_key_flagged(self):
+        stray = index_body() + "<div data-readme-quote='warning'><p>x</p></div>"
+        self.assertEqual(self.numbers(stray), [7])
+
     def test_quote_matches_after_folding(self):
-        warning = f"Intro “quoted” it’s fine.\r\nCopy **[pairing]({PAIRING})** now."
-        readme = make_readme(warning=warning, eol="\r\n")
-        page_warning = (
-            "<p data-readme-quote='warning'>Intro &quot;quoted&quot; it's fine. "
-            f"Copy <b><a href='{PAIRING}'>pairing</a></b> now.</p>"
+        w1 = "All the above can be waived by prompts. Say “Waive agy” it’s **fine** now."
+        readme = make_readme(waivers=(w1, WAIVER_2), eol="\r\n")
+        page_w1 = (
+            "All the above can be waived by prompts. Say &quot;Waive agy&quot; it's <b>fine</b> now."
         )
-        self.assertEqual(self.run_case(index_body(warning=page_warning), readme), [])
+        self.assertEqual(self.run_case(index_body(w1=page_w1), readme), [])
 
     def test_one_word_edit_flagged(self):
         body = index_body(w1=WAIVER_1.replace("solo", "alone"))
@@ -751,23 +680,28 @@ class ParityChecks(unittest.TestCase):
 
     def test_block_boundaries_separate_words(self):
         readme = make_readme(
-            warning=f"This is simple.\nCopy/paste **[pairing]({PAIRING})** now."
+            waivers=(
+                "All the above can be waived by prompts. Say it **[simply](https://github.com/ckir/clavity)** now.",
+                WAIVER_2,
+            )
         )
         tight = (
-            "<div data-readme-quote='warning'><p>This is simple.</p>"
-            f"<p>Copy/paste <a href='{PAIRING}'>pair</a><b>ing</b> now.</p></div>"
+            "<div data-readme-quote='waiver-1'><p>All the above can be waived by prompts.</p>"
+            f"<p>Say it <a href='https://github.com/ckir/clavity'>sim</a><b>ply</b> now.</p></div>"
         )
-        self.assertEqual(self.run_case(index_body(warning=tight), readme), [])
+        self.assertEqual(self.run_case(quote1_body(tight), readme), [])
 
     def test_text_after_child_element_is_kept(self):
-        readme = make_readme(warning=f"See [pairing]({PAIRING}) for the rest of it.")
-        full = (
-            f"<p data-readme-quote='warning'>See <a href='{PAIRING}'>pairing</a>"
-            " for the rest of it.</p>"
+        readme = make_readme(
+            waivers=("All the above can be waived by prompts. See [repo](https://github.com/ckir/clavity) for the rest of it.", WAIVER_2)
         )
-        self.assertEqual(self.run_case(index_body(warning=full), readme), [])
+        full = (
+            "<p data-readme-quote='waiver-1'>All the above can be waived by prompts. See "
+            f"<a href='https://github.com/ckir/clavity'>repo</a> for the rest of it.</p>"
+        )
+        self.assertEqual(self.run_case(quote1_body(full), readme), [])
         cut = full.replace(" for the rest of it.", "")
-        self.assertEqual(self.numbers(index_body(warning=cut), readme), [7])
+        self.assertEqual(self.numbers(quote1_body(cut), readme), [7])
 
     def test_empty_or_truncated_quote_flagged(self):
         for text in ("", "All", WAIVER_1[: len(WAIVER_1) // 2]):
@@ -782,26 +716,13 @@ class ParityChecks(unittest.TestCase):
         adjacent = f"{WAIVER_1}\n{WAIVER_2}\n"
         self.assertIn(adjacent, make_readme())
 
-    def test_warning_heading_excluded(self):
-        warning = PAGE_WARNING.replace(
-            "<p>In Latest", "<h3>WARNING</h3><p>In Latest", 1
-        )
-        self.assertEqual(self.numbers(index_body(warning=warning)), [7])
-
     # -- README parsers ----------------------------------------------------
 
     def test_readme_parsers(self):
         text = make_readme()
         self.assertEqual(readme_install_commands(text), CLEAN_COMMANDS)
-        self.assertEqual(readme_pairing_url(text), PAIRING)
-        self.assertEqual(
-            sorted(readme_quote_units(text)), ["waiver-1", "waiver-2", "warning"]
-        )
-        self.assertEqual(fold("a  &quot;b&quot;\n‘c’"), "a \"b\" 'c'")
-
-    def test_readme_without_pairing_link_cannot_answer(self):
-        with self.assertRaises(CannotAnswer):
-            readme_pairing_url(make_readme(warning="No link here."))
+        self.assertEqual(sorted(readme_quote_units(text)), ["waiver-1", "waiver-2"])
+        self.assertEqual(fold("a  &quot;b&quot;\n‘c’"), "a \"b\" 'c'")
 
     def test_missing_readme_block_exits_2_via_cli(self):
         base = self.tmp / "cli"
@@ -860,7 +781,7 @@ class SweepPins(unittest.TestCase):
         body = voids + index_body()
         self.assertEqual(self.parity(body, files={"assets/a.webp": b"x"}), [])
 
-    def test_void_element_in_install_li_keeps_the_pairing(self):
+    def test_void_element_in_install_li_keeps_the_commands(self):
         html = install_html().replace("</li>", "<br><img src='./a.png'></li>", 1)
         problems = self.parity(index_body(html), files={"a.png": b"x"})
         self.assertEqual(problems, [])
@@ -884,12 +805,9 @@ class SweepPins(unittest.TestCase):
     def test_inline_end_tag_adds_no_space(self):
         extra = "cla<b>ude</b> plugin install x"
         self.assertTrue(self.text_flagged(self.parity(index_body() + extra)))
-        readme = make_readme(warning=f"Intro abc [pairing]({PAIRING}) now.")
-        warning = (
-            f"<p data-readme-quote='warning'>Intro a<b>b</b>c "
-            f"<a href='{PAIRING}'>pairing</a> now.</p>"
-        )
-        self.assertEqual(self.parity(index_body(warning=warning), readme), [])
+        readme = make_readme(waivers=("All the above can be waived by prompts. Intro abc now.", WAIVER_2))
+        quote = "<p data-readme-quote='waiver-1'>All the above can be waived by prompts. Intro a<b>b</b>c now.</p>"
+        self.assertEqual(self.parity(quote1_body(quote), readme), [])
 
     # -- G3 stray end tags -------------------------------------------------
 
@@ -957,11 +875,6 @@ class SweepPins(unittest.TestCase):
             page(""), css="a{background:url( https://evil.example/z.png )}"
         )
         self.assertIn(5, self.numbers(sheet))
-
-    def test_pairing_link_with_surrounding_spaces_is_flagged(self):
-        href = " https://example.com/agy-pairing-INSTALL.md "
-        problems = self.parity(index_body() + f"<a href='{href}'>x</a>")
-        self.assertTrue(any(n == 6 and "pairing link" in d for n, d in problems))
 
     def test_scheme_case_does_not_hide_third_party_loads(self):
         for html in (
@@ -1188,23 +1101,14 @@ class SweepPins(unittest.TestCase):
 
     # -- G12 README whitespace ---------------------------------------------
 
-    def test_indented_fence_lines_and_padded_warning_heading_parse(self):
+    def test_indented_and_padded_install_fence_lines_parse(self):
         padded = [f"    {c}   " for c in README_COMMANDS]
-        readme = make_readme(commands=padded).replace(
-            "### WARNING\n", "### WARNING   \n"
-        )
+        readme = make_readme(commands=padded)
         self.assertNotEqual(readme, make_readme())
         self.assertEqual(readme_install_commands(readme), CLEAN_COMMANDS)
         self.assertEqual(self.parity(index_body(), readme), [])
 
-    # -- G13 / G16 pairing link recognition ------------------------------------
-
-    def test_pairing_file_name_must_be_the_path_suffix(self):
-        href = "https://example.com/agy-pairing-INSTALL.md"
-        problems = self.parity(index_body() + f"<a href='{href}'>x</a>")
-        self.assertTrue(any(n == 6 and href in d for n, d in problems))
-        decoy = "https://example.com/agy-pairing-INSTALL.md/more"
-        self.assertEqual(self.parity(index_body() + f"<a href='{decoy}'>x</a>"), [])
+    # -- G13 / G16 URL parsing ------------------------------------
 
     def test_unparseable_url_is_exactly_one_problem(self):
         problems = self.parity(index_body() + '<a href="http://[::1">x</a>')
@@ -1213,13 +1117,6 @@ class SweepPins(unittest.TestCase):
 
     # -- README dialect limits (fail closed, accepted) ----------------------
 
-    def test_readme_closing_hashes_on_warning_heading_cannot_answer(self):
-        readme = make_readme().replace("### WARNING\n", "### WARNING ###\n")
-        self.assertNotEqual(readme, make_readme())
-        with self.assertRaises(CannotAnswer) as ctx:
-            self.parity(index_body(), readme)
-        self.assertIn("the heading must be exactly `### WARNING`", str(ctx.exception))
-
     def test_readme_tilde_fence_cannot_answer(self):
         readme = make_readme().replace("```", "~~~")
         with self.assertRaises(CannotAnswer) as ctx:
@@ -1227,11 +1124,9 @@ class SweepPins(unittest.TestCase):
         self.assertIn("only ``` backtick fences are understood", str(ctx.exception))
 
     def test_readme_underscore_emphasis_is_not_understood(self):
-        warning = README_WARNING.replace(
-            f"**[pairing]({PAIRING})**", f"__[pairing]({PAIRING})__"
-        )
-        self.assertNotEqual(warning, README_WARNING)
-        problems = self.parity(index_body(), make_readme(warning=warning))
+        waiver = WAIVER_1.replace("Say for example", "Say __for example__")
+        self.assertNotEqual(waiver, WAIVER_1)
+        problems = self.parity(index_body(), make_readme(waivers=(waiver, WAIVER_2)))
         self.assertEqual(self.numbers(problems), [7])
 
     def test_readme_install_comment_may_change_freely(self):
@@ -1250,12 +1145,12 @@ class SweepPins(unittest.TestCase):
 
     # -- case sensitivity of the parity gates ------------------------------
 
-    def test_warning_quote_differing_only_in_case_is_flagged(self):
-        warning = PAGE_WARNING.replace("In Latest versions", "In latest versions")
-        self.assertNotEqual(warning, PAGE_WARNING)
-        problems = self.parity(index_body(warning=warning))
+    def test_waiver_quote_differing_in_internal_case_is_flagged(self):
+        w1 = WAIVER_1.replace("Say for example", "say for example")
+        self.assertNotEqual(w1, WAIVER_1)
+        problems = self.parity(index_body(w1=w1))
         self.assertEqual(self.numbers(problems), [7])
-        self.assertIn("quote 'warning'", problems[0][1])
+        self.assertIn("quote 'waiver-1'", problems[0][1])
 
     def test_waiver_quote_differing_only_in_case_is_flagged(self):
         problems = self.parity(index_body(w1=WAIVER_1.replace("All the", "all the")))
@@ -1298,17 +1193,6 @@ class SweepPins(unittest.TestCase):
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("usage", result.stderr)
                 self.assertNotIn("Traceback", result.stderr)
-
-    # -- G15 anchors in the warning quote ----------------------------------
-
-    def test_anchor_without_href_in_warning_is_not_counted(self):
-        link = f"<a href='{PAIRING}'>pairing</a>"
-        warning = PAGE_WARNING.replace(link, f"<a name='x'></a>{link}")
-        self.assertNotEqual(warning, PAGE_WARNING)
-        self.assertEqual(self.parity(index_body(warning=warning)), [])
-        bare = PAGE_WARNING.replace(link, "<a name='x'>pairing</a>")
-        problems = self.parity(index_body(warning=bare))
-        self.assertTrue(any("exactly one <a>" in d for n, d in problems if n == 6))
 
 
 REAL_SITE = Path(__file__).resolve().parents[2] / "site"

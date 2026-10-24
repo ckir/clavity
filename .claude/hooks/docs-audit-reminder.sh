@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # docs-audit-reminder - SessionStart nudge for open docs-audit findings (backlog stub
 # docs/backlog/docs-audit-findings-are-invisible-to-git.md, owner ruling 2026-09-30: both audit artifacts stay
 # gitignored, the findings reach a later session through this hook, like the anomalies nudge).

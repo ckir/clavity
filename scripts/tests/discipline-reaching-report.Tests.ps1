@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # The CONSUMER for .clavity/discipline-reaching.jsonl. ROADMAP section 0, step 1a.
 #
 # WHY A CONSUMER IS PART OF THE WORK AND NOT A FOLLOW-UP: "a record nobody reads is presence-checking with

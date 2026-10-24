@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Fixture repos under $TestDrive for scripts/check-tracker-status.ps1. The real repository is exercised by
 # exactly one row, added LAST (Task 4 step 9), once the trackers are normalised.
 BeforeAll {

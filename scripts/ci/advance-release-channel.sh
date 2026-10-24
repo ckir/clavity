@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # Advance branch `release` - the ref the root marketplace serves the clavity plugin from
 # (.claude-plugin/marketplace.json, git-subdir source) - to a released tag, ONLY once every clavity-ls asset of
 # that release is attached and the tag's plugin manifest carries the version those assets were built for.

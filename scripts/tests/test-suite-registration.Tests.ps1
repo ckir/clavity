@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Every Pester suite IN scripts/tests/ must be registered in exactly one half of the fast/slow partition.
 #
 # THE SCOPE IS scripts/tests/ ONLY. A suite anywhere else in the repository is invisible to this guard,

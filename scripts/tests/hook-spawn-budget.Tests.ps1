@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # THE PROCESS BUDGET OF EVERY REGISTERED HOOK (ROADMAP Branch 20; owner ruling 2026-10-04).
 #
 # WHY: on the owner's machine EVERY process creation costs ~180-360 ms, whatever the process (measured

@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # ROADMAP sections 60 + 62. clavity-dotnet/pairing/agy-pairing-INSTALL.md is what agy runs to publish its endpoint.
 # Each shell's command is EXTRACTED from the doc and RUN, so these rows test the text agy actually reads. MEASURED
 # 2026-10-02: agy ran the line through an MCP shell tool whose processes lack the ANTIGRAVITY_* variables and published

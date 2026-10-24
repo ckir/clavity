@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Pester 5. Covers agy-drive-session-reset.sh, the ONLY hook in the agy set that mutates disk rather
 # than emitting a message: it clears the once-per-session driver-guidance flag. A .no-agy bypass here
 # DELETES a file belonging to a user who opted out - and because the session key defaults to 'default'

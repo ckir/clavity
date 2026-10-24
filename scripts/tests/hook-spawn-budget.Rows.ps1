@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Rows, fixtures and payloads for hook-spawn-budget.Tests.ps1. Dot-sourced in BeforeDiscovery (for -ForEach)
 # AND in BeforeAll (so the fixture functions exist when a row runs).
 

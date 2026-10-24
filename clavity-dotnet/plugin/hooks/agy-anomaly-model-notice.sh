@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # AGY-ANOMALIES SessionStart notice, MODEL half. Its sibling agy-anomaly-reminder.sh is the OWNER half:
 # stderr at exit 2, because at SessionStart there is no user turn and stdout is absorbed into the model
 # context where the owner never sees it. That same property is why the OWNER half cannot also serve the

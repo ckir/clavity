@@ -1,4 +1,12 @@
 <#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
+<#
 .SYNOPSIS
 CI guard (Acceptance #7 / C9): asserts build/members.json has exactly 5 members, each with a
 name/source/marketplaceName, and that all 5 marketplaceName values are pairwise DISTINCT (a

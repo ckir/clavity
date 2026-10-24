@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # PINNING-ASSERTION-STRENGTH (plugin-shipped). PostToolUse(Write|Edit): the FIRST time each test file is
 # touched in a session, name the three structural assertion-strength smells and point at the canonical
 # prose. This is NOT an agy discipline - it convenes no peer (ROADMAP.md:712), so it carries no AGY-

@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Costas Kirgoussios
+//
+// This software is licensed under the PolyForm Noncommercial License 1.0.0.
+// You may obtain a copy of the License at:
+// https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 //! agentmemory signal-bus conventions (component C5).
 //!
 //! This module holds the *pure* conventions both sides agree on: request-id minting and the request

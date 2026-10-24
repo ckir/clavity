@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # scripts/tests/agy-verify-reminder.Tests.ps1
 # NEW in Branch 21 (Task 6): .claude/hooks/agy-verify-reminder.sh had NO suite of its own. These rows are the behaviour
 # floor the process-budget rows lean on - a budget row alone proves the hook is CHEAP, not that it still does its job.

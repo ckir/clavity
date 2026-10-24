@@ -1,4 +1,12 @@
 #!/usr/bin/env pwsh
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Fails when an INSTALLED plugin tree has drifted from the repo payload at a DECLARED sha.
 #
 # WHY THIS EXISTS. MEASURED 2026-08-31: the installed clavity plugin differed from the repo in 16 files,

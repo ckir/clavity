@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 """Structural (1-5) and README parity (6-7) checks for the one-page GitHub Pages site.
 
 Usage: check_site.py --site site --readme README.md
@@ -8,12 +14,11 @@ Standard library only.
 
 Maintainer notes. Checks: 1 no root-relative refs (HTML, CSS, inline styles);
 2 every local ref and anchor resolves inside site/; 3 repo links stay on the
-allowlist (repo root, /blob/main, /tree/main, /releases, /issues, the one raw
-pairing URL); 4 rasters under site/assets/ are <= 300 KB; 5 no third-party
-loads; 6 #install commands, copy buttons and pairing links equal the README;
-7 the three data-readme-quote texts equal the README. Two README facts are
-hard-coded here: the pairing path (RAW_PAIRING_PATH) and the two waiver opening
-phrases (WAIVER_OPENINGS). Exit codes: 0 clean, 1 problems, 2 unreadable input.
+allowlist (repo root, /blob/main, /tree/main, /releases, /issues; no
+raw.githubusercontent.com/ckir/clavity URL); 4 rasters under site/assets/ are <= 300 KB; 5 no third-party
+loads; 6 #install commands and copy buttons equal the README;
+7 the two data-readme-quote texts equal the README. One README fact is
+hard-coded here: the two waiver opening phrases (WAIVER_OPENINGS). Exit codes: 0 clean, 1 problems, 2 unreadable input.
 Any <base href> is a problem (5 absolute, 2 relative); `claude plugin` text is
 allowed only inside <code data-cmd> in #install, anywhere else on the page is
 check 6 (adjacent block elements are joined with a space, so a heading "Claude"
@@ -26,10 +31,9 @@ image/use (also xlink:href, feImage href), imagesrcset and quoted image-set()
 strings (a quoted string after `image-set(` in the same declaration, up to `;`,
 `{` or `}`, counts as an image-set URL: put other strings in a separate declaration).
 Form action, a ping and meta refresh are navigation and NOT checked.
-The README parser understands ``` fences, an ATX heading exactly `### WARNING`,
-inline `[text](url)` links and `*`/backtick emphasis; tilde fences, closing hashes,
-setext headings and `_`/`__` emphasis are NOT understood and fail the build
-(exit 2 or CHECK7): reword the README or extend the parser.
+The README parser understands ``` fences, inline `[text](url)` links and
+`*`/backtick emphasis; tilde fences and `_`/`__` emphasis are NOT understood
+and fail the build (exit 2 or CHECK7): reword the README or extend the parser.
 Unit tests: python3 -m unittest discover -s .github/site-checks
 """
 
@@ -60,9 +64,6 @@ GITHUB_PREFIXES = (
     f"{REPO_PATH}/releases",
     f"{REPO_PATH}/issues",
 )
-RAW_PAIRING_PATH = (
-    f"{REPO_PATH}/refs/heads/main/clavity-dotnet/pairing/agy-pairing-INSTALL.md"
-)
 
 CSS_URL = re.compile(r"""url\(\s*(['"]?)(.*?)\1\s*\)""", re.IGNORECASE)
 CSS_IMPORT = re.compile(r"""@import\s+(['"])(.*?)\1""", re.IGNORECASE)
@@ -76,14 +77,13 @@ BLOCK_TAGS = frozenset(
     "figure footer form h1 h2 h3 h4 h5 h6 header hr li main nav ol p pre section "
     "table tbody td tfoot th thead tr ul".split()
 )
-QUOTE_KEYS = ("warning", "waiver-1", "waiver-2")
+QUOTE_KEYS = ("waiver-1", "waiver-2")
 WAIVER_OPENINGS = {
     "waiver-1": "All the above can be waived by prompts.",
     "waiver-2": "In case you have problem to start agy",
 }
 COMMAND_PREFIX = "claude plugin"
 CLAUDE_PLUGIN = re.compile(r"claude\s+plugin", re.IGNORECASE)
-PAIRING_FILE = "agy-pairing-INSTALL.md"
 
 
 class CannotAnswer(Exception):
@@ -92,13 +92,12 @@ class CannotAnswer(Exception):
 
 @dataclass
 class Capture:
-    """Text (and `<a href>`s) collected while one element is open."""
+    """Text collected while one element is open."""
 
     kind: str  # quote | cmd
     key: str  # data-readme-quote value ("" otherwise)
     li: int | None  # enclosing `<li>` of an #install element
     parts: list[str] = field(default_factory=list)
-    hrefs: list[str] = field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -128,7 +127,6 @@ class PageParser(HTMLParser):
         self.commands: list[Capture] = []  # <code data-cmd> in #install
         self.copies: list[tuple[int | None, str]] = []  # (li, data-copy) in #install
         self.page_text: list[str] = []  # all text except <code data-cmd> in #install
-        self.hrefs: list[tuple[str, bool]] = []  # (href, inside #install), any tag
         self.inline_css: list[str] = []  # <style> texts and style="" values
 
     def _active(self) -> list[Capture]:
@@ -158,8 +156,6 @@ class PageParser(HTMLParser):
         if "data-readme-quote" in values:
             captures.append(Capture("quote", values["data-readme-quote"], None))
             self.quotes.append(captures[-1])
-        if "href" in values:
-            self.hrefs.append((values["href"], in_install))
         if "style" in values:
             self.inline_css.append(values["style"])
         if tag == "style":
@@ -170,10 +166,6 @@ class PageParser(HTMLParser):
                 self.commands.append(captures[-1])
             if "data-copy" in values:
                 self.copies.append((li, values["data-copy"]))
-        if tag == "a" and "href" in values:
-            for capture in self._active():
-                if capture.kind == "quote":
-                    capture.hrefs.append(values["href"])
         if tag not in VOID_TAGS:
             if len(self.stack) >= MAX_NESTING:
                 raise CannotAnswer(
@@ -270,9 +262,7 @@ def github_problem(url: str) -> str | None:
                 return None
         return "github.com URL is not the repo root, /blob/main, /tree/main, /releases or /issues"
     if host == "raw.githubusercontent.com" and path.lower().startswith(REPO_PATH):
-        if path == RAW_PAIRING_PATH:
-            return None
-        return "raw.githubusercontent.com URL is not the pairing INSTALL file"
+        return "raw.githubusercontent.com URL is not allowed"
     return None
 
 
@@ -436,40 +426,6 @@ def readme_install_commands(readme_text: str) -> list[str]:
     return commands
 
 
-def readme_warning_lines(readme_text: str) -> list[str]:
-    """Lines between `### WARNING` and the next heading (heading excluded)."""
-    lines = readme_lines(readme_text)
-    for start, line in enumerate(lines):
-        if line.strip() == "### WARNING":
-            break
-    else:
-        raise CannotAnswer(
-            "README.md has no `### WARNING` section (the heading must be exactly "
-            "`### WARNING`: no closing hashes, no setext underline)"
-        )
-    body = []
-    for line in lines[start + 1 :]:
-        if re.match(r"#{1,3}\s", line):
-            break
-        body.append(line)
-    return body
-
-
-def readme_pairing_url(readme_text: str) -> str:
-    """The raw pairing URL from the markdown link in the `### WARNING` section."""
-    link = re.compile(
-        r"\[[^\]]*\]\((https://raw\.githubusercontent\.com/ckir/clavity/[^)\s]*)\)"
-    )
-    for line in readme_warning_lines(readme_text):
-        match = link.search(line)
-        if match:
-            return match.group(1)
-    raise CannotAnswer(
-        "README.md `### WARNING` section has no inline raw.githubusercontent.com link "
-        "(only inline markdown links [text](url) are understood)"
-    )
-
-
 def plain(markdown: str) -> str:
     """Drop `[text](url)` link syntax (keeping text) and `*` emphasis, then fold."""
     markdown = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", markdown)
@@ -477,10 +433,8 @@ def plain(markdown: str) -> str:
 
 
 def readme_quote_units(readme_text: str) -> dict[str, str]:
-    """Folded README text for the `warning`, `waiver-1` and `waiver-2` quotes."""
-    units = {"warning": plain(" ".join(readme_warning_lines(readme_text)))}
-    if not units["warning"]:
-        raise CannotAnswer("README.md `### WARNING` section is empty")
+    """Folded README text for the `waiver-1` and `waiver-2` quotes."""
+    units = {}
     for key, opening in WAIVER_OPENINGS.items():
         for line in readme_lines(readme_text):
             if line.startswith(opening):
@@ -499,32 +453,8 @@ def multiset_detail(page: list[str], readme: list[str]) -> list[str]:
     ]
 
 
-def is_pairing_link(href: str) -> bool:
-    """True for a raw.githubusercontent.com link or one ending agy-pairing-INSTALL.md."""
-    try:
-        parts = urlsplit(href.strip())
-        host = parts.hostname
-    except ValueError:
-        return False
-    return host == "raw.githubusercontent.com" or parts.path.endswith(PAIRING_FILE)
-
-
-def flag_pairing_links(parser: PageParser, pairing: str, flag) -> None:
-    """Every pairing-looking link equals the README URL; one sits in #install."""
-    in_install = 0
-    for href, inside in parser.hrefs:
-        if not is_pairing_link(href):
-            continue
-        if href != pairing:
-            flag(f"pairing link {href!r} is not {pairing!r}")
-        elif inside:
-            in_install += 1
-    if "install" in parser.ids and not in_install:
-        flag("Install section holds no pairing link equal to the README's")
-
-
 def check_install(parser: PageParser, readme_text: str, name: str) -> list[Problem]:
-    """Check 6: install commands, copy buttons and pairing link match the README."""
+    """Check 6: install commands and copy buttons match the README."""
     problems: list[Problem] = []
 
     def flag(detail: str) -> None:
@@ -549,8 +479,6 @@ def check_install(parser: PageParser, readme_text: str, name: str) -> list[Probl
             )
         elif copies[0] != cmds[0]:
             flag(f"data-copy {copies[0]!r} differs from displayed command {cmds[0]!r}")
-    pairing = readme_pairing_url(readme_text)
-    flag_pairing_links(parser, pairing, flag)
     text = fold("".join(parser.page_text))
     hit = CLAUDE_PLUGIN.search(text)
     if hit:
@@ -558,16 +486,11 @@ def check_install(parser: PageParser, readme_text: str, name: str) -> list[Probl
         flag(
             f"page text mentions `claude plugin` outside an #install data-cmd: {near!r}"
         )
-    for quote in (q for q in parser.quotes if q.key == "warning"):
-        if len(quote.hrefs) != 1:
-            flag(f"warning quote must hold exactly one <a> (has {len(quote.hrefs)})")
-        elif quote.hrefs[0] != pairing:
-            flag(f"pairing href {quote.hrefs[0]!r} is not {pairing!r}")
     return problems
 
 
 def check_quotes(parser: PageParser, readme_text: str, name: str) -> list[Problem]:
-    """Check 7: exactly three data-readme-quote elements equal to the README units."""
+    """Check 7: exactly two data-readme-quote elements equal to the README units."""
     problems: list[Problem] = []
     units = readme_quote_units(readme_text)
     keys = sorted(q.key for q in parser.quotes)

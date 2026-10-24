@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Stateful fake `claude` CLI for installer CI smokes; persists to $env:FAKE_CLAUDE_STATE.
 #   plugin marketplace add <root> [--scope user]   -> add marketplace named by <root>\.claude-plugin\marketplace.json
 #   plugin marketplace remove|rm <name>            -> drop the marketplace (CONSERVATIVE: no cascade to entries)

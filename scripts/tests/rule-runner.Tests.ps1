@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Unit tests for scripts/lib/rule-runner.ps1. ROADMAP section 30b, AGY-CAPSTONE section 30 round 4.
 #
 # THE PROPERTY, pinned once so no rule edit has to preserve it: given N rules and M contexts, the runner

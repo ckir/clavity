@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # agy-autotrain inbox snapshot (AT-2). Fires on PreToolUse(Skill); when the skill being invoked is
 # agy-curate, copies the observations inbox to a timestamped .bak BEFORE the drain empties it.
 # Fail-open: any error exits 0 and never blocks the skill. A hook is reliably INVOKED, not reliably

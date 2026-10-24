@@ -1,5 +1,13 @@
 #!/usr/bin/env pwsh
 <#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
+<#
 .SYNOPSIS
   Accept a pending drain: prove the run-ID is in the COMMITTED drain-log (F30) AND every tracked drain-output path
   is clean in the working tree (F34), then delete the app-data staging snapshot. Does not touch the inbox.

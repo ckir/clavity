@@ -2,6 +2,11 @@
 
 Date: 2026-10-22 · Status: approved by the owner 2026-10-22 (headline/section copy still to be approved when written)
 
+> **Amended 2026-10-24.** `main` commit `c89ab699` deleted the README `### WARNING` section (the
+> `--prompt-interactive` workaround, judged obsolete by the owner). The page therefore no longer quotes it or
+> links the pairing INSTALL file, and checks 3, 6 and 7 no longer reference either. Sections below are
+> updated to match; the review-history records at the end are left as written.
+
 ## Intent and why
 
 A single-page, modern site for the `clavity` umbrella repo, published on GitHub Pages
@@ -28,7 +33,7 @@ Installing and choosing a product come second to that understanding.
   translation-friendly (all copy in the HTML, no text baked into images other than the banner).
 - A static site generator, JS framework, or analytics/tracking.
 - Editing the README's `HUMAN ONLY` block. The site paraphrases its workflow description and quotes only
-  the warning and waiver paragraphs verbatim (see "How it works"); it does not restate the block otherwise.
+  the two waiver paragraphs verbatim (see "How it works"); it does not restate the block otherwise.
 
 ## Anti-goals (a failure even if it technically works)
 
@@ -116,14 +121,12 @@ Installing and choosing a product come second to that understanding.
 
 ### Sections below the hero (order)
 
-1. **How it works** — owner's decision (c): **paraphrase the workflow, quote the warning and waiver
+1. **How it works** — owner's decision (c): **paraphrase the workflow, quote the two waiver
    lines verbatim.** The paraphrase covers brainstorm → panel-reviewed spec → panel-reviewed plan →
    implementation → capstone → test audit, the driver/peer roles, and the auto-triage bonus, and links to
-   the README. Exactly three README paragraphs are quoted **verbatim** (rendered as quotes, with a link
+   the README. Exactly two README paragraphs are quoted **verbatim** (rendered as quotes, with a link
    to the README), each in its own element carrying a fixed id value in a `data-readme-quote` attribute
    (used by check 7):
-   - `data-readme-quote="warning"` — the **body text** of the `### WARNING` section (the
-     `--prompt-interactive` workaround), *excluding* the `### WARNING` heading itself;
    - `data-readme-quote="waiver-1"` — the paragraph starting "All the above can be waived by prompts.";
    - `data-readme-quote="waiver-2"` — the paragraph starting "In case you have problem to start agy".
    The builder writes the paraphrase and the owner approves it.
@@ -143,10 +146,9 @@ Installing and choosing a product come second to that understanding.
    ```
    plus a short, **Windows-only** note for the `clavity-classic` installer (summarise the README's
    three steps: take `clavity-classic-setup-<version>.exe` from the `clavity-v<N>` release on the Releases
-   page, check the `.sha256`, run it; never imply it is cross-platform), and the `--prompt-interactive`
-   workaround warning from the README. That warning links to the pairing INSTALL file by the **raw URL the
-   README uses** (`https://raw.githubusercontent.com/ckir/clavity/refs/heads/main/clavity-dotnet/pairing/agy-pairing-INSTALL.md`),
-   because the user must copy the file's exact contents. Also: superpowers must be installed first.
+   page, check the `.sha256`, run it; never imply it is cross-platform). Also: superpowers must be installed
+   first. (The `--prompt-interactive` workaround note and its pairing INSTALL link were removed 2026-10-24; see
+   the amendment at the top.)
 4. **Guides** — links to `docs/USER_GUIDE.pdf` and `docs/USER_GUIDE.html` on GitHub (the Greek guide
    is a later-phase addition alongside the Greek page).
 5. **Footer** — license (PolyForm Noncommercial), repo/issues links, and the trademark/non-affiliation
@@ -175,8 +177,8 @@ Installing and choosing a product come second to that understanding.
   2. Any local reference (relative `href`/`src`/`srcset`/`url()`) does not resolve to an existing file
      inside `site/`; `#anchor` links must match an `id` in the page.
   3. Any `href` is relative and climbs out of `site/` (`../…`), or any `https://github.com/ckir/clavity…`
-     URL is not one of: the repo root, `/blob/main/…`, `/tree/main/…`, `/releases…`, `/issues…`; the one
-     permitted `raw.githubusercontent.com/ckir/clavity/…` link is the pairing INSTALL file above.
+     URL is not one of: the repo root, `/blob/main/…`, `/tree/main/…`, `/releases…`, `/issues…`; no
+     `raw.githubusercontent.com/ckir/clavity/…` link is permitted.
   4. Any raster file under `site/assets/` exceeds 300 KB.
   5. Any resource the page *loads* (`src`, `srcset`, `<link rel=stylesheet|icon|preload href>`, CSS
      `url()`) is an `http(s)://` or `//` URL. Plain `<a href>` links to other sites are fine; the
@@ -185,13 +187,11 @@ Installing and choosing a product come second to that understanding.
   6. **Install parity (owner's decision: automated).** Every `claude plugin …` command line in the
      README's fenced install block (the first fenced block containing `claude plugin marketplace add`),
      with any trailing `# comment` stripped, appears verbatim in the page's Install section, and the Install
-     section contains no `claude plugin …` line that the README lacks. The README's raw pairing-INSTALL URL
-     (the `raw.githubusercontent.com/ckir/clavity/…` link in the `### WARNING` paragraph) equals the `href`
-     the page uses for it. Every copy-to-clipboard payload in the Install section (the `data-copy`
+     section contains no `claude plugin …` line that the README lacks. Every copy-to-clipboard payload in the Install section (the `data-copy`
      attribute each button must carry) equals its command line exactly, comment stripped, so a button
      cannot copy something other than what is displayed.
-  7. **Quote parity.** `site/index.html` contains **exactly three** elements with `data-readme-quote`,
-     with the values `warning`, `waiver-1` and `waiver-2` (so forgetting the attribute fails instead of
+  7. **Quote parity.** `site/index.html` contains **exactly two** elements with `data-readme-quote`,
+     with the values `waiver-1` and `waiver-2` (so forgetting the attribute fails instead of
      passing on an empty set). For each, the element's text — tags stripped, HTML entities decoded
      (`&quot;` → `"`), curly quotes folded to straight quotes, whitespace collapsed — must appear in
      README.md after the same folding and after stripping markdown emphasis and link syntax.
@@ -234,7 +234,7 @@ details, favicon sizes, whether to inline critical CSS.
 
 - Build approach: option 1, hand-written static site in `site/` (with agy's agreement; see Stand-downs).
 - Hero: layout A with **six** chips (spec review and plan review are separate gates).
-- README text: **(c)** paraphrase the workflow, quote the warning and waiver paragraphs verbatim.
+- README text: **(c)** paraphrase the workflow, quote the two waiver paragraphs verbatim (was three, including the warning, until 2026-10-24).
 - Install drift: **automated** in the `build` job (checks 6 and 7), and `pages.yml` also triggers on
   `README.md` changes.
 - Single page; Greek later.
@@ -248,7 +248,7 @@ details, favicon sizes, whether to inline critical CSS.
 
 - Single-colour-scheme dark page; WebP-only hero with no PNG fallback; 300 KB per raster; system fonts.
 - Per-line copy buttons on the install block; the `# clavity-dotnet` comment is not copied.
-- Windows-only wording for the `clavity-classic` installer note; raw URL for the pairing INSTALL file.
+- Windows-only wording for the `clavity-classic` installer note. (The raw-URL pairing INSTALL link was dropped 2026-10-24.)
 - Manual (not CI) outbound-link resolution checking; no network checks in CI.
 - `build` job on PRs; `deploy` only on push/dispatch; concurrency on `deploy` only.
 - Directory layout `site/{index.html,style.css,script.js,assets/}`; no `site/README.md`.

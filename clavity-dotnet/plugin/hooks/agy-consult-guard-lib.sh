@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # agy-consult VCS-diff guard, shared library.
 # Sourced by agy-consult-guard-pre.sh (PreToolUse) and -post.sh (PostToolUse).
 # Enforces the standing rule: an agy REVIEW-ONLY consult must make ZERO VCS changes.

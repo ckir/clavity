@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # Fixture-driven tests for .claude/hooks/agy-verify-reminder.sh.
 # Each case pipes a SessionStart JSON payload at the hook with a fixture assertions.md in place,
 # and asserts on whether a nag was emitted. agy and clavity-ls are STUBBED on PATH so the live

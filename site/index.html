@@ -1,4 +1,12 @@
 <!doctype html>
+<!--
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+-->
+
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -58,10 +66,7 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
     <p>clavity starts a Claude Code instance and an Antigravity (agy) instance in the same folder. Claude Code is the driver: it implements and verifies. Antigravity is the peer: it reviews and recommends.</p>
     <p>You need <a href="https://github.com/obra/superpowers">superpowers</a> installed first. You start with a brainstorm, which ends in a design document. That design goes to agy for an expert-panel review (<code>adversarial-panel-review</code>), and the implementation plan written from it gets the same treatment. You then choose how to implement: subagent-driven or inline. After the build, Claude runs <code>agy-capstone</code> to improve the code, and a final <code>agy-test-audit</code> hardens your test suites before the plan is declared complete.</p>
     <p>Bonus: automatic debugging. Claude captures pre-existing defects it finds in your repo, including those seen by subagents. At the end of a plan, say "start the triage" and the defects are organised into a ranked backlog.</p>
-    <p>Every one of those review steps can be waived with a prompt, and there is a fallback if agy will not start. These three notes are quoted from the README.</p>
-    <blockquote id="prompt-interactive-warning" data-readme-quote="warning">
-      <p>In Latest versions of Antigravity the "--prompt-interactive" option is not working as expected. The workaround until I fix it is simple. Copy/paste the exact content of this file <a href="https://raw.githubusercontent.com/ckir/clavity/refs/heads/main/clavity-dotnet/pairing/agy-pairing-INSTALL.md">pairing</a> to Antigravity's prompt before start your work on Claude Code or use the classic version.</p>
-    </blockquote>
+    <p>Every one of those review steps can be waived with a prompt, and there is a fallback if agy will not start. These two notes are quoted from the README.</p>
     <blockquote data-readme-quote="waiver-1">
       <p>All the above can be waived by prompts. Say for example "Waive agy for this step" and claude will execute the step solo.</p>
     </blockquote>
@@ -116,11 +121,9 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
   - "claude plugin" text may appear only in <code data-cmd> inside this section (anywhere else on the page fails).
   - Each copy button carries a unique aria-label starting with Copy; the page keeps one role=status live region (id copy-status) outside any <li>.
   - Every command is a <code data-cmd> in its own <li> with exactly one <button data-copy> whose value equals it.
-  - Three elements carry data-readme-quote: warning, waiver-1, waiver-2. Their text must equal the README text.
-  - Every pairing link (raw.githubusercontent.com or ending agy-pairing-INSTALL.md) equals the README's raw URL,
-    and at least one sits inside the install section.
-  - A README change to the install block, the "### WARNING" text, the two waiver lines or the pairing URL
-    requires this page to change in the same PR.
+  - Two elements carry data-readme-quote: waiver-1, waiver-2. Their text must equal the README text.
+  - No raw.githubusercontent.com/ckir/clavity link may appear (check 3); links to other sites are not checked.
+  - A README change to the install block or the two waiver lines requires this page to change in the same PR.
   -->
   <section id="install">
     <h2>Install</h2>
@@ -134,7 +137,6 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
     </ul>
     <p id="copy-status" class="sr-only" role="status"></p>
     <p>These commands work on Windows, Linux and macOS.</p>
-    <p class="note"><strong>Antigravity workaround:</strong> with recent versions of Antigravity the <code>--prompt-interactive</code> option does not work as expected. Until that is fixed, copy and paste the exact content of the <a href="https://raw.githubusercontent.com/ckir/clavity/refs/heads/main/clavity-dotnet/pairing/agy-pairing-INSTALL.md">pairing file</a> into agy's prompt before you start work in Claude Code. See the <a href="#prompt-interactive-warning">quoted README text</a> above.</p>
     <h3>clavity-classic (Windows only)</h3>
     <p>clavity-classic is installed differently, and only on Windows. Open the <a href="https://github.com/ckir/clavity/releases">Releases page</a>, take <code>clavity-classic-setup-&lt;version&gt;.exe</code> from the <code>clavity-v&lt;N&gt;</code> release, check it against its <code>.sha256</code> file, then run it.</p>
   </section>

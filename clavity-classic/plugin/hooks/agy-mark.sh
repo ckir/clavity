@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 # Sanctioned writer for <cwd>/.clavity/ (plugin-shipped). RUN as a process, never sourced - so `exit`
 # is correct here, the exact opposite of agy-shield-lib.sh's return-only rule, and the difference is
 # load-bearing: the helper runs inside a PreToolUse chain where a non-zero exit BLOCKS an agent, while

@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # Repo-wide encoding + parity guard for the SHIPPED plugin hook payload (both drivers).
 #
 # WHY THIS EXISTS. Every other hook suite asserts `ships as pure ASCII` against only the one or two

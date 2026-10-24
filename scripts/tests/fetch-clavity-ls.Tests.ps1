@@ -1,3 +1,11 @@
+<#
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+#>
+
 # ROADMAP section 61. A SessionStart hook's STDERR is not shown to the user at startup, so a failed fetch used to
 # surface later as a bare ENOENT from /mcp. Every outcome the user must act on is now ALSO printed on STDOUT as hook
 # JSON. curl and uname are faked on PATH; tar and sha256sum are real.

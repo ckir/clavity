@@ -1,0 +1,48 @@
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
+name: ci-license-headers
+
+# Every first-party source file must carry the header in /header.txt. `addlicense -check` lists files
+# without it and exits non-zero. No `paths:` filter, for the reason spelled out in ci-scripts.yml: a
+# filter is the only way a gate gets bypassed, and this job takes seconds.
+#
+# The -ignore list is the set of files that must NOT be stamped:
+#   - build output / vendored / scratch trees (.venv, bin, obj, target, node_modules, .clavity, .superpowers)
+#   - installer/_shared/register-plugin.ps1 - SHA-256 hash-pinned (check-register-hash-synced.ps1)
+#   - docs/USER_GUIDE.html - generated
+#   - **/fixtures/** - golden-test inputs compared byte-for-byte
+#   - testResults.xml - generated
+# To license one of the exceptions, stamp it deliberately (re-sync the hash for register-plugin.ps1),
+# then drop it from this list.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-license-headers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  license-headers:
+    name: license headers present
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install addlicense
+        run: go install github.com/google/addlicense@v1.1.1
+
+      - name: Every first-party file carries header.txt
+        run: |
+          "$(go env GOPATH)/bin/addlicense" -f header.txt -check \
+            -ignore '**/.venv/**' -ignore '**/node_modules/**' -ignore '**/target/**' \
+            -ignore '**/bin/**' -ignore '**/obj/**' \
+            -ignore '.clavity/**' -ignore '.superpowers/**' \
+            -ignore '**/register-plugin.ps1' -ignore 'docs/USER_GUIDE.html' \
+            -ignore '**/fixtures/**' -ignore 'testResults.xml' \
+            .
