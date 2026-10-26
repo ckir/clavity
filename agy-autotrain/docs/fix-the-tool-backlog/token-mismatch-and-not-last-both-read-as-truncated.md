@@ -65,3 +65,21 @@ Adjacent: `answer-null-content-only-in-truncated-activity` (Answer null, content
 `terminal-step-kind-signature-not-surfaced` (naming WHICH failure a null answer was). This item is the
 same principle - name the cause - applied to a NON-null answer that carries a token in the wrong place or
 of the wrong discipline.
+
+## Addendum 2026-10-26 - a fourth shape, hypothesis from code reading, not yet measured
+
+An inbox entry drained 2026-10-26 reports the flag firing while the reply file's tail ALREADY held the
+echo line and the terminal token, "because the chat capture and the file capture diverge". The driving
+move (read the last 200 lines of the file before spending the re-ask) is the carried cheatsheet rule and
+was enough to recover; the mechanism was not isolated at capture time.
+
+One candidate mechanism is visible in the code and is recorded here so the next measurement starts
+from it rather than from zero: `Evaluate13b` (`AgyView.cs:294-310`) judges only the TRAILING assistant
+run (`BoundedView.TrailingAnswer`, `BoundedView.cs:163-168`, which returns null unless the delta ENDS on
+an assistant step), while `ReplyCapture.Write` renders EVERY assistant step of the delta. A turn whose
+last step is a tool step - the peer writing or re-reading a file after its chat reply - therefore reads
+as token-absent in chat while the capture file holds the complete reply, and the peer-file rescue
+(`AgyView.cs:268-269`) runs only when a peer file was requested. If measured, the mitigation is: when
+`TurnEndedOnToolStep` is true, judge the LAST assistant run rather than requiring it to be trailing
+(or judge the rendered capture text the way `RescueFromPeerFile` judges the peer file). Unmeasured -
+reproduce before building; the entry stays a carried rule either way.
