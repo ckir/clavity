@@ -97,8 +97,9 @@ public static class GoldenHeader
     public const string GrowthFileName = "golden-header.growth.md";
     public const string LegacyFileName = "golden-header.md";
 
-    /// <summary>Per-process counter appended to the snapshot stamp: keeps rapid commits within one
-    /// second distinct. It does not order slots - the UTC date-time in front of it does.</summary>
+    /// <summary>Per-process counter appended to the snapshot stamp. Within one second of one process it is
+    /// what keeps rapid commits distinct AND what orders them (zero-padded, so name order is commit order);
+    /// across seconds the UTC date-time in front of it orders slots, and across processes it is reset.</summary>
     private static long _snapshotCounter;
 
     /// <summary>A ring slot named by this code or by its pre-v26 form: UTC <c>yyyyMMdd-HHmmss</c>, optionally
@@ -311,13 +312,18 @@ public static class GoldenHeader
                 // the null-forgiving re-derivation quietly removed a defence its own neighbour keeps.
                 // Not reachable through CommitGrowth today (ResolveDir is guarded non-blank), but
                 // Commit is public and a bare filename is exactly what line 231 anticipates.
+                // The slot just written is held OUT of the pool: it is the one snapshot this commit exists
+                // to keep, and a clock stepped backwards (or slots stamped ahead of it) would otherwise sort
+                // it below a full ring and delete it. The ring then sheds the lowest of the others.
+                var bakName = Path.GetFileName(bak);
                 foreach (var stale in Directory.GetFiles(string.IsNullOrEmpty(dir) ? "." : dir,
                              Path.GetFileName(path) + ".*.bak")
+                         .Where(f => !string.Equals(Path.GetFileName(f), bakName, StringComparison.Ordinal))
                          // A clavity-v26 ring holds hex-tick slots (section 99) that may sort ABOVE every dated
                          // name; they are older than any dated slot by construction, so they are evicted first.
                          .OrderByDescending(f => DatedSlot.IsMatch(Path.GetFileName(f)) ? 1 : 0)
                          .ThenByDescending(f => f, StringComparer.Ordinal)
-                         .Skip(SnapshotKeep))
+                         .Skip(SnapshotKeep - 1))
                 {
                     File.Delete(stale);
                     if (File.Exists(stale + ".sha256")) File.Delete(stale + ".sha256");

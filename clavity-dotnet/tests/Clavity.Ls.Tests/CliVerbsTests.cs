@@ -333,15 +333,53 @@ public sealed class CliVerbsTests : IDisposable
     {
         // ROADMAP section 99: the prune orders slots BY NAME, so the stamp must sort as time does. A hex
         // Stopwatch tick count did not (variable width, restarting at every boot); this pins the shape.
-        var before = DateTime.UtcNow.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        // Capstone round 1 (MG-1): three commits leave two slots, "first" (taken by the second commit)
+        // and "second" (by the third). Each carries the FULL UTC stamp, bounded by the clock read
+        // around the calls (a date-only check let local time, a 12-hour clock and a frozen counter
+        // through), and the later slot sorts above the earlier one by name - within one second only
+        // the counter can make that true, and a frozen counter collapses the two into one file.
+        var before = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
         GoldenHeader.CommitGrowth(_dir, "first\n");
         GoldenHeader.CommitGrowth(_dir, "second\n");
-        var after = DateTime.UtcNow.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        GoldenHeader.CommitGrowth(_dir, "third\n");
+        var after = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
 
-        var name = Path.GetFileName(Assert.Single(Baks(_dir)));
-        Assert.Matches(@"^golden-header\.growth\.md\.\d{8}-\d{6}-\d{4}\.bak$", name);
-        var stamp = name.Substring("golden-header.growth.md.".Length, 8);
-        Assert.True(stamp == before || stamp == after, $"stamp day {stamp} is not today ({before}/{after})");
+        var slots = Baks(_dir);
+        Assert.Equal(2, slots.Length);
+        var first = Assert.Single(slots, f => File.ReadAllText(f) == "first\n");
+        var second = Assert.Single(slots, f => File.ReadAllText(f) == "second\n");
+        foreach (var slot in slots)
+        {
+            var name = Path.GetFileName(slot);
+            Assert.Matches(@"^golden-header\.growth\.md\.\d{8}-\d{6}-\d{4}\.bak$", name);
+            var stamp = name.Substring("golden-header.growth.md.".Length, 15);
+            Assert.True(
+                string.CompareOrdinal(before, stamp) <= 0 && string.CompareOrdinal(stamp, after) <= 0,
+                $"stamp {stamp} is outside [{before}, {after}]");
+        }
+        Assert.True(
+            string.CompareOrdinal(Path.GetFileName(second), Path.GetFileName(first)) > 0,
+            "the later slot must sort above the earlier one");
+    }
+
+    [Fact]
+    public void Commit_never_evicts_the_slot_it_has_just_written()
+    {
+        // Capstone round 1 (open question 1): a clock stepped backwards, or slots stamped ahead of
+        // it, sorts the new slot below a full ring. That slot is the one snapshot this commit exists
+        // to keep, so it is held out of the prune and the ring sheds the lowest of the OTHERS.
+        GoldenHeader.CommitGrowth(_dir, "base\n");
+        for (var i = 1; i <= GoldenHeader.SnapshotKeep; i++)
+            File.WriteAllText(
+                Path.Combine(_dir, $"golden-header.growth.md.20991231-23595{i}-0001.bak"), $"future {i}\n");
+
+        GoldenHeader.CommitGrowth(_dir, "trigger prune\n");
+
+        var surviving = Baks(_dir);
+        Assert.Equal(GoldenHeader.SnapshotKeep, surviving.Length);
+        Assert.Contains(surviving, f => File.ReadAllText(f) == "base\n");
+        Assert.False(File.Exists(Path.Combine(_dir, "golden-header.growth.md.20991231-235951-0001.bak")),
+            "the lowest of the other slots goes instead");
     }
 
     [Fact]
