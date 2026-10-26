@@ -158,8 +158,38 @@ jobs:
               $ok = $true; break
             } catch {
               Write-Host "::warning::Pester v6 install attempt $attempt failed: $($_.Exception.Message); retrying"
+              # DIAGNOSTIC (2026-10-26): the NuGet provider turns a failed gallery request into "no match" and
+              # logs the cause at debug level only. Ask the same endpoint directly so the log names the status.
+              try {
+                $probe = Invoke-WebRequest -Uri "https://www.powershellgallery.com/api/v2/FindPackagesById()?id='Pester'" -UseBasicParsing -TimeoutSec 30
+                Write-Host "::notice::gallery probe after attempt ${attempt}: HTTP $([int]$probe.StatusCode), $($probe.Content.Length) bytes"
+              } catch {
+                $resp = $_.Exception.Response
+                $code = if ($resp) { [int]$resp.StatusCode } else { 'no response' }
+                $hdr = if (-not $resp) { $_.Exception.Message }
+                       elseif ($resp.Headers -is [System.Net.WebHeaderCollection]) { ($resp.Headers.AllKeys | ForEach-Object { "$_=$($resp.Headers[$_])" }) -join '; ' }
+                       else { ($resp.Headers.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value -join ',')" }) -join '; ' }
+                Write-Host "::warning::gallery probe after attempt ${attempt}: HTTP $code; $($hdr.Substring(0, [Math]::Min(300, $hdr.Length)))"
+              }
               Start-Sleep -Seconds (15 * $attempt)
             }
+          }
+          if (-not $ok) {
+            # One verbose + debug install, so the provider's own "could not get response from query" line
+            # (debug level) reaches the log. If it succeeds this time, the module check below still decides.
+            Write-Host '::group::Install-Module verbose and debug diagnostics (all attempts failed)'
+            $savedDebug = $DebugPreference; $savedVerbose = $VerbosePreference
+            $DebugPreference = 'Continue'; $VerbosePreference = 'Continue'
+            try {
+              $diag = @(Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop *>&1)
+              $diag | Select-Object -First 80 | ForEach-Object { Write-Host "[diag] $_" }
+            } catch {
+              Write-Host "[diag] $($_.Exception.Message)"
+            } finally {
+              $DebugPreference = $savedDebug; $VerbosePreference = $savedVerbose
+            }
+            Write-Host '::endgroup::'
+            if (Get-Module Pester -ListAvailable | Where-Object { $_.Version.Major -eq 6 }) { $ok = $true }
           }
           if (-not $ok) {
             # FALLBACK (PSGallery lookup down while its package API is up: 'No match was found ... module name
@@ -349,8 +379,38 @@ jobs:
               $ok = $true; break
             } catch {
               Write-Host "::warning::Pester v6 install attempt $attempt failed: $($_.Exception.Message); retrying"
+              # DIAGNOSTIC (2026-10-26): the NuGet provider turns a failed gallery request into "no match" and
+              # logs the cause at debug level only. Ask the same endpoint directly so the log names the status.
+              try {
+                $probe = Invoke-WebRequest -Uri "https://www.powershellgallery.com/api/v2/FindPackagesById()?id='Pester'" -UseBasicParsing -TimeoutSec 30
+                Write-Host "::notice::gallery probe after attempt ${attempt}: HTTP $([int]$probe.StatusCode), $($probe.Content.Length) bytes"
+              } catch {
+                $resp = $_.Exception.Response
+                $code = if ($resp) { [int]$resp.StatusCode } else { 'no response' }
+                $hdr = if (-not $resp) { $_.Exception.Message }
+                       elseif ($resp.Headers -is [System.Net.WebHeaderCollection]) { ($resp.Headers.AllKeys | ForEach-Object { "$_=$($resp.Headers[$_])" }) -join '; ' }
+                       else { ($resp.Headers.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value -join ',')" }) -join '; ' }
+                Write-Host "::warning::gallery probe after attempt ${attempt}: HTTP $code; $($hdr.Substring(0, [Math]::Min(300, $hdr.Length)))"
+              }
               Start-Sleep -Seconds (15 * $attempt)
             }
+          }
+          if (-not $ok) {
+            # One verbose + debug install, so the provider's own "could not get response from query" line
+            # (debug level) reaches the log. If it succeeds this time, the module check below still decides.
+            Write-Host '::group::Install-Module verbose and debug diagnostics (all attempts failed)'
+            $savedDebug = $DebugPreference; $savedVerbose = $VerbosePreference
+            $DebugPreference = 'Continue'; $VerbosePreference = 'Continue'
+            try {
+              $diag = @(Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop *>&1)
+              $diag | Select-Object -First 80 | ForEach-Object { Write-Host "[diag] $_" }
+            } catch {
+              Write-Host "[diag] $($_.Exception.Message)"
+            } finally {
+              $DebugPreference = $savedDebug; $VerbosePreference = $savedVerbose
+            }
+            Write-Host '::endgroup::'
+            if (Get-Module Pester -ListAvailable | Where-Object { $_.Version.Major -eq 6 }) { $ok = $true }
           }
           if (-not $ok) {
             # FALLBACK (PSGallery lookup down while its package API is up: 'No match was found ... module name
@@ -467,8 +527,38 @@ jobs:
               $ok = $true; break
             } catch {
               Write-Host "::warning::Pester v6 install attempt $attempt failed: $($_.Exception.Message); retrying"
+              # DIAGNOSTIC (2026-10-26): the NuGet provider turns a failed gallery request into "no match" and
+              # logs the cause at debug level only. Ask the same endpoint directly so the log names the status.
+              try {
+                $probe = Invoke-WebRequest -Uri "https://www.powershellgallery.com/api/v2/FindPackagesById()?id='Pester'" -UseBasicParsing -TimeoutSec 30
+                Write-Host "::notice::gallery probe after attempt ${attempt}: HTTP $([int]$probe.StatusCode), $($probe.Content.Length) bytes"
+              } catch {
+                $resp = $_.Exception.Response
+                $code = if ($resp) { [int]$resp.StatusCode } else { 'no response' }
+                $hdr = if (-not $resp) { $_.Exception.Message }
+                       elseif ($resp.Headers -is [System.Net.WebHeaderCollection]) { ($resp.Headers.AllKeys | ForEach-Object { "$_=$($resp.Headers[$_])" }) -join '; ' }
+                       else { ($resp.Headers.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value -join ',')" }) -join '; ' }
+                Write-Host "::warning::gallery probe after attempt ${attempt}: HTTP $code; $($hdr.Substring(0, [Math]::Min(300, $hdr.Length)))"
+              }
               Start-Sleep -Seconds (15 * $attempt)
             }
+          }
+          if (-not $ok) {
+            # One verbose + debug install, so the provider's own "could not get response from query" line
+            # (debug level) reaches the log. If it succeeds this time, the module check below still decides.
+            Write-Host '::group::Install-Module verbose and debug diagnostics (all attempts failed)'
+            $savedDebug = $DebugPreference; $savedVerbose = $VerbosePreference
+            $DebugPreference = 'Continue'; $VerbosePreference = 'Continue'
+            try {
+              $diag = @(Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop *>&1)
+              $diag | Select-Object -First 80 | ForEach-Object { Write-Host "[diag] $_" }
+            } catch {
+              Write-Host "[diag] $($_.Exception.Message)"
+            } finally {
+              $DebugPreference = $savedDebug; $VerbosePreference = $savedVerbose
+            }
+            Write-Host '::endgroup::'
+            if (Get-Module Pester -ListAvailable | Where-Object { $_.Version.Major -eq 6 }) { $ok = $true }
           }
           if (-not $ok) {
             # FALLBACK (PSGallery lookup down while its package API is up: 'No match was found ... module name
