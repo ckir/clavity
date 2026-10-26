@@ -4433,7 +4433,8 @@ Measured at triage 2026-10-26: `site/assets/clavity.svg:105` sets the "Clavity" 
 
 ### §95 — The README platform badge says Windows while the install section says cross-platform (formerly a local anomaly)
 
-**Status:** OPEN 2026-10-26 - a one-line badge edit awaiting the owner's word on the platform claim
+**Status:** SHIPPED 2026-10-26 - badge changed to Windows | Linux | macOS on the owner's ruling, `d6755e65`
+> **Previous status:** OPEN 2026-10-26 - a one-line badge edit awaiting the owner's word on the platform claim
 
 Measured at triage 2026-10-26: `README.md:4` is `[![Platform: Windows](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()` while `README.md:61` says the `claude plugin` installs are "Cross-platform (Windows, Linux, macOS)". The badge sits ABOVE the HUMAN ONLY marker (line 6), so an agent may edit it, but what it claims is a product statement: the plugins install anywhere, while the two drivers' own tooling was Windows-first until the 2026-10 Linux parity work (§89, §93). Proposed text once the owner rules: `Platform-Windows%20%7C%20Linux%20%7C%20macOS` for the plugins, or two badges if the drivers' support differs from the plugins'.
 
