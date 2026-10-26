@@ -505,10 +505,13 @@ def check_install(parser: PageParser, readme_text: str, name: str) -> list[Probl
             f"page text mentions `claude plugin` outside an #install data-cmd: {near!r}"
         )
     for tag, attr, value in parser.attr_text:
-        if CLAUDE_PLUGIN.search(fold(value)):
+        folded = fold(value)
+        hit = CLAUDE_PLUGIN.search(folded)
+        if hit:
+            near = folded[hit.start() : hit.start() + 60]
             flag(
-                f"<{tag} {attr}> mentions `claude plugin`; only the text of an #install "
-                f"data-cmd may: {fold(value)[:60]!r}"
+                f"<{tag} {attr}> mentions `claude plugin`: reword it (a command belongs "
+                f"in the text of an #install data-cmd, listed in the README): {near!r}"
             )
     return problems
 

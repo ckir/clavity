@@ -651,7 +651,17 @@ class ParityChecks(unittest.TestCase):
                 index_body(),
                 '<meta name="description" content="claude plugin install x">',
             )
-            self.assertIn(6, self.numbers(html))
+            problems = [m for n, m in self.run_case(html) if n == 6]
+            self.assertEqual(len(problems), 1)
+            self.assertIn("<meta content>", problems[0])
+
+    def test_attribute_problem_quotes_the_text_around_the_match(self):
+        prefix = "x" * 70
+        carrier = f'<p title="{prefix} claude plugin install y">z</p>'
+        problems = self.run_case(index_body() + carrier)
+        self.assertEqual([n for n, _ in problems], [6])
+        self.assertIn("'claude plugin install y'", problems[0][1])
+        self.assertNotIn(prefix, problems[0][1])
 
     def test_attribute_on_an_install_data_cmd_element_is_flagged(self):
         # Capstone round 1 (MG-1): the text of <code data-cmd> is sanctioned
@@ -716,7 +726,7 @@ class ParityChecks(unittest.TestCase):
         self.assertIn("aria-label", problems[1][1])
 
     def test_claude_plugin_in_unlisted_attributes_is_not_page_text(self):
-        # Only the attributes a visitor can see or hear are page text; data-*
+        # Only the attributes a visitor can see or hear are checked; data-*
         # payloads, and content off a <meta> or value off an <input>, are not
         # rendered anywhere.
         cases = {
