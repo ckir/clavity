@@ -96,6 +96,36 @@ public sealed class FolderKeyTests : IDisposable
     }
 
     [Fact]
+    public void A_link_target_that_goes_through_another_link_and_back_out_with_dot_dot_resolves_as_the_kernel_does()
+    {
+        // Capstone round 1 (set below the floor by the peer, MEASURED real 2026-10-27): l1 -> "l2/../repo" where l2 -> deep/sub.
+        // The kernel dereferences l2 FIRST and then applies "..", landing in deep/repo; collapsing "l2/.." as text gives
+        // <root>/repo, a different folder, so an alias of deep/repo would get its own lock.
+        if (OperatingSystem.IsWindows()) return;
+        var deepRepo = Make("deep", "repo");
+        Make("deep", "sub");
+        Make("repo");
+        Link("l2", Path.Combine(_root, "deep", "sub"));
+        Directory.CreateSymbolicLink(Path.Combine(_root, "l1"), Path.Combine("l2", "..", "repo"));
+        Assert.True(Directory.Exists(Path.Combine(_root, "l1")));
+        Assert.Equal(FolderKey.Canonical(deepRepo, false), FolderKey.Canonical(Path.Combine(_root, "l1"), false));
+        Assert.NotEqual(FolderKey.Canonical(Path.Combine(_root, "repo"), false), FolderKey.Canonical(Path.Combine(_root, "l1"), false));
+    }
+
+    [Fact]
+    public void A_link_in_a_folder_nested_deeper_than_the_link_cap_is_still_resolved()
+    {
+        // The cap is on LINKS followed (the kernel's 40), not on path length: a deep ordinary folder must not stop the walk.
+        if (OperatingSystem.IsWindows()) return;
+        var deep = Make(Enumerable.Repeat("d", 50).ToArray());
+        var real = Path.Combine(deep, "real");
+        Directory.CreateDirectory(real);
+        var alias = Path.Combine(deep, "alias");
+        Directory.CreateSymbolicLink(alias, real);
+        Assert.Equal(FolderKey.Canonical(real, false), FolderKey.Canonical(alias, false));
+    }
+
+    [Fact]
     public void A_link_loop_ends_instead_of_hanging()
     {
         if (OperatingSystem.IsWindows()) return;

@@ -26,14 +26,46 @@ public static class FolderKey
 
     public static string Canonical(string folder, bool ignoreCase)
     {
-        var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
-        for (var hop = 0; hop < MaxLinkHops; hop++)
+        // Like realpath(3): the path already resolved is always link-free, the segments still to apply wait in a list, and
+        // a link's target is spliced IN FRONT of them. A ".." therefore applies to the real directory its left side
+        // resolved to, not to the text: l1 -> "l2/../repo" with l2 -> deep/sub lands in deep/repo, as the kernel does
+        // (collapsing "l2/.." as text gave <root>/repo, a different folder). The typed folder is first made absolute
+        // lexically, on purpose: that is the path Claude is launched in.
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+        var root = Path.GetPathRoot(full) ?? "";
+        var pending = new LinkedList<string>(Segments(full[root.Length..]));
+        var resolved = root;
+        var hops = 0;
+        while (pending.First is { } head)
         {
-            var resolved = ResolveFirstLink(path);
-            if (resolved is null)
-                break;
-            path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(resolved));
+            var segment = head.Value;
+            pending.RemoveFirst();
+            if (segment == ".")
+                continue;
+            if (segment == "..")
+            {
+                resolved = resolved == root ? root : Path.GetDirectoryName(resolved) ?? root;
+                continue;
+            }
+            var next = Path.Combine(resolved, segment);
+            var target = LinkTargetOf(next);
+            if (target is not null && ++hops > MaxLinkHops)
+                target = null;   // past the cap a link is treated as a plain directory, so a loop ends
+            if (target is null)
+            {
+                resolved = next;
+                continue;
+            }
+            if (Path.IsPathRooted(target))
+            {
+                var targetRoot = Path.GetPathRoot(target) ?? "";
+                resolved = targetRoot;
+                target = target[targetRoot.Length..];
+            }
+            foreach (var part in Segments(target).Reverse())
+                pending.AddFirst(part);
         }
+        var path = Path.TrimEndingDirectorySeparator(resolved);
         return ignoreCase ? path.ToUpperInvariant() : path;
     }
 
@@ -45,31 +77,20 @@ public static class FolderKey
         return Path.Combine(userProfileDir, ".clavity", $"agy-folder.{hash}.lock");
     }
 
-    /// <summary>The path with its FIRST link (walking from the root) replaced by that link's target, or null when no component
-    /// is a link. A relative target is relative to the directory the link sits in.</summary>
-    private static string? ResolveFirstLink(string full)
+    private static string[] Segments(string path) =>
+        path.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
+
+    /// <summary>The target of <paramref name="path"/> when it is a link (one hop, as written), else null. An unreadable
+    /// entry counts as a plain directory rather than failing the launch.</summary>
+    private static string? LinkTargetOf(string path)
     {
-        var root = Path.GetPathRoot(full) ?? "";
-        var parts = full[root.Length..].Split(
-            new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
-        var current = root;
-        for (var i = 0; i < parts.Length; i++)
+        try
         {
-            current = Path.Combine(current, parts[i]);
-            string? target;
-            try
-            {
-                target = new DirectoryInfo(current).LinkTarget;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                target = null;   // unreadable: treat it as a plain directory rather than fail the launch
-            }
-            if (target is null)
-                continue;
-            var resolved = Path.GetFullPath(target, Path.GetDirectoryName(current) ?? root);
-            return i + 1 == parts.Length ? resolved : Path.Combine(resolved, Path.Combine(parts[(i + 1)..]));
+            return new DirectoryInfo(path).LinkTarget;
         }
-        return null;
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 }
