@@ -4452,6 +4452,14 @@ Measured 2026-10-23 on copies of the real page, re-read at triage 2026-10-26: `.
 
 Measured 2026-10-23 on copies of the real page: `<form action="https://evil.example/">`, `<a ping="...">` and `<meta http-equiv="refresh" content="0;url=https://evil.example/">` all exit 0. The checker's own docstring (`.github/site-checks/check_site.py:33`) records "Form action, a ping and meta refresh are navigation and NOT checked", and the capstone ledger row for `449f02b9..6a82a860` lists them as deliberately unchecked. The guarantee check 5 makes is zero third-party LOADS on page view; none of the three fires without a user action, so they fall outside it. The page has no form and no refresh today.
 
+### §98 — check-injected-context.ps1 resolves a `../` reference that ends in `...` differently on Windows and Linux, so the local gate is red on a green main (formerly a local anomaly)
+
+**Status:** OPEN 2026-10-26 - tracked debt from anomaly triage; `just check-injected-context` exits 1 on a Linux checkout of main `4f68e8e9` while `ci-injected-context` passes
+
+Measured 2026-10-26 on main `4f68e8e9` (Linux, pwsh 7.6.8): the gate reports one violation, `agy-autotrain/skills/agy-curate/SKILL.md` `broken: ../../../seed/...`. The token is prose at `SKILL.md:56` ("NOT a repo-relative `../../../seed/...` path"), where `...` is an ellipsis, not a path. `Test-IsPathCandidate` admits every token that starts with `../` (`scripts/check-injected-context.ps1:474`) and `Resolve-Reference` then takes `[System.IO.Path]::GetFullPath` of it (`:630-633`). On Linux that returns `<root>/seed/...`, which no tracked path matches, so `broken`. CI runs the gate on `windows-latest` only (`.github/workflows/ci-injected-context.yml`), and on Windows .NET path normalization removes trailing periods from a segment (documented; not measured here), so the same token resolves to `<root>\seed`, a directory that holds a tracked file, and reads `ok`. The earlier observation that CI for PR #20 reported one violation while a Linux checkout reported two is this same split: the second finding was never visible to the Windows job.
+
+Two consequences, both worth closing: a Linux maintainer cannot run the gate green on a clean main, and a `../x/...` token can hide a genuinely broken reference from the Windows job. Fix shape (not chosen here): treat a token whose leaf is all periods as not a candidate (a one-line rule beside `:474`, with a Pester row for `../a/...` on both outcomes), and consider running the gate on `ubuntu-latest` as well so OS-specific resolution is seen in CI; rewording `SKILL.md:56` alone would hide the gate defect.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
