@@ -4,9 +4,10 @@
 // You may obtain a copy of the License at:
 // https://polyformproject.org/licenses/noncommercial/1.0.0/
 
-using System.Diagnostics;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 
 namespace Clavity.Ls;
@@ -96,9 +97,13 @@ public static class GoldenHeader
     public const string GrowthFileName = "golden-header.growth.md";
     public const string LegacyFileName = "golden-header.md";
 
-    /// <summary>Monotonic counter for snapshot ring timestamps — avoids collisions when DateTime.Now
-    /// doesn't advance (e.g. rapid commits) and is immune to system clock changes.</summary>
+    /// <summary>Per-process counter appended to the snapshot stamp: keeps rapid commits within one
+    /// second distinct. It does not order slots - the UTC date-time in front of it does.</summary>
     private static long _snapshotCounter;
+
+    /// <summary>A ring slot named by this code or by its pre-v26 form: UTC <c>yyyyMMdd-HHmmss</c>, optionally
+    /// followed by the counter. Anything else in the ring is a clavity-v26 hex-tick slot (ROADMAP section 99).</summary>
+    private static readonly Regex DatedSlot = new(@"\.\d{8}-\d{6}(?:-\d{4})?\.bak$", RegexOptions.CultureInvariant);
 
     /// <summary>CLAVITY_GOLDEN_HEADER (a directory) if set+non-blank, else %USERPROFILE%\.clavity.</summary>
     public static string ResolveDir(string? envOverride, string userProfileDir) =>
@@ -287,10 +292,15 @@ public static class GoldenHeader
             var current = File.ReadAllText(path);
             if (!string.Equals(current, content, StringComparison.Ordinal))
             {
-                // Monotonic timestamp: Stopwatch.GetTimestamp() + interlocked counter.
-                // Immune to system clock changes and guarantees uniqueness for rapid commits.
+                // The prune below orders slots BY NAME, so the stamp must sort as time does: UTC
+                // yyyyMMdd-HHmmss, fixed width, then a zero-padded per-process counter that keeps rapid
+                // commits within one second distinct. ROADMAP section 99: a hex Stopwatch tick count was
+                // neither fixed-width nor stable across boots, so the prune could evict the slot it had
+                // just written. Two PROCESSES committing in the same second with the same counter would
+                // collapse into one slot - the pre-v26 behaviour; curate-commit is a one-shot CLI.
                 var counter = Interlocked.Increment(ref _snapshotCounter);
-                var stamp = $"{Stopwatch.GetTimestamp():x}{counter:x}";
+                var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)
+                            + "-" + counter.ToString("D4", CultureInfo.InvariantCulture);
                 var bak = $"{path}.{stamp}.bak";
                 File.Copy(path, bak, overwrite: true);
                 var liveSidecar = path + ".sha256";
@@ -303,7 +313,10 @@ public static class GoldenHeader
                 // Commit is public and a bare filename is exactly what line 231 anticipates.
                 foreach (var stale in Directory.GetFiles(string.IsNullOrEmpty(dir) ? "." : dir,
                              Path.GetFileName(path) + ".*.bak")
-                         .OrderByDescending(f => f, StringComparer.Ordinal)
+                         // A clavity-v26 ring holds hex-tick slots (section 99) that may sort ABOVE every dated
+                         // name; they are older than any dated slot by construction, so they are evicted first.
+                         .OrderByDescending(f => DatedSlot.IsMatch(Path.GetFileName(f)) ? 1 : 0)
+                         .ThenByDescending(f => f, StringComparer.Ordinal)
                          .Skip(SnapshotKeep))
                 {
                     File.Delete(stale);

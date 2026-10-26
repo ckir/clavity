@@ -4,6 +4,7 @@
 // You may obtain a copy of the License at:
 // https://polyformproject.org/licenses/noncommercial/1.0.0/
 
+using System.Globalization;
 using System.Text;
 using Clavity.Ls;
 using Xunit;
@@ -240,12 +241,12 @@ public sealed class CliVerbsTests : IDisposable
     [Fact]
     public void Commit_prunes_the_ring_to_the_retention_limit()
     {
-        // Pre-seed the ring rather than looping CommitGrowth. The snapshot stamp has ONE-SECOND
-        // resolution, so a tight loop of commits produces the SAME filename every iteration and
-        // File.Copy(overwrite: true) collapses them into one .bak - the assert would read 1, not 5.
-        // Seeding fixed 2026-01-01 names and firing a single real commit exercises the prune in
-        // milliseconds with no sleeps. Today's stamp sorts above 20260101-* under the Ordinal
-        // descending sort the implementation uses, so the newest slot is the real one.
+        // Pre-seed the ring rather than looping CommitGrowth: seeding fixed 2026-01-01 names and firing a
+        // single real commit exercises the prune in milliseconds with no sleeps. The real slot's stamp is
+        // UTC yyyyMMdd-HHmmss plus a counter (ROADMAP section 99: a hex Stopwatch stamp sorted ABOVE or
+        // BELOW the seeded names depending on the machine's uptime, and this test flipped with it), so
+        // today's stamp sorts above 20260101-* under the Ordinal descending sort the implementation
+        // uses, and the newest slot is the real one.
         GoldenHeader.CommitGrowth(_dir, "base\n");
         for (var i = 1; i <= GoldenHeader.SnapshotKeep + 2; i++)
             File.WriteAllText(Path.Combine(_dir, $"golden-header.growth.md.20260101-00000{i}.bak"), $"old {i}\n");
@@ -325,6 +326,47 @@ public sealed class CliVerbsTests : IDisposable
             "the oldest slot must be evicted first");
         Assert.True(File.Exists(Path.Combine(_dir, "golden-header.growth.md.20260101-000007.bak")),
             "the newest seeded slot must survive");
+    }
+
+    [Fact]
+    public void Snapshot_slot_names_are_fixed_width_utc_time_then_counter()
+    {
+        // ROADMAP section 99: the prune orders slots BY NAME, so the stamp must sort as time does. A hex
+        // Stopwatch tick count did not (variable width, restarting at every boot); this pins the shape.
+        var before = DateTime.UtcNow.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        GoldenHeader.CommitGrowth(_dir, "first\n");
+        GoldenHeader.CommitGrowth(_dir, "second\n");
+        var after = DateTime.UtcNow.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+
+        var name = Path.GetFileName(Assert.Single(Baks(_dir)));
+        Assert.Matches(@"^golden-header\.growth\.md\.\d{8}-\d{6}-\d{4}\.bak$", name);
+        var stamp = name.Substring("golden-header.growth.md.".Length, 8);
+        Assert.True(stamp == before || stamp == after, $"stamp day {stamp} is not today ({before}/{after})");
+    }
+
+    [Fact]
+    public void Commit_prunes_a_legacy_hex_stamped_slot_before_any_dated_slot()
+    {
+        // Rings written by clavity-v26 hold slots named with hex Stopwatch ticks (ROADMAP section 99).
+        // Some of those sort ABOVE every dated name under Ordinal order; a prune that trusted the name
+        // alone would never evict such a slot and would evict every NEW snapshot ahead of it. A legacy
+        // slot is older than any dated slot by construction, so it goes first.
+        GoldenHeader.CommitGrowth(_dir, "base\n");
+        SeedOldSlots(GoldenHeader.SnapshotKeep);
+        var legacy = Path.Combine(_dir, "golden-header.growth.md.fffffffffffffff1.bak");
+        File.WriteAllText(legacy, "legacy\n");
+        File.WriteAllText(legacy + ".sha256", GoldenHeader.Sha256Hex("legacy\n"));
+
+        GoldenHeader.CommitGrowth(_dir, "trigger prune\n");
+
+        var surviving = Baks(_dir);
+        Assert.Equal(GoldenHeader.SnapshotKeep, surviving.Length);
+        Assert.False(File.Exists(legacy), "the legacy slot is evicted before any dated slot");
+        Assert.False(File.Exists(legacy + ".sha256"), "its sidecar goes with it");
+        Assert.False(File.Exists(Path.Combine(_dir, "golden-header.growth.md.20260101-000001.bak")),
+            "then the oldest dated slot");
+        Assert.True(File.Exists(Path.Combine(_dir, "golden-header.growth.md.20260101-000002.bak")));
+        Assert.Contains(surviving, f => File.ReadAllText(f) == "base\n");
     }
 
     [Fact]
