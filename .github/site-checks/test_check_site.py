@@ -627,7 +627,7 @@ class ParityChecks(unittest.TestCase):
         body = index_body() + "<!-- claude plugin install x -->"
         self.assertEqual(self.numbers(body), [])
 
-    def test_claude_plugin_in_attribute_values_is_page_text(self):
+    def test_claude_plugin_in_attribute_values_is_flagged(self):
         # ROADMAP section 96: a screen reader voices alt and aria-label, a
         # tooltip shows title, a form shows placeholder and value, and search
         # engines read <meta content>, so an install command there is a
@@ -644,7 +644,8 @@ class ParityChecks(unittest.TestCase):
             with self.subTest(name=name):
                 problems = self.run_case(index_body() + carrier)
                 self.assertEqual([n for n, _ in problems], [6])
-                self.assertIn("page text mentions", problems[0][1])
+                self.assertIn(name.split()[-1], problems[0][1])
+                self.assertIn("mentions `claude plugin`", problems[0][1])
         with self.subTest(name="meta content"):
             html = page(
                 index_body(),
@@ -652,21 +653,76 @@ class ParityChecks(unittest.TestCase):
             )
             self.assertIn(6, self.numbers(html))
 
-    def test_attribute_on_an_install_data_cmd_element_is_not_page_text(self):
-        # The same rule as for text: inside <code data-cmd> in #install the
-        # command is sanctioned, tooltip included; one line outside is not.
-        install = install_html().replace(
-            "<code data-cmd>", '<code data-cmd title="claude plugin install x">', 1
+    def test_attribute_on_an_install_data_cmd_element_is_flagged(self):
+        # Capstone round 1 (MG-1): the text of <code data-cmd> is sanctioned
+        # because check 6 compares it with the README; an attribute on that
+        # element, or on a child of it, is compared with nothing, so a command
+        # there is an unchecked install line and is flagged like any other.
+        evil = "claude plugin install evil@attacker"
+        on_cmd = install_html().replace(
+            "<code data-cmd>", f'<code data-cmd aria-label="{evil}">', 1
         )
-        self.assertIn("data-cmd title=", install)
-        self.assertEqual(self.numbers(index_body(install)), [])
+        in_cmd = install_html().replace(
+            "<code data-cmd>", f'<code data-cmd><span title="{evil}">', 1
+        ).replace("</code>", "</span></code>", 1)
+        for name, install in (("on data-cmd", on_cmd), ("inside data-cmd", in_cmd)):
+            with self.subTest(name=name):
+                self.assertIn(evil, install)
+                self.assertEqual(self.numbers(index_body(install)), [6])
+
+    def test_attribute_inside_a_readme_quote_is_flagged_and_quote_still_equal(self):
+        quote = quote1_body(
+            f"<p data-readme-quote='waiver-1'>{WAIVER_1[:10]}"
+            f'<b title="claude plugin install x">{WAIVER_1[10:]}</b></p>'
+        )
+        self.assertEqual(self.numbers(quote), [6])
+
+    def test_attribute_values_never_join_the_surrounding_text(self):
+        # Capstone round 1 (PP-1): an attribute value is a string of its own.
+        # Splicing it into the text stream hid the phrase on each side of it;
+        # each is flagged exactly as it is without the attribute.
+        cases = {
+            "adjacent blocks": (
+                '<h3>Claude</h3><p title="Section overview">Plugin names are listed.</p>'
+            ),
+            "inline element": '<p>claude <b title="emphasis">plugin</b> install evil@x</p>',
+            "empty attribute": '<p>cla<b title="">ude</b> plugin install evil@x</p>',
+        }
+        for name, carrier in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(self.numbers(index_body() + carrier), [6])
+
+    def test_attribute_values_do_not_join_text_or_each_other(self):
+        # Nothing shows two attributes, or an element's text and its own
+        # description, as one sentence: half a phrase on each side is clean.
+        cases = {
+            "two attributes": '<p title="run claude" aria-label="plugin install x">y</p>',
+            "text then description": (
+                '<p aria-description="plugin install evil@x">claude</p>'
+            ),
+        }
+        for name, carrier in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(self.numbers(index_body() + carrier), [])
+
+    def test_each_offending_attribute_value_is_its_own_problem(self):
+        carrier = (
+            '<p title="claude plugin install x" aria-label="claude plugin install y">'
+            "z</p>"
+        )
+        problems = self.run_case(index_body() + carrier)
+        self.assertEqual([n for n, _ in problems], [6, 6])
+        self.assertIn("title", problems[0][1])
+        self.assertIn("aria-label", problems[1][1])
 
     def test_claude_plugin_in_unlisted_attributes_is_not_page_text(self):
         # Only the attributes a visitor can see or hear are page text; data-*
-        # payloads, and content off a <meta>, are not rendered anywhere.
+        # payloads, and content off a <meta> or value off an <input>, are not
+        # rendered anywhere.
         cases = {
             "data attribute": '<p data-note="claude plugin install x">y</p>',
             "content off meta": '<p content="claude plugin install x">y</p>',
+            "value off input": '<p value="claude plugin install x">y</p>',
         }
         for name, carrier in cases.items():
             with self.subTest(name=name):
