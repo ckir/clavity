@@ -478,7 +478,7 @@ class ParityChecks(unittest.TestCase):
         self.tmp = Path(self._tmp.name)
         self.count = 0
 
-    def run_case(self, body=None, readme=None):
+    def run_case(self, body=None, readme=None, head=""):
         """check_site over a fresh site (default clean index) and README."""
         self.count += 1
         base = self.tmp / f"case{self.count}"
@@ -487,7 +487,7 @@ class ParityChecks(unittest.TestCase):
         readme_path.write_text(
             make_readme() if readme is None else readme, encoding="utf-8", newline=""
         )
-        site = make_site(base, page(index_body() if body is None else body))
+        site = make_site(base, page(index_body() if body is None else body, head))
         return check_site(site, readme_path)
 
     def numbers(self, body=None, readme=None):
@@ -632,28 +632,52 @@ class ParityChecks(unittest.TestCase):
         # tooltip shows title, a form shows placeholder and value, and search
         # engines read <meta content>, so an install command there is a
         # rendered install line outside #install.
+        # Test audit (PP-1): the message names the element and attribute and
+        # says where a command belongs, so a maintainer can act on it.
         carriers = {
-            "img alt": '<img alt="run claude plugin install x">',
-            "title": '<p title="claude plugin install x">hover</p>',
-            "aria-label": '<nav aria-label="claude plugin install x"></nav>',
-            "aria-description": '<p aria-description="claude plugin install x">y</p>',
-            "input placeholder": '<input placeholder="claude plugin install x">',
-            "input value": '<input value="claude plugin install x">',
+            "img alt": ('<img alt="run claude plugin install x">', ""),
+            "p title": ('<p title="claude plugin install x">hover</p>', ""),
+            "nav aria-label": ('<nav aria-label="claude plugin install x"></nav>', ""),
+            "p aria-description": (
+                '<p aria-description="claude plugin install x">y</p>',
+                "",
+            ),
+            "input placeholder": ('<input placeholder="claude plugin install x">', ""),
+            "input value": ('<input value="claude plugin install x">', ""),
+            "meta content": (
+                "",
+                '<meta name="description" content="claude plugin install x">',
+            ),
         }
-        for name, carrier in carriers.items():
+        for name, (body, head) in carriers.items():
+            with self.subTest(name=name):
+                problems = self.run_case(index_body() + body, head=head)
+                self.assertEqual([n for n, _ in problems], [6])
+                self.assertIn(
+                    f"<{name}> mentions `claude plugin`: reword it (a command belongs "
+                    "in the text of an #install data-cmd, listed in the README): ",
+                    problems[0][1],
+                )
+
+    def test_attribute_value_is_folded_before_matching(self):
+        # Test audit (MG-1): an attribute value is folded like page text, so
+        # case, runs of whitespace (a newline from &#10;) and a double-encoded
+        # character reference neither hide the phrase nor garble the window.
+        cases = {
+            "case and whitespace": (
+                '<p title="Claude&#10;  Plugin   install   x">y</p>',
+                "'Claude Plugin install x'",
+            ),
+            "double-encoded space": (
+                '<p title="claude&amp;#32;plugin install y">z</p>',
+                "'claude plugin install y'",
+            ),
+        }
+        for name, (carrier, window) in cases.items():
             with self.subTest(name=name):
                 problems = self.run_case(index_body() + carrier)
                 self.assertEqual([n for n, _ in problems], [6])
-                self.assertIn(name.split()[-1], problems[0][1])
-                self.assertIn("mentions `claude plugin`", problems[0][1])
-        with self.subTest(name="meta content"):
-            html = page(
-                index_body(),
-                '<meta name="description" content="claude plugin install x">',
-            )
-            problems = [m for n, m in self.run_case(html) if n == 6]
-            self.assertEqual(len(problems), 1)
-            self.assertIn("<meta content>", problems[0])
+                self.assertIn(window, problems[0][1])
 
     def test_attribute_problem_quotes_the_text_around_the_match(self):
         prefix = "x" * 70
@@ -662,6 +686,13 @@ class ParityChecks(unittest.TestCase):
         self.assertEqual([n for n, _ in problems], [6])
         self.assertIn("'claude plugin install y'", problems[0][1])
         self.assertNotIn(prefix, problems[0][1])
+        # Test audit (BS-1): the window stops 60 characters after the match.
+        suffix = "z" * 70
+        carrier = f'<p title="claude plugin install y {suffix}">z</p>'
+        problems = self.run_case(index_body() + carrier)
+        self.assertEqual([n for n, _ in problems], [6])
+        self.assertIn("'claude plugin install y " + "z" * 36 + "'", problems[0][1])
+        self.assertNotIn("z" * 37, problems[0][1])
 
     def test_attribute_on_an_install_data_cmd_element_is_flagged(self):
         # Capstone round 1 (MG-1): the text of <code data-cmd> is sanctioned
@@ -675,10 +706,18 @@ class ParityChecks(unittest.TestCase):
         in_cmd = install_html().replace(
             "<code data-cmd>", f'<code data-cmd><span title="{evil}">', 1
         ).replace("</code>", "</span></code>", 1)
-        for name, install in (("on data-cmd", on_cmd), ("inside data-cmd", in_cmd)):
+        # Test audit (MG-2): exactly one problem, naming the attribute, so a
+        # value that leaked into the command text (a README mismatch, also
+        # check 6) cannot pass for the attribute being flagged.
+        for name, install, where in (
+            ("on data-cmd", on_cmd, "<code aria-label>"),
+            ("inside data-cmd", in_cmd, "<span title>"),
+        ):
             with self.subTest(name=name):
                 self.assertIn(evil, install)
-                self.assertEqual(self.numbers(index_body(install)), [6])
+                problems = self.run_case(index_body(install))
+                self.assertEqual([n for n, _ in problems], [6])
+                self.assertIn(f"{where} mentions `claude plugin`", problems[0][1])
 
     def test_attribute_inside_a_readme_quote_is_flagged_and_quote_still_equal(self):
         quote = quote1_body(
@@ -724,6 +763,18 @@ class ParityChecks(unittest.TestCase):
         self.assertEqual([n for n, _ in problems], [6, 6])
         self.assertIn("title", problems[0][1])
         self.assertIn("aria-label", problems[1][1])
+        # One value is one problem however many times it says the phrase.
+        twice = '<p title="claude plugin install x and claude plugin install y">z</p>'
+        self.assertEqual([n for n, _ in self.run_case(index_body() + twice)], [6])
+
+    def test_offending_page_text_and_attribute_are_both_reported(self):
+        # Test audit (CA-1): a page-text hit does not stop the attribute pass;
+        # the page-text problem comes first, then one per attribute.
+        carrier = '<p title="claude plugin install x">claude plugin install y</p>'
+        problems = self.run_case(index_body() + carrier)
+        self.assertEqual([n for n, _ in problems], [6, 6])
+        self.assertIn("page text mentions `claude plugin`", problems[0][1])
+        self.assertIn("<p title> mentions `claude plugin`", problems[1][1])
 
     def test_claude_plugin_in_unlisted_attributes_is_not_page_text(self):
         # Only the attributes a visitor can see or hear are checked; data-*
@@ -737,6 +788,23 @@ class ParityChecks(unittest.TestCase):
         for name, carrier in cases.items():
             with self.subTest(name=name):
                 self.assertEqual(self.numbers(index_body() + carrier), [])
+
+    def test_repeated_or_valueless_text_attribute_follows_html5(self):
+        # Test audit (AB-1): the first of a repeated attribute wins and a
+        # valueless attribute is the empty string, for check 6 as for the
+        # element checks (StructuralChecks.test_duplicate_attribute_first_wins).
+        clean = {
+            "first value wins": '<p title="safe" title="claude plugin install x">y</p>',
+            "valueless title": "<p title>y</p>",
+            "valueless value": "<input value>",
+        }
+        for name, carrier in clean.items():
+            with self.subTest(name=name):
+                self.assertEqual(self.numbers(index_body() + carrier), [])
+        problems = self.run_case(
+            index_body() + '<p title="claude plugin install x" title="safe">y</p>'
+        )
+        self.assertEqual([n for n, _ in problems], [6])
 
     def test_readme_backticks_match_plain_page_text(self):
         readme = make_readme(
