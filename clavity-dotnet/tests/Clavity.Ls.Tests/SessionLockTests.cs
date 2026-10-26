@@ -46,4 +46,48 @@ public sealed class SessionLockTests : IDisposable
         using var taken = SessionLock.TryTake(LockPath);         // the probe released its handle
         Assert.NotNull(taken);
     }
+
+    // ---- TryTakeChecked: the folder lock tells "someone holds it" from "cannot lock at all" (section 101) ----
+
+    [Fact]
+    public void TryTakeChecked_takes_a_free_lock_and_returns_null_while_another_holder_has_it()
+    {
+        using (var first = SessionLock.TryTakeChecked(LockPath))
+        {
+            Assert.NotNull(first);
+            Assert.Null(SessionLock.TryTakeChecked(LockPath));   // held: null, NOT an exception
+        }
+        using var again = SessionLock.TryTakeChecked(LockPath);   // released: free again
+        Assert.NotNull(again);
+    }
+
+    [Fact]
+    public void TryTakeChecked_reports_an_unwritable_directory_instead_of_calling_it_a_holder()
+    {
+        if (OperatingSystem.IsWindows() || Environment.UserName == "root") return;   // the permission bits are the mechanism
+        var locked = Path.Combine(_dir, "ro");
+        Directory.CreateDirectory(locked);
+        File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            Assert.ThrowsAny<Exception>(() => SessionLock.TryTakeChecked(Path.Combine(locked, "x.lock")));
+            Assert.IsType<UnauthorizedAccessException>(
+                Record.Exception(() => SessionLock.TryTakeChecked(Path.Combine(locked, "x.lock"))));
+        }
+        finally
+        {
+            File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
+    [Fact]
+    public void TryTakeChecked_does_not_call_a_lock_it_could_not_even_create_a_holder()
+    {
+        // An I/O failure that is not contention (here a file name over the 255-byte limit, so no lock file can exist) used to
+        // collapse into "another holder has it" and would have printed "already running" for a disk problem.
+        if (OperatingSystem.IsWindows()) return;   // long paths are legal there; the mechanism is the Unix name limit
+        var tooLong = Path.Combine(_dir, new string('x', 300) + ".lock");
+        Assert.Null(SessionLock.TryTake(tooLong));                                   // the old behaviour: a false "held"
+        Assert.ThrowsAny<IOException>(() => SessionLock.TryTakeChecked(tooLong));    // the checked one tells the truth
+    }
 }

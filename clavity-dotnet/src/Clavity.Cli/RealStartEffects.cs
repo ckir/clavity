@@ -102,6 +102,9 @@ internal sealed class RealStartEffects : IStartEffects
 
     public IDisposable? TryTakeSession(SessionPaths paths) => SessionLock.TryTake(paths.Lock);
 
+    public IDisposable? TryTakeFolder(string folder) =>
+        SessionLock.TryTakeChecked(FolderKey.LockPath(UserProfile, folder, FolderKey.IgnoreCaseHere));
+
     public IDisposable HoldSessionAlive(SessionPaths paths) =>
         SessionLock.TryTake(paths.Alive) ?? throw new IOException($"cannot hold {paths.Alive}: another process holds it.");
 }

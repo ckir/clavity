@@ -123,6 +123,17 @@ public sealed class StartFlowTests
             Calls.Add("take");
             return TakeSucceeds ? new Release(Calls, "release") : null;
         }
+        public bool FolderHeld { get; init; }
+        public Exception? FolderFails { get; init; }
+        public readonly List<string> FolderLocks = new();
+        public IDisposable? TryTakeFolder(string folder)
+        {
+            Calls.Add("take-folder");
+            FolderLocks.Add(folder);
+            if (FolderFails is not null)
+                throw FolderFails;
+            return FolderHeld ? null : new Release(Calls, "release-folder");
+        }
         public IDisposable HoldSessionAlive(SessionPaths paths)
         {
             Calls.Add("alive");
@@ -143,7 +154,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { IsWindows = true, Exit = new() { ["wt"] = 0, ["claude"] = 7 } };
         Assert.Equal(7, StartFlow.Start([Repo], fx));
-        Assert.Equal(L("mkdir", "prune", "doc", "onpath:pwsh.exe", "claude?", "run:wt:nowait", "wait", "run:claude:wait"), fx.Calls);
+        Assert.Equal(L("take-folder", "mkdir", "prune", "doc", "onpath:pwsh.exe", "claude?", "run:wt:nowait", "wait", "run:claude:wait", "release-folder"), fx.Calls);
     }
 
     [Fact]
@@ -160,7 +171,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { IsWindows = true, Exit = new() { ["wt"] = null, ["claude"] = 0 } };
         Assert.Equal(1, StartFlow.Start([Repo], fx));
-        Assert.Equal("run:wt:nowait", fx.Calls[^1]);
+        Assert.Equal("run:wt:nowait", fx.Calls[^2]);   // [^1] is the folder lock's release
         Assert.Contains("clavity: cannot start Windows Terminal (wt): The system cannot find the file specified.", fx.Err.ToString());
     }
 
@@ -169,7 +180,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { IsWindows = true, Pairs = false };
         Assert.Equal(1, StartFlow.Start([Repo], fx));
-        Assert.Equal("wait", fx.Calls[^1]);
+        Assert.Equal("wait", fx.Calls[^2]);   // [^1] is the folder lock's release
     }
 
     [Fact]
@@ -254,7 +265,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { IsWindows = true, DocFails = new IOException("disk full") };
         Assert.Equal(1, StartFlow.Start([Repo], fx));
-        Assert.Equal(L("mkdir", "prune", "doc"), fx.Calls);
+        Assert.Equal(L("take-folder", "mkdir", "prune", "doc", "release-folder"), fx.Calls);
         Assert.Contains("clavity: cannot write the agy pairing instructions (disk full) - not launching.", fx.Err.ToString());
     }
 
@@ -276,7 +287,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { IsWindows = windows, Exit = new() { ["claude"] = 3 } };
         Assert.Equal(3, StartFlow.Start([Repo, "--attach", Attached], fx));
-        Assert.Equal(L("mkdir", "prune", "take", "claude?", "wait", "run:claude:wait", "release"), fx.Calls);
+        Assert.Equal(L("take-folder", "mkdir", "prune", "take", "claude?", "wait", "run:claude:wait", "release", "release-folder"), fx.Calls);
         Assert.Equal(Attached, fx.Ran.Single().Environment[AgyEnvironment.SessionIdVar]);
     }
 
@@ -285,7 +296,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { ClaudeThere = false };
         Assert.Equal(1, StartFlow.Start([Repo, "--attach", Attached], fx));
-        Assert.Equal(L("mkdir", "prune", "take", "claude?", "release"), fx.Calls);
+        Assert.Equal(L("take-folder", "mkdir", "prune", "take", "claude?", "release", "release-folder"), fx.Calls);
     }
 
     [Fact]
@@ -293,7 +304,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { Pairs = false };
         Assert.Equal(1, StartFlow.Start([Repo, "--attach", Attached], fx));
-        Assert.Equal(["wait", "release"], fx.Calls[^2..]);
+        Assert.Equal(["wait", "release", "release-folder"], fx.Calls[^3..]);
     }
 
     private static WaitingSession W(string id, bool paired = true, bool taken = false, string? folder = null) =>
@@ -304,7 +315,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { Waiting = [W(Attached)], Exit = new() { ["claude"] = 6 } };
         Assert.Equal(6, StartFlow.Start([Repo, "--attach"], fx));
-        Assert.Equal(L("find", "mkdir", "prune", "take", "claude?", "wait", "run:claude:wait", "release"), fx.Calls);
+        Assert.Equal(L("take-folder", "find", "mkdir", "prune", "take", "claude?", "wait", "run:claude:wait", "release", "release-folder"), fx.Calls);
         Assert.Equal(Attached, fx.Ran.Single().Environment[AgyEnvironment.SessionIdVar]);
         Assert.Contains($"clavity: attaching to agy session {Attached}.", fx.Err.ToString());
     }
@@ -314,7 +325,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake();
         Assert.Equal(1, StartFlow.Start([Repo, "--attach"], fx));
-        Assert.Equal(L("find", "find-all"), fx.Calls);
+        Assert.Equal(L("take-folder", "find", "find-all", "release-folder"), fx.Calls);
         Assert.Equal($"clavity: no agy session is waiting in {Repo}. Run `clavity-ls agy {Launcher.ShQuote(Repo)}` in another terminal first.{Environment.NewLine}",
             fx.Err.ToString());
     }
@@ -328,7 +339,7 @@ public sealed class StartFlowTests
         const string other = "cccccccc-0000-0000-0000-000000000003";
         var fx = new Fake { Elsewhere = [W(Attached, folder: "/srv/repo"), W(other, taken: true, folder: "/srv/b")] };
         Assert.Equal(1, StartFlow.Start([link, "--attach"], fx));
-        Assert.Equal(L("find", "find-all"), fx.Calls);
+        Assert.Equal(L("take-folder", "find", "find-all", "release-folder"), fx.Calls);
         // (the taken session in /srv/b is not offered, so exactly one folder is named: "another folder")
         var nl = Environment.NewLine;
         Assert.Equal(
@@ -343,7 +354,7 @@ public sealed class StartFlowTests
         const string other = "cccccccc-0000-0000-0000-000000000003";
         var fx = new Fake { Waiting = [W(Attached), W(other, paired: false)] };
         Assert.Equal(1, StartFlow.Start([Repo, "--attach"], fx));
-        Assert.Equal(L("find"), fx.Calls);
+        Assert.Equal(L("take-folder", "find", "release-folder"), fx.Calls);
         var err = fx.Err.ToString();
         Assert.Contains($"clavity: 2 agy sessions are waiting in {Repo} - choose one:", err);
         // The state is a shell COMMENT (capstone R1): a whole line pasted into a shell is the command, nothing more.
@@ -456,11 +467,10 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { Waiting = [W(Attached, taken: true)] };
         Assert.Equal(1, StartFlow.Start([Repo, "--attach"], fx));
-        Assert.Equal(L("find"), fx.Calls);
+        Assert.Equal(L("take-folder", "find", "release-folder"), fx.Calls);
         var nl = Environment.NewLine;
         Assert.Equal(
-            $"clavity: agy session {Attached} already has a Claude - another `clavity-ls start --attach` is using it.{nl}" +
-            $"clavity: for another Claude in this folder, run `clavity-ls agy {Launcher.ShQuote(Repo)}` in a new terminal first.{nl}",
+            $"clavity: agy session {Attached} already has a Claude - another `clavity-ls start --attach` is using it.{nl}",
             fx.Err.ToString());
     }
 
@@ -480,7 +490,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { Waiting = [W(Attached)], TakeSucceeds = false };
         Assert.Equal(1, StartFlow.Start(withId ? [Repo, "--attach", Attached] : [Repo, "--attach"], fx));
-        Assert.Equal("take", fx.Calls[^1]);
+        Assert.Equal("take", fx.Calls[^2]);   // the last call is the folder lock's release
         Assert.Contains($"clavity: agy session {Attached} already has a Claude - another `clavity-ls start --attach` is using it.",
             fx.Err.ToString());
     }
@@ -495,12 +505,98 @@ public sealed class StartFlowTests
     }
 
     [Fact]
-    public void A_plain_start_takes_no_lock_and_does_not_search()
+    public void A_plain_start_takes_the_folder_lock_but_no_session_lock_and_does_not_search()
     {
         var fx = new Fake { IsWindows = true };
         StartFlow.Start([Repo], fx);
-        Assert.DoesNotContain("take", fx.Calls);
+        Assert.Contains("take-folder", fx.Calls);
+        Assert.DoesNotContain("take", fx.Calls);   // "take" is the per-SESSION lock, which only --attach takes
         Assert.DoesNotContain("find", fx.Calls);
+    }
+
+    // ---- one Claude per folder (ROADMAP section 101; owner request 2026-10-27: "otherwise the first session starts work
+    //      and the second finds the work implemented") ----
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_plain_start_in_a_folder_another_start_holds_is_refused_before_anything_opens(bool windows)
+    {
+        var fx = new Fake { IsWindows = windows, FolderHeld = true };
+        Assert.Equal(1, StartFlow.Start([Repo], fx));
+        // Nothing else happened: no log directory, no pairing doc, no agy tab, no Claude.
+        Assert.Equal(L("take-folder"), fx.Calls);
+        Assert.Equal(StartFlow.FolderTaken(Repo) + Environment.NewLine, fx.Err.ToString());
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void An_attach_in_a_folder_another_start_holds_is_refused_before_the_session_lock(bool withId)
+    {
+        var fx = new Fake { Waiting = [W(Attached)], FolderHeld = true };
+        Assert.Equal(1, StartFlow.Start(withId ? [Repo, "--attach", Attached] : [Repo, "--attach"], fx));
+        Assert.Equal(L("take-folder"), fx.Calls);   // not "find", not "take": the folder is refused first
+        Assert.Equal(StartFlow.FolderTaken(Repo) + Environment.NewLine, fx.Err.ToString());
+    }
+
+    [Fact]
+    public void The_folder_lock_is_taken_first_and_held_until_Claude_has_ended_on_Windows()
+    {
+        var fx = new Fake { IsWindows = true };
+        Assert.Equal(0, StartFlow.Start([Repo], fx));
+        Assert.Equal("take-folder", fx.Calls[0]);
+        Assert.Equal("release-folder", fx.Calls[^1]);
+        Assert.True(fx.Calls.IndexOf("run:claude:wait") < fx.Calls.IndexOf("release-folder"), string.Join(",", fx.Calls));
+    }
+
+    [Fact]
+    public void The_folder_lock_is_taken_before_the_terminal_opens_on_Linux_and_released_after_Claude()
+    {
+        var fx = new Fake();
+        Assert.Equal(0, StartFlow.Start([Repo], fx));
+        Assert.Equal("take-folder", fx.Calls[0]);
+        Assert.True(fx.Calls.IndexOf("take-folder") < fx.Calls.IndexOf("terminal"), string.Join(",", fx.Calls));
+        Assert.Equal("release-folder", fx.Calls[^1]);
+        Assert.True(fx.Calls.IndexOf("run:claude:wait") < fx.Calls.IndexOf("release-folder"), string.Join(",", fx.Calls));
+    }
+
+    [Fact]
+    public void A_refused_start_that_fails_later_still_releases_the_folder()
+    {
+        // A start that took the lock and then could not go on (no agy terminal) must not strand the folder.
+        var fx = new Fake { TerminalOpens = false };
+        Assert.Equal(1, StartFlow.Start([Repo], fx));
+        Assert.Equal("release-folder", fx.Calls[^1]);
+    }
+
+    [Fact]
+    public void A_folder_lock_that_cannot_be_taken_for_another_reason_says_why_and_is_not_called_a_running_session()
+    {
+        var fx = new Fake { FolderFails = new UnauthorizedAccessException("Access to the path '/home/u/.clavity/x.lock' is denied.") };
+        Assert.Equal(1, StartFlow.Start([Repo], fx));
+        var err = fx.Err.ToString();
+        Assert.Equal(L("take-folder"), fx.Calls);
+        Assert.Contains("Access to the path '/home/u/.clavity/x.lock' is denied.", err);
+        Assert.Contains(StartFlow.FolderLockFailed(Repo, "Access to the path '/home/u/.clavity/x.lock' is denied."), err);
+        Assert.DoesNotContain("already running", err);
+    }
+
+    [Fact]
+    public void An_attach_with_an_id_locks_the_folder_agy_runs_in_not_the_one_typed()
+    {
+        var other = Path.Combine(Path.GetTempPath(), "clavity-flow-agy-folder");
+        var fx = new Fake { Waiting = [W(Attached)], Records = new() { [Attached] = other } };
+        StartFlow.Start([Repo, "--attach", Attached], fx);
+        Assert.Equal(other, fx.FolderLocks.Single());
+    }
+
+    [Fact]
+    public void A_bad_argument_takes_no_folder_lock()
+    {
+        var fx = new Fake();
+        Assert.Equal(2, StartFlow.Start([Repo, "--attach", "deadbeef-dead"], fx));
+        Assert.Empty(fx.FolderLocks);
     }
 
     // ---- start, Linux / macOS ----
@@ -510,8 +606,8 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { Exit = new() { ["claude"] = 5 } };
         Assert.Equal(5, StartFlow.Start([Repo], fx));
-        Assert.Equal(L("mkdir", "prune", "doc", "onpath:pwsh.exe", "onpath:agy", "claude?", "script", "terminal", "wait",
-            "run:claude:wait"), fx.Calls);
+        Assert.Equal(L("take-folder", "mkdir", "prune", "doc", "onpath:pwsh.exe", "onpath:agy", "claude?", "script", "terminal", "wait",
+            "run:claude:wait", "release-folder"), fx.Calls);
     }
 
     [Theory]
@@ -534,7 +630,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { AgyOnPath = false };
         Assert.Equal(1, StartFlow.Start([Repo], fx));
-        Assert.Equal("onpath:agy", fx.Calls[^1]);
+        Assert.Equal("onpath:agy", fx.Calls[^2]);   // [^1] is the folder lock's release
         Assert.Contains(StartFlow.AgyNotOnPath, fx.Err.ToString());
     }
 
@@ -543,7 +639,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { ClaudeThere = false };
         Assert.Equal(1, StartFlow.Start([Repo], fx));
-        Assert.Equal("claude?", fx.Calls[^1]);
+        Assert.Equal("claude?", fx.Calls[^2]);   // [^1] is the folder lock's release
         Assert.Contains("clavity: cannot start claude (claude is not on PATH)", fx.Err.ToString());
     }
 
@@ -552,7 +648,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { TerminalOpens = false };
         Assert.Equal(1, StartFlow.Start([Repo], fx));
-        Assert.Equal("terminal", fx.Calls[^1]);
+        Assert.Equal("terminal", fx.Calls[^2]);   // [^1] is the folder lock's release
         Assert.Contains(PosixAgyTab.FallbackMessage(Repo), fx.Err.ToString());
     }
 
@@ -561,7 +657,7 @@ public sealed class StartFlowTests
     {
         var fx = new Fake { Pairs = false };
         Assert.Equal(1, StartFlow.Start([Repo], fx));
-        Assert.Equal("wait", fx.Calls[^1]);
+        Assert.Equal("wait", fx.Calls[^2]);   // [^1] is the folder lock's release
     }
 
     // ---- agy ----

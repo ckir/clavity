@@ -22,7 +22,7 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
         string folder;
         if (rest.Length > 0 && !rest[0].StartsWith('-'))
         {
-            folder = Path.GetFullPath(rest[0]);
+            folder = Path.GetFullPath(rest[0], currentDirectory);
             i = 1;
         }
         else

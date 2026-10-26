@@ -26,6 +26,23 @@ public static class SessionLock
         }
     }
 
+    /// <summary>Like <see cref="TryTake"/>, but a failure that is NOT "another holder has it" is reported instead of being
+    /// called a holder (ROADMAP section 101): an unwritable directory throws <see cref="UnauthorizedAccessException"/>, and an
+    /// <see cref="IOException"/> counts as contention only when the lock file exists afterwards - a name too long, a full
+    /// disk or a read-only volume leaves no file, so that exception is the real reason and is rethrown.</summary>
+    public static IDisposable? TryTakeChecked(string lockPath)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(lockPath)!);
+        try
+        {
+            return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (IOException) when (File.Exists(lockPath))
+        {
+            return null;
+        }
+    }
+
     /// <summary>True while another holder has <paramref name="lockPath"/>. A missing file is not taken; the probe holds
     /// nothing afterwards.</summary>
     public static bool IsTaken(string lockPath)

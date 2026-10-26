@@ -106,4 +106,12 @@ public class StartArgsTests
         var ex = Assert.Throws<ArgumentException>(() => StartArgs.Parse(new[] { Repo, "--attach", bad }, Cwd));
         Assert.Contains($"'{bad}'", ex.Message);
     }
+
+    [Fact]
+    public void A_relative_folder_is_resolved_against_the_given_current_directory_not_the_process_one()
+    {
+        var cwd = Path.Combine(Path.GetTempPath(), "clavity-args-cwd");
+        var parsed = StartArgs.Parse(new[] { Path.Combine("sub", "repo") }, cwd);
+        Assert.Equal(Path.GetFullPath(Path.Combine(cwd, "sub", "repo")), parsed.Folder);
+    }
 }
