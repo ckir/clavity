@@ -147,7 +147,24 @@ jobs:
         # do not track latest. -ErrorAction Stop so a PSGallery blip fails HERE rather than falling
         # through to the Pester 3.4.0 that ships inside Windows PowerShell 5.1 - which is not a
         # hypothetical: a local probe for Assert-MockCalled resolved to that 3.4.0 copy, not to v6.
-        run: Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
+        # RETRIED like the yq step: the gallery lookup itself blips (NoMatchFoundForCriteria twice within an
+        # hour on 2026-10-26 while a plain re-run passed). The ORACLE is a v6 module on disk, not the cmdlet's
+        # exit; three failures still fail HERE rather than falling through to a preinstalled Pester.
+        run: |
+          $ok = $false
+          foreach ($attempt in 1..3) {
+            try {
+              Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
+              $ok = $true; break
+            } catch {
+              Write-Host "::warning::Pester v6 install attempt $attempt failed: $($_.Exception.Message); retrying"
+              Start-Sleep -Seconds (15 * $attempt)
+            }
+          }
+          if (-not $ok) { throw "Pester v6 install failed after 3 attempts" }
+          $v = Get-Module Pester -ListAvailable | Where-Object { $_.Version.Major -eq 6 } | Select-Object -First 1
+          if (-not $v) { throw "no Pester v6 module on disk after install" }
+          "Pester $($v.Version) at $($v.ModuleBase)"
 
       - name: Pester - register-plugin (Windows PowerShell 5.1)
         shell: powershell
@@ -304,7 +321,24 @@ jobs:
 
       - name: Install Pester v6
         shell: pwsh
-        run: Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
+        # RETRIED like the yq step: the gallery lookup itself blips (NoMatchFoundForCriteria twice within an
+        # hour on 2026-10-26 while a plain re-run passed). The ORACLE is a v6 module on disk, not the cmdlet's
+        # exit; three failures still fail HERE rather than falling through to a preinstalled Pester.
+        run: |
+          $ok = $false
+          foreach ($attempt in 1..3) {
+            try {
+              Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
+              $ok = $true; break
+            } catch {
+              Write-Host "::warning::Pester v6 install attempt $attempt failed: $($_.Exception.Message); retrying"
+              Start-Sleep -Seconds (15 * $attempt)
+            }
+          }
+          if (-not $ok) { throw "Pester v6 install failed after 3 attempts" }
+          $v = Get-Module Pester -ListAvailable | Where-Object { $_.Version.Major -eq 6 } | Select-Object -First 1
+          if (-not $v) { throw "no Pester v6 module on disk after install" }
+          "Pester $($v.Version) at $($v.ModuleBase)"
 
       - name: Pester - full scripts suite (pwsh 7)
         shell: pwsh
@@ -388,7 +422,24 @@ jobs:
 
       - name: Install Pester v6
         shell: pwsh
-        run: Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
+        # RETRIED like the yq step: the gallery lookup itself blips (NoMatchFoundForCriteria twice within an
+        # hour on 2026-10-26 while a plain re-run passed). The ORACLE is a v6 module on disk, not the cmdlet's
+        # exit; three failures still fail HERE rather than falling through to a preinstalled Pester.
+        run: |
+          $ok = $false
+          foreach ($attempt in 1..3) {
+            try {
+              Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
+              $ok = $true; break
+            } catch {
+              Write-Host "::warning::Pester v6 install attempt $attempt failed: $($_.Exception.Message); retrying"
+              Start-Sleep -Seconds (15 * $attempt)
+            }
+          }
+          if (-not $ok) { throw "Pester v6 install failed after 3 attempts" }
+          $v = Get-Module Pester -ListAvailable | Where-Object { $_.Version.Major -eq 6 } | Select-Object -First 1
+          if (-not $v) { throw "no Pester v6 module on disk after install" }
+          "Pester $($v.Version) at $($v.ModuleBase)"
 
       - name: Pester - full scripts suite, approved-skip gate + committed inventory (pwsh 7, linux)
         shell: pwsh
