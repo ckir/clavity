@@ -4425,6 +4425,31 @@ Section 63 fixed only `build-dotnet.yml`, the scope the sweep named. The same na
 8. Deferred minor items: `New-NoJqPath` orphans its temp dir if its own postcondition throws; the run-pester-parallel TIME text in `scripts/tests/_partition.md` (55,0s versus about 240 s measured); a `Set-ItResult -Skipped` inside try/catch is swallowed (a test-discipline rule candidate); `Select-Object -Unique` in the inventory merge of `scripts/run-pester-parallel.ps1` hides a duplicate row text.
 9. `scripts/tests/check-peer-reply-citations.Tests.ps1` (about line 521) holds three raw NUL bytes inside a comment (a written escape that was interpreted, the ROADMAP §49 class); `scripts/check-control-bytes.ps1` scans only tracked `*.md` files, so the gate cannot see it, and git and grep classify the file as binary. Repair the three bytes and widen the scan to tracked `*.ps1`.
 
+### §94 — The clavity.svg wordmark names fonts a visitor's browser cannot load (formerly a local anomaly)
+
+**Status:** OPEN 2026-10-26 - the owner's art; the fix is the owner's choice among outlining the text, inlining the SVG with a web font, or matching the banner's stack
+
+Measured at triage 2026-10-26: `site/assets/clavity.svg:105` sets the "Clavity" wordmark in `font-family="'Share Tech Mono','Orbitron','Courier New',monospace"`. None of the three named faces ships with a mainstream OS, and the page loads the file through `<img>` (`site/index.html:77`), where an SVG cannot fetch web fonts (and check 5 forbids third-party loads anyway), so the wordmark renders in whichever monospace fallback the visitor has and differs from the raster banner's wordmark. The other `<text>` elements in the file use `Arial, Helvetica, sans-serif` (lines 66-85) and are not affected. Options, in rising cost: convert the wordmark text to a `<path>` in the SVG editor (no font dependency at all, the usual answer for a logo); or inline the SVG into the page so a self-hosted font under `site/assets/` can apply; or accept the fallback and change the stack to one that renders the same everywhere. The art is excluded from the checker's scope, so no test guards this.
+
+### §95 — The README platform badge says Windows while the install section says cross-platform (formerly a local anomaly)
+
+**Status:** SHIPPED 2026-10-26 - badge changed to Windows | Linux | macOS on the owner's ruling, `d6755e65`
+> **Previous status:** OPEN 2026-10-26 - a one-line badge edit awaiting the owner's word on the platform claim
+
+Measured at triage 2026-10-26: `README.md:4` is `[![Platform: Windows](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()` while `README.md:61` says the `claude plugin` installs are "Cross-platform (Windows, Linux, macOS)". The badge sits ABOVE the HUMAN ONLY marker (line 6), so an agent may edit it, but what it claims is a product statement: the plugins install anywhere, while the two drivers' own tooling was Windows-first until the 2026-10 Linux parity work (§89, §93). Proposed text once the owner rules: `Platform-Windows%20%7C%20Linux%20%7C%20macOS` for the plugins, or two badges if the drivers' support differs from the plugins'.
+
+### §96 — check_site.py check 6 scans text nodes only, so `claude plugin` inside an attribute value passes (formerly a local anomaly)
+
+**Status:** OPEN 2026-10-26 - tracked debt from the Pages-site capstone, stated to the owner at GREEN and not closed
+
+Measured 2026-10-23 on copies of the real page, re-read at triage 2026-10-26: `.github/site-checks/check_site.py` collects page text in `handle_data` (the `page_text` capture), so the phrase `claude plugin` placed in an `alt`, `title`, `aria-label` or `<meta content>` value exits 0, while the same phrase in a text node outside `#install` is CHECK6. The capstone ledger row for `449f02b9..6a82a860` lists "command text inside attribute values unchecked" among the limits stated to the owner. A screen reader voices `alt` and `aria-label`, so an install command there is a rendered install line for that audience. Fix shape: in `handle_starttag`, feed the values of a fixed attribute list (`alt`, `title`, `aria-label`, `aria-description`, `content` on `<meta>`, `placeholder`, `value` on inputs) into the same capture, pinned by one test per attribute plus a control that `data-cmd` inside `#install` still passes.
+
+### §97 — check_site.py does not check navigation carriers: form action, a ping and meta refresh (formerly a local anomaly)
+
+**Status:** CLOSED-BY-RULING 2026-10-26 - closed by ruling, see Non-goals / accepted limitations
+
+Measured 2026-10-23 on copies of the real page: `<form action="https://evil.example/">`, `<a ping="...">` and `<meta http-equiv="refresh" content="0;url=https://evil.example/">` all exit 0. The checker's own docstring (`.github/site-checks/check_site.py:33`) records "Form action, a ping and meta refresh are navigation and NOT checked", and the capstone ledger row for `449f02b9..6a82a860` lists them as deliberately unchecked. The guarantee check 5 makes is zero third-party LOADS on page view; none of the three fires without a user action, so they fall outside it. The page has no form and no refresh today.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
@@ -4450,6 +4475,7 @@ Section 63 fixed only `build-dotnet.yml`, the scope the sweep named. The same na
 - **§37 - release notes from commit subjects** (closed by ruling 2026-10-08): the convention stays. Reopen on a reader complaint.
 - **§58 - older clones keep CRLF until refreshed** (closed by ruling 2026-10-08): measured 2026-10-08, this clone shows only the two declared CRLF exceptions in `git ls-files --eol`; the refresh procedure stays documented. Reopen if a fresh clone shows CRLF blobs.
 - **§36 - the full orphaned-tests redesign** (closed by ruling 2026-10-08): not built; the recipe fix, the exemptions and the census gate above are the closure. Reopen if a suite is found unregistered by hand, or CI and the local recipes diverge again.
+- **§97 - navigation carriers in `check_site.py`** (closed by ruling 2026-10-26): `form action`, `a ping` and `meta refresh` are navigation, not page loads, and stay unchecked; the docstring says so. Reopen if the page ever gains a form or a refresh, or if the guarantee is widened from loads to navigation.
 _(The former "no continuous .NET CI on `main`" limitation is resolved and has been removed: it described the
 pre-monorepo, branch-per-tool world. `.github/workflows/ci-dotnet.yml` now runs `dotnet build` + `dotnet test`
 on every push to `main`, and packaging ships via the unified `umbrella-release.yml` + `build-dotnet.yml`.)_
