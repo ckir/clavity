@@ -4460,6 +4460,14 @@ Measured 2026-10-26 on main `4f68e8e9` (Linux, pwsh 7.6.8): the gate reports one
 
 Two consequences, both worth closing: a Linux maintainer cannot run the gate green on a clean main, and a `../x/...` token can hide a genuinely broken reference from the Windows job. Fix shape (not chosen here): treat a token whose leaf is all periods as not a candidate (a one-line rule beside `:474`, with a Pester row for `../a/...` on both outcomes), and consider running the gate on `ubuntu-latest` as well so OS-specific resolution is seen in CI; rewording `SKILL.md:56` alone would hide the gate defect.
 
+### §99 — The golden-header snapshot ring stamps slots with hex Stopwatch ticks, so the name-ordered prune can evict the NEWEST snapshot (formerly a local anomaly)
+
+**Status:** OPEN 2026-10-26 - tracked debt from anomaly triage; shipped in clavity-v26; the two pinning tests fail or pass depending on the machine's uptime
+
+`GoldenHeader.Commit` names each ring slot `{path}.{Stopwatch.GetTimestamp():x}{counter:x}.bak` (`clavity-dotnet/src/Clavity.Ls/GoldenHeader.cs:293`, introduced by `6f4df7ec` on 2026-10-12 in place of an InvariantCulture `yyyyMMdd-HHmmss` stamp) and prunes with `OrderByDescending(f => f, StringComparer.Ordinal).Skip(SnapshotKeep)` (`:306-307`). A hex tick count has no fixed width and restarts from a small value at every boot, so ordinal name order is neither time order nor stable across restarts: after a reboot every new slot sorts below the pre-reboot ones and the prune deletes the slot it has just written, on every commit, once the ring is full - the exact failure `Commit_prunes_the_OLDEST_slots_and_keeps_the_newest` was written to catch. Measured 2026-10-26: on a Linux box whose stamp was `1002e43028c55`, `Commit_prunes_the_ring_to_the_retention_limit` and `Commit_prunes_the_OLDEST_slots_and_keeps_the_newest` (`clavity-dotnet/tests/Clavity.Ls.Tests/CliVerbsTests.cs`) failed 3 of 3 runs (the stamp sorts below the seeded `20260101-*` names, so the real snapshot is the one evicted), while the same tests passed on CI at `bf4b9a8d` and failed on CI at `bd5989ab` eleven minutes later with no change to the product or the tests. The test comments at `CliVerbsTests.cs:243-248` still describe the one-second date stamp that no longer exists.
+
+Fix shape (not chosen here): a fixed-width, time-ordered stamp - UTC `yyyyMMdd-HHmmss` plus a zero-padded counter suffix keeps uniqueness under rapid commits without giving up order - or sort the ring by a parsed key rather than by name; then re-read the two tests' comments against the new stamp. The fix touches shipped behaviour, so it carries the usual gates.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
