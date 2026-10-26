@@ -407,6 +407,120 @@ public sealed class CliVerbsTests : IDisposable
         Assert.Contains(surviving, f => File.ReadAllText(f) == "base\n");
     }
 
+    // The six tests below close the gaps AGY-TEST-AUDIT round 1 (2026-10-26) found in this ring's
+    // safety-net; each was watched red under the mutant named in its comment before it was kept.
+
+    [Fact]
+    public void Commit_evicts_every_legacy_slot_before_any_dated_slot_with_or_without_counter()
+    {
+        // MG-1: the dated-slot rule must accept both stamp forms (with and without the counter) and
+        // reject a hex-tick name even when it starts with eight digits. Mutants: dropping the counter
+        // branch from DatedSlot evicts the counter-bearing slots as if legacy; relaxing it to
+        // `\.\d{8}.*` keeps the digit-leading hex slot forever.
+        GoldenHeader.CommitGrowth(_dir, "base\n");
+        for (var i = 1; i <= 4; i++)
+            File.WriteAllText(Path.Combine(_dir, $"golden-header.growth.md.20260101-00000{i}-0001.bak"), $"dated {i}\n");
+        File.WriteAllText(Path.Combine(_dir, "golden-header.growth.md.20260101-000005.bak"), "pre-v26\n");
+        var letters = Path.Combine(_dir, "golden-header.growth.md.fffffffffffffff1.bak");
+        var digits = Path.Combine(_dir, "golden-header.growth.md.90000000abcdef.bak");
+        File.WriteAllText(letters, "legacy a\n");
+        File.WriteAllText(digits, "legacy b\n");
+
+        GoldenHeader.CommitGrowth(_dir, "trigger prune\n");
+
+        var surviving = Baks(_dir);
+        Assert.Equal(GoldenHeader.SnapshotKeep, surviving.Length);
+        Assert.False(File.Exists(letters), "a hex-tick slot goes before any dated slot");
+        Assert.False(File.Exists(digits), "so does one that happens to start with eight digits");
+        Assert.False(File.Exists(Path.Combine(_dir, "golden-header.growth.md.20260101-000001-0001.bak")),
+            "then the lowest dated slot");
+        Assert.True(File.Exists(Path.Combine(_dir, "golden-header.growth.md.20260101-000002-0001.bak")));
+        Assert.True(File.Exists(Path.Combine(_dir, "golden-header.growth.md.20260101-000005.bak")),
+            "a pre-v26 counter-less stamp is a dated slot too");
+        Assert.Contains(surviving, f => File.ReadAllText(f) == "base\n");
+    }
+
+    [Fact]
+    public void Commit_prunes_rapid_same_second_commits_to_the_retention_limit()
+    {
+        // MG-2: the just-written slot is held out of the prune by its FULL name. Six commits in one
+        // second share the stamp's date-time and differ only by counter; an exclusion by prefix would
+        // hold all of them out and the ring would grow past SnapshotKeep.
+        GoldenHeader.CommitGrowth(_dir, "base\n");
+        for (var i = 1; i <= GoldenHeader.SnapshotKeep + 1; i++)
+            GoldenHeader.CommitGrowth(_dir, $"c{i}\n");
+
+        var surviving = Baks(_dir);
+        Assert.Equal(GoldenHeader.SnapshotKeep, surviving.Length);
+        Assert.DoesNotContain(surviving, f => File.ReadAllText(f) == "base\n");
+        Assert.Contains(surviving, f => File.ReadAllText(f) == $"c{GoldenHeader.SnapshotKeep}\n");
+    }
+
+    [Fact]
+    public void Commit_snapshots_when_content_differs_only_by_case()
+    {
+        // MG-3: the dedup compares bytes, not letters. Mutant: OrdinalIgnoreCase skips the snapshot.
+        GoldenHeader.CommitGrowth(_dir, "header\n");
+        GoldenHeader.CommitGrowth(_dir, "HEADER\n");
+
+        var bak = Assert.Single(Baks(_dir));
+        Assert.Equal("header\n", File.ReadAllText(bak));
+        Assert.Equal(GoldenHeader.Sha256Hex("header\n"), File.ReadAllText(bak + ".sha256").Trim());
+        Assert.Equal("HEADER\n", File.ReadAllText(GoldenHeader.GrowthPath(_dir)));
+    }
+
+    [Fact]
+    public void Commit_leaves_an_existing_ring_untouched_when_content_is_unchanged()
+    {
+        // BS-1: an unchanged re-commit neither adds a slot nor prunes - even over a ring already past
+        // the limit. Mutant: running the prune on the unchanged path trims the ring to SnapshotKeep - 1.
+        GoldenHeader.CommitGrowth(_dir, "same\n");
+        SeedOldSlots(GoldenHeader.SnapshotKeep + 1);
+
+        GoldenHeader.CommitGrowth(_dir, "same\n");
+
+        var slots = Baks(_dir);
+        Assert.Equal(GoldenHeader.SnapshotKeep + 1, slots.Length);
+        for (var i = 1; i <= GoldenHeader.SnapshotKeep + 1; i++)
+            Assert.Equal($"old {i}\n", File.ReadAllText(Path.Combine(_dir, $"golden-header.growth.md.20260101-00000{i}.bak")));
+    }
+
+    [Fact]
+    public void Commit_snapshots_a_sidecarless_live_header_without_throwing()
+    {
+        // CA-1: a live header with no .sha256 beside it (the installer seeds SEED that way) is
+        // snapshotted without a sidecar rather than crashing. Mutant: dropping the File.Exists guard
+        // throws FileNotFoundException on the first commit over such a file.
+        File.WriteAllText(GoldenHeader.GrowthPath(_dir), "seeded\n");
+        Assert.False(File.Exists(GoldenHeader.GrowthPath(_dir) + ".sha256"));
+
+        GoldenHeader.CommitGrowth(_dir, "replacement\n");
+
+        var bak = Assert.Single(Baks(_dir));
+        Assert.Equal("seeded\n", File.ReadAllText(bak));
+        Assert.False(File.Exists(bak + ".sha256"), "no sidecar existed to rotate");
+        Assert.True(File.Exists(GoldenHeader.GrowthPath(_dir) + ".sha256"), "the new live header gets one");
+    }
+
+    [Fact]
+    public void CommitGrowth_prunes_only_its_own_ring()
+    {
+        // PP-1: the SEED ring, the GROWTH ring and the driver cheatsheet's ring share one directory.
+        // The prune globs by its own file name; a wider glob would count and delete the siblings' slots.
+        for (var i = 1; i <= GoldenHeader.SnapshotKeep; i++)
+            File.WriteAllText(Path.Combine(_dir, $"golden-header.seed.md.20260101-00000{i}.bak"), $"seed {i}\n");
+        for (var i = 1; i <= 2; i++)
+            File.WriteAllText(Path.Combine(_dir, $"driver-cheatsheet.growth.md.20260101-00000{i}.bak"), $"sheet {i}\n");
+        GoldenHeader.CommitGrowth(_dir, "base\n");
+        SeedOldSlots(GoldenHeader.SnapshotKeep + 1);
+
+        GoldenHeader.CommitGrowth(_dir, "trigger prune\n");
+
+        Assert.Equal(GoldenHeader.SnapshotKeep, Baks(_dir).Length);
+        Assert.Equal(GoldenHeader.SnapshotKeep, Directory.GetFiles(_dir, "golden-header.seed.md.*.bak").Length);
+        Assert.Equal(2, Directory.GetFiles(_dir, "driver-cheatsheet.growth.md.*.bak").Length);
+    }
+
     [Fact]
     public void Commit_prunes_a_stale_slots_sidecar_along_with_it()
     {
