@@ -161,7 +161,24 @@ jobs:
               Start-Sleep -Seconds (15 * $attempt)
             }
           }
-          if (-not $ok) { throw "Pester v6 install failed after 3 attempts" }
+          if (-not $ok) {
+            # FALLBACK (PSGallery lookup down while its package API is up: 'No match was found ... module name
+            # Pester' on every attempt, 2026-10-26): fetch the one pinned package directly, verify its SHA-256
+            # (a mismatch fails closed), and unpack it where Install-Module -Scope CurrentUser would.
+            $ver = '6.2.0'
+            $sha = 'e6ac7418d4f12500269aaca58ae56cf1caafbbf1afa2cec334e289d1cf50a239'
+            $tmp = Join-Path ([IO.Path]::GetTempPath()) "pester-$ver.zip"
+            Invoke-WebRequest -Uri "https://www.powershellgallery.com/api/v2/package/Pester/$ver" -OutFile $tmp -UseBasicParsing
+            $got = (Get-FileHash -Algorithm SHA256 -LiteralPath $tmp).Hash.ToLowerInvariant()
+            if ($got -ne $sha) { throw "Pester $ver package hash mismatch: got $got, want $sha" }
+            $root = ($env:PSModulePath -split [IO.Path]::PathSeparator | Where-Object { $_ -and $_.StartsWith($HOME, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1)
+            if (-not $root) { throw "no CurrentUser module path under $HOME in PSModulePath" }
+            $dest = Join-Path (Join-Path $root 'Pester') $ver
+            if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+            New-Item -ItemType Directory -Path $dest -Force | Out-Null
+            Expand-Archive -LiteralPath $tmp -DestinationPath $dest -Force
+            Write-Host "::warning::Pester $ver installed from the pinned package (gallery lookup failed)"
+          }
           $v = Get-Module Pester -ListAvailable | Where-Object { $_.Version.Major -eq 6 } | Select-Object -First 1
           if (-not $v) { throw "no Pester v6 module on disk after install" }
           "Pester $($v.Version) at $($v.ModuleBase)"
@@ -335,7 +352,24 @@ jobs:
               Start-Sleep -Seconds (15 * $attempt)
             }
           }
-          if (-not $ok) { throw "Pester v6 install failed after 3 attempts" }
+          if (-not $ok) {
+            # FALLBACK (PSGallery lookup down while its package API is up: 'No match was found ... module name
+            # Pester' on every attempt, 2026-10-26): fetch the one pinned package directly, verify its SHA-256
+            # (a mismatch fails closed), and unpack it where Install-Module -Scope CurrentUser would.
+            $ver = '6.2.0'
+            $sha = 'e6ac7418d4f12500269aaca58ae56cf1caafbbf1afa2cec334e289d1cf50a239'
+            $tmp = Join-Path ([IO.Path]::GetTempPath()) "pester-$ver.zip"
+            Invoke-WebRequest -Uri "https://www.powershellgallery.com/api/v2/package/Pester/$ver" -OutFile $tmp -UseBasicParsing
+            $got = (Get-FileHash -Algorithm SHA256 -LiteralPath $tmp).Hash.ToLowerInvariant()
+            if ($got -ne $sha) { throw "Pester $ver package hash mismatch: got $got, want $sha" }
+            $root = ($env:PSModulePath -split [IO.Path]::PathSeparator | Where-Object { $_ -and $_.StartsWith($HOME, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1)
+            if (-not $root) { throw "no CurrentUser module path under $HOME in PSModulePath" }
+            $dest = Join-Path (Join-Path $root 'Pester') $ver
+            if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+            New-Item -ItemType Directory -Path $dest -Force | Out-Null
+            Expand-Archive -LiteralPath $tmp -DestinationPath $dest -Force
+            Write-Host "::warning::Pester $ver installed from the pinned package (gallery lookup failed)"
+          }
           $v = Get-Module Pester -ListAvailable | Where-Object { $_.Version.Major -eq 6 } | Select-Object -First 1
           if (-not $v) { throw "no Pester v6 module on disk after install" }
           "Pester $($v.Version) at $($v.ModuleBase)"
@@ -436,7 +470,24 @@ jobs:
               Start-Sleep -Seconds (15 * $attempt)
             }
           }
-          if (-not $ok) { throw "Pester v6 install failed after 3 attempts" }
+          if (-not $ok) {
+            # FALLBACK (PSGallery lookup down while its package API is up: 'No match was found ... module name
+            # Pester' on every attempt, 2026-10-26): fetch the one pinned package directly, verify its SHA-256
+            # (a mismatch fails closed), and unpack it where Install-Module -Scope CurrentUser would.
+            $ver = '6.2.0'
+            $sha = 'e6ac7418d4f12500269aaca58ae56cf1caafbbf1afa2cec334e289d1cf50a239'
+            $tmp = Join-Path ([IO.Path]::GetTempPath()) "pester-$ver.zip"
+            Invoke-WebRequest -Uri "https://www.powershellgallery.com/api/v2/package/Pester/$ver" -OutFile $tmp -UseBasicParsing
+            $got = (Get-FileHash -Algorithm SHA256 -LiteralPath $tmp).Hash.ToLowerInvariant()
+            if ($got -ne $sha) { throw "Pester $ver package hash mismatch: got $got, want $sha" }
+            $root = ($env:PSModulePath -split [IO.Path]::PathSeparator | Where-Object { $_ -and $_.StartsWith($HOME, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1)
+            if (-not $root) { throw "no CurrentUser module path under $HOME in PSModulePath" }
+            $dest = Join-Path (Join-Path $root 'Pester') $ver
+            if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+            New-Item -ItemType Directory -Path $dest -Force | Out-Null
+            Expand-Archive -LiteralPath $tmp -DestinationPath $dest -Force
+            Write-Host "::warning::Pester $ver installed from the pinned package (gallery lookup failed)"
+          }
           $v = Get-Module Pester -ListAvailable | Where-Object { $_.Version.Major -eq 6 } | Select-Object -First 1
           if (-not $v) { throw "no Pester v6 module on disk after install" }
           "Pester $($v.Version) at $($v.ModuleBase)"
