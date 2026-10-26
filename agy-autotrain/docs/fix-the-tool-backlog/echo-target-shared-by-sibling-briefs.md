@@ -21,7 +21,7 @@ On `mcp__plugin_clavity_clavity-ls__agy_ask` (dotnet), observed live 2026-10-26:
    `clavity-dotnet/src/Clavity.Mcp/McpTools.cs:60`): the last line carrying at least the minimum of
    letters or digits. Because the two briefs share that line, the expectation is the same string for
    both.
-4. The peer, having both files open under one prefix, reads and echoes the tail of `brief.md`. The echo
+4. The peer, having both files open under one prefix, reads and echoes the tail of the ROUND-ONE brief. The echo
    check (`SemanticEcho.IsSatisfied`, `AgyView.cs:298`) PASSES, because the quoted line is the same
    text - the check cannot tell which artifact was read. Conversely, when the two briefs differ only in
    their closing line, the peer's echo of the sibling's tail FAILS the check against the right artifact,
