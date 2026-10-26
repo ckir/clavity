@@ -1,7 +1,7 @@
 # clavity
 
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
-[![Platform: Windows](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
+[![Platform: Windows | Linux | macOS](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 
 <!-- HUMAN ONLY SECTION START - AI AGENTS DO NOT EDIT THIS SECTION -->
 
