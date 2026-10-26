@@ -23,8 +23,10 @@ Any <base href> is a problem (5 absolute, 2 relative); `claude plugin` text is
 allowed only inside <code data-cmd> in #install, anywhere else on the page is
 check 6 (adjacent block elements are joined with a space, so a heading "Claude"
 followed by a paragraph starting "Plugin" is flagged: reword it); the values of alt, title,
-aria-label, aria-description, placeholder, input value and meta content count as page text
-for check 6 (data-* values do not); a repeated attribute keeps its first value (as HTML5 does); README
+aria-label, aria-description, placeholder, input value and meta content are each checked on
+their own for check 6 (a value never joins the text around it, and is never a sanctioned
+command, not even on <code data-cmd>; data-* values are not checked); a repeated attribute
+keeps its first value (as HTML5 does); README
 folding strips * and ` and understands only inline [text](url) links.
 Pages nested deeper than 512 elements fail closed with exit 2.
 Page loads that must not be third-party: every <link href> except canonical, and the
@@ -85,8 +87,8 @@ WAIVER_OPENINGS = {
     "waiver-2": "In case you have problem to start agy",
 }
 # Attribute values a visitor sees or hears (a tooltip, an alt text, an accessible name, a form
-# field), scanned as page text for check 6. Plus content on <meta> and value on <input>, which are
-# tag-specific. data-* payloads are not rendered anywhere and stay out (ROADMAP section 96).
+# field), each checked on its own for check 6. Plus content on <meta> and value on <input>, which
+# are tag-specific. data-* payloads are not rendered anywhere and stay out (ROADMAP section 96).
 TEXT_ATTRS = frozenset({"alt", "title", "aria-label", "aria-description", "placeholder"})
 
 COMMAND_PREFIX = "claude plugin"
@@ -134,6 +136,8 @@ class PageParser(HTMLParser):
         self.commands: list[Capture] = []  # <code data-cmd> in #install
         self.copies: list[tuple[int | None, str]] = []  # (li, data-copy) in #install
         self.page_text: list[str] = []  # all text except <code data-cmd> in #install
+        # (tag, attr, value) for every attribute a visitor sees or hears
+        self.attr_text: list[tuple[str, str, str]] = []
         self.inline_css: list[str] = []  # <style> texts and style="" values
 
     def _active(self) -> list[Capture]:
@@ -173,13 +177,13 @@ class PageParser(HTMLParser):
                 self.commands.append(captures[-1])
             if "data-copy" in values:
                 self.copies.append((li, values["data-copy"]))
-        spoken = [value for name, value in values.items() if name in TEXT_ATTRS]
-        if tag == "meta" and "content" in values:
-            spoken.append(values["content"])
-        if tag == "input" and "value" in values:
-            spoken.append(values["value"])
-        if spoken and not any(c.kind == "cmd" for c in self._active() + captures):
-            self.page_text.extend(f" {value} " for value in spoken)
+        for name, value in values.items():
+            if (
+                name in TEXT_ATTRS
+                or (tag == "meta" and name == "content")
+                or (tag == "input" and name == "value")
+            ):
+                self.attr_text.append((tag, name, value))
         if tag not in VOID_TAGS:
             if len(self.stack) >= MAX_NESTING:
                 raise CannotAnswer(
@@ -500,6 +504,15 @@ def check_install(parser: PageParser, readme_text: str, name: str) -> list[Probl
         flag(
             f"page text mentions `claude plugin` outside an #install data-cmd: {near!r}"
         )
+    for tag, attr, value in parser.attr_text:
+        folded = fold(value)
+        hit = CLAUDE_PLUGIN.search(folded)
+        if hit:
+            near = folded[hit.start() : hit.start() + 60]
+            flag(
+                f"<{tag} {attr}> mentions `claude plugin`: reword it (a command belongs "
+                f"in the text of an #install data-cmd, listed in the README): {near!r}"
+            )
     return problems
 
 
