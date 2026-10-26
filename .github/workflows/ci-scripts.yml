@@ -158,19 +158,36 @@ jobs:
               $ok = $true; break
             } catch {
               Write-Host "::warning::Pester v6 install attempt $attempt failed: $($_.Exception.Message); retrying"
-              # DIAGNOSTIC (2026-10-26): the NuGet provider turns a failed gallery request into "no match" and
-              # logs the cause at debug level only. Ask the same endpoint directly so the log names the status.
-              try {
-                $probe = Invoke-WebRequest -Uri "https://www.powershellgallery.com/api/v2/FindPackagesById()?id='Pester'" -UseBasicParsing -TimeoutSec 30
-                Write-Host "::notice::gallery probe after attempt ${attempt}: HTTP $([int]$probe.StatusCode), $($probe.Content.Length) bytes"
-              } catch {
-                $resp = $_.Exception.Response
-                $code = if ($resp) { [int]$resp.StatusCode } else { 'no response' }
-                $hdr = if (-not $resp) { $_.Exception.Message }
-                       elseif ($resp.Headers -is [System.Net.WebHeaderCollection]) { ($resp.Headers.AllKeys | ForEach-Object { "$_=$($resp.Headers[$_])" }) -join '; ' }
-                       else { ($resp.Headers.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value -join ',')" }) -join '; ' }
-                Write-Host "::warning::gallery probe after attempt ${attempt}: HTTP $code; $($hdr.Substring(0, [Math]::Min(300, $hdr.Length)))"
+              # DIAGNOSTIC (2026-10-26): the NuGet provider turns a failed gallery request into "no match" or
+              # "failed to download" and logs the cause at debug level only. Ask the same two endpoints
+              # directly - the find-by-id lookup, then the package download it would fetch - so the log
+              # names the status and the host that finally served each.
+              $probeGallery = {
+                param($label, $uri, $n)
+                try {
+                  $r = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 60
+                  $bytes = if ($r.Content) { $r.Content.Length } else { 0 }
+                  $base = $r.BaseResponse
+                  $via = if ($base.ResponseUri) { $base.ResponseUri.Host } elseif ($base.RequestMessage) { $base.RequestMessage.RequestUri.Host } else { 'unknown host' }
+                  Write-Host "::notice::gallery $label probe after attempt ${n}: HTTP $([int]$r.StatusCode), $bytes bytes, served by $via"
+                  return $r
+                } catch {
+                  $resp = $_.Exception.Response
+                  $code = if ($resp) { [int]$resp.StatusCode } else { 'no response' }
+                  $hdr = if (-not $resp) { $_.Exception.Message }
+                         elseif ($resp.Headers -is [System.Net.WebHeaderCollection]) { ($resp.Headers.AllKeys | ForEach-Object { "$_=$($resp.Headers[$_])" }) -join '; ' }
+                         else { ($resp.Headers.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value -join ',')" }) -join '; ' }
+                  Write-Host "::warning::gallery $label probe after attempt ${n}: HTTP $code; $($hdr.Substring(0, [Math]::Min(300, $hdr.Length)))"
+                  return $null
+                }
               }
+              $found = & $probeGallery 'find' "https://www.powershellgallery.com/api/v2/FindPackagesById()?id='Pester'" $attempt
+              $want = '6.2.0'
+              if ($found -and $found.Content) {
+                $v6 = [regex]::Matches([string]$found.Content, '<d:Version>(6\.\d+\.\d+)</d:Version>') | ForEach-Object { [version]$_.Groups[1].Value } | Sort-Object -Descending | Select-Object -First 1
+                if ($v6) { $want = $v6.ToString() }
+              }
+              $null = & $probeGallery "download of Pester $want" "https://www.powershellgallery.com/api/v2/package/Pester/$want" $attempt
               Start-Sleep -Seconds (15 * $attempt)
             }
           }
@@ -379,19 +396,36 @@ jobs:
               $ok = $true; break
             } catch {
               Write-Host "::warning::Pester v6 install attempt $attempt failed: $($_.Exception.Message); retrying"
-              # DIAGNOSTIC (2026-10-26): the NuGet provider turns a failed gallery request into "no match" and
-              # logs the cause at debug level only. Ask the same endpoint directly so the log names the status.
-              try {
-                $probe = Invoke-WebRequest -Uri "https://www.powershellgallery.com/api/v2/FindPackagesById()?id='Pester'" -UseBasicParsing -TimeoutSec 30
-                Write-Host "::notice::gallery probe after attempt ${attempt}: HTTP $([int]$probe.StatusCode), $($probe.Content.Length) bytes"
-              } catch {
-                $resp = $_.Exception.Response
-                $code = if ($resp) { [int]$resp.StatusCode } else { 'no response' }
-                $hdr = if (-not $resp) { $_.Exception.Message }
-                       elseif ($resp.Headers -is [System.Net.WebHeaderCollection]) { ($resp.Headers.AllKeys | ForEach-Object { "$_=$($resp.Headers[$_])" }) -join '; ' }
-                       else { ($resp.Headers.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value -join ',')" }) -join '; ' }
-                Write-Host "::warning::gallery probe after attempt ${attempt}: HTTP $code; $($hdr.Substring(0, [Math]::Min(300, $hdr.Length)))"
+              # DIAGNOSTIC (2026-10-26): the NuGet provider turns a failed gallery request into "no match" or
+              # "failed to download" and logs the cause at debug level only. Ask the same two endpoints
+              # directly - the find-by-id lookup, then the package download it would fetch - so the log
+              # names the status and the host that finally served each.
+              $probeGallery = {
+                param($label, $uri, $n)
+                try {
+                  $r = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 60
+                  $bytes = if ($r.Content) { $r.Content.Length } else { 0 }
+                  $base = $r.BaseResponse
+                  $via = if ($base.ResponseUri) { $base.ResponseUri.Host } elseif ($base.RequestMessage) { $base.RequestMessage.RequestUri.Host } else { 'unknown host' }
+                  Write-Host "::notice::gallery $label probe after attempt ${n}: HTTP $([int]$r.StatusCode), $bytes bytes, served by $via"
+                  return $r
+                } catch {
+                  $resp = $_.Exception.Response
+                  $code = if ($resp) { [int]$resp.StatusCode } else { 'no response' }
+                  $hdr = if (-not $resp) { $_.Exception.Message }
+                         elseif ($resp.Headers -is [System.Net.WebHeaderCollection]) { ($resp.Headers.AllKeys | ForEach-Object { "$_=$($resp.Headers[$_])" }) -join '; ' }
+                         else { ($resp.Headers.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value -join ',')" }) -join '; ' }
+                  Write-Host "::warning::gallery $label probe after attempt ${n}: HTTP $code; $($hdr.Substring(0, [Math]::Min(300, $hdr.Length)))"
+                  return $null
+                }
               }
+              $found = & $probeGallery 'find' "https://www.powershellgallery.com/api/v2/FindPackagesById()?id='Pester'" $attempt
+              $want = '6.2.0'
+              if ($found -and $found.Content) {
+                $v6 = [regex]::Matches([string]$found.Content, '<d:Version>(6\.\d+\.\d+)</d:Version>') | ForEach-Object { [version]$_.Groups[1].Value } | Sort-Object -Descending | Select-Object -First 1
+                if ($v6) { $want = $v6.ToString() }
+              }
+              $null = & $probeGallery "download of Pester $want" "https://www.powershellgallery.com/api/v2/package/Pester/$want" $attempt
               Start-Sleep -Seconds (15 * $attempt)
             }
           }
@@ -527,19 +561,36 @@ jobs:
               $ok = $true; break
             } catch {
               Write-Host "::warning::Pester v6 install attempt $attempt failed: $($_.Exception.Message); retrying"
-              # DIAGNOSTIC (2026-10-26): the NuGet provider turns a failed gallery request into "no match" and
-              # logs the cause at debug level only. Ask the same endpoint directly so the log names the status.
-              try {
-                $probe = Invoke-WebRequest -Uri "https://www.powershellgallery.com/api/v2/FindPackagesById()?id='Pester'" -UseBasicParsing -TimeoutSec 30
-                Write-Host "::notice::gallery probe after attempt ${attempt}: HTTP $([int]$probe.StatusCode), $($probe.Content.Length) bytes"
-              } catch {
-                $resp = $_.Exception.Response
-                $code = if ($resp) { [int]$resp.StatusCode } else { 'no response' }
-                $hdr = if (-not $resp) { $_.Exception.Message }
-                       elseif ($resp.Headers -is [System.Net.WebHeaderCollection]) { ($resp.Headers.AllKeys | ForEach-Object { "$_=$($resp.Headers[$_])" }) -join '; ' }
-                       else { ($resp.Headers.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value -join ',')" }) -join '; ' }
-                Write-Host "::warning::gallery probe after attempt ${attempt}: HTTP $code; $($hdr.Substring(0, [Math]::Min(300, $hdr.Length)))"
+              # DIAGNOSTIC (2026-10-26): the NuGet provider turns a failed gallery request into "no match" or
+              # "failed to download" and logs the cause at debug level only. Ask the same two endpoints
+              # directly - the find-by-id lookup, then the package download it would fetch - so the log
+              # names the status and the host that finally served each.
+              $probeGallery = {
+                param($label, $uri, $n)
+                try {
+                  $r = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 60
+                  $bytes = if ($r.Content) { $r.Content.Length } else { 0 }
+                  $base = $r.BaseResponse
+                  $via = if ($base.ResponseUri) { $base.ResponseUri.Host } elseif ($base.RequestMessage) { $base.RequestMessage.RequestUri.Host } else { 'unknown host' }
+                  Write-Host "::notice::gallery $label probe after attempt ${n}: HTTP $([int]$r.StatusCode), $bytes bytes, served by $via"
+                  return $r
+                } catch {
+                  $resp = $_.Exception.Response
+                  $code = if ($resp) { [int]$resp.StatusCode } else { 'no response' }
+                  $hdr = if (-not $resp) { $_.Exception.Message }
+                         elseif ($resp.Headers -is [System.Net.WebHeaderCollection]) { ($resp.Headers.AllKeys | ForEach-Object { "$_=$($resp.Headers[$_])" }) -join '; ' }
+                         else { ($resp.Headers.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value -join ',')" }) -join '; ' }
+                  Write-Host "::warning::gallery $label probe after attempt ${n}: HTTP $code; $($hdr.Substring(0, [Math]::Min(300, $hdr.Length)))"
+                  return $null
+                }
               }
+              $found = & $probeGallery 'find' "https://www.powershellgallery.com/api/v2/FindPackagesById()?id='Pester'" $attempt
+              $want = '6.2.0'
+              if ($found -and $found.Content) {
+                $v6 = [regex]::Matches([string]$found.Content, '<d:Version>(6\.\d+\.\d+)</d:Version>') | ForEach-Object { [version]$_.Groups[1].Value } | Sort-Object -Descending | Select-Object -First 1
+                if ($v6) { $want = $v6.ToString() }
+              }
+              $null = & $probeGallery "download of Pester $want" "https://www.powershellgallery.com/api/v2/package/Pester/$want" $attempt
               Start-Sleep -Seconds (15 * $attempt)
             }
           }
