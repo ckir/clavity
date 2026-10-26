@@ -22,7 +22,9 @@ hard-coded here: the two waiver opening phrases (WAIVER_OPENINGS). Exit codes: 0
 Any <base href> is a problem (5 absolute, 2 relative); `claude plugin` text is
 allowed only inside <code data-cmd> in #install, anywhere else on the page is
 check 6 (adjacent block elements are joined with a space, so a heading "Claude"
-followed by a paragraph starting "Plugin" is flagged: reword it); a repeated attribute keeps its first value (as HTML5 does); README
+followed by a paragraph starting "Plugin" is flagged: reword it); the values of alt, title,
+aria-label, aria-description, placeholder, input value and meta content count as page text
+for check 6 (data-* values do not); a repeated attribute keeps its first value (as HTML5 does); README
 folding strips * and ` and understands only inline [text](url) links.
 Pages nested deeper than 512 elements fail closed with exit 2.
 Page loads that must not be third-party: every <link href> except canonical, and the
@@ -82,6 +84,11 @@ WAIVER_OPENINGS = {
     "waiver-1": "All the above can be waived by prompts.",
     "waiver-2": "In case you have problem to start agy",
 }
+# Attribute values a visitor sees or hears (a tooltip, an alt text, an accessible name, a form
+# field), scanned as page text for check 6. Plus content on <meta> and value on <input>, which are
+# tag-specific. data-* payloads are not rendered anywhere and stay out (ROADMAP section 96).
+TEXT_ATTRS = frozenset({"alt", "title", "aria-label", "aria-description", "placeholder"})
+
 COMMAND_PREFIX = "claude plugin"
 CLAUDE_PLUGIN = re.compile(r"claude\s+plugin", re.IGNORECASE)
 
@@ -166,6 +173,13 @@ class PageParser(HTMLParser):
                 self.commands.append(captures[-1])
             if "data-copy" in values:
                 self.copies.append((li, values["data-copy"]))
+        spoken = [value for name, value in values.items() if name in TEXT_ATTRS]
+        if tag == "meta" and "content" in values:
+            spoken.append(values["content"])
+        if tag == "input" and "value" in values:
+            spoken.append(values["value"])
+        if spoken and not any(c.kind == "cmd" for c in self._active() + captures):
+            self.page_text.extend(f" {value} " for value in spoken)
         if tag not in VOID_TAGS:
             if len(self.stack) >= MAX_NESTING:
                 raise CannotAnswer(

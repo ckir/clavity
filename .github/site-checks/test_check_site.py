@@ -627,6 +627,51 @@ class ParityChecks(unittest.TestCase):
         body = index_body() + "<!-- claude plugin install x -->"
         self.assertEqual(self.numbers(body), [])
 
+    def test_claude_plugin_in_attribute_values_is_page_text(self):
+        # ROADMAP section 96: a screen reader voices alt and aria-label, a
+        # tooltip shows title, a form shows placeholder and value, and search
+        # engines read <meta content>, so an install command there is a
+        # rendered install line outside #install.
+        carriers = {
+            "img alt": '<img alt="run claude plugin install x">',
+            "title": '<p title="claude plugin install x">hover</p>',
+            "aria-label": '<nav aria-label="claude plugin install x"></nav>',
+            "aria-description": '<p aria-description="claude plugin install x">y</p>',
+            "input placeholder": '<input placeholder="claude plugin install x">',
+            "input value": '<input value="claude plugin install x">',
+        }
+        for name, carrier in carriers.items():
+            with self.subTest(name=name):
+                problems = self.run_case(index_body() + carrier)
+                self.assertEqual([n for n, _ in problems], [6])
+                self.assertIn("page text mentions", problems[0][1])
+        with self.subTest(name="meta content"):
+            html = page(
+                index_body(),
+                '<meta name="description" content="claude plugin install x">',
+            )
+            self.assertIn(6, self.numbers(html))
+
+    def test_attribute_on_an_install_data_cmd_element_is_not_page_text(self):
+        # The same rule as for text: inside <code data-cmd> in #install the
+        # command is sanctioned, tooltip included; one line outside is not.
+        install = install_html().replace(
+            "<code data-cmd>", '<code data-cmd title="claude plugin install x">', 1
+        )
+        self.assertIn("data-cmd title=", install)
+        self.assertEqual(self.numbers(index_body(install)), [])
+
+    def test_claude_plugin_in_unlisted_attributes_is_not_page_text(self):
+        # Only the attributes a visitor can see or hear are page text; data-*
+        # payloads, and content off a <meta>, are not rendered anywhere.
+        cases = {
+            "data attribute": '<p data-note="claude plugin install x">y</p>',
+            "content off meta": '<p content="claude plugin install x">y</p>',
+        }
+        for name, carrier in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(self.numbers(index_body() + carrier), [])
+
     def test_readme_backticks_match_plain_page_text(self):
         readme = make_readme(
             waivers=(
