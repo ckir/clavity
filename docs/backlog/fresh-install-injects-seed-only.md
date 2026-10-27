@@ -1,6 +1,6 @@
 # Backlog stub - a fresh install injects SEED only; the knowledge store is never projected into GROWTH
 
-**Status:** IMPLEMENTED 2026-10-27 - on branch `feat/project-store-growth`: the silence is ended by a SessionStart warning and the projection by a helper that proposes through the agy-curate human gate; install-time seeding is NOT built (ruled out, below); flips to SHIPPED when that branch is merged
+**Status:** SHIPPED 2026-10-27 - merged in PR #39 (`12dac9b4`): the silence is ended by a SessionStart warning and the projection by a helper that proposes through the agy-curate human gate; install-time seeding is NOT built (ruled out, below)
 
 > **Previous status:** OPEN 2026-10-11 - Raised while regenerating the runtime GROWTH on a new development machine.
 **Scope:** the installer / `agy-autotrain` plugin, `GoldenHeader` readers in both variants, the knowledge

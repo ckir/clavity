@@ -1,6 +1,6 @@
 # Backlog stub - the golden-header GROWTH reader accepts a sidecar-less file, so a direct write bypasses the human gate
 
-**Status:** IMPLEMENTED 2026-10-27 - on branch `fix/growth-requires-sidecar`: both readers refuse a GROWTH file with no sidecar (SEED and the legacy flat file keep accepting an absent one); flips to SHIPPED when that branch is merged
+**Status:** SHIPPED 2026-10-27 - merged in PR #38 (`211365e2`): both readers refuse a GROWTH file with no sidecar (SEED and the legacy flat file keep accepting an absent one)
 
 > **Previous status:** OPEN 2026-10-10 - raised by the Branch G plan panel (round 1, BS-1); the owner ruled it a follow-up item, not part of Branch G
 **Raised:** 2026-10-10, AGY panel round 1 over `docs/superpowers/plans/2026-10-10-sweep-branch-g-human-gate.md`.
