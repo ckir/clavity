@@ -1135,7 +1135,7 @@ path-lib.Tests.ps1                                9,5s   18 tests   <- FAST, ADD
                                                                       half starts straddling it again.
 check-installer-ascii.Tests.ps1                   10,7s   4 tests   <- SLOW, ADDED 2026-09-08 (section 28).
 register-hash-scripts.Tests.ps1                      11,4s   11 tests   <- 8 -> 11 2026-10-27 (test audit MG-1: 2 comment/other-define rows + a positive control); SLOW, ADDED 2026-10-27 (ROADMAP section 93 item 2; one run, box load uncontrolled): sync-register-hash.ps1 and check-register-hash-synced.ps1 in a copied tree.
-project-store.Tests.ps1                            10,0s   16 tests   <- SLOW, ADDED 2026-10-27 (backlog stub fresh-install-injects-seed-only; one run, box load uncontrolled): project-store.sh against throwaway stores, the cap boundary and the real store.
+project-store.Tests.ps1                            10,0s   19 tests   <- SLOW, ADDED 2026-10-27 (backlog stub fresh-install-injects-seed-only; one run, box load uncontrolled): project-store.sh against throwaway stores, the cap boundary and the real store.
                                                                       2 -> 4 on 2026-09-11 (AGY-TEST-AUDIT
                                                                       section 28): two rows pinning that the
                                                                       gate FAILS, each spawning a child pwsh

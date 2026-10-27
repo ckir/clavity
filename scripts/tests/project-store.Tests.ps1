@@ -112,6 +112,23 @@ Describe 'project-store.sh' {
         } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'refuses an INDEX link that leaves the store (a path separator or ..) instead of reading outside it' -ForEach @(
+        @{ Link = '../outside.md' }
+        @{ Link = 'sub/rule.md' }
+        @{ Link = '..\\outside.md' }
+    ) {
+        $d = New-Store
+        try {
+            Set-Content -LiteralPath (Join-Path (Split-Path -Parent $d) 'outside.md') -Value "# o`n`n**Section:** $($script:Crit)`n`n- OUTSIDE RULE`n"
+            $idx = (Get-Content -Raw -LiteralPath (Join-Path $d 'INDEX.md')).Replace('(a-rule.md)', "($Link)")
+            [IO.File]::WriteAllText((Join-Path $d 'INDEX.md'), $idx, [Text.UTF8Encoding]::new($false))
+            $r = Invoke-Proj @('--store', $d)
+            $r.ExitCode | Should -Be 6
+            $r.StdErr | Should -Match 'outside the store|not a plain file name'
+            $r.StdOut | Should -Not -Match 'OUTSIDE RULE'
+        } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath (Join-Path (Split-Path -Parent $d) 'outside.md') -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'exits 6 when a rule file has no rule block' {
         $d = New-Store
         try {

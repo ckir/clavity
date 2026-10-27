@@ -72,6 +72,8 @@ out=""; prev="__none__"
 for e in "${entries[@]}"; do
   sec=${e%%"$TAB"*}; file=${e#*"$TAB"}
   [ -n "$sec" ] || { echo "project-store: INDEX lists $file before any '## ' section heading" >&2; exit 6; }
+  # the INDEX is repository content, but a link that leaves the store (a separator or ..) must never make this read elsewhere
+  case "$file" in */*|*\\*|*..*) echo "project-store: INDEX link '$file' is not a plain file name; refusing to read outside the store" >&2; exit 6 ;; esac
   path="$store/$file"
   [ -f "$path" ] || { echo "project-store: INDEX lists $file, which is not in '$store'" >&2; exit 2; }
 
