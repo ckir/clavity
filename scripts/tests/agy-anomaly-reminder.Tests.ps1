@@ -292,7 +292,10 @@ Describe 'agy-anomaly-reminder.sh' {
                 "# Untriaged anomalies`n`n- [defect] x * a.cs:1 * 2026-07-20 * task=z" -Encoding ascii
             # THE POINT OF THE FIXTURE: .git is a FILE here, exactly as git writes it in a worktree.
             Set-Content (Join-Path $w '.git') 'gitdir: /somewhere/else/.git/worktrees/wt' -Encoding ascii
-            (Get-Item (Join-Path $w '.git')).PSIsContainer | Should -BeFalse -Because 'the fixture is worthless unless .git really is a FILE'
+            # -Force and a LEAF probe, not a bare Get-Item: on Linux a dot-prefixed file is Hidden, a plain Get-Item returns nothing for it
+            # and `$null | Should -BeFalse` passed for a DIRECTORY too (ROADMAP 84, measured 2026-10-27).
+            Test-Path -LiteralPath (Join-Path $w '.git') -PathType Leaf | Should -BeTrue -Because 'the fixture is worthless unless .git really is a FILE'
+            (Get-Item -LiteralPath (Join-Path $w '.git') -Force).PSIsContainer | Should -BeFalse
 
             $x = Invoke-Hook -Payload (RawPayload (Join-Path $w 'src')) -Env @{ HOME = $h }
             $x.StdOut   | Should -Match '1 untriaged' -Because 'the walk must recognise a FILE .git as the repo root and find the anomalies file above it'
