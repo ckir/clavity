@@ -112,6 +112,29 @@ Describe 'register-plugin hash scripts' {
         } finally { Remove-TestPath $root }
     }
 
+    It 'check does not accept the right hash quoted in a comment or under another define (test audit MG-1)' -ForEach @(
+        @{ Case = 'a comment'; Line = '{ pinned earlier: "<HASH>" }' }
+        @{ Case = 'another define'; Line = '#define OtherRegisterPs1Sha256 "<HASH>"' }
+    ) {
+        $text = "Write-Host 'a'`n"
+        $root = New-Tree $text
+        try {
+            Set-Content -LiteralPath (Get-IssPath $root) -Value $Line.Replace('<HASH>', (Get-ExpectedHash $text))
+            $r = Invoke-Script $root 'check-register-hash-synced.ps1'
+            $r.Exit | Should -Be 1 -Because $r.Out
+            ($r.Out -replace '[\s|]+', ' ') | Should -Match 'STALE'
+        } finally { Remove-TestPath $root }
+    }
+
+    It 'check accepts the define line with the right hash among other lines (the positive control)' {
+        $text = "Write-Host 'a'`n"
+        $root = New-Tree $text
+        try {
+            Set-Content -LiteralPath (Get-IssPath $root) -Value ("{ header }`n#define ExpectedRegisterPs1Sha256 `"$(Get-ExpectedHash $text)`"`n#define Other `"x`"")
+            (Invoke-Script $root 'check-register-hash-synced.ps1').Exit | Should -Be 0
+        } finally { Remove-TestPath $root }
+    }
+
     It 'check fails when the hash file is missing' {
         $root = New-Tree "Write-Host 'a'`n"
         try { (Invoke-Script $root 'check-register-hash-synced.ps1').Exit | Should -Not -Be 0 } finally { Remove-TestPath $root }
