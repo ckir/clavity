@@ -1375,6 +1375,119 @@ echo "digests=$n calls=$(wc -l < "$count")"
         }
     }
 
+    # ROADMAP 87 (agreed with the peer after two negotiation rounds, 2026-10-27): a breach that lands after an UNFINISHED consult's Post is absorbed
+    # into the next consult's fresh baseline. The guard cannot police the peer afterwards, so it SPEAKS at the moment of absorption: the Post
+    # leaves a per-session sentinel (<state>/<sid>.unfinished: classification, cwd, epoch); the next sync consult's Pre in the SAME cwd
+    # says so once per consult; only a FINISHED Post in that cwd clears it; no time limit. No git state is stored or compared, so the
+    # driver's own edits between consults cannot raise it.
+    Context 'section 87 - the sentinel of an unfinished consult' {
+        BeforeAll {
+            $script:AskTool = 'mcp__plugin_clavity_clavity-ls__agy_ask'
+            $script:SentinelPath = Join-Path (Join-Path ([IO.Path]::GetTempPath()) 'claude-agy-consult-guard') "$($script:SessionId).unfinished"
+            $script:FinishedResp = @(@{ type = 'text'; text = '{"CascadeId":"c","Answer":"fine","PeerStillBusy":false}' })
+            function script:Unfinished { param($Repo) Payload $script:AskTool '' $Repo -Response $script:BusyResponse -DurationMs 78377 }
+            function script:Finished   { param($Repo) Payload $script:AskTool '' $Repo -Response $script:FinishedResp -DurationMs 9000 }
+            function script:PreOut     { param($P) (Invoke-BashHook -HookPath $script:Pre -Payload $P).StdOut }
+        }
+        BeforeEach { Remove-Item -LiteralPath $script:SentinelPath -Force -ErrorAction SilentlyContinue }
+        AfterAll   { Remove-Item -LiteralPath $script:SentinelPath -Force -ErrorAction SilentlyContinue }
+
+        It 'the next consult in the same repository is told, once the previous one ended unfinished' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                $out = PreOut (Finished $r)
+                $out | Should -Match 'PreToolUse'
+                $out | Should -Match 'NOTICE \(baseline absorbs prior state\)'
+                $out | Should -Match 'ended unfinished \(peer-busy\)'
+                $out | Should -Match 'unfinished' -Because 'the text names the sentinel file so it can be dismissed by hand'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'is silent when no earlier consult ended unfinished (the control)' {
+            $r = New-GuardRepo
+            try { PreOut (Finished $r) | Should -BeNullOrEmpty } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'speaks again at the consult after an ABORTED one: Pre does not consume the sentinel' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                PreOut (Finished $r) | Should -Match 'NOTICE'
+                # the second consult never reached its Post (cancelled, crashed): the peer may still be writing
+                PreOut (Finished $r) | Should -Match 'NOTICE'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'a FINISHED consult in the same repository clears it' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Pre -Payload (Finished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Finished $r) | Out-Null
+                PreOut (Finished $r) | Should -BeNullOrEmpty
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'a finished consult that REPORTS a change also clears it: the risk window was reported' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Pre -Payload (Finished $r) | Out-Null
+                Set-Content (Join-Path $r 'planted.txt') 'x'
+                (Invoke-BashHook -HookPath $script:Post -Payload (Finished $r)).StdOut | Should -Match 'VERSION CONTROL CHANGED'
+                PreOut (Finished $r) | Should -BeNullOrEmpty
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'a consult that is itself unfinished leaves the sentinel in place' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                PreOut (Finished $r) | Should -Match 'NOTICE'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'another repository under the same session neither sees it nor clears it' {
+            $a = New-GuardRepo; $b = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $a) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $a) | Out-Null
+                PreOut (Finished $b) | Should -BeNullOrEmpty -Because 'the sentinel belongs to repository A'
+                Invoke-BashHook -HookPath $script:Pre -Payload (Finished $b) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Finished $b) | Out-Null
+                PreOut (Finished $a) | Should -Match 'NOTICE' -Because 'a finished consult in B must not clear the sentinel of A'
+            } finally { Remove-Item $a, $b -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'has no time limit: a sentinel two days old still speaks' -Skip:$IsWindows -Tag 'LinuxOnly' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                (Get-Item -LiteralPath $script:SentinelPath).LastWriteTime = (Get-Date).AddDays(-2)
+                PreOut (Finished $r) | Should -Match 'NOTICE'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'a deliberate send is not a consult start: its Pre stays silent' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                $send = @{ tool_name = 'Bash'; tool_input = @{ command = 'clavity send "q" --review-only' }; cwd = ($r -replace '\\','/'); session_id = $script:SessionId } | ConvertTo-Json -Compress -Depth 5
+                PreOut $send | Should -BeNullOrEmpty
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+    }
+
     # ROADMAP 91: only 120005 and 40000 were exercised, so `>=` turned into `>` (or the threshold moved by a few ms) passed every row.
     It 'the duration fallback fires AT 120000 ms and not at 119999 (<Ms>)' -ForEach @(
         @{ Ms = 120000; Fires = $true }

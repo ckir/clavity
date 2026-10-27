@@ -80,6 +80,18 @@ if [ "$slot" = async ] && [ -f "$sf" ] && [ -z "$(find "$sf" -mmin +"$AGY_GUARD_
   exit 0   # fresh open baseline exists -> keep it
 fi
 
+# ROADMAP section 87: speak at the moment of absorption. A previous consult of this session ended unfinished in THIS cwd (its Post left
+# the sentinel): this consult's fresh baseline will absorb whatever the peer does after that return. Pre does NOT consume the
+# sentinel (an aborted consult never reaches its Post; the next one must be told again) and compares no git state (the driver's own
+# edits between consults would raise it every time); a finished Post in this cwd clears it. Only a sync consult starts a window.
+usf="${sf%.*}.unfinished"          # <state dir>/<sid>.unfinished; no helper call (it spawns mkdir) - sf above already created the dir
+if [ "$slot" = sync ] && [ -f "$usf" ]; then
+  { IFS= read -r _sinc; IFS= read -r _scwd; } < "$usf" 2>/dev/null
+  if [ "$_scwd" = "$cwd" ]; then
+    jq -nc --arg m "AGY CONSULT GUARD - NOTICE (baseline absorbs prior state): the previous review-only consult in this repository ended unfinished (${_sinc}). This consult takes a fresh baseline that absorbs any change made since that return, so a breach the peer made after it would NOT be reported by this consult. If you did not run git status --short once the peer was idle, run it now. This notice repeats at each consult start until a consult finishes normally here; to dismiss it by hand remove ${usf}." '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$m}}' 2>/dev/null
+  fi
+fi
+
 quad=$(agy_guard_quad "$cwd")
 tmp="$sf.tmp.$$"
 printf '%s\n' "$quad" 2>/dev/null > "$tmp" && mv -f "$tmp" "$sf" 2>/dev/null

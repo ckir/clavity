@@ -64,7 +64,7 @@ inc_notice(){
     *)            increason="the call ran for 120 s or more, the point at which the harness moves a call to the background, so it may have been backgrounded while the peer was still working" ;;
   esac
   incwhat="agy_ask"; case $1 in cli-*) incwhat="clavity consult call" ;; esac
-  incmsg="AGY CONSULT GUARD - NOT VERIFIED (consult not finished): this ${incwhat} returned before the peer finished - ${increason}. The version-control check ran NOW and cannot see anything the peer does afterwards, so a clean result here means only 'nothing so far'. Treat this consult as UNCHECKED until it really ends: run git status --short now (or use the snapshot you took before asking), run it again when the task-completion notification or the result arrives, treat anything new in between as suspect, and do not revert anything you did not verify the peer made."
+  incmsg="AGY CONSULT GUARD - NOT VERIFIED (consult not finished): this ${incwhat} returned before the peer finished - ${increason}. The version-control check ran NOW and cannot see anything the peer does afterwards, so a clean result here means only 'nothing so far'. Treat this consult as UNCHECKED until it really ends: run git status --short now (or use the snapshot you took before asking), run it again when the task-completion notification or the result arrives, treat anything new in between as suspect, and do not revert anything you did not verify the peer made. ALSO: the next consult takes a fresh baseline from the tree as it is then, so anything the peer leaves after this return will NOT be reported by that consult - run git status --short once the peer is idle."
 }
 
 # ONE jq call for all six fields, NUL-terminated and read with the builtin. Each field keeps the
@@ -180,6 +180,19 @@ agy_guard_have_hash || degraded=1
 before=$(cat "$sf" 2>/dev/null)
 after=$(agy_guard_quad "$cwd")
 rm -f "$sf" 2>/dev/null            # consume the baseline
+
+# ROADMAP section 87 (agreed with the peer, 2026-10-27): an UNFINISHED consult leaves a per-session sentinel so that the NEXT
+# sync consult's Pre can say its fresh baseline absorbs whatever the peer does after this return. Two lines: the classification,
+# then the cwd. A FINISHED consult in the SAME cwd clears it (even when it reports a change: the window was reported); one in
+# another repository neither sees nor clears it. No git state is stored and no time limit applies: the sentinel is per session id,
+# and silence after a long gap would be wrong exactly when the peer has had longest to write.
+usf="${sf%.*}.unfinished"          # <state dir>/<sid>.unfinished - no helper call: it costs a process (mkdir) and sf already made the dir
+if [ -n "$inc" ]; then
+  printf '%s\n%s\n' "$inc" "$cwd" > "$usf" 2>/dev/null
+elif [ -f "$usf" ]; then
+  { IFS= read -r _sinc; IFS= read -r _scwd; } < "$usf" 2>/dev/null
+  [ "$_scwd" = "$cwd" ] && rm -f "$usf" 2>/dev/null
+fi
 
 if [ "$before" = "$after" ]; then
   # Clean - but in degraded mode "clean" covers only the unhashed axes, so say exactly that
