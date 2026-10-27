@@ -4350,7 +4350,7 @@ Linux proxy (`strace -ff -e trace=execve` over the real hooks, 82 rows plus a de
 
 ### §84 — `agy-anomaly-reminder`'s ".git is a FILE" row asserts nothing on Linux
 
-**Status:** IMPLEMENTED 2026-10-27 - cause determined and the row's fixture check fixed on branch `chore/linux-probes`; flips to SHIPPED when that branch is merged
+**Status:** SHIPPED 2026-10-27 - merged to main in `a0151f30` (PR #33): cause determined (dot-prefixed files are Hidden on Linux) and the row's fixture check fixed
 
 `scripts/tests/agy-anomaly-reminder.Tests.ps1:286` (`finds the repo root when .git is a FILE (worktree or submodule), not a directory`) checks its own fixture with `(Get-Item (Join-Path $w '.git')).PSIsContainer | Should -BeFalse`. On this Linux box that `Get-Item` reports "Could not find item <fixture>/.git" every run, yet the row passes under plain `Invoke-Pester` (37 passed / 2 failed for the suite); it failed under `$ErrorActionPreference = 'Stop'` 3 of 3 times (§81). The pass is presumably `$null | Should -BeFalse`, which is not proven here. Either the file really is absent when `Get-Item` runs (then the later `1 untriaged` assertion passing needs explaining) or `Get-Item` cannot see a dotfile there. The row's own comment says it exists to prove `.git`-as-FILE support, so a check that cannot fail defeats it. Fix direction: assert with `Test-Path -PathType Leaf` and find why the item is not found.
 
@@ -4358,7 +4358,7 @@ Linux proxy (`strace -ff -e trace=execve` over the real hooks, 82 rows plus a de
 
 ### §85 — The Bash/CLI consult path's unfinished returns are unmeasured, and the harness's backgrounding text can change
 
-**Status:** OPEN 2026-10-27 - MEASURED: the Bash payload of a backgrounded call is captured (below); next step: classify it in `agy-consult-guard-post.sh`, in the batched consult-guard branch with sections 88, 90 and 91
+**Status:** IMPLEMENTED 2026-10-27 - on branch `chore/consult-guard-batch`: `agy-consult-guard-post.sh` classifies `tool_response.backgroundTaskId` as cli-timeout or cli-background for a sync or terminal consult (both twins, seven rows); flips to SHIPPED when that branch is merged
 
 Classic's `clavity ask` runs through a Bash tool call whose `tool_response` is an object (not the list of text blocks an `agy_ask` returns), and its backgrounding behaviour was never captured. The section 78 hook change classifies only the MCP path, so an unfinished return on the CLI path is still reported as a clean compare.
 
@@ -4382,17 +4382,21 @@ The row `PINNED consult: MCP agy_ask, inconclusive return (after its pre)` in `s
 
 ### §87 — Whether a later consult's baseline absorbs a file that a missed breach left behind is unmeasured
 
-**Status:** OPEN 2026-10-27 - MEASURED: a file left behind after an unfinished consult is absorbed into the next consult's baseline and never reported; the fix design (also compare against the last clean state) goes to the batched consult-guard branch with sections 88, 90 and 91
+**Status:** IMPLEMENTED 2026-10-27 - on branch `chore/consult-guard-batch`: an unfinished consult leaves a per-session sentinel and the next consult in the same repository says its baseline absorbs what follows (design agreed with the peer in two negotiation rounds); flips to SHIPPED when that branch is merged
 
 In section 78's second probe the baseline already contained the first probe's file and the guard reported only the new delta, which is consistent with absorption but was not isolated. If absorption is confirmed, a breach that lands after an unfinished consult becomes invisible to every later consult, which bears on how loud the NOT VERIFIED notice has to be and on whether a later check should also compare against the last clean state.
 
 **MEASURED 2026-10-27 (Linux, a throwaway git repo, the shipped Pre and Post hooks driven with `agy_ask` payloads, state in a private `TMPDIR`, one run each).** Consult 1 returned unfinished (`duration_ms` 120005, a `[PEER STILL BUSY]` block): Post printed the NOT VERIFIED notice and consumed the baseline. An untracked file was then written (the breach after the Post). Consult 2, finished, with no change during it: Pre wrote a FRESH sync baseline that already contained the file, Post compared equal and printed nothing. The paired control, a new file created DURING consult 3, was reported ("VERSION CONTROL CHANGED DURING A REVIEW-ONLY CONSULT ... worktree/untracked files"). So absorption is confirmed: the sync slot re-baselines on every call (`clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh:75-86`), and a breach landing between an unfinished Post and the next Pre is invisible to every later consult. It is not pinned by a test on purpose: asserting today's silence would cement the defect.
 
+**Design chosen 2026-10-27 (AGY-FIRST consult, then AGY-NEGOTIATE, two rounds; the owner asked the two of us to agree one design).** Rejected by both: comparing against the old state (B2, B3). Every edit the driver makes between consults would be reported as a possible peer breach, and "unchanged" while the peer is still running would be a false sense of security. Built: (1) when a consult returns UNFINISHED the Post hook writes `<state dir>/<sid>.unfinished`, two lines, the classification and the cwd; no git state is stored. (2) The Pre hook of the NEXT sync consult in the same cwd emits one PreToolUse notice ("baseline absorbs prior state": the previous consult ended unfinished, this baseline absorbs whatever changed since, run `git status --short` once the peer is idle, remove the named file to dismiss). Pre does NOT consume the sentinel, so an aborted follow-up consult does not silence the next one (the peer's own sequence). (3) Only a FINISHED consult's Post in the same cwd clears it, even when that Post reports a change; a finished consult in another repository neither sees nor clears it (the state file is keyed on session id and slot only, `agy-consult-guard-lib.sh:380-384`). (4) No time limit: a TTL would silence the warning exactly when the peer has had longest to write. (5) The existing NOT VERIFIED text gained one sentence. Nine rows, eight mutants; no extra process on any path without a sentinel (the path is `${sf%.*}.unfinished`, not a helper call, because the helper runs `mkdir`).
+
 ### §88 — `agy-consult-recovery.sh` spends seconds in its own per-seam loop
 
-**Status:** OPEN 2026-10-12 - split out of section 70 (the consult guard's process cost, now implemented)
+**Status:** OPEN 2026-10-27 - does NOT reproduce on Linux (0.18 to 0.26 s at 1031 seams); stays open for the Windows session (section 100) where it was measured
 
 Measured in Branch 20 Task 11 (2026-10-06): with every SessionStart hook started together and 1031 seams, `agy-consult-recovery.sh` took 6.2 / 6.0 s although it starts only 8 processes beyond boot. The time is bash's own per-seam loop (glob + keyword match + `-nt` per file), which a process budget cannot see. Its timeout was raised 10 -> 30 s for now; bounding that loop (or pruning concluded seams) is the real fix. Not yet scheduled.
+
+**Re-measured 2026-10-27 on Linux** (1031 synthetic seams of the shape the hook reads, in a throwaway repository, three runs back to back, uncontrolled background load from a browser and the desktop session): 0.257, 0.204 and 0.183 s for the whole hook, 1912 bytes of output. The loop is bash builtins only, so the cost is per-`stat` on Windows Git Bash (every process or path translation costs about 200 ms there), not the algorithm. The AGY-FIRST consult on this branch measured 0.17 s independently. Decision 2026-10-27: no change for Linux; a bound (cache the four marker paths and their mtimes outside the loop, or look only at seams newer than the newest marker) is worth building only after a Windows measurement shows it matters, so this entry joins section 100's Windows session.
 
 ### §89 — Five Pester suites or rows fail on Linux by construction (a shell, a path, a shared session id, a file lock and missing exec bits)
 
@@ -4410,13 +4414,13 @@ Fix direction: per row, launch with `bash`, give each run its own session id, re
 
 ### §90 — The consult guard's git-metadata axis misses a symlinked hook (formerly a local anomaly)
 
-**Status:** SCHEDULED 2026-10-13 - scheduled - after the first release of the sweep (deferred by the owner at Branch H's test-audit; a source change needs an AGY-CAPSTONE re-run)
+**Status:** IMPLEMENTED 2026-10-27 - on branch `chore/consult-guard-batch`: `find` lists symlinks too (`-type f -o -type l`) in both twins; two rows (a planted link, a re-pointed link); flips to SHIPPED when that branch is merged
 
 `agy_guard_quad` lists `.git/hooks` with `find ... -type f` (`clavity-dotnet/plugin/hooks/agy-consult-guard-lib.sh:451`), and `find -type f` does not list a symlink, but git runs a symlinked hook (measured 2026-10-12: a symlink hook executed on commit). A peer that replaces a hook with a symlink is therefore invisible to the guard. Pre-existing: the library before section 70 had the identical `find` (old line 431). Fix direction: `find ... \( -type f -o -type l \)` (or `-L`), with a failing control that creates a symlinked hook, shows the guard silent, then red-green; the classic twin must be changed in the same commit where it exists.
 
 ### §91 — No row pins the 120000 ms boundary of the inconclusive-duration fallback (formerly a local anomaly)
 
-**Status:** SCHEDULED 2026-10-13 - scheduled - after the first release of the sweep (not scoped by the owner at Branch H's test-audit)
+**Status:** IMPLEMENTED 2026-10-27 - on branch `chore/consult-guard-batch`: rows at 120000 (fires) and 119999 (silent), each red under its mutant; flips to SHIPPED when that branch is merged
 
 `clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh:80` decides the inconclusive-duration fallback with a comparison against 120000 ms; the suite exercises only 120005 and 40000, so changing `>=` to `>` (or the threshold by a few ms) passes every row. Fix direction: one row each at 120000 and 119999 ms, each proven red under the matching mutant. Low value; it is recorded so the gap is visible, not because a defect is known.
 
