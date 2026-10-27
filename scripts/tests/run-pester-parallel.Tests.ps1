@@ -104,7 +104,36 @@ Describe 'run-pester-parallel' {
         }
     }
 
-    Context '-Exclude (suites a lane deliberately does not run)' {
+    Context '-MinTests and -RequireSuite (a lane that lost suites must not stay green)' {
+    # ROADMAP 93 item 4: the Linux CI lane has no coverage floor, so a DELETED suite went unnoticed, and so did the loss of
+    # the registration oracle itself. Counts and names are checked after the run, over what actually reported.
+    It 'exits 1 and says how few tests ran when the total is under the floor' {
+        $r = Invoke-Runner -ExtraArgs @('-Files', "$script:Pass1,$script:Pass2", '-ThrottleLimit', '2', '-MinTests', '4')
+        $r.Exit | Should -Be 1 -Because $r.Out
+        $r.Out | Should -Match 'MIN-TESTS: only 3 tests ran, expected at least 4'
+    }
+    It 'exits 0 when the total is exactly the floor (the boundary)' {
+        $r = Invoke-Runner -ExtraArgs @('-Files', "$script:Pass1,$script:Pass2", '-ThrottleLimit', '2', '-MinTests', '3')
+        $r.Exit | Should -Be 0 -Because $r.Out
+    }
+    It 'exits 1 and names a required suite that did not report' {
+        $r = Invoke-Runner -ExtraArgs @('-Files', "$script:Pass1,$script:Pass2", '-ThrottleLimit', '2', '-RequireSuite', 'pass-one,gone-suite')
+        $r.Exit | Should -Be 1 -Because $r.Out
+        $r.Out | Should -Match 'REQUIRED-SUITE: gone-suite did not report'
+        $r.Out | Should -Not -Match 'REQUIRED-SUITE: pass-one'
+    }
+    It 'matches a required suite by whole base name, not by substring' {
+        $r = Invoke-Runner -ExtraArgs @('-Files', "$script:Pass1,$script:Pass2", '-ThrottleLimit', '2', '-RequireSuite', 'pass')
+        $r.Exit | Should -Be 1 -Because $r.Out
+        $r.Out | Should -Match 'REQUIRED-SUITE: pass did not report'
+    }
+    It 'exits 0 when every required suite reported' {
+        $r = Invoke-Runner -ExtraArgs @('-Files', "$script:Pass1,$script:Pass2", '-ThrottleLimit', '2', '-RequireSuite', 'pass-one,pass-two')
+        $r.Exit | Should -Be 0 -Because $r.Out
+    }
+}
+
+Context '-Exclude (suites a lane deliberately does not run)' {
         It 'drops the named suite from the list by base name and keeps the others' {
             $r = Invoke-Runner -ExtraArgs @('-Files', "$script:Pass1,$script:Pass2,$script:Fail1", '-Exclude', 'fail-one', '-ListOnly')
             $r.Exit | Should -Be 0 -Because $r.Out

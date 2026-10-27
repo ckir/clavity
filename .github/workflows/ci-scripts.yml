@@ -519,6 +519,8 @@ jobs:
   dev-scripts-linux:
     name: dev scripts (pwsh 7, linux)
     runs-on: ubuntu-latest
+    # A hung suite must not hold the runner for the 6-hour default (the last green run took about 7.5 minutes).
+    timeout-minutes: 30
     # The same suites as dev-scripts, run through scripts/run-pester-parallel.ps1 so the approved-skip gate and the
     # committed per-OS inventory (scripts/tests/_skip-inventory.md, `## linux` section) apply. dev-scripts (Windows)
     # keeps its plain Invoke-Pester until the owner has generated and measured the `## windows` section.
@@ -635,7 +637,9 @@ jobs:
 
       - name: Pester - full scripts suite, approved-skip gate + committed inventory (pwsh 7, linux)
         shell: pwsh
-        run: pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -ShowMessages
+        # -MinTests / -RequireSuite are the Windows job's coverage floor and registration-oracle check: a DELETED suite
+        # (or the oracle itself) used to leave this lane green. The floor is the Windows job's, deliberately low.
+        run: pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -ShowMessages -MinTests 100 -RequireSuite test-suite-registration
 
   review-relay-extension:
     name: review-relay capture extension (node)

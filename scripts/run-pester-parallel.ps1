@@ -36,6 +36,10 @@
                suites are NAMED in the output: a lane that skips a suite must say so, because it is not a full gate.
 .PARAMETER ShowMessages  print each failing row's first error message (whitespace collapsed, cut at 300 chars) under its FAILED
                name, so a flaky row that fails once can be diagnosed from the run that failed instead of a re-run.
+.PARAMETER MinTests    fail (exit 1) when fewer tests than this ran in total (passed + failed + skipped). A coverage floor: a lane whose suites
+               were deleted or never discovered must not stay green.
+.PARAMETER RequireSuite  suites that MUST report a result, by BASE name, comma-separated. A required suite that is missing, excluded or whose child
+               produced no result fails the run. Use it for the suite that proves all the others exist (the registration oracle).
 .PARAMETER ThrottleLimit  files running at once (default 4).
 .PARAMETER ListOnly    print the resolved suite paths and exit 0.
 .PARAMETER Child       internal: run ONE file and print a PESTER-RESULT line.
@@ -46,6 +50,8 @@ param(
     [string]$Justfile,
     [string[]]$Files,
     [string[]]$Exclude,
+    [ValidateRange(0, 100000)][int]$MinTests = 0,
+    [string[]]$RequireSuite,
     [switch]$ShowMessages,
     [ValidateRange(1, 64)][int]$ThrottleLimit = 4,
     [switch]$ListOnly,
@@ -317,5 +323,16 @@ Write-Host ("TOTAL files={0} excluded={8} passed={1} failed={2} skipped={3} badC
     $resolved.Count, $tot.passed, $tot.failed, $tot.skipped, $tot.bad, $tot.noresult, [math]::Round($wall.Elapsed.TotalSeconds, 1), $ThrottleLimit, $excluded.Count)
 
 $gateFailed = Test-SkipGate
+$ran = $tot.passed + $tot.failed + $tot.skipped
+if ($MinTests -gt 0 -and $ran -lt $MinTests) {
+    Write-Host "MIN-TESTS: only $ran tests ran, expected at least $MinTests - suites deleted, excluded or never discovered?"
+    $gateFailed = $true
+}
+foreach ($req in @($RequireSuite | ForEach-Object { $_ -split ',' } | Where-Object { $_ } | ForEach-Object { $_.Trim() })) {
+    if (-not (@($coveredSuites | ForEach-Object { $_ -replace '\.Tests\.ps1$', '' }) -ccontains $req)) {
+        Write-Host "REQUIRED-SUITE: $req did not report a result (deleted, renamed, excluded, or its child failed)"
+        $gateFailed = $true
+    }
+}
 if ($tot.failed -gt 0 -or $tot.bad -gt 0 -or $tot.noresult -gt 0 -or $gateFailed) { exit 1 }
 exit 0
