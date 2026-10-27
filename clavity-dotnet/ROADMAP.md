@@ -4518,7 +4518,7 @@ Owner request, 2026-10-27: make `start` refuse to start in the same folder, "oth
 
 ### §102 — `[13b] TRUNCATED REPLY` fired on complete `adversarial-panel-review` replies because the brief's token and the driver's token disagreed
 
-**Status:** IMPLEMENTED 2026-10-27 - on branch `fix/panel-terminal-token`: the TRUNCATED REPLY notice names the expected token and quotes the last line it saw, and the panel skill defines its terminal token; flips to SHIPPED when that branch is merged
+**Status:** SHIPPED 2026-10-28 - merged in PR #35 (`b2bb1df5`): the TRUNCATED REPLY notice names the expected token and quotes the last line it saw, and the panel skill defines its terminal token
 
 Reported by the owner from a parallel session that drives the `flux` project: the driver returned many truncated flags although agy's replies were complete and retrievable from the reply file. MEASURED 2026-10-27 over 250 distinct agy results in that project's transcripts (`~/.claude/projects/-home-user-Development-Rust-flux/*.jsonl`): 69 carried `[13b] TRUNCATED REPLY`, and 56 of those (81%) ended on a complete `[VERDICT: ...]` line; the other 12 ended mid-sentence. In the session running at the time, 8 of its 9 flags were of the first kind. `[13b] ANSWER CUT` (32 of 250, a reply over 16000 characters whose whole text is in the file) was correct and non-blocking, and is unchanged.
 
