@@ -161,6 +161,19 @@ same mismatch and burns a budget.
 > BEFORE it, in this order: your report, then any `[VERIFIED: ...]` block, then any closing
 > disclosures, then the token.
 
+**What "the terminal token" IS for a panel round - define it in your payload, do not leave it to the peer.** The driver requires the
+LAST non-blank line of a panel reply to START WITH `PANEL VERDICT` (a leading `*`, backtick, `_`, `#` or `[` is ignored; the match is
+case-sensitive). So the clause above needs a token to point at; give it one:
+
+> End the round with one closing line that starts with `PANEL VERDICT:` followed by the round's outcome, for example
+> `PANEL VERDICT: FINDINGS-3` or `PANEL VERDICT: CLEAN`. That line is the terminal token: nothing comes after it.
+
+Do NOT demand `[VERDICT: ALIGNED]`, `[VERDICT: NEGOTIATE ...]`, `[VERDICT: REJECTED ...]` or any other `[VERDICT: ...]` token for a panel
+round. That vocabulary belongs to agy-first, agy-capstone and agy-test-audit, and a panel has no ALIGNED state. MEASURED in the flux
+sessions: briefs that asked for a PANEL VERDICT line AND a `[VERDICT: ...]` token made agy end on the bracket line, and the driver
+flagged 56 complete replies `[13b] TRUNCATED REPLY` (a recovery from the reply file each time). The notice now names the token it
+expected and the last line it saw, so a mismatch like this one is visible at once.
+
 MEASURED: several rounds had their ENTIRE report displaced by a closing pleasantry, because what the
 driver collects is the peer's FINAL message - and a terminal token alone does NOT fix it, since every one
 of those rounds already demanded one. The ordering half is not a style note either: where a discipline
