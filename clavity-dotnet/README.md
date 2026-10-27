@@ -72,7 +72,10 @@ xfce4-terminal), otherwise in `xdg-terminal-exec` or `x-terminal-emulator`; set 
 no display (over ssh, say) it starts nothing and tells you to run `clavity-ls agy <folder>` instead, which runs agy in
 that terminal; in a second one, `clavity-ls start <folder> --attach` pairs Claude with it (add the session id agy's
 terminal prints if more than one agy is waiting in that folder). Each agy takes one Claude: a second `--attach` to the
-same agy is refused. With an id, Claude starts in the folder that agy runs in, and says so if that differs from the one
+same agy is refused. `start` also allows ONE Claude per folder: a second `start`, plain or `--attach`, in a folder that already
+has one is refused before it opens anything, so it cannot repeat the first one's work (use `git worktree add` for a second
+Claude on the same repository). Only `clavity-ls start` is guarded: running `claude` yourself, or starting `clavity-ls agy`
+before an attach, is not blocked. With an id, Claude starts in the folder that agy runs in, and says so if that differs from the one
 you gave; if no agy waits in your folder but some wait elsewhere (the same folder through a symlink, say), `start` lists
 them with the command to use. Over `ssh -X` (X11 forwarding) DISPLAY is set, so `start` opens agy's terminal window on your own
 machine instead. In a folder

@@ -50,6 +50,10 @@ public interface IStartEffects
     string? ReadSessionFolder(SessionPaths paths);
     /// <summary><see cref="SessionLock.TryTake"/> on this session's lock: null when another `start` holds it.</summary>
     IDisposable? TryTakeSession(SessionPaths paths);
+    /// <summary>The ONE-CLAUDE-PER-FOLDER lock (ROADMAP section 101): an exclusive handle held for as long as this `start`
+    /// runs; null when another `start` holds it for the same folder. Throws <see cref="IOException"/> or
+    /// <see cref="UnauthorizedAccessException"/> when the lock cannot be taken for any OTHER reason.</summary>
+    IDisposable? TryTakeFolder(string folder);
     /// <summary>Holds this session's `.alive` lock for as long as `clavity-ls agy` runs it (<see cref="SessionLock.TryTake"/>;
     /// the id is fresh, so nobody else can hold it).</summary>
     IDisposable HoldSessionAlive(SessionPaths paths);
@@ -65,6 +69,15 @@ public static class StartFlow
     /// <summary>Both verbs' refusal of a folder argument that is not a directory - missing, or a FILE (capstone R8: "does
     /// not exist" was false for a file).</summary>
     public static string MissingFolder(string folder) => $"clavity: {folder} does not exist or is not a folder.";
+
+    /// <summary>`start` refusing a folder another `start` already runs a Claude in (ROADMAP section 101).</summary>
+    public static string FolderTaken(string folder) =>
+        $"clavity: a Claude session is already running in {folder}. Only one `clavity-ls start` per folder, so a second " +
+        "session does not repeat the first one's work. Close it first, or use a separate `git worktree add` folder for a second Claude.";
+
+    /// <summary>`start` unable to take the folder lock for a reason that is NOT another session holding it.</summary>
+    public static string FolderLockFailed(string folder, string reason) =>
+        $"clavity: cannot take the one-Claude-per-folder lock for {folder}: {reason}";
 
     /// <summary>`start --attach` refusing a session another `start` already paired with (ROADMAP section 65).</summary>
     public static string AlreadyTaken(string sessionId) =>
@@ -159,6 +172,28 @@ public static class StartFlow
             fx.Error.WriteLine(MissingFolder(folder));
             return 2;
         }
+
+        // ONE CLAUDE PER FOLDER (ROADMAP section 101; owner request 2026-10-27: a second session in the same folder found the
+        // first one's work already done). Taken here - after the folder is decided and checked, before anything is
+        // written or opened, so a refusal never leaves a log, a pairing doc or an orphan agy tab behind - and held until this
+        // `start` ends, which is when its Claude ends (the OS drops it on a kill too). Fails CLOSED: a lock that cannot be
+        // taken for a reason of its own is reported as that reason, not as a running session.
+        IDisposable? folderLock;
+        try
+        {
+            folderLock = fx.TryTakeFolder(folder);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            fx.Error.WriteLine(FolderLockFailed(folder, ex.Message));
+            return 1;
+        }
+        if (folderLock is null)
+        {
+            fx.Error.WriteLine(FolderTaken(folder));
+            return 1;
+        }
+        using var holdFolder = folderLock;
 
         if (!fx.DirectoryExists(Path.Combine(folder, ".git")))
             fx.Error.WriteLine($"clavity: warning — {folder} is not a git repository.");
@@ -277,11 +312,10 @@ public static class StartFlow
         }
         if (waiting.Count == 0 && all.Count > 0)
         {
-            // Every agy in this folder already has a Claude. Say so first ("run agy first" alone would hide that), then
-            // what to do for ANOTHER Claude.
+            // Every agy in this folder already has a Claude. Say so ("run agy first" alone would hide that). It does NOT invite
+            // another Claude: since section 101 a folder has one, and the folder lock refuses the second.
             foreach (var s in all)
                 fx.Error.WriteLine(AlreadyTaken(s.SessionId));
-            fx.Error.WriteLine($"clavity: for another Claude in this folder, run `clavity-ls agy {Launcher.ShQuote(folder)}` in a new terminal first.");
             return null;
         }
         if (waiting.Count == 0)
