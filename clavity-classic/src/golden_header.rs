@@ -111,7 +111,7 @@ fn strip_leading_html_comments(s: &str) -> &str {
 /// invalid-UTF-8 / sidecar-mismatched. Mirrors dotnet `TryReadFile`: a present-but-oversize region WARNS
 /// and is SKIPPED (not loud), so the combined read degrades; a present-but-mismatched `.sha256` sidecar
 /// degrades the same way. The cap is checked on the raw on-disk bytes.
-fn try_read_file(path: &Path, warn: &mut dyn FnMut(&str)) -> Option<String> {
+fn try_read_file(path: &Path, warn: &mut dyn FnMut(&str), require_sidecar: bool) -> Option<String> {
     let bytes = match fs::read(path) {
         Ok(b) => b,
         Err(_) => return None,
@@ -153,6 +153,16 @@ fn try_read_file(path: &Path, warn: &mut dyn FnMut(&str)) -> Option<String> {
         SidecarVerdict::Mismatch => {
             warn(&format!(
                 "golden-header region at {} did not match its .sha256 sidecar — skipped",
+                path.display()
+            ));
+            return None;
+        }
+        // GROWTH only (`require_sidecar`): the file is written by `curate-commit` alone, always with its sidecar and only after the
+        // agy-curate human gate, so a GROWTH file with NO sidecar is a direct write that bypassed that gate. Mirrors dotnet
+        // `TryReadFile(requireSidecar)` and the driver cheatsheet reader. SEED and the legacy flat file keep accepting an absent one.
+        SidecarVerdict::Absent if require_sidecar => {
+            warn(&format!(
+                "golden-header GROWTH at {} has no .sha256 sidecar - it was not written by curate-commit, skipped",
                 path.display()
             ));
             return None;
@@ -206,8 +216,8 @@ fn within_cap(s: &str, dir: &Path, warn: &mut dyn FnMut(&str)) -> bool {
 /// Combined SEED-then-GROWTH content to inject, or `Absent` when nothing usable. Mirrors dotnet
 /// `TryReadCombined`. Warnings (over-cap regions, cap-degrade) flow to `warn`.
 pub fn read_combined(dir: &Path, warn: &mut dyn FnMut(&str)) -> HeaderState {
-    let seed = try_read_file(&seed_path(dir), warn);
-    let growth = try_read_file(&growth_path(dir), warn);
+    let seed = try_read_file(&seed_path(dir), warn, false);
+    let growth = try_read_file(&growth_path(dir), warn, true);
 
     // Migration window (mirrors dotnet panels A1 + R2-agy-1 + the SHOULD-FIX): a pre-split flat
     // golden-header.md is a COMPLETE header (old baseline + learned rules). While NO growth FILE
@@ -217,7 +227,7 @@ pub fn read_combined(dir: &Path, warn: &mut dyn FnMut(&str)) -> HeaderState {
     // legacy. The legacy file is LEFT in place (NOT renamed — renaming would break the classic
     // failover once split files exist, panel agy-R3-c).
     if growth.is_none() && !growth_path(dir).exists() {
-        if let Some(legacy) = try_read_file(&dir.join(LEGACY_FILE), warn) {
+        if let Some(legacy) = try_read_file(&dir.join(LEGACY_FILE), warn, false) {
             return if within_cap(&legacy, dir, warn) {
                 HeaderState::Active(legacy)
             } else {
@@ -376,6 +386,12 @@ mod tests {
         d
     }
 
+    /// Writes the GROWTH file the way `curate-commit` does: the file and its sidecar over the same RAW bytes.
+    fn write_growth(dir: &Path, bytes: &[u8]) {
+        fs::write(dir.join(GROWTH_FILE), bytes).unwrap();
+        fs::write(sidecar_path(&dir.join(GROWTH_FILE)), sha256_hex(bytes)).unwrap();
+    }
+
     #[test]
     fn verify_sidecar_reports_each_verdict() {
         let d = fresh_dir("verdicts");
@@ -463,10 +479,60 @@ mod tests {
         ));
     }
 
+    // Backlog stub golden-header-growth-accepts-a-sidecarless-file: GROWTH is written ONLY by `curate-commit`, always with its
+    // sidecar and after the agy-curate human gate, so a GROWTH file with no sidecar is a direct write that bypassed that gate.
+    // SEED (installer-seeded) and the legacy flat file (migration) legitimately have none and keep being accepted.
+    #[test]
+    fn read_combined_refuses_a_growth_file_that_has_no_sidecar_and_says_so() {
+        let dir = fresh_dir("growth-no-sidecar");
+        fs::write(dir.join(SEED_FILE), b"SEED").unwrap();
+        fs::write(dir.join(GROWTH_FILE), b"GROWTH written without the gate").unwrap();
+        let mut warned: Vec<String> = Vec::new();
+        let st = read_combined(&dir, &mut |m| warned.push(m.to_string()));
+        assert!(matches!(st, HeaderState::Active(ref s) if s == "SEED"));
+        assert!(
+            warned
+                .iter()
+                .any(|w| w.contains("GROWTH") && w.contains("no .sha256 sidecar")),
+            "warned: {warned:?}"
+        );
+    }
+
+    #[test]
+    fn a_sidecar_less_growth_file_does_not_re_open_the_legacy_fallback() {
+        let dir = fresh_dir("growth-no-sidecar-legacy");
+        fs::write(dir.join(LEGACY_FILE), b"LEGACY").unwrap();
+        fs::write(dir.join(GROWTH_FILE), b"GROWTH without a sidecar").unwrap();
+        assert!(matches!(
+            read_combined(&dir, &mut |_: &str| {}),
+            HeaderState::Absent
+        ));
+    }
+
+    #[test]
+    fn the_legacy_flat_file_alone_is_still_accepted_without_a_sidecar() {
+        let dir = fresh_dir("legacy-no-sidecar");
+        fs::write(dir.join(LEGACY_FILE), b"LEGACY").unwrap();
+        let mut warned: Vec<String> = Vec::new();
+        let st = read_combined(&dir, &mut |m| warned.push(m.to_string()));
+        assert!(matches!(st, HeaderState::Active(ref s) if s == "LEGACY"));
+        assert!(warned.is_empty());
+    }
+
+    #[test]
+    fn a_growth_file_with_a_matching_sidecar_is_still_accepted() {
+        let dir = fresh_dir("growth-with-sidecar");
+        write_growth(&dir, b"GROWTH");
+        let mut warned: Vec<String> = Vec::new();
+        let st = read_combined(&dir, &mut |m| warned.push(m.to_string()));
+        assert!(matches!(st, HeaderState::Active(ref s) if s == "GROWTH"));
+        assert!(warned.is_empty());
+    }
+
     #[test]
     fn read_combined_returns_growth_alone_when_only_growth_present() {
         let dir = fresh_dir("growth-only");
-        fs::write(dir.join(GROWTH_FILE), b"GROWTH").unwrap();
+        write_growth(&dir, b"GROWTH");
         assert!(matches!(
             read_combined(&dir, &mut |_: &str| {}),
             HeaderState::Active(ref s) if s == "GROWTH"
@@ -477,7 +543,7 @@ mod tests {
     fn read_combined_concatenates_seed_then_growth_blank_line_separated() {
         let dir = fresh_dir("concat");
         fs::write(dir.join(SEED_FILE), b"SEED\n").unwrap();
-        fs::write(dir.join(GROWTH_FILE), b"GROWTH\n").unwrap();
+        write_growth(&dir, b"GROWTH\n");
         assert!(matches!(
             read_combined(&dir, &mut |_: &str| {}),
             HeaderState::Active(ref s) if s == "SEED\n\nGROWTH"
@@ -592,7 +658,7 @@ mod tests {
     fn read_combined_ignores_legacy_once_growth_file_present() {
         let dir = fresh_dir("legacy-done");
         fs::write(dir.join(SEED_FILE), b"SEED").unwrap();
-        fs::write(dir.join(GROWTH_FILE), b"GROWTH").unwrap();
+        write_growth(&dir, b"GROWTH");
         fs::write(dir.join(LEGACY_FILE), b"LEGACY").unwrap();
         assert!(matches!(
             read_combined(&dir, &mut |_: &str| {}),
@@ -620,7 +686,7 @@ mod tests {
         // Each region is under the per-file cap, but their sum is over it. Degrade to SEED, warn.
         let dir = fresh_dir("combined-over-cap");
         fs::write(dir.join(SEED_FILE), b"SEED").unwrap();
-        fs::write(dir.join(GROWTH_FILE), vec![b'a'; MAX_BYTES]).unwrap();
+        write_growth(&dir, &vec![b'a'; MAX_BYTES]);
         let mut warned: Vec<String> = Vec::new();
         let st = read_combined(&dir, &mut |m| warned.push(m.to_string()));
         assert!(matches!(st, HeaderState::Active(ref s) if s == "SEED"));
@@ -632,7 +698,7 @@ mod tests {
         // A single region file over the per-file cap is skipped (warned), not loud; the other region remains.
         let dir = fresh_dir("region-over-cap");
         fs::write(dir.join(SEED_FILE), vec![b'a'; MAX_BYTES + 1]).unwrap();
-        fs::write(dir.join(GROWTH_FILE), b"GROWTH").unwrap();
+        write_growth(&dir, b"GROWTH");
         let mut warned: Vec<String> = Vec::new();
         let st = read_combined(&dir, &mut |m| warned.push(m.to_string()));
         assert!(matches!(st, HeaderState::Active(ref s) if s == "GROWTH"));
@@ -722,7 +788,7 @@ mod tests {
         fs::write(&path, b"SEED").unwrap();
         let mut warned: Vec<String> = Vec::new();
         assert_eq!(
-            try_read_file(&path, &mut |m| warned.push(m.to_string())),
+            try_read_file(&path, &mut |m| warned.push(m.to_string()), false),
             Some("SEED".to_string())
         );
         assert!(warned.is_empty());
@@ -736,7 +802,7 @@ mod tests {
         fs::write(sidecar_path(&path), sha256_hex(b"SEED")).unwrap();
         let mut warned: Vec<String> = Vec::new();
         assert_eq!(
-            try_read_file(&path, &mut |m| warned.push(m.to_string())),
+            try_read_file(&path, &mut |m| warned.push(m.to_string()), false),
             Some("SEED".to_string())
         );
         assert!(warned.is_empty());
@@ -758,7 +824,7 @@ mod tests {
         .unwrap();
         let mut warned: Vec<String> = Vec::new();
         assert_eq!(
-            try_read_file(&path, &mut |m| warned.push(m.to_string())),
+            try_read_file(&path, &mut |m| warned.push(m.to_string()), false),
             Some("SEED".to_string())
         );
         assert!(warned.is_empty());
@@ -772,7 +838,7 @@ mod tests {
         fs::write(sidecar_path(&path), "0".repeat(64)).unwrap();
         let mut warned: Vec<String> = Vec::new();
         assert_eq!(
-            try_read_file(&path, &mut |m| warned.push(m.to_string())),
+            try_read_file(&path, &mut |m| warned.push(m.to_string()), false),
             None
         );
         assert!(warned

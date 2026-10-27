@@ -514,9 +514,10 @@ Then, once approved, **commit BOTH through the binary**: `curate-commit` with th
 lands `%USERPROFILE%\.clavity\golden-header.growth.md`, and `curate-commit --cheatsheet` with the cheatsheet
 proposal's bytes lands `%USERPROFILE%\.clavity\driver-cheatsheet.growth.md`; each is an atomic write plus a
 `.sha256` sidecar. For the GOLDEN HEADER the sidecar is an **integrity** check, NOT a security control (anyone
-who can rewrite the header can rewrite the sidecar): absent or unreadable is accepted unchanged (a fresh
-install seeds SEED with no sidecar); mismatched or over its own 1 KiB cap causes that region to be skipped
-with a warning. For the CHEATSHEET the sidecar is additionally the gate's record: absent, mismatched or
+who can rewrite the header can rewrite the sidecar): for SEED and the legacy flat file, absent or unreadable
+is accepted unchanged (a fresh install seeds SEED with no sidecar); for GROWTH, absent is REFUSED with a
+warning like the cheatsheet's, because only this verb - run after the approval above - ever writes it;
+mismatched or over its own 1 KiB cap causes any region to be skipped with a warning. For the CHEATSHEET the sidecar is additionally the gate's record: absent, mismatched or
 oversize ALL degrade the file to the floor with a visible warning, because nothing but this verb - run after
 the approval above - ever writes it. Only the binary knows `CLAVITY_GOLDEN_HEADER`.
 
