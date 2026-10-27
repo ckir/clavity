@@ -681,7 +681,7 @@ check-peer-reply-citations.Tests.ps1             49,2s   39 tests   <- SLOW, add
   row is four `git check-ignore` / `git ls-files` calls, so nearly all of the figure is process launch.
   ⚠ It joins the FAST half, which measured 493-550s against the 600s foreground cap and is
   cap-ADJACENT - this adds ~6s to a half that has no headroom left to spend.
-agy-curate-nudge.Tests.ps1                       48,1s   50 tests   <- 41 -> 50 2026-10-27 (unprojected-store rows, time not re-measured); 38 -> 41 2026-10-12 (section 75: +3 rows), time NOT re-measured; 29 -> 38 2026-10-08 (capstone R1: +5 days past the end of their month, +4 real last-days-of-month controls); 20 -> 29 2026-10-08 (Branch 21 Task 11, section 73: +40-day fires/no `date -d`, +20-day silent, +exact 30/29-day boundary under a frozen clock, +days_from_civil vs GNU date -f oracle, +4 impossible dates, +zero-padded year; time not re-measured); SLOW as of 2026-08-24; was FAST.
+agy-curate-nudge.Tests.ps1                       48,1s   51 tests   <- 50 -> 51 2026-10-27 (test audit: empty CLAUDE_PLUGIN_ROOT row); 41 -> 50 2026-10-27 (unprojected-store rows, time not re-measured); 38 -> 41 2026-10-12 (section 75: +3 rows), time NOT re-measured; 29 -> 38 2026-10-08 (capstone R1: +5 days past the end of their month, +4 real last-days-of-month controls); 20 -> 29 2026-10-08 (Branch 21 Task 11, section 73: +40-day fires/no `date -d`, +20-day silent, +exact 30/29-day boundary under a frozen clock, +days_from_civil vs GNU date -f oracle, +4 impossible dates, +zero-padded year; time not re-measured); SLOW as of 2026-08-24; was FAST.
   MOVED with check-injected-context because the FAST half measured 576,0s against the 600s foreground
   cap - see the note under ## Measured runtimes. Re-measured 2026-08-24 WARM on an
   idle CPU (cold 53,6s) after the test-audit closure added 6 tests. The count row had ALSO been stale
@@ -1135,7 +1135,7 @@ path-lib.Tests.ps1                                9,5s   18 tests   <- FAST, ADD
                                                                       half starts straddling it again.
 check-installer-ascii.Tests.ps1                   10,7s   4 tests   <- SLOW, ADDED 2026-09-08 (section 28).
 register-hash-scripts.Tests.ps1                      11,4s   11 tests   <- 8 -> 11 2026-10-27 (test audit MG-1: 2 comment/other-define rows + a positive control); SLOW, ADDED 2026-10-27 (ROADMAP section 93 item 2; one run, box load uncontrolled): sync-register-hash.ps1 and check-register-hash-synced.ps1 in a copied tree.
-project-store.Tests.ps1                            10,0s   19 tests   <- SLOW, ADDED 2026-10-27 (backlog stub fresh-install-injects-seed-only; one run, box load uncontrolled): project-store.sh against throwaway stores, the cap boundary and the real store.
+project-store.Tests.ps1                            10,0s   24 tests   <- 19 -> 24 2026-10-27 (test audit: default-seed rows, byte contract, curate-commit seam, stdout-empty); SLOW, ADDED 2026-10-27 (backlog stub fresh-install-injects-seed-only; one run, box load uncontrolled): project-store.sh against throwaway stores, the cap boundary and the real store.
                                                                       2 -> 4 on 2026-09-11 (AGY-TEST-AUDIT
                                                                       section 28): two rows pinning that the
                                                                       gate FAILS, each spawning a child pwsh

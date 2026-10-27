@@ -99,6 +99,7 @@ Describe 'project-store.sh' {
             $r = Invoke-Proj @('--store', $d)
             $r.ExitCode | Should -Be 2
             $r.StdErr | Should -Match 'c-rule\.md'
+            $r.StdOut | Should -BeNullOrEmpty -Because 'an error exit must not leak a partial proposal'
         } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -109,6 +110,7 @@ Describe 'project-store.sh' {
             $r = Invoke-Proj @('--store', $d)
             $r.ExitCode | Should -Be 6
             $r.StdErr | Should -Match 'a-rule\.md'
+            $r.StdOut | Should -BeNullOrEmpty -Because 'an error exit must not leak a partial proposal'
         } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -136,6 +138,7 @@ Describe 'project-store.sh' {
             $r = Invoke-Proj @('--store', $d)
             $r.ExitCode | Should -Be 6
             $r.StdErr | Should -Match 'a-rule\.md'
+            $r.StdOut | Should -BeNullOrEmpty -Because 'an error exit must not leak a partial proposal'
         } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -176,6 +179,90 @@ Describe 'project-store.sh' {
             $r = Invoke-Proj @('--store', $d, '--seed', $seed)
             $r.ExitCode | Should -Be 0 -Because ($r.StdErr + ' (trailing whitespace on the SEED must not count against the cap)')
         } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # SKILL.md tells the operator to run the helper with NO arguments, so the SEED it budgets against comes from the default lookup:
+    # CLAVITY_GOLDEN_HEADER (a directory) if set, else <home>/.clavity. Every other cap row passes --seed, which skips that lookup.
+    It 'budgets against the DEFAULT seed in the home .clavity directory when --seed is omitted (<Size>)' -ForEach @(
+        @{ Size = 32768; Code = 0 }
+        @{ Size = 32769; Code = 4 }
+    ) {
+        $d = New-Store
+        $h = New-TestTempPath 'projhome3'; New-Item -ItemType Directory -Path (Join-Path $h '.clavity') -Force | Out-Null
+        try {
+            $growth = $script:Expected.TrimEnd("`n")
+            [IO.File]::WriteAllText((Join-Path $h '.clavity/golden-header.seed.md'), ('s' * ($Size - $growth.Length - 2)) + "`n", [Text.UTF8Encoding]::new($false))
+            $r = Invoke-Proj @('--store', $d) -Env @{ HOME = $h; USERPROFILE = $h }
+            $r.ExitCode | Should -Be $Code -Because $r.StdErr
+        } finally { Remove-Item -LiteralPath $d, $h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'lets CLAVITY_GOLDEN_HEADER win over the home .clavity directory when picking the default seed' {
+        $d = New-Store
+        $h = New-TestTempPath 'projhome4'; New-Item -ItemType Directory -Path (Join-Path $h '.clavity') -Force | Out-Null
+        $g = New-TestTempPath 'projgh'; New-Item -ItemType Directory -Path $g -Force | Out-Null
+        try {
+            $utf8 = [Text.UTF8Encoding]::new($false)
+            [IO.File]::WriteAllText((Join-Path $h '.clavity/golden-header.seed.md'), 's' * 40000, $utf8)   # over the cap: would exit 4 if it were read
+            [IO.File]::WriteAllText((Join-Path $g 'golden-header.seed.md'), "small seed`n", $utf8)
+            $r = Invoke-Proj @('--store', $d) -Env @{ HOME = $h; USERPROFILE = $h; CLAVITY_GOLDEN_HEADER = $g }
+            $r.ExitCode | Should -Be 0 -Because $r.StdErr
+            [IO.File]::WriteAllText((Join-Path $g 'golden-header.seed.md'), 's' * 40000, $utf8)
+            [IO.File]::WriteAllText((Join-Path $h '.clavity/golden-header.seed.md'), "small seed`n", $utf8)
+            (Invoke-Proj @('--store', $d) -Env @{ HOME = $h; USERPROFILE = $h; CLAVITY_GOLDEN_HEADER = $g }).ExitCode | Should -Be 4
+        } finally { Remove-Item -LiteralPath $d, $h, $g -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # Invoke-BashHook captures stdout as text and drops the final newline, so the byte contract (the proposal ends in exactly one LF)
+    # is read from a file the shell redirected to.
+    It 'writes the proposal as exactly the expected bytes: one LF at the end, never a blank line' {
+        $d = New-Store
+        $out = New-TestTempPath 'projout'
+        try {
+            $bash = Get-GitBashOrThrow
+            & $bash -c ('bash "$1" --store "$2" > "$3"' ) _ ($script:Script -replace '\\','/') ($d -replace '\\','/') ($out -replace '\\','/')
+            $bytes = [IO.File]::ReadAllBytes($out)
+            $bytes[-1] | Should -Be 10
+            $bytes[-2] | Should -Not -Be 10
+            [Text.Encoding]::UTF8.GetString($bytes) | Should -BeExactly $script:Expected
+        } finally { Remove-Item -LiteralPath $d, $out -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # The seam no unit row crosses: helper output -> the one gated writer (`curate-commit`) -> the file the readers and the nudge look at.
+    It 'feeds curate-commit: the published GROWTH is the proposal byte for byte, has its sidecar, and the SessionStart nudge goes quiet' {
+        $exe = $env:CLAVITY_CURATE_COMMIT_EXE
+        if (-not $exe) {
+            $cand = Join-Path $script:RepoRoot 'clavity-classic/target/debug/clavity'
+            if ($IsWindows) { $cand += '.exe' }
+            $exe = if (Test-Path -LiteralPath $cand) { $cand } else { (Get-Command clavity-ls, clavity -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source }
+        }
+        if (-not $exe) { Set-ItResult -Skipped -Because 'APPROVED:NeedsTool:clavity: no curate-commit binary (CLAVITY_CURATE_COMMIT_EXE, clavity-classic debug build, clavity-ls or clavity on PATH) is available'; return }
+        $d = New-Store
+        $g = New-TestTempPath 'projgh2'; New-Item -ItemType Directory -Path $g -Force | Out-Null
+        $plug = New-TestTempPath 'projplug'; New-Item -ItemType Directory -Path (Join-Path $plug 'knowledge') -Force | Out-Null
+        try {
+            Copy-Item -LiteralPath $d -Destination (Join-Path $plug 'knowledge/rules') -Recurse
+            $proposal = (Invoke-Proj @('--store', $d)).StdOut + "`n"
+            $psi = [Diagnostics.ProcessStartInfo]::new($exe)
+            $psi.ArgumentList.Add('curate-commit')
+            $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true; $psi.UseShellExecute = $false
+            $psi.Environment['CLAVITY_GOLDEN_HEADER'] = $g
+            $p = [Diagnostics.Process]::Start($psi)
+            $b = [Text.UTF8Encoding]::new($false).GetBytes($proposal)
+            $p.StandardInput.BaseStream.Write($b, 0, $b.Length); $p.StandardInput.Close()
+            $null = $p.StandardOutput.ReadToEnd(); $err = $p.StandardError.ReadToEnd(); $p.WaitForExit()
+            $p.ExitCode | Should -Be 0 -Because $err
+            $growth = Join-Path $g 'golden-header.growth.md'
+            [IO.File]::ReadAllText($growth).TrimEnd() | Should -BeExactly $proposal.TrimEnd()
+            Test-Path -LiteralPath ($growth + '.sha256') | Should -BeTrue
+            $home2 = Join-Path $plug 'home'; New-Item -ItemType Directory -Path $home2 -Force | Out-Null
+            $inbox = Join-Path $home2 '.clavity'; New-Item -ItemType Directory -Path $inbox -Force | Out-Null
+            $hook = Join-Path $script:RepoRoot 'agy-autotrain/hooks/agy-curate-nudge.sh'
+            $nudgeEnv = @{ CLAUDE_PLUGIN_ROOT = ($plug -replace '\\','/'); HOME = ($home2 -replace '\\','/'); USERPROFILE = ($home2 -replace '\\','/'); CLAVITY_GOLDEN_HEADER = ($g -replace '\\','/') }
+            (Invoke-BashHook -HookPath $hook -Payload '{}' -Env $nudgeEnv).StdOut | Should -BeNullOrEmpty
+            Remove-Item -LiteralPath $growth, ($growth + '.sha256')
+            (Invoke-BashHook -HookPath $hook -Payload '{}' -Env $nudgeEnv).StdOut | Should -Match 'SEED only' -Because 'the same environment WITHOUT the published GROWTH must warn, or the silence above proves nothing'
+        } finally { Remove-Item -LiteralPath $d, $g, $plug -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
     It 'never writes: the store and HOME are byte-identical before and after' {

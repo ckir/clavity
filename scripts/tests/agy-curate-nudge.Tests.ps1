@@ -747,6 +747,17 @@ echo "checked $i bad $bad"
             function Get-Ctx { param($Result) ($Result.StdOut | ConvertFrom-Json).hookSpecificOutput.additionalContext }
         }
 
+        It 'stays silent when CLAUDE_PLUGIN_ROOT is empty: a hook that cannot tell where its plugin lives does not guess' {
+            $e = New-NudgeEnv -Inbox $script:QuietInbox
+            try {
+                Add-Store $e.Root -Rules 3
+                $e.Env.CLAUDE_PLUGIN_ROOT = ''
+                $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+                $r.ExitCode | Should -Be 0
+                $r.StdOut | Should -BeNullOrEmpty
+            } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
         It 'warns, once, naming the count and the agy-curate step, when GROWTH and the legacy file are both absent' {
             $e = New-NudgeEnv -Inbox $script:QuietInbox
             try {

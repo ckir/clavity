@@ -243,4 +243,5 @@ The last three are conditional, listed in `### conditional`. A listed line is do
 | generate-cheatsheet-literals.Tests.ps1 | generate-cheatsheet-literals.ps1.is ALL-OR-NOTHING across the two targets - a failed C# write does not leave rust rewritten | NotAsRoot | root writes a read-only file, so the write cannot be made to fail |
 | path-lib.Tests.ps1 | Get-RootRelativePath.accepts a PATH spelled in different casing from the disk, because NTFS is case-insensitive | FsFeature:case-insensitive | - |
 | path-lib.Tests.ps1 | Get-RootRelativePath.normalises an UPPERCASE root | FsFeature:case-insensitive | - |
+| project-store.Tests.ps1 | project-store.sh.feeds curate-commit: the published GROWTH is the proposal byte for byte, has its sidecar, and the SessionStart nudge goes quiet | NeedsTool:clavity | no curate-commit binary (CLAVITY_CURATE_COMMIT_EXE, clavity-classic debug build, clavity-ls or clavity on PATH) is available |
 | review-relay-scripts.Tests.ps1 | collect.ps1.a failed rebuild leaves no stale collected.md (G4) | NotAsRoot | root is not bound by directory permissions |
