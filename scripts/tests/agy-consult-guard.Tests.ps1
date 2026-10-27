@@ -25,6 +25,10 @@ Describe 'agy-consult-guard' {
         $script:Lib  = Join-Path $repoRoot 'clavity-dotnet/plugin/hooks/agy-consult-guard-lib.sh'
         $script:Classic = Join-Path $repoRoot 'clavity-classic/plugin/hooks'
 
+        # ROADMAP 89(b): the guard keeps its state per session id under TMPDIR, so a constant id made two concurrent runs
+        # of this suite read and clear each other's state (measured: solo 58 passed / 1 failed, two at once 57 / 2 each).
+        $script:SessionId = 'guardtest-' + [guid]::NewGuid().ToString('N')
+
         function New-GuardRepo {
             $d = New-TestTempPath 'guard'
             New-Item -ItemType Directory -Path $d -Force | Out-Null
@@ -36,7 +40,7 @@ Describe 'agy-consult-guard' {
             return $d
         }
         function Payload { param([string]$Tool, [string]$Cmd, [string]$Cwd, [object[]]$Response, [int]$DurationMs)
-            $h = @{ tool_name = $Tool; tool_input = @{ command = $Cmd }; cwd = ($Cwd -replace '\\','/'); session_id = 'guardtest' }
+            $h = @{ tool_name = $Tool; tool_input = @{ command = $Cmd }; cwd = ($Cwd -replace '\\','/'); session_id = $script:SessionId }
             if ($PSBoundParameters.ContainsKey('Response'))   { $h.tool_response = $Response }
             if ($PSBoundParameters.ContainsKey('DurationMs')) { $h.duration_ms = $DurationMs }
             $h | ConvertTo-Json -Compress -Depth 6
@@ -1324,7 +1328,7 @@ echo "digests=$n calls=$(wc -l < "$count")"
     ) {
         $r = New-GuardRepo
         try {
-            $h = @{ tool_name = 'mcp__plugin_clavity_clavity-ls__agy_ask'; tool_input = @{ command = '' }; cwd = ($r -replace '\\','/'); session_id = 'guardtest' }
+            $h = @{ tool_name = 'mcp__plugin_clavity_clavity-ls__agy_ask'; tool_input = @{ command = '' }; cwd = ($r -replace '\\','/'); session_id = $script:SessionId }
             if ($Shape -eq 'bash-shaped')  { $h.tool_response = @{ stdout = 'x'; stderr = '' } }
             if ($Shape -eq 'plain string') { $h.tool_response = '[PEER STILL BUSY]' }
             $p = $h | ConvertTo-Json -Compress -Depth 6
