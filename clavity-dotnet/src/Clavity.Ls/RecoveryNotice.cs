@@ -32,6 +32,25 @@ public static class RecoveryNotice
         return lead + "Recover in this order: " + string.Join("; ", steps.Select((s, i) => $"({i + 1}) {s}")) + ".";
     }
 
+    /// <summary>What a TRUNCATED REPLY notice adds: the token the discipline requires and the line the driver actually saw, so a
+    /// closing line in the wrong vocabulary is told apart from a reply that was cut. When the Answer is itself cut at the cap its
+    /// last line is NOT the reply's last line, so none is quoted. The adversarial-panel-review hint appears only for the mismatch
+    /// seen in the flux sessions: the panel token was required and the reply ended on a [VERDICT: ...] line.</summary>
+    public static string TerminalDetail(string expected, AskReply r)
+    {
+        string? line = r.AnswerTruncated ? null : TerminalToken.LastLine(r.Answer);
+        var seen = r.AnswerTruncated
+            ? $"the reply is longer than {BoundedView.AskMaxStepChars} characters, so its last line is in the file named below"
+            : line is null ? "there was no reply text"
+            : $"the last non-blank line was '{ReplyCapture.Clip(line, 100)}'";
+        var hint = expected == "PANEL VERDICT" && line is not null
+                   && TerminalToken.StripDecoration(line).StartsWith("VERDICT:", StringComparison.Ordinal)
+            ? "; adversarial-panel-review closes each round on a line starting PANEL VERDICT, and the [VERDICT: ...] vocabulary belongs to "
+              + "agy-first, agy-capstone and agy-test-audit: if the brief demanded it, fix the brief"
+            : "";
+        return $" (expected a last line starting with '{expected}'; {seen}{hint})";
+    }
+
     public static string AnswerCut(AskReply r)
     {
         var file = r.CheckedSource == "peer-file" ? r.PeerFile : r.ReplyFile;

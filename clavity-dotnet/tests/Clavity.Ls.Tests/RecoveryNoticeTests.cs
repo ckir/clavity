@@ -47,6 +47,78 @@ public class RecoveryNoticeTests
         Assert.True(s.Length <= RecoveryNotice.MaxChars, $"{s.Length} chars");
     }
 
+    private static AskReply WithAnswer(string? answer, bool cut = false) =>
+        new("c", answer, Array.Empty<ActivityItem>(), cut, false, TerminalTokenMissing: true);
+
+    [Fact]
+    public void Terminal_detail_names_the_expected_token_and_the_line_the_driver_saw()
+    {
+        var d = RecoveryNotice.TerminalDetail("VERDICT:", WithAnswer("report\n\nPANEL VERDICT: CLEAN\n"));
+        Assert.Contains("'VERDICT:'", d);
+        Assert.Contains("'PANEL VERDICT: CLEAN'", d);
+        Assert.DoesNotContain("adversarial-panel-review closes", d);   // the panel hint is for the panel mismatch only
+    }
+
+    [Fact]
+    public void Panel_asked_for_PANEL_VERDICT_but_ended_on_a_bracket_VERDICT_line_gets_the_specific_hint()
+    {
+        var d = RecoveryNotice.TerminalDetail("PANEL VERDICT", WithAnswer("report\n[VERDICT: GREEN]\n"));
+        Assert.Contains("'PANEL VERDICT'", d);
+        Assert.Contains("'[VERDICT: GREEN]'", d);
+        Assert.Contains("adversarial-panel-review closes each round on a line starting PANEL VERDICT", d);
+        Assert.Contains("fix the brief", d);
+    }
+
+    [Fact]
+    public void The_panel_hint_is_not_shown_for_a_panel_reply_that_simply_stopped_mid_sentence()
+    {
+        var d = RecoveryNotice.TerminalDetail("PANEL VERDICT", WithAnswer("report that stops in the middle of a sen"));
+        Assert.Contains("'report that stops in the middle of a sen'", d);
+        Assert.DoesNotContain("adversarial-panel-review closes", d);
+    }
+
+    [Fact]
+    public void A_cut_Answer_does_not_quote_its_last_line_because_that_is_not_the_replys_last_line()
+    {
+        var d = RecoveryNotice.TerminalDetail("PANEL VERDICT", WithAnswer("the first sixteen thousand characters", cut: true));
+        Assert.DoesNotContain("the first sixteen", d);
+        Assert.Contains($"{BoundedView.AskMaxStepChars} characters", d);
+    }
+
+    [Fact]
+    public void The_quoted_line_is_clipped_at_exactly_one_hundred_characters()
+    {
+        // Test audit MG-1: 'shorter than 600' passed for any clip from 50 to 500.
+        var hundred = new string('a', 100);
+        Assert.Contains($"'{hundred}')", RecoveryNotice.TerminalDetail("VERDICT:", WithAnswer(hundred)));          // exactly the limit: whole line
+        var d = RecoveryNotice.TerminalDetail("VERDICT:", WithAnswer(hundred + "b"));                              // one over: clipped to the limit
+        Assert.Contains($"'{hundred}')", d);
+        Assert.DoesNotContain(hundred + "b", d);
+    }
+
+    [Fact]
+    public void A_cut_Answer_that_happens_to_end_on_a_bracket_VERDICT_line_gets_no_panel_hint()
+    {
+        // The prefix cut at the cap is not the reply's end, so its last line proves nothing about the closing line.
+        var d = RecoveryNotice.TerminalDetail("PANEL VERDICT", WithAnswer("quoted earlier in the reply\n[VERDICT: GREEN]\n", cut: true));
+        Assert.DoesNotContain("adversarial-panel-review closes", d);
+        Assert.DoesNotContain("[VERDICT: GREEN]", d);
+    }
+
+    [Fact]
+    public void An_empty_reply_says_so()
+    {
+        Assert.Contains("no reply text", RecoveryNotice.TerminalDetail("VERDICT:", WithAnswer(null)));
+        Assert.Contains("no reply text", RecoveryNotice.TerminalDetail("VERDICT:", WithAnswer("  \n")));
+    }
+
+    [Fact]
+    public void A_very_long_last_line_is_clipped()
+    {
+        var d = RecoveryNotice.TerminalDetail("VERDICT:", WithAnswer(new string('x', 5000)));
+        Assert.True(d.Length < 600, $"{d.Length} chars");
+    }
+
     [Fact]
     public void Answer_cut_points_at_the_file_the_Answer_came_from()
     {

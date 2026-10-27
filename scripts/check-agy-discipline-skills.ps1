@@ -418,6 +418,20 @@ $skillRules = @(
            }
        } }
 
+    # The adversarial-panel-review skill DEFINES its terminal token. Its pasteable payload clause says "the terminal token" and the driver requires a
+    # closing line that starts with PANEL VERDICT; when the skill never said what the token is, driving models filled in the [VERDICT: ...]
+    # vocabulary of the other three disciplines and the driver flagged 56 complete flux replies as truncated (2026-10-27). Pinned by its two needles.
+    @{ Name = 'panel terminal token'
+       AppliesTo = { param($ctx, $rule) $ctx.Skill -eq 'adversarial-panel-review' }
+       Check = { param($ctx, $rule)
+           if (-not $ctx.Raw.Contains('> End the round with one closing line that starts with `PANEL VERDICT:`')) {
+               $ctx.Report("$($ctx.Rel) : does not define the panel's terminal token as PAYLOAD text ('> End the round with one closing line that starts with `PANEL VERDICT:`') - without it the pasteable terminal-token clause points at nothing and drivers demand [VERDICT: ...], which the driver flags as TRUNCATED REPLY")
+           }
+           if (-not $ctx.Raw.Contains('Do NOT demand `[VERDICT:')) {
+               $ctx.Report("$($ctx.Rel) : does not forbid demanding [VERDICT: ...] for a panel round ('Do NOT demand `[VERDICT:') - that vocabulary belongs to the other three disciplines; the terminal token for a panel is the PANEL VERDICT line")
+           }
+       } }
+
     # ROADMAP section 25: every review-only discipline carries a bounded negotiation protocol - all FOUR,
     # adversarial-panel-review included, which is excluded from $skills on purpose (non-ASCII content, no
     # marker constant) but must still carry this section.

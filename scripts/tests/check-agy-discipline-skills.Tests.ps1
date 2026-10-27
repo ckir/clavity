@@ -593,6 +593,26 @@ Describe 'check-agy-discipline-skills' {
             Remove-Item -Recurse -Force $scratch
         }
 
+        # The false [13b] TRUNCATED REPLY flags on panel asks (flux sessions, 2026-10-27): the panel skill's pasteable payload clause says "the
+        # terminal token" without defining it for the panel, so driving models filled in the [VERDICT: ...] vocabulary of the other three
+        # disciplines, agy obeyed, and the driver (which requires a closing line starting PANEL VERDICT) flagged complete replies.
+        It 'fails when the panel skill stops DEFINING its terminal token (<Needle>)' -ForEach @(
+            @{ Needle = '> End the round with one closing line that starts with `PANEL VERDICT:`' }
+            @{ Needle = 'Do NOT demand `[VERDICT:' }
+        ) {
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch 'adversarial-panel-review'
+            $raw = Get-Content -Raw $target
+            $raw.Contains($Needle) | Should -BeTrue -Because 'the shipped skill must carry the needle for this row to mean anything'
+            Set-Content -Path $target -Value $raw.Replace($Needle, 'a vague closing instruction') -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1 | Out-String
+            $LASTEXITCODE | Should -Be 1
+            $flat = ($out -replace '\s*\|\s*', ' ') -replace '\s+', ' '   # CI wraps the diagnostic at the console width into '| ' table lines, so "terminal" and "token" can land on two
+            $flat | Should -Match 'adversarial-panel-review'
+            $flat | Should -Match 'terminal token'
+            Remove-Item -Recurse -Force $scratch
+        }
+
         It 'fails cleanly (no unhandled crash) on an empty <skill> file' -ForEach @(
             @{ skill = 'agy-first' }, @{ skill = 'agy-capstone' }, @{ skill = 'agy-test-audit' }
         ) {
