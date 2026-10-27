@@ -607,7 +607,7 @@ Describe 'check-agy-discipline-skills' {
             Set-Content -Path $target -Value $raw.Replace($Needle, 'a vague closing instruction') -Encoding utf8
             $out = & $script:Lint -Root $scratch 2>&1 | Out-String
             $LASTEXITCODE | Should -Be 1
-            $flat = $out -replace '\s+', ' '   # the diagnostic wraps at the console width on CI; "terminal" and "token" can land on two lines
+            $flat = ($out -replace '\s*\|\s*', ' ') -replace '\s+', ' '   # CI wraps the diagnostic at the console width into '| ' table lines, so "terminal" and "token" can land on two
             $flat | Should -Match 'adversarial-panel-review'
             $flat | Should -Match 'terminal token'
             Remove-Item -Recurse -Force $scratch
