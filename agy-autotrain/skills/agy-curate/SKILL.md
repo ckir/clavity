@@ -347,6 +347,22 @@ Write it as a normal inbox bullet with a `held=` field appended:
 blocker clears. A HELD entry with no release condition, or one whose condition has since cleared, is a
 drain that did not finish - treat it as pending on the next run.
 
+## Project the knowledge store (a machine that has no GROWTH yet)
+
+The SessionStart nudge says "golden-header: SEED only - the knowledge store has N rules that this machine does not inject" when the
+machine has neither a `golden-header.growth.md` nor the pre-split flat `golden-header.md`. That is this step's trigger (it can also be
+asked for by hand). The store (`knowledge/rules/` in this plugin) is tier 2: never injected, unbounded; GROWTH is a bounded SELECTED
+projection of it, and selecting is a judgement, so nothing projects it for you and nothing writes it without the human gate below.
+
+1. Run `bash "<this skill's base directory>/project-store.sh"`. It compiles the store in INDEX order into a GROWTH PROPOSAL on stdout
+   (the section headers GROWTH uses, each rule verbatim) and NEVER writes. Exit codes: 3 = a rule is not ASCII, 4 = the SEED plus the
+   whole projection would exceed the 32768-byte cap (then the store needs a selection: cut rules with the human, do not hand-edit the
+   store), 5 = nothing to project, 6 = a rule file disagrees with the INDEX, 2 = a file is missing. On a non-zero exit report it and stop.
+2. Treat the output as the GROWTH proposal of this run: fold the inbox rules you are promoting into it under the same budget, show it to
+   the human with the rest of the gate below, and publish ONLY what is approved, through `curate-commit` (never a raw write: a reader
+   refuses a GROWTH file that has no sidecar, and `curate-commit` is the only writer of one).
+3. A machine that already has a GROWTH file does not need this step; the store is then only a reference for retiring or reinstating rules.
+
 ## Compile + commit the GROWTH region (via the binary, never a raw edit)
 
 **Migrate a pre-split flat header first (one-time - preserves upgrading users' wisdom, spec Acceptance #4).**
