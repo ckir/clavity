@@ -188,9 +188,9 @@ rm -f "$sf" 2>/dev/null            # consume the baseline
 # and silence after a long gap would be wrong exactly when the peer has had longest to write.
 usf="${sf%.*}.unfinished"          # <state dir>/<sid>.unfinished - no helper call: it costs a process (mkdir) and sf already made the dir
 if [ -n "$inc" ]; then
-  printf '%s\n%s\n' "$inc" "$cwd" > "$usf" 2>/dev/null
+  printf '%s\n%s\n' "$inc" "$cwd" 2>/dev/null > "$usf"
 elif [ -f "$usf" ]; then
-  { IFS= read -r _sinc; IFS= read -r _scwd; } < "$usf" 2>/dev/null
+  { IFS= read -r _sinc; IFS= read -r _scwd; } 2>/dev/null < "$usf"
   [ "$_scwd" = "$cwd" ] && rm -f "$usf" 2>/dev/null
 fi
 

@@ -1393,7 +1393,7 @@ echo "digests=$n calls=$(wc -l < "$count")"
     Context 'section 87 - the sentinel of an unfinished consult' {
         BeforeAll {
             $script:AskTool = 'mcp__plugin_clavity_clavity-ls__agy_ask'
-            $script:SentinelPath = Join-Path (Join-Path ([IO.Path]::GetTempPath()) 'claude-agy-consult-guard') "$($script:SessionId).unfinished"
+            $script:SentinelPath = Join-Path (Join-Path $(if ($env:TMPDIR) { $env:TMPDIR } else { '/tmp' }) 'claude-agy-consult-guard') "$($script:SessionId).unfinished"
             $script:FinishedResp = @(@{ type = 'text'; text = '{"CascadeId":"c","Answer":"fine","PeerStillBusy":false}' })
             function script:Unfinished { param($Repo) Payload $script:AskTool '' $Repo -Response $script:BusyResponse -DurationMs 78377 }
             function script:Finished   { param($Repo) Payload $script:AskTool '' $Repo -Response $script:FinishedResp -DurationMs 9000 }
