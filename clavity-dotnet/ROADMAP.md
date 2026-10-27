@@ -4358,7 +4358,7 @@ Linux proxy (`strace -ff -e trace=execve` over the real hooks, 82 rows plus a de
 
 ### §85 — The Bash/CLI consult path's unfinished returns are unmeasured, and the harness's backgrounding text can change
 
-**Status:** IMPLEMENTED 2026-10-27 - on branch `chore/consult-guard-batch`: `agy-consult-guard-post.sh` classifies `tool_response.backgroundTaskId` as cli-timeout or cli-background for a sync or terminal consult (both twins, seven rows); flips to SHIPPED when that branch is merged
+**Status:** IMPLEMENTED 2026-10-27 - on branch `chore/consult-guard-batch`: `agy-consult-guard-post.sh` classifies `tool_response.backgroundTaskId` as cli-timeout or cli-background for a sync or terminal consult (both twins, eight rows); flips to SHIPPED when that branch is merged
 
 Classic's `clavity ask` runs through a Bash tool call whose `tool_response` is an object (not the list of text blocks an `agy_ask` returns), and its backgrounding behaviour was never captured. The section 78 hook change classifies only the MCP path, so an unfinished return on the CLI path is still reported as a clean compare.
 
