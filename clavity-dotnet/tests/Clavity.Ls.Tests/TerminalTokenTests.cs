@@ -248,4 +248,20 @@ public class TerminalTokenTests
         // THE FAILING CONTROL: CRLF must not become a way to PASS a reply that never reached a verdict.
         Assert.False(TerminalToken.IsSatisfied("findings\r\n\r\nlast line with no token\r\n", "VERDICT:"));
     }
+
+    // The [13b] TRUNCATED REPLY notice must name the line the driver saw, so a caller can tell a mismatched closing line from a cut reply.
+    [Theory]
+    [InlineData("findings\n\n[VERDICT: ALIGNED]\n\n   \n", "[VERDICT: ALIGNED]")]
+    [InlineData("findings\n**\n`\n", "findings")]                 // a line made only of furniture is not content: look further up
+    [InlineData("one\ntwo   \n\n", "two")]                        // trimmed
+    [InlineData("  [VERDICT: GREEN]  ", "[VERDICT: GREEN]")]
+    public void LastLine_is_the_last_non_blank_line_that_is_not_furniture(string reply, string expected) =>
+        Assert.Equal(expected, TerminalToken.LastLine(reply));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   \n\n")]
+    [InlineData("***\n___\n")]
+    public void LastLine_is_null_when_there_is_no_content(string? reply) => Assert.Null(TerminalToken.LastLine(reply));
 }

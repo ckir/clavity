@@ -2594,6 +2594,39 @@ public class AgyAskIntegrationTests
         finally { Directory.Delete(dir, true); }
     }
 
+    // The false flag the flux sessions saw on adversarial-panel-review: the peer obeyed a brief that demanded the [VERDICT: ...] vocabulary
+    // of the other disciplines, so a complete reply ended on a bracket line the panel contract does not accept. The notice must say so.
+    [Fact]
+    public async Task TRUNCATED_on_a_panel_ask_names_PANEL_VERDICT_and_the_line_it_saw()
+    {
+        var dir = TempDir();
+        try
+        {
+            var (texts, _) = await AgyAskOnce("seat reports\n\n[VERDICT: GREEN]\n", dir, discipline: "adversarial-panel-review");
+            var block = Assert.Single(texts, t => t.Contains("[13b]"));
+            Assert.StartsWith("[13b] TRUNCATED REPLY: the terminal token this discipline requires", block);
+            Assert.Contains("'PANEL VERDICT'", block);
+            Assert.Contains("'[VERDICT: GREEN]'", block);
+            Assert.Contains("fix the brief", block);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task TRUNCATED_on_a_capstone_ask_names_VERDICT_and_the_line_it_saw()
+    {
+        var dir = TempDir();
+        try
+        {
+            var (texts, _) = await AgyAskOnce("a review with no token", dir);
+            var block = Assert.Single(texts, t => t.Contains("[13b]"));
+            Assert.Contains("'VERDICT:'", block);
+            Assert.Contains("'a review with no token'", block);
+            Assert.DoesNotContain("fix the brief", block);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     [Fact]
     public async Task ECHO_MISSING_names_the_order_too()
     {

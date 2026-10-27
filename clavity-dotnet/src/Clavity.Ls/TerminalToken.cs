@@ -59,6 +59,25 @@ public static class TerminalToken
     /// the set the moment a character is added here, while still reading as an enforced invariant.</summary>
     public static bool IsDecoration(char c) => Array.IndexOf(StripFromFrontBeforeMatching, c) >= 0;
 
+    /// <summary>The last non-blank line that is not mere furniture, trimmed - the line <see cref="IsSatisfied"/> judges. Null when
+    /// there is none. It exists so the [13b] TRUNCATED REPLY notice can say WHICH line it saw (a mismatched closing line looks
+    /// exactly like a cut reply otherwise, which cost the flux sessions many recoveries from the reply file).</summary>
+    public static string? LastLine(string? answer)
+    {
+        if (string.IsNullOrWhiteSpace(answer)) return null;
+        var lines = answer.Split('\n');
+        for (var i = lines.Length - 1; i >= 0; i--)
+        {
+            var raw = lines[i].Trim();
+            if (raw.TrimStart(SkipIfLineIsOnlyThese).Length == 0) continue;
+            return raw;
+        }
+        return null;
+    }
+
+    /// <summary>The line with the same decoration removed from its front that <see cref="IsSatisfied"/> removes before matching.</summary>
+    public static string StripDecoration(string line) => line.TrimStart(StripFromFrontBeforeMatching);
+
     /// <param name="answer">The reply text, or null when the delta ended on a non-assistant step.</param>
     /// <param name="expected">The literal the last non-blank line must contain; null = caller opts out.</param>
     public static bool IsSatisfied(string? answer, string? expected)

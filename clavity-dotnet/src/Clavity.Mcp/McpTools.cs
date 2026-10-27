@@ -128,6 +128,7 @@ public class McpTools
             blocks.Add(new TextContentBlock
             {
                 Text = "[13b] TRUNCATED REPLY: the terminal token this discipline requires is missing or not at the end"
+                     + RecoveryNotice.TerminalDetail(expectTerminal ?? "the discipline's token", reply13b)
                      + (reply13b.TurnEndedOnToolStep ? " (the turn ended on a tool step, so Answer is empty)" : "")
                      + ". Treat this consult as INCOMPLETE - never as 'no findings' - and fold nothing from it until it is recovered. "
                      + RecoveryNotice.Sentence(reply13b)
