@@ -413,6 +413,35 @@ Describe 'check-injected-context.ps1' {
         }
     }
 
+    Context 'a broken relative traversal reaches the exit code (test audit, linux hygiene)' {
+        # The candidate rule is asserted token by token above; nothing ran a document through the CLI to see the REPORT. A regression
+        # in extraction or collection for a `..`-terminated reference would leave those rows green and ship a gate that misses it.
+        BeforeAll {
+            . $script:Script -RepoRoot $script:RepoRoot
+            $script:RunWithRef = {
+                param([string]$Ref)
+                $d = New-TestTempPath 'icc-trav'
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+                Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+                [IO.File]::WriteAllText((Join-Path $d 'seed/ref.md'), "See ``$Ref`` for the layout.`n", (New-Object System.Text.UTF8Encoding($false)))
+                $out = & pwsh -NoProfile -File $script:Script -RepoRoot $d 2>&1 | Out-String
+                $code = $LASTEXITCODE
+                Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue
+                [pscustomobject]@{ Code = $code; Out = $out }
+            }
+        }
+        It 'exits 1 and names a ..-terminated reference that leaves the repository' {
+            $r = & $script:RunWithRef '../../nonexistent/..'
+            $r.Code | Should -Be 1 -Because $r.Out
+            $r.Out | Should -Match 'broken: \.\./\.\./nonexistent/\.\.'
+        }
+        It 'does NOT fail on the same path ending in an ellipsis (the near-miss)' {
+            $r = & $script:RunWithRef '../../nonexistent/...'
+            $r.Code | Should -Be 0 -Because $r.Out
+        }
+    }
     Context 'reference resolution outcomes' {
         BeforeAll { . $script:Script -RepoRoot $script:RepoRoot }
 
