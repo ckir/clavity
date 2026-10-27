@@ -4482,7 +4482,7 @@ Two measurements the shipped fixes left behind, each stated as the entry that bu
 
 ### §101 — `clavity-ls start` allowed several Claudes in one folder, so a second one found the first one's work already done
 
-**Status:** IMPLEMENTED 2026-10-27 - built on branch `feat/one-claude-per-folder`; a held lock per resolved folder, taken by every `start` before it opens anything
+**Status:** SHIPPED 2026-10-27 - merged to main in `c5113073` (PR #29; feature `6d277bd1`, capstone fold `8ab15694`, test-audit fold `af1bf376`, Windows drive fix `7cf0f0a3`): a held lock per resolved folder, taken by every `start` before it opens anything
 
 Owner request, 2026-10-27: make `start` refuse to start in the same folder, "otherwise the first session starts work and the second finds the work implemented". Until now only `start --attach` was guarded, by the per-SESSION lock of section 65 (one Claude per agy); a plain `start` mints a fresh session id, so two ran side by side, and `clavity-ls agy` twice plus one attach to each was a SUPPORTED way to get two agy+Claude pairs in one folder (the code printed "for another Claude in this folder, run `clavity-ls agy`", and a test pinned that text). **This reverses that part of section 65 on purpose.**
 
