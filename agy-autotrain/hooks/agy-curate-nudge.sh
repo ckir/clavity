@@ -61,7 +61,42 @@ cwd="$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null)"
 # documentation, not measured on a BSD box.
 if [ -f "$SNOOZE" ] && [ -n "$(find -L "$SNOOZE" -mmin -10080 2>/dev/null)" ]; then exit 0; fi
 
-[ -f "$OBS" ] || exit 0
+# Backlog stub fresh-install-injects-seed-only: a machine can run on SEED alone for days, because both header readers treat an absent
+# GROWTH as legitimate (a docs-only drain publishes none) and nothing projects the plugin's knowledge store. This is the only signal.
+# Silent unless ALL hold: the plugin carries a store whose INDEX links at least one rule, and this machine has NEITHER a GROWTH file (an
+# EMPTY one counts: the machine has drained) NOR the pre-split flat golden-header.md (which the readers inject on its own). Checked BEFORE
+# the inbox gates below, which exit early on a quiet or absent inbox and would otherwise swallow it. CLAUDE_PLUGIN_ROOT only, no fallback
+# to this script's own location: a hook that cannot tell where its plugin lives must stay silent, not guess. Builtins only (process budget).
+gh_msg=""
+_gh_dir="${CLAVITY_GOLDEN_HEADER:-${HOME_DIR}/.clavity}"
+_store_index=""; [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && _store_index="${CLAUDE_PLUGIN_ROOT}/knowledge/rules/INDEX.md"
+if [ -n "$_store_index" ] && [ -f "$_store_index" ] && [ ! -e "$_gh_dir/golden-header.growth.md" ] && [ ! -e "$_gh_dir/golden-header.md" ]; then
+  _rules=0; _re_link='^-[[:space:]]+\[[^]]*\]\([^)]*\.md\)'
+  while IFS= read -r _l || [ -n "$_l" ]; do [[ $_l =~ $_re_link ]] && _rules=$((_rules + 1)); done < "$_store_index"
+  if [ "$_rules" -gt 0 ]; then
+    gh_msg="golden-header: SEED only - the knowledge store has ${_rules} rules that this machine does not inject (no golden-header.growth.md). Run the agy-autotrain:agy-curate skill (that namespaced name, not clavity:agy-curate) and follow its 'Project the knowledge store' step: it runs project-store.sh and sends the proposal through the human gate. Snooze with ~/.clavity/.agy-curate-snooze."
+  fi
+fi
+
+# Emit $msg as the SessionStart context.
+# PROCESS BUDGET: emitting the JSON in-shell saves a jq process on every nudge path. Byte-identical to
+# `jq -nc` ONLY while $msg is printable ASCII (jq escapes only `\`, `"` and control characters, and passes
+# the rest through), so anything outside space..tilde (a non-ASCII or control char in the USERPROFILE path,
+# a DEL) falls back to jq. The `command -v` guard keeps the old "no jq -> print nothing" behaviour.
+emit_msg() {
+  command -v jq >/dev/null 2>&1 || return 0
+  LC_ALL=C   # byte-wise range below; the script exits right after, so nothing else is affected (no subshell: a fork costs a process)
+  if [[ $msg == *[^\ -~]* ]]; then
+    jq -nc --arg m "$msg" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}' 2>/dev/null
+  else
+    local esc=${msg//\\/\\\\}; esc=${esc//\"/\\\"}
+    printf '%s%s' "{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"$esc\"}}" $'\n'
+  fi
+}
+# Every quiet exit below must still say the projection warning when there is one.
+quiet_exit() { if [ -n "$gh_msg" ]; then msg="$gh_msg"; emit_msg; fi; exit 0; }
+
+[ -f "$OBS" ] || quiet_exit
 # Count entries under "## Pending" (lines beginning with "- ["), and find the OLDEST entry date
 # (bullets are delimited by U+00B7 MIDDLE DOT, NOT an ASCII asterisk - the live inbox format, pinned
 # by agy-curate-nudge.Tests.ps1; lexicographic min == chronologically oldest).
@@ -95,7 +130,7 @@ if [ -f "$SNOOZE" ] && [ -n "$(find -L "$SNOOZE" -mmin -10080 2>/dev/null)" ]; t
 # newline, which is why the separator is not a newline).
 scan="$(awk 'function flush(){ v=(stamp!=""?stamp:cur); if(v!=""){ if(m==""||v<m) m=v }; cur=""; stamp="" } { sub(/\r$/, "") } /^##[ \t]+Pending[ \t]*$/{p=1;next} /^#+[ \t]/{ flush(); p=0 } p && /^- \[/ { c++; flush(); inrec=1 } p && (/^[ \t]*$/ || /^[ \t]*<!--/) { flush(); inrec=0 } p && inrec { s=$0; while(match(s,/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)){ pre=substr(s,1,RSTART-1); d=substr(s,RSTART,10); s=substr(s,RSTART+10); sub(/[ \t]+$/,"",pre); if(s ~ /^[^0-9A-Za-z]*agy([ \t]|$)/ && pre !~ /[0-9A-Za-z]$/) stamp=d; cur=d } } END{ flush(); print c+0 "|" m }' "$OBS" 2>/dev/null)"
 count=${scan%%|*}; oldest=${scan#*|}
-[ -z "$scan" ] && exit 0
+[ -z "$scan" ] && quiet_exit
 
 # Age gate (spec section 5.C-A: nudge on "N entries / an age threshold"): is the oldest pending entry too old?
 age_stale=0
@@ -117,7 +152,7 @@ if [[ $oldest =~ $re_iso ]]; then
 fi
 
 # Silent only if NEITHER threshold is exceeded.
-if [ "$count" -lt "$THRESHOLD" ] && [ "$age_stale" -eq 0 ]; then exit 0; fi
+if [ "$count" -lt "$THRESHOLD" ] && [ "$age_stale" -eq 0 ]; then quiet_exit; fi
 
 if [ "$count" -ge "$((THRESHOLD * 2))" ]; then
   msg="agy-curate is OVERDUE: the observations inbox has ${count} pending entries (threshold ${THRESHOLD}). The driver is running on stale rules while the peer drifts. Run the agy-autotrain:agy-curate skill (that namespaced name, not clavity:agy-curate) to drain the inbox now. (Snooze for 7 days: touch \"${SNOOZE}\".)"
@@ -127,17 +162,7 @@ else
   msg="agy-curate nudge: the observations inbox has ${count} pending entries (threshold ${THRESHOLD}). Consider running the agy-autotrain:agy-curate skill (that namespaced name, not clavity:agy-curate) to drain it. (Snooze for 7 days: touch \"${SNOOZE}\".)"
 fi
 
-# PROCESS BUDGET: emitting the JSON in-shell saves a jq process on every nudge path. Byte-identical to
-# `jq -nc` ONLY while $msg is printable ASCII (jq escapes only `\`, `"` and control characters, and passes
-# the rest through), so anything outside space..tilde (a non-ASCII or control char in the USERPROFILE path,
-# a DEL) falls back to jq. The `command -v` guard keeps the old "no jq -> print nothing" behaviour.
-command -v jq >/dev/null 2>&1 || exit 0
-LC_ALL=C   # byte-wise range below; last statement before exit, so nothing else is affected (no subshell: a fork costs a process)
-if [[ $msg == *[^\ -~]* ]]; then
-  jq -nc --arg m "$msg" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}' 2>/dev/null
-else
-  esc=${msg//\\/\\\\}; esc=${esc//\"/\\\"}
-  eol=$'\n'
-  printf '%s%s' "{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"$esc\"}}" "$eol"
-fi
+# The inbox nudge is the message; when the machine also has an unprojected store, its sentence rides in the SAME message.
+[ -n "$gh_msg" ] && msg="$msg $gh_msg"
+emit_msg
 exit 0

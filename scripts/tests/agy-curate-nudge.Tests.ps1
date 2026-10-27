@@ -729,4 +729,128 @@ echo "checked $i bad $bad"
             $r.StdOut | Should -Match 'over 30 days old'
         } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    # Backlog stub fresh-install-injects-seed-only: a machine with SEED but no GROWTH (and no legacy flat file) ran three days without the
+    # earned rules and nothing said so. The reader treats an absent GROWTH as legitimate, so the signal comes from here, on SessionStart,
+    # only while the plugin's knowledge store holds rules. It names the agy-curate step that projects them through the human gate.
+    Context 'a store the machine has not projected (backlog stub fresh-install-injects-seed-only)' {
+        BeforeAll {
+            function Add-Store { param($Root, [int]$Rules = 3, [switch]$NoIndexLinks)
+                $dir = Join-Path $Root 'knowledge/rules'
+                New-Item -ItemType Directory -Path $dir -Force | Out-Null
+                $links = (1..$Rules | ForEach-Object { "- [rule $_](r$_.md) - desc" }) -join "`n"
+                if ($NoIndexLinks) { $links = '(none yet)' }
+                Set-Content -LiteralPath (Join-Path $dir 'INDEX.md') -Value "# store`n`n## CRITICAL ANTI-PATTERNS - x`n`n$links`n" -NoNewline
+                1..$Rules | ForEach-Object { Set-Content -LiteralPath (Join-Path $dir "r$_.md") -Value "# r$_`n`n**Section:** CRITICAL ANTI-PATTERNS - x`n`n- rule $_`n" -NoNewline }
+            }
+            $script:QuietInbox = New-DatedInbox -Date $script:Today
+            function Get-Ctx { param($Result) ($Result.StdOut | ConvertFrom-Json).hookSpecificOutput.additionalContext }
+        }
+
+        It 'stays silent when CLAUDE_PLUGIN_ROOT is empty: a hook that cannot tell where its plugin lives does not guess' {
+            $e = New-NudgeEnv -Inbox $script:QuietInbox
+            try {
+                Add-Store $e.Root -Rules 3
+                $e.Env.CLAUDE_PLUGIN_ROOT = ''
+                $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+                $r.ExitCode | Should -Be 0
+                $r.StdOut | Should -BeNullOrEmpty
+            } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'warns, once, naming the count and the agy-curate step, when GROWTH and the legacy file are both absent' {
+            $e = New-NudgeEnv -Inbox $script:QuietInbox
+            try {
+                Add-Store $e.Root -Rules 3
+                $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+                $r.ExitCode | Should -Be 0
+                $j = $r.StdOut | ConvertFrom-Json
+                $j.hookSpecificOutput.hookEventName | Should -BeExactly 'SessionStart'
+                $ctx = $j.hookSpecificOutput.additionalContext
+                $ctx | Should -Match 'SEED only'
+                $ctx | Should -Match 'knowledge store has 3 rules'
+                $ctx | Should -Match 'agy-autotrain:agy-curate'
+                $ctx | Should -Match 'project-store\.sh'
+                ([regex]::Matches($r.StdOut, 'SEED only')).Count | Should -Be 1
+            } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'still warns when there is no inbox at all (the early exits must not swallow it)' {
+            $e = New-NudgeEnv -Inbox $script:QuietInbox
+            try {
+                Add-Store $e.Root
+                Remove-Item -LiteralPath (Join-Path $e.Root 'home/.clavity/agy-observations.md')
+                (Get-Ctx (Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env)) | Should -Match 'SEED only'
+            } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'is silent when a GROWTH file exists (an empty one counts: the machine has drained)' {
+            $e = New-NudgeEnv -Inbox $script:QuietInbox
+            try {
+                Add-Store $e.Root
+                Set-Content -LiteralPath (Join-Path $e.Root 'home/.clavity/golden-header.growth.md') -Value '' -NoNewline
+                (Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env).StdOut | Should -BeNullOrEmpty
+            } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'is silent when only the legacy flat file exists (an upgrading machine already injects it)' {
+            $e = New-NudgeEnv -Inbox $script:QuietInbox
+            try {
+                Add-Store $e.Root
+                Set-Content -LiteralPath (Join-Path $e.Root 'home/.clavity/golden-header.md') -Value 'LEGACY' -NoNewline
+                (Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env).StdOut | Should -BeNullOrEmpty
+            } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'is silent when the plugin carries no store, or an INDEX that lists no rules' -ForEach @(
+            @{ Case = 'no knowledge/rules directory'; Make = { param($root) } }
+            @{ Case = 'an INDEX with no rule links'; Make = { param($root) Add-Store $root -Rules 0 -NoIndexLinks } }
+        ) {
+            $e = New-NudgeEnv -Inbox $script:QuietInbox
+            try {
+                & $Make $e.Root
+                (Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env).StdOut | Should -BeNullOrEmpty
+            } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'honours CLAVITY_GOLDEN_HEADER: a GROWTH there silences it, a GROWTH only in ~/.clavity does not' {
+            $e = New-NudgeEnv -Inbox $script:QuietInbox
+            try {
+                Add-Store $e.Root
+                $other = Join-Path $e.Root 'elsewhere'; New-Item -ItemType Directory -Path $other -Force | Out-Null
+                $env2 = @{} + $e.Env; $env2['CLAVITY_GOLDEN_HEADER'] = ($other -replace '\\','/')
+                # GROWTH in the DEFAULT dir only: the override points elsewhere, so the machine is still unprojected
+                Set-Content -LiteralPath (Join-Path $e.Root 'home/.clavity/golden-header.growth.md') -Value 'G' -NoNewline
+                (Get-Ctx (Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $env2)) | Should -Match 'SEED only'
+                Set-Content -LiteralPath (Join-Path $other 'golden-header.growth.md') -Value 'G' -NoNewline
+                (Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $env2).StdOut | Should -BeNullOrEmpty
+            } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'honours the 7-day snooze and the .no-agy opt-out' {
+            $e = New-NudgeEnv -Inbox $script:QuietInbox
+            try {
+                Add-Store $e.Root
+                Set-Content -LiteralPath (Join-Path $e.Root 'home/.clavity/.agy-curate-snooze') -Value '' -NoNewline
+                (Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env).StdOut | Should -BeNullOrEmpty
+                Remove-Item -LiteralPath (Join-Path $e.Root 'home/.clavity/.agy-curate-snooze')
+                New-Item -ItemType Directory -Path (Join-Path $e.Root 'home/.claude') -Force | Out-Null
+                Set-Content -LiteralPath (Join-Path $e.Root 'home/.claude/.no-agy') -Value '' -NoNewline
+                (Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env).StdOut | Should -BeNullOrEmpty
+            } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'joins the inbox nudge into ONE message when both are due' {
+            $bullets = (1..9 | ForEach-Object { "- [heuristic] (driver/probabilistic) entry $_  ``[corpus]`` · $script:Today · agy 1.0.0" }) -join "`n"
+            $e = New-NudgeEnv -Inbox "# agy observations inbox`n`n## Pending`n`n$bullets"
+            try {
+                Add-Store $e.Root
+                $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+                ([regex]::Matches($r.StdOut, 'hookEventName')).Count | Should -Be 1
+                $ctx = Get-Ctx $r
+                $ctx | Should -Match '9 pending entries'
+                $ctx | Should -Match 'SEED only'
+            } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+    }
 }
