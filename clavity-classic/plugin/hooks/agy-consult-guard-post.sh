@@ -59,12 +59,15 @@ inc_notice(){
   case $1 in
     peer-busy)    increason="agy ended its turn while background work was still running (the driver returned PEER STILL BUSY)" ;;
     backgrounded) increason="the harness moved the call to the background after 120 s while the peer was still working" ;;
+    cli-timeout)    increason="the harness moved the Bash call to the background after its ${tms} ms timeout while the consult was still running" ;;
+    cli-background) increason="the Bash call was started in the background (run_in_background), so it returned before the consult finished" ;;
     *)            increason="the call ran for 120 s or more, the point at which the harness moves a call to the background, so it may have been backgrounded while the peer was still working" ;;
   esac
-  incmsg="AGY CONSULT GUARD - NOT VERIFIED (consult not finished): this agy_ask returned before the peer finished - ${increason}. The version-control check ran NOW and cannot see anything the peer does afterwards, so a clean result here means only 'nothing so far'. Treat this consult as UNCHECKED until it really ends: run git status --short now (or use the snapshot you took before asking), run it again when the task-completion notification or the result arrives, treat anything new in between as suspect, and do not revert anything you did not verify the peer made."
+  incwhat="agy_ask"; case $1 in cli-*) incwhat="clavity consult call" ;; esac
+  incmsg="AGY CONSULT GUARD - NOT VERIFIED (consult not finished): this ${incwhat} returned before the peer finished - ${increason}. The version-control check ran NOW and cannot see anything the peer does afterwards, so a clean result here means only 'nothing so far'. Treat this consult as UNCHECKED until it really ends: run git status --short now (or use the snapshot you took before asking), run it again when the task-completion notification or the result arrives, treat anything new in between as suspect, and do not revert anything you did not verify the peer made. ALSO: the next consult takes a fresh baseline from the tree as it is then, so anything the peer leaves after this return will NOT be reported by that consult - run git status --short once the peer is idle."
 }
 
-# ONE jq call for all five fields, NUL-terminated and read with the builtin. Each field keeps the
+# ONE jq call for all six fields, NUL-terminated and read with the builtin. Each field keeps the
 # value the old per-field `$(jq -r ...)` produced: `?` makes a non-object tool_input yield "" for
 # the command only (as the failing per-field call did), and trailing newlines are stripped per
 # field below, as command substitution did.
@@ -77,7 +80,11 @@ inc_notice(){
 # which may quote the markers, and the command text may too. Every step is wrapped in try/tostring because
 # a block whose text is not a string was MEASURED to make startswith() fail, and a jq error prints NOTHING,
 # which would blank tool, cwd and session as well and make the guard drop the consult silently.
-{ IFS= read -r -d '' tool; IFS= read -r -d '' cmd; IFS= read -r -d '' cwd; IFS= read -r -d '' sid; IFS= read -r -d '' inc; } < <(
+# The CLI path (ROADMAP section 85, measured 2026-10-27): a Bash/PowerShell call the harness moved to the background has an OBJECT
+# tool_response with a backgroundTaskId key (plus timedOutAfterMs when the timeout did it); its duration is no usable fallback
+# (a 3 s timeout reported 3451 ms). cli-timeout / cli-background are only ever acted on for a sync or terminal consult below,
+# because an open (send) call returns before the category test and a non-consult command never reaches it.
+{ IFS= read -r -d '' tool; IFS= read -r -d '' cmd; IFS= read -r -d '' cwd; IFS= read -r -d '' sid; IFS= read -r -d '' inc; IFS= read -r -d '' tms; } < <(
   jq -j '(.tool_name // "") as $tn
     | (try (.tool_response | if type == "array" then map(if type == "object" then ((.text // "") | tostring) else "" end) else [] end) catch []) as $blocks
     | (try (if ($tn | endswith("agy_ask")) then
@@ -85,10 +92,13 @@ inc_notice(){
           elif any($blocks[]; startswith("MCP tool ") and contains("moved to the background")) then "backgrounded"
           elif (((.duration_ms // 0) | tonumber? // 0) >= 120000) then "long"
           else "" end)
-       else "" end) catch "") as $inc
-    | $tn, "\u0000", (.tool_input.command? // ""), "\u0000", (.cwd // "."), "\u0000", (.session_id // "default"), "\u0000", $inc, "\u0000"' <<<"$input" 2>/dev/null)
+       else (.tool_response | if type == "object" and ((.backgroundTaskId // "") | tostring | length) > 0
+               then (if (.timedOutAfterMs // null) != null then "cli-timeout" else "cli-background" end) else "" end)
+       end) catch "") as $inc
+    | (try (.tool_response | if type == "object" then ((.timedOutAfterMs // "") | tostring) else "" end) catch "") as $tms
+    | $tn, "\u0000", (.tool_input.command? // ""), "\u0000", (.cwd // "."), "\u0000", (.session_id // "default"), "\u0000", $inc, "\u0000", $tms, "\u0000"' <<<"$input" 2>/dev/null)
 tool=${tool%"${tool##*[!$'\n']}"}; cmd=${cmd%"${cmd##*[!$'\n']}"}
-cwd=${cwd%"${cwd##*[!$'\n']}"};   sid=${sid%"${sid##*[!$'\n']}"}
+cwd=${cwd%"${cwd##*[!$'\n']}"};   sid=${sid%"${sid##*[!$'\n']}"};   tms=${tms%"${tms##*[!$'\n']}"}
 [ -z "$sid" ] && sid=default
 # tr -c 'A-Za-z0-9_-' '_' is byte-wise; the C locale makes the expansion byte-wise too.
 _o=${LC_ALL-}; _s=${LC_ALL+x}; LC_ALL=C
@@ -170,6 +180,19 @@ agy_guard_have_hash || degraded=1
 before=$(cat "$sf" 2>/dev/null)
 after=$(agy_guard_quad "$cwd")
 rm -f "$sf" 2>/dev/null            # consume the baseline
+
+# ROADMAP section 87 (agreed with the peer, 2026-10-27): an UNFINISHED consult leaves a per-session sentinel so that the NEXT
+# sync consult's Pre can say its fresh baseline absorbs whatever the peer does after this return. Two lines: the classification,
+# then the cwd. A FINISHED consult in the SAME cwd clears it (even when it reports a change: the window was reported); one in
+# another repository neither sees nor clears it. No git state is stored and no time limit applies: the sentinel is per session id,
+# and silence after a long gap would be wrong exactly when the peer has had longest to write.
+usf="${sf%.*}.unfinished"          # <state dir>/<sid>.unfinished - no helper call: it costs a process (mkdir) and sf already made the dir
+if [ -n "$inc" ]; then
+  printf '%s\n%s\n' "$inc" "$cwd" 2>/dev/null > "$usf"
+elif [ -f "$usf" ]; then
+  { IFS= read -r _sinc; IFS= read -r _scwd; } 2>/dev/null < "$usf"
+  [ "$_scwd" = "$cwd" ] && rm -f "$usf" 2>/dev/null
+fi
 
 if [ "$before" = "$after" ]; then
   # Clean - but in degraded mode "clean" covers only the unhashed axes, so say exactly that

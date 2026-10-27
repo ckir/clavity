@@ -1070,6 +1070,35 @@ echo "digests=$n calls=$(wc -l < "$count")"
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # ROADMAP 90: `find -type f` does not list a SYMLINK, yet git runs a symlinked hook (measured 2026-10-12), so a peer that
+    # replaced or planted a hook with a link was invisible to the gitmeta axis.
+    It 'WARNS when a SYMLINKED .git hook is planted during a consult' -Skip:$IsWindows -Tag 'LinuxOnly' {
+        $r = New-GuardRepo
+        try {
+            $target = Join-Path $r 'a.txt'
+            $out = Invoke-ConsultAround -Repo $r -Between {
+                New-Item -ItemType SymbolicLink -Path (Join-Path $r '.git/hooks/post-commit') -Target $target | Out-Null
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'ARBITRARY-CODE-EXEC'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'WARNS when a hook symlink is re-pointed at different bytes during a consult' -Skip:$IsWindows -Tag 'LinuxOnly' {
+        $r = New-GuardRepo
+        try {
+            Set-Content (Join-Path $r 'one.sh') 'echo one' -Encoding ascii
+            Set-Content (Join-Path $r 'two.sh') 'echo two' -Encoding ascii
+            $hook = Join-Path $r '.git/hooks/post-commit'
+            New-Item -ItemType SymbolicLink -Path $hook -Target (Join-Path $r 'one.sh') | Out-Null
+            $out = Invoke-ConsultAround -Repo $r -Between {
+                Remove-Item $hook -Force
+                New-Item -ItemType SymbolicLink -Path $hook -Target (Join-Path $r 'two.sh') | Out-Null
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'WARNS when bytes move between two hooks' {
         # A plain `cat` of both hooks is the SAME stream in both states ("12"+"34" vs "1"+"234"), so
         # only a per-file digest (or per-file framing) can see content move between two hooks.
@@ -1265,6 +1294,225 @@ echo "digests=$n calls=$(wc -l < "$count")"
             $out | Should -Match 'consult not finished'
             $out | Should -Match 'may have been backgrounded'
             $out | Should -Not -Match 'the harness moved the call'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # ROADMAP 85, MEASURED 2026-10-27 (ROADMAP 85 table): a Bash call that the harness backgrounds carries tool_response.backgroundTaskId
+    # (and timedOutAfterMs when the timeout did it); stdout is empty and duration_ms can be small, so the MCP path's duration fallback
+    # cannot classify it. Only a sync (ask) or terminal (await-reply) consult is unfinished; a deliberate `send` is an open call.
+    Context 'the CLI path: a backgrounded Bash call is an unfinished consult' {
+        BeforeAll {
+            function script:CliPayload {
+                param([string]$Cmd, [string]$Cwd, [hashtable]$Response, [int]$DurationMs = 150, [string]$Tool = 'Bash')
+                @{ tool_name = $Tool; tool_input = @{ command = $Cmd }; cwd = ($Cwd -replace '\\','/'); session_id = $script:SessionId
+                   tool_response = $Response; duration_ms = $DurationMs } | ConvertTo-Json -Compress -Depth 6
+            }
+            $script:BgResp = { param($ms) $h = @{ stdout = ''; stderr = ''; interrupted = $false; isImage = $false; noOutputExpected = $false; backgroundTaskId = 'b7sxp02ef' }; if ($ms) { $h.timedOutAfterMs = $ms }; $h }
+            $script:OkResp = @{ stdout = 'the consult answer'; stderr = ''; interrupted = $false; isImage = $false; noOutputExpected = $false }
+        }
+        It 'a clavity ask moved to the background by its timeout says so, with the timeout' {
+            $r = New-GuardRepo
+            try {
+                $p = CliPayload 'clavity ask "q" --review-only' $r (& $script:BgResp 130000) 130169
+                Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+                $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+                $out | Should -Match 'consult not finished'
+                $out | Should -Match '130000 ms timeout'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        It 'a clavity ask started with run_in_background says it was started in the background' {
+            $r = New-GuardRepo
+            try {
+                $p = CliPayload 'clavity ask "q" --review-only' $r (& $script:BgResp 0) 182
+                Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+                $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+                $out | Should -Match 'consult not finished'
+                $out | Should -Match 'started in the background'
+                $out | Should -Not -Match 'ms timeout'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        It 'a backgrounded PowerShell clavity ask is classified like a Bash one (test audit BS-1)' {
+            $r = New-GuardRepo
+            try {
+                $p = CliPayload 'clavity ask "q" --review-only' $r (& $script:BgResp 130000) 130169 -Tool 'PowerShell'
+                Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+                $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+                $out | Should -Match 'consult not finished'
+                $out | Should -Match '130000 ms timeout'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        It 'a backgrounded await-reply (the terminal half) is unfinished too' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (CliPayload 'clavity send "q" --review-only' $r $script:OkResp) | Out-Null
+                $p = CliPayload 'clavity await-reply --req-id x' $r (& $script:BgResp 3000) 3451
+                $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+                $out | Should -Match 'consult not finished'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        It 'a clavity ask that finished in time stays silent (the control)' {
+            $r = New-GuardRepo
+            try {
+                $p = CliPayload 'clavity ask "q" --review-only' $r $script:OkResp 93
+                Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+                (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut | Should -BeNullOrEmpty
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        It 'a deliberate background clavity send is an open call, not an unfinished consult' {
+            $r = New-GuardRepo
+            try {
+                $p = CliPayload 'clavity send "q" --review-only' $r (& $script:BgResp 0) 182
+                Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+                (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut | Should -BeNullOrEmpty
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        It 'a backgrounded command that is not a consult stays silent' {
+            $r = New-GuardRepo
+            try {
+                $p = CliPayload 'sleep 200' $r (& $script:BgResp 130000) 130169
+                Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+                (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut | Should -BeNullOrEmpty
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        It 'the words backgroundTaskId inside stdout do not make a finished consult unfinished' {
+            $r = New-GuardRepo
+            try {
+                $resp = @{ stdout = '{"backgroundTaskId":"b1","note":"quoted by the peer"}'; stderr = ''; interrupted = $false; isImage = $false; noOutputExpected = $false }
+                $p = CliPayload 'clavity ask "q" --review-only' $r $resp 93
+                Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+                (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut | Should -BeNullOrEmpty
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+    }
+
+    # ROADMAP 87 (agreed with the peer after two negotiation rounds, 2026-10-27): a breach that lands after an UNFINISHED consult's Post is absorbed
+    # into the next consult's fresh baseline. The guard cannot police the peer afterwards, so it SPEAKS at the moment of absorption: the Post
+    # leaves a per-session sentinel (<state>/<sid>.unfinished: classification, cwd, epoch); the next sync consult's Pre in the SAME cwd
+    # says so once per consult; only a FINISHED Post in that cwd clears it; no time limit. No git state is stored or compared, so the
+    # driver's own edits between consults cannot raise it.
+    Context 'section 87 - the sentinel of an unfinished consult' {
+        BeforeAll {
+            $script:AskTool = 'mcp__plugin_clavity_clavity-ls__agy_ask'
+            $script:SentinelPath = Join-Path (Join-Path $(if ($env:TMPDIR) { $env:TMPDIR } else { '/tmp' }) 'claude-agy-consult-guard') "$($script:SessionId).unfinished"
+            $script:FinishedResp = @(@{ type = 'text'; text = '{"CascadeId":"c","Answer":"fine","PeerStillBusy":false}' })
+            function script:Unfinished { param($Repo) Payload $script:AskTool '' $Repo -Response $script:BusyResponse -DurationMs 78377 }
+            function script:Finished   { param($Repo) Payload $script:AskTool '' $Repo -Response $script:FinishedResp -DurationMs 9000 }
+            function script:PreOut     { param($P) (Invoke-BashHook -HookPath $script:Pre -Payload $P).StdOut }
+        }
+        BeforeEach { Remove-Item -LiteralPath $script:SentinelPath -Force -ErrorAction SilentlyContinue }
+        AfterAll   { Remove-Item -LiteralPath $script:SentinelPath -Force -ErrorAction SilentlyContinue }
+
+        It 'the next consult in the same repository is told, once the previous one ended unfinished' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                $out = PreOut (Finished $r)
+                # PARSED, not regex-matched: Claude Code drops a hook output that is not this exact shape (test audit PP-1).
+                $j = $out | ConvertFrom-Json
+                $j.hookSpecificOutput.hookEventName | Should -BeExactly 'PreToolUse'
+                $j.hookSpecificOutput.additionalContext | Should -Match 'NOTICE \(baseline absorbs prior state\)'
+                $out | Should -Match 'PreToolUse'
+                $out | Should -Match 'NOTICE \(baseline absorbs prior state\)'
+                $out | Should -Match 'ended unfinished \(peer-busy\)'
+                $out | Should -Match 'unfinished' -Because 'the text names the sentinel file so it can be dismissed by hand'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'is silent when no earlier consult ended unfinished (the control)' {
+            $r = New-GuardRepo
+            try { PreOut (Finished $r) | Should -BeNullOrEmpty } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'speaks again at the consult after an ABORTED one: Pre does not consume the sentinel' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                PreOut (Finished $r) | Should -Match 'NOTICE'
+                # the second consult never reached its Post (cancelled, crashed): the peer may still be writing
+                PreOut (Finished $r) | Should -Match 'NOTICE'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'a FINISHED consult in the same repository clears it' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Pre -Payload (Finished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Finished $r) | Out-Null
+                PreOut (Finished $r) | Should -BeNullOrEmpty
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'a finished consult that REPORTS a change also clears it: the risk window was reported' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Pre -Payload (Finished $r) | Out-Null
+                Set-Content (Join-Path $r 'planted.txt') 'x'
+                (Invoke-BashHook -HookPath $script:Post -Payload (Finished $r)).StdOut | Should -Match 'VERSION CONTROL CHANGED'
+                PreOut (Finished $r) | Should -BeNullOrEmpty
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'a consult that is itself unfinished leaves the sentinel in place' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                PreOut (Finished $r) | Should -Match 'NOTICE'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'another repository under the same session neither sees it nor clears it' {
+            $a = New-GuardRepo; $b = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $a) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $a) | Out-Null
+                PreOut (Finished $b) | Should -BeNullOrEmpty -Because 'the sentinel belongs to repository A'
+                Invoke-BashHook -HookPath $script:Pre -Payload (Finished $b) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Finished $b) | Out-Null
+                PreOut (Finished $a) | Should -Match 'NOTICE' -Because 'a finished consult in B must not clear the sentinel of A'
+            } finally { Remove-Item $a, $b -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'has no time limit: a sentinel two days old still speaks' -Skip:$IsWindows -Tag 'LinuxOnly' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                (Get-Item -LiteralPath $script:SentinelPath).LastWriteTime = (Get-Date).AddDays(-2)
+                PreOut (Finished $r) | Should -Match 'NOTICE'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'a deliberate send is not a consult start: its Pre stays silent' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
+                Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
+                $send = @{ tool_name = 'Bash'; tool_input = @{ command = 'clavity send "q" --review-only' }; cwd = ($r -replace '\\','/'); session_id = $script:SessionId } | ConvertTo-Json -Compress -Depth 5
+                PreOut $send | Should -BeNullOrEmpty
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+    }
+
+    # ROADMAP 91: only 120005 and 40000 were exercised, so `>=` turned into `>` (or the threshold moved by a few ms) passed every row.
+    It 'the duration fallback fires AT 120000 ms and not at 119999 (<Ms>)' -ForEach @(
+        @{ Ms = 120000; Fires = $true }
+        @{ Ms = 119999; Fires = $false }
+    ) {
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r -Response @(@{ type = 'text'; text = '{"CascadeId":"c","Answer":"fine","PeerStillBusy":false}' }) -DurationMs $Ms
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+            if ($Fires) { $out | Should -Match 'may have been backgrounded' } else { $out | Should -BeNullOrEmpty }
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
