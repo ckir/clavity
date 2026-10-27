@@ -1082,7 +1082,7 @@ compute-release.Tests.ps1                        25,0s    8 tests   <- SLOW, re-
 check-control-bytes.Tests.ps1                    42,7s    9 tests   <- SLOW, NEW 2026-09-30 (ROADMAP §49, sweep Branch 1); 8 -> 9 the same day (AGY-TEST-AUDIT: the C0 range bound), runtime NOT re-measured.
   MEASURED at top level, two sequential runs, each its own pwsh + Pester cold start: 42,7s and 50,6s; background
   load not controlled. SLOW because the fast recipe was last measured at 480,5s against the 600s cap, so ~45s
-  more would crowd it; rows 6-7 start child pwsh processes and row 8 scans every tracked *.md.
+  more would crowd it; rows 6-7 start child pwsh processes and row 8 scans every tracked *.md and *.ps1.
 docs-audit-reminder.Tests.ps1                    28,3s   13 tests   <- 11 -> 12 2026-10-08 (capstone R3: +hyphen near-miss header is not an unconfirmed doc); 7 -> 11 2026-10-07 (Branch 21 Task 7: +CRLF, +unterminated last line, +bullet near-misses, +unreadable view); SLOW, NEW 2026-09-30 (docs-audit nudge, sweep
   Branch 1). MEASURED at top level, two sequential runs: 28,3s and 29,4s (each a cold start; background load not
   controlled). SLOW for the same fast-recipe headroom reason; every row drives Git Bash. 5 -> 7 the same day (AGY-TEST-AUDIT: the AUDIT-* count and the JSON envelope), runtime NOT re-measured.
