@@ -136,6 +136,8 @@ Describe 'check-injected-context.ps1' {
             @{ tok = 'assertion-strength-reminder.sh' }
             @{ tok = './hooks/agy-seam-inject.sh' }
             @{ tok = '../knowledge/agy-capabilities.md' }
+            # The near-miss of the ellipsis rule below: a leaf that merely STARTS with periods is still a name.
+            @{ tok = '../a/...md' }
         ) { (Test-IsPathCandidate -Token $tok) | Should -BeTrue }
 
         It 'does NOT treat <tok> as a candidate' -ForEach @(
@@ -154,6 +156,15 @@ Describe 'check-injected-context.ps1' {
             @{ tok = 'ghidrust skill --emit > SKILL.md' }
             @{ tok = 'os.path.dirname(__file__)/SKILL.md' }
             @{ tok = 'just check-injected-context' }
+        ) { (Test-IsPathCandidate -Token $tok) | Should -BeFalse }
+
+        It 'does NOT treat <tok> as a candidate: its leaf is only periods, an ellipsis and not a name' -ForEach @(
+            # ROADMAP 98: prose at agy-curate/SKILL.md:56 writes `../../../seed/...`. Windows normalisation strips the
+            # trailing periods ("../../../seed" exists) while Linux keeps them, so the gate was green on one OS and red on the other.
+            @{ tok = '../../../seed/...' }
+            @{ tok = '../a/...' }
+            @{ tok = './a/..' }
+            @{ tok = '../..' }
         ) { (Test-IsPathCandidate -Token $tok) | Should -BeFalse }
 
         It 'does NOT treat the directory reference <tok> as a file candidate' -ForEach @(
