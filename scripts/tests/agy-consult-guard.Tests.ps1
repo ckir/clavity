@@ -1297,6 +1297,84 @@ echo "digests=$n calls=$(wc -l < "$count")"
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # ROADMAP 85, MEASURED 2026-10-27 (ROADMAP 85 table): a Bash call that the harness backgrounds carries tool_response.backgroundTaskId
+    # (and timedOutAfterMs when the timeout did it); stdout is empty and duration_ms can be small, so the MCP path's duration fallback
+    # cannot classify it. Only a sync (ask) or terminal (await-reply) consult is unfinished; a deliberate `send` is an open call.
+    Context 'the CLI path: a backgrounded Bash call is an unfinished consult' {
+        BeforeAll {
+            function script:CliPayload {
+                param([string]$Cmd, [string]$Cwd, [hashtable]$Response, [int]$DurationMs = 150, [string]$Tool = 'Bash')
+                @{ tool_name = $Tool; tool_input = @{ command = $Cmd }; cwd = ($Cwd -replace '\\','/'); session_id = $script:SessionId
+                   tool_response = $Response; duration_ms = $DurationMs } | ConvertTo-Json -Compress -Depth 6
+            }
+            $script:BgResp = { param($ms) $h = @{ stdout = ''; stderr = ''; interrupted = $false; isImage = $false; noOutputExpected = $false; backgroundTaskId = 'b7sxp02ef' }; if ($ms) { $h.timedOutAfterMs = $ms }; $h }
+            $script:OkResp = @{ stdout = 'the consult answer'; stderr = ''; interrupted = $false; isImage = $false; noOutputExpected = $false }
+        }
+        It 'a clavity ask moved to the background by its timeout says so, with the timeout' {
+            $r = New-GuardRepo
+            try {
+                $p = CliPayload 'clavity ask "q" --review-only' $r (& $script:BgResp 130000) 130169
+                Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+                $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+                $out | Should -Match 'consult not finished'
+                $out | Should -Match '130000 ms timeout'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        It 'a clavity ask started with run_in_background says it was started in the background' {
+            $r = New-GuardRepo
+            try {
+                $p = CliPayload 'clavity ask "q" --review-only' $r (& $script:BgResp 0) 182
+                Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+                $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+                $out | Should -Match 'consult not finished'
+                $out | Should -Match 'started in the background'
+                $out | Should -Not -Match 'ms timeout'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        It 'a backgrounded await-reply (the terminal half) is unfinished too' {
+            $r = New-GuardRepo
+            try {
+                Invoke-BashHook -HookPath $script:Pre -Payload (CliPayload 'clavity send "q" --review-only' $r $script:OkResp) | Out-Null
+                $p = CliPayload 'clavity await-reply --req-id x' $r (& $script:BgResp 3000) 3451
+                $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+                $out | Should -Match 'consult not finished'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        It 'a clavity ask that finished in time stays silent (the control)' {
+            $r = New-GuardRepo
+            try {
+                $p = CliPayload 'clavity ask "q" --review-only' $r $script:OkResp 93
+                Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+                (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut | Should -BeNullOrEmpty
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        It 'a deliberate background clavity send is an open call, not an unfinished consult' {
+            $r = New-GuardRepo
+            try {
+                $p = CliPayload 'clavity send "q" --review-only' $r (& $script:BgResp 0) 182
+                Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+                (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut | Should -BeNullOrEmpty
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        It 'a backgrounded command that is not a consult stays silent' {
+            $r = New-GuardRepo
+            try {
+                $p = CliPayload 'sleep 200' $r (& $script:BgResp 130000) 130169
+                Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+                (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut | Should -BeNullOrEmpty
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        It 'the words backgroundTaskId inside stdout do not make a finished consult unfinished' {
+            $r = New-GuardRepo
+            try {
+                $resp = @{ stdout = '{"backgroundTaskId":"b1","note":"quoted by the peer"}'; stderr = ''; interrupted = $false; isImage = $false; noOutputExpected = $false }
+                $p = CliPayload 'clavity ask "q" --review-only' $r $resp 93
+                Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+                (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut | Should -BeNullOrEmpty
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+    }
+
     # ROADMAP 91: only 120005 and 40000 were exercised, so `>=` turned into `>` (or the threshold moved by a few ms) passed every row.
     It 'the duration fallback fires AT 120000 ms and not at 119999 (<Ms>)' -ForEach @(
         @{ Ms = 120000; Fires = $true }
