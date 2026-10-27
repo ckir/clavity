@@ -343,7 +343,7 @@ public sealed class StartFlowTests
         // (the taken session in /srv/b is not offered, so exactly one folder is named: "another folder")
         var nl = Environment.NewLine;
         Assert.Equal(
-            $"clavity: no agy session is waiting in {Path.GetFullPath(link)}, but 1 is waiting in another folder (the same folder through a symlink shows up here too):{nl}" +
+            $"clavity: no agy session is waiting in {Path.GetFullPath(link, fx.CurrentDirectory)}, but 1 is waiting in another folder (the same folder through a symlink shows up here too):{nl}" +
             $"    clavity-ls start '/srv/repo' --attach {Attached}   # paired, since 2026-10-03 09:00:00 UTC{nl}",
             fx.Err.ToString());
     }
@@ -390,7 +390,8 @@ public sealed class StartFlowTests
         // missing-folder check and the git warning only ever look at the folder Claude uses.
         const string typo = "/srv/no-such-folder";
         const string agyFolder = "/srv/agy-repo";
-        var fx = new Fake { Records = { [Attached] = agyFolder }, MissingDirs = { Path.GetFullPath(typo) } };
+        var fx = new Fake { Records = { [Attached] = agyFolder } };
+        fx.MissingDirs.Add(Path.GetFullPath(typo, fx.CurrentDirectory));
         Assert.Equal(0, StartFlow.Start([typo, "--attach", Attached], fx));
         Assert.Equal(agyFolder, fx.Ran.Single().WorkingDirectory);
         Assert.DoesNotContain("does not exist", fx.Err.ToString());
