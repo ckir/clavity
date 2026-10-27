@@ -46,8 +46,6 @@ The last three are conditional, listed in `### conditional`. A listed line is do
 | check-injected-context.Tests.ps1 | check-injected-context.ps1.computes a sane relative path when -RepoRoot is an 8.3 SHORT path | WindowsOnly | 8.3 short names are a Windows filesystem feature |
 | check-installer-ascii.Tests.ps1 | check-installer-ascii.ps1.reports the correct relative path when -RepoRoot is an 8.3 SHORT path | WindowsOnly | 8.3 short names are a Windows filesystem feature |
 | check-plugin-drift.Tests.ps1 | check-plugin-drift.ps1.accepts an installed root given as an 8.3 SHORT path | WindowsOnly | 8.3 short names are a Windows filesystem feature |
-| check-skill-frontmatter.Tests.ps1 | check-skill-frontmatter.ps1.CANNOT ANSWER (exit 2) when the yq on PATH is not mikefarah v4 (yq (https://github.com/mikefarah/yq/) version v5.0.0) | WindowsOnly | - |
-| check-skill-frontmatter.Tests.ps1 | check-skill-frontmatter.ps1.CANNOT ANSWER (exit 2) when the yq on PATH is not mikefarah v4 (yq 3.4.3) | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget..claude/hooks/agy-verify-reminder.sh: all rows current -> silent (fake agy on PATH) prints the same on the bash 3.2 code path | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget..claude/hooks/agy-verify-reminder.sh: all rows current -> silent (fake agy on PATH) starts at most 8 processes beyond bash boot | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget..claude/hooks/agy-verify-reminder.sh: not the clavity repo prints the same on the bash 3.2 code path | WindowsOnly | - |

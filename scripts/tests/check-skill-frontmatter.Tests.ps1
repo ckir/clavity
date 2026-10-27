@@ -344,14 +344,21 @@ Describe 'check-skill-frontmatter.ps1' {
 
     # BOTH halves of the version check: the python wrapper fails 'mikefarah', a future mikefarah v5 fails
     # 'version v4.' - either alone would let an `-or` weakened to `-and` pass (test audit 2026-09-24).
-    It 'CANNOT ANSWER (exit 2) when the yq on PATH is not mikefarah v4 (<Version>)' -Skip:(-not $IsWindows) -Tag 'WindowsOnly' -ForEach @(
+    It 'CANNOT ANSWER (exit 2) when the yq on PATH is not mikefarah v4 (<Version>)' -ForEach @(
         @{ Version = 'yq 3.4.3' }
         @{ Version = 'yq (https://github.com/mikefarah/yq/) version v5.0.0' }
     ) {
         $script:Root = New-Fixture @{ 'p/skills/alpha/SKILL.md' = (Skill 'alpha' 'a: b') }
         $fake = New-TestTempPath 'fakeyq'
         New-Item -ItemType Directory -Path $fake | Out-Null
-        Set-Content -LiteralPath (Join-Path $fake 'yq.cmd') -Value "@echo $Version" -Encoding ascii
+        if ($IsWindows) {
+            Set-Content -LiteralPath (Join-Path $fake 'yq.cmd') -Value "@echo $Version" -Encoding ascii
+        } else {
+            # An executable shell shim, found by PATH lookup exactly as yq.cmd is on Windows (ROADMAP 93 item 3).
+            $shim = Join-Path $fake 'yq'
+            [IO.File]::WriteAllText($shim, "#!/bin/sh`necho '$Version'`n")
+            [IO.File]::SetUnixFileMode($shim, [IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite -bor [IO.UnixFileMode]::UserExecute)
+        }
         $saved = $env:PATH
         try {
             $env:PATH = $fake + [IO.Path]::PathSeparator + $saved
