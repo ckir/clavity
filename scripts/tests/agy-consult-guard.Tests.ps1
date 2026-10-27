@@ -1070,6 +1070,35 @@ echo "digests=$n calls=$(wc -l < "$count")"
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # ROADMAP 90: `find -type f` does not list a SYMLINK, yet git runs a symlinked hook (measured 2026-10-12), so a peer that
+    # replaced or planted a hook with a link was invisible to the gitmeta axis.
+    It 'WARNS when a SYMLINKED .git hook is planted during a consult' -Skip:$IsWindows -Tag 'LinuxOnly' {
+        $r = New-GuardRepo
+        try {
+            $target = Join-Path $r 'a.txt'
+            $out = Invoke-ConsultAround -Repo $r -Between {
+                New-Item -ItemType SymbolicLink -Path (Join-Path $r '.git/hooks/post-commit') -Target $target | Out-Null
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'ARBITRARY-CODE-EXEC'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'WARNS when a hook symlink is re-pointed at different bytes during a consult' -Skip:$IsWindows -Tag 'LinuxOnly' {
+        $r = New-GuardRepo
+        try {
+            Set-Content (Join-Path $r 'one.sh') 'echo one' -Encoding ascii
+            Set-Content (Join-Path $r 'two.sh') 'echo two' -Encoding ascii
+            $hook = Join-Path $r '.git/hooks/post-commit'
+            New-Item -ItemType SymbolicLink -Path $hook -Target (Join-Path $r 'one.sh') | Out-Null
+            $out = Invoke-ConsultAround -Repo $r -Between {
+                Remove-Item $hook -Force
+                New-Item -ItemType SymbolicLink -Path $hook -Target (Join-Path $r 'two.sh') | Out-Null
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'WARNS when bytes move between two hooks' {
         # A plain `cat` of both hooks is the SAME stream in both states ("12"+"34" vs "1"+"234"), so
         # only a per-file digest (or per-file framing) can see content move between two hooks.

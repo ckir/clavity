@@ -454,7 +454,7 @@ agy_guard_quad() {
   # two hooks ("12"+"34" -> "1"+"234") leave a cat stream identical. Measured 2026-10-12.
   local meta_files=() h
   if [ -d "$gitdir/hooks" ]; then
-    while IFS= read -r -d '' h; do meta_files+=("$h"); done < <(find "$gitdir/hooks" -type f -print0 2>/dev/null | LC_ALL=C sort -z)
+    while IFS= read -r -d '' h; do meta_files+=("$h"); done < <(find "$gitdir/hooks" \( -type f -o -type l \) -print0 2>/dev/null | LC_ALL=C sort -z)
   fi
   [ -f "$gitdir/config" ] && meta_files+=("$gitdir/config")
   [ -f "$gitdir/info/exclude" ] && meta_files+=("$gitdir/info/exclude")
