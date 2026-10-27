@@ -4358,7 +4358,7 @@ Linux proxy (`strace -ff -e trace=execve` over the real hooks, 82 rows plus a de
 
 ### §85 — The Bash/CLI consult path's unfinished returns are unmeasured, and the harness's backgrounding text can change
 
-**Status:** IMPLEMENTED 2026-10-27 - on branch `chore/consult-guard-batch`: `agy-consult-guard-post.sh` classifies `tool_response.backgroundTaskId` as cli-timeout or cli-background for a sync or terminal consult (both twins, eight rows); flips to SHIPPED when that branch is merged
+**Status:** SHIPPED 2026-10-27 - merged to main in `037e7f86` (PR #34; capstone folds in `df95fcfb`, test-audit fold in the same branch): `agy-consult-guard-post.sh` classifies `tool_response.backgroundTaskId` as cli-timeout or cli-background for a sync or terminal consult (both twins, eight rows)
 
 Classic's `clavity ask` runs through a Bash tool call whose `tool_response` is an object (not the list of text blocks an `agy_ask` returns), and its backgrounding behaviour was never captured. The section 78 hook change classifies only the MCP path, so an unfinished return on the CLI path is still reported as a clean compare.
 
@@ -4382,7 +4382,7 @@ The row `PINNED consult: MCP agy_ask, inconclusive return (after its pre)` in `s
 
 ### §87 — Whether a later consult's baseline absorbs a file that a missed breach left behind is unmeasured
 
-**Status:** IMPLEMENTED 2026-10-27 - on branch `chore/consult-guard-batch`: an unfinished consult leaves a per-session sentinel and the next consult in the same repository says its baseline absorbs what follows (design agreed with the peer in two negotiation rounds); flips to SHIPPED when that branch is merged
+**Status:** SHIPPED 2026-10-27 - merged to main in `037e7f86` (PR #34; capstone folds in `df95fcfb`, test-audit fold in the same branch): an unfinished consult leaves a per-session sentinel and the next consult in the same repository says its baseline absorbs what follows (design agreed with the peer in two negotiation rounds)
 
 In section 78's second probe the baseline already contained the first probe's file and the guard reported only the new delta, which is consistent with absorption but was not isolated. If absorption is confirmed, a breach that lands after an unfinished consult becomes invisible to every later consult, which bears on how loud the NOT VERIFIED notice has to be and on whether a later check should also compare against the last clean state.
 
@@ -4414,13 +4414,13 @@ Fix direction: per row, launch with `bash`, give each run its own session id, re
 
 ### §90 — The consult guard's git-metadata axis misses a symlinked hook (formerly a local anomaly)
 
-**Status:** IMPLEMENTED 2026-10-27 - on branch `chore/consult-guard-batch`: `find` lists symlinks too (`-type f -o -type l`) in both twins; two rows (a planted link, a re-pointed link); flips to SHIPPED when that branch is merged
+**Status:** SHIPPED 2026-10-27 - merged to main in `037e7f86` (PR #34; capstone folds in `df95fcfb`, test-audit fold in the same branch): `find` lists symlinks too (`-type f -o -type l`) in both twins; two rows (a planted link, a re-pointed link)
 
 `agy_guard_quad` lists `.git/hooks` with `find ... -type f` (`clavity-dotnet/plugin/hooks/agy-consult-guard-lib.sh:451`), and `find -type f` does not list a symlink, but git runs a symlinked hook (measured 2026-10-12: a symlink hook executed on commit). A peer that replaces a hook with a symlink is therefore invisible to the guard. Pre-existing: the library before section 70 had the identical `find` (old line 431). Fix direction: `find ... \( -type f -o -type l \)` (or `-L`), with a failing control that creates a symlinked hook, shows the guard silent, then red-green; the classic twin must be changed in the same commit where it exists.
 
 ### §91 — No row pins the 120000 ms boundary of the inconclusive-duration fallback (formerly a local anomaly)
 
-**Status:** IMPLEMENTED 2026-10-27 - on branch `chore/consult-guard-batch`: rows at 120000 (fires) and 119999 (silent), each red under its mutant; flips to SHIPPED when that branch is merged
+**Status:** SHIPPED 2026-10-27 - merged to main in `037e7f86` (PR #34; capstone folds in `df95fcfb`, test-audit fold in the same branch): rows at 120000 (fires) and 119999 (silent), each red under its mutant
 
 `clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh:80` decides the inconclusive-duration fallback with a comparison against 120000 ms; the suite exercises only 120005 and 40000, so changing `>=` to `>` (or the threshold by a few ms) passes every row. Fix direction: one row each at 120000 and 119999 ms, each proven red under the matching mutant. Low value; it is recorded so the gap is visible, not because a defect is known.
 
