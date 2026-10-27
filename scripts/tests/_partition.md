@@ -867,7 +867,7 @@ check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 check-growth-budget.Tests.ps1                    15,3s   15 tests   <- FAST, re-measured 2026-08-05
-check-injected-context.Tests.ps1                 91,5s  175 tests   <- 170 -> 175 2026-10-27 (ROADMAP 98: ellipsis leaf rows, time not re-measured); SLOW as of 2026-08-24; was FAST -
+check-injected-context.Tests.ps1                 91,5s  177 tests   <- 170 -> 177 2026-10-27 (ROADMAP 98: ellipsis leaf rows, time not re-measured); SLOW as of 2026-08-24; was FAST -
   169 -> 170 on 2026-09-30 (Branch 1 AGY-TEST-AUDIT): a corrupt-index fallback row. Runtime NOT re-measured.
   157 -> 169 on 2026-09-30 (ROADMAP sweep Branch 1): 3 rows for §42 (drive-root repo root) and 9 for §54
   (resolution against the git index); the 91,5s runtime was NOT re-measured with them.

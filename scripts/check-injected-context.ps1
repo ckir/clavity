@@ -470,9 +470,10 @@ function Test-IsPathCandidate {
     if ([string]::IsNullOrWhiteSpace($Token)) { return $false }
     # Variables, placeholders and home-relative paths are never resolved here.
     if ($Token -match '[%$~]' -or $Token -match '<[^>]+>') { return $false }
-    # A leaf made only of periods is an ellipsis (`../../../seed/...`), not a name. Windows path normalisation drops trailing
-    # periods and Linux keeps them, so resolving it gave different answers per OS (ROADMAP 98).
-    if (($Token -split '/')[-1] -match '^\.+$') { return $false }
+    # A leaf of THREE OR MORE periods is an ellipsis (`../../../seed/...`), not a name. Windows path normalisation drops trailing
+    # periods and Linux keeps them, so resolving it gave different answers per OS (ROADMAP 98). `.` and `..` are real segments
+    # and stay candidates (capstone round 1: `^\.+$` hid a broken `../x/..`).
+    if (($Token -split '/')[-1] -match '^\.{3,}$') { return $false }
     # Explicitly relative.
     if ($Token.StartsWith('./') -or $Token.StartsWith('../')) { return $true }
     # A leading bare '/' does NOT qualify: those are slash-commands (/agent, /mcp, /skills, ...).

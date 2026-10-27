@@ -138,6 +138,10 @@ Describe 'check-injected-context.ps1' {
             @{ tok = '../knowledge/agy-capabilities.md' }
             # The near-miss of the ellipsis rule below: a leaf that merely STARTS with periods is still a name.
             @{ tok = '../a/...md' }
+            # `..` and `.` are real segments, not an ellipsis: a broken `../x/..` must still be resolved and reported (capstone round 1).
+            @{ tok = '../..' }
+            @{ tok = './a/..' }
+            @{ tok = '../x/..' }
         ) { (Test-IsPathCandidate -Token $tok) | Should -BeTrue }
 
         It 'does NOT treat <tok> as a candidate' -ForEach @(
@@ -163,8 +167,7 @@ Describe 'check-injected-context.ps1' {
             # trailing periods ("../../../seed" exists) while Linux keeps them, so the gate was green on one OS and red on the other.
             @{ tok = '../../../seed/...' }
             @{ tok = '../a/...' }
-            @{ tok = './a/..' }
-            @{ tok = '../..' }
+            @{ tok = './a/....' }
         ) { (Test-IsPathCandidate -Token $tok) | Should -BeFalse }
 
         It 'does NOT treat the directory reference <tok> as a file candidate' -ForEach @(
