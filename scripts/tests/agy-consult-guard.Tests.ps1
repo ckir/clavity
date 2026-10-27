@@ -1268,6 +1268,20 @@ echo "digests=$n calls=$(wc -l < "$count")"
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # ROADMAP 91: only 120005 and 40000 were exercised, so `>=` turned into `>` (or the threshold moved by a few ms) passed every row.
+    It 'the duration fallback fires AT 120000 ms and not at 119999 (<Ms>)' -ForEach @(
+        @{ Ms = 120000; Fires = $true }
+        @{ Ms = 119999; Fires = $false }
+    ) {
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r -Response @(@{ type = 'text'; text = '{"CascadeId":"c","Answer":"fine","PeerStillBusy":false}' }) -DurationMs $Ms
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+            if ($Fires) { $out | Should -Match 'may have been backgrounded' } else { $out | Should -BeNullOrEmpty }
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'is SILENT on a normal return' {
         $r = New-GuardRepo
         try {
