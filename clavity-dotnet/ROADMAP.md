@@ -4350,17 +4350,29 @@ Linux proxy (`strace -ff -e trace=execve` over the real hooks, 82 rows plus a de
 
 ### §84 — `agy-anomaly-reminder`'s ".git is a FILE" row asserts nothing on Linux
 
-**Status:** OPEN 2026-10-12 - observed, cause of the missing item not determined
+**Status:** IMPLEMENTED 2026-10-27 - cause determined and the row's fixture check fixed on branch `chore/linux-probes`; flips to SHIPPED when that branch is merged
 
 `scripts/tests/agy-anomaly-reminder.Tests.ps1:286` (`finds the repo root when .git is a FILE (worktree or submodule), not a directory`) checks its own fixture with `(Get-Item (Join-Path $w '.git')).PSIsContainer | Should -BeFalse`. On this Linux box that `Get-Item` reports "Could not find item <fixture>/.git" every run, yet the row passes under plain `Invoke-Pester` (37 passed / 2 failed for the suite); it failed under `$ErrorActionPreference = 'Stop'` 3 of 3 times (§81). The pass is presumably `$null | Should -BeFalse`, which is not proven here. Either the file really is absent when `Get-Item` runs (then the later `1 untriaged` assertion passing needs explaining) or `Get-Item` cannot see a dotfile there. The row's own comment says it exists to prove `.git`-as-FILE support, so a check that cannot fail defeats it. Fix direction: assert with `Test-Path -PathType Leaf` and find why the item is not found.
 
+**Cause, measured 2026-10-27 (Linux, pwsh 7).** The file exists (`Test-Path` true, `ls` lists it), but PowerShell on Unix marks every dot-prefixed file `Hidden` and a bare `Get-Item` does not return a hidden item: it errors "Could not find item" and yields `$null`; `Get-Item -Force` finds it (`Attributes=Hidden`, `PSIsContainer=False`). `$null | Should -BeFalse` passes, so the check could not fail: with a DIRECTORY `.git` as the fixture the old assertion stayed green. The ancestor of this class is already documented at `scripts/tests/check-plugin-drift.Tests.ps1:255-261`. **Fixed** by asserting `Test-Path -PathType Leaf | Should -BeTrue` plus `Get-Item -Force`; with the directory fixture the old form passes and the new form fails. The `later '1 untriaged'` assertion needs no explanation: the hook's probe is `[ -e ]`, which accepts a file or a directory.
+
 ### §85 — The Bash/CLI consult path's unfinished returns are unmeasured, and the harness's backgrounding text can change
 
-**Status:** OPEN 2026-10-12 - the Bash/CLI consult path's unfinished returns were never captured; next step: capture them with the temporary-hook method of section 78's round-2 block
+**Status:** OPEN 2026-10-27 - MEASURED: the Bash payload of a backgrounded call is captured (below); next step: classify it in `agy-consult-guard-post.sh`, in the batched consult-guard branch with sections 88, 90 and 91
 
 Classic's `clavity ask` runs through a Bash tool call whose `tool_response` is an object (not the list of text blocks an `agy_ask` returns), and its backgrounding behaviour was never captured. The section 78 hook change classifies only the MCP path, so an unfinished return on the CLI path is still reported as a clean compare.
 
 The harness's backgrounding wording is covered by the `long` class (duration alone) for the MCP path, so a reworded message still gets the notice; the CLI path has no such fallback, because the hook classifies only agy_ask; a Bash payload does carry duration_ms (63 ms on a trivial call, captured 2026-10-12), but what it reads for a backgrounded Bash call was never captured.
+
+**MEASURED 2026-10-27, the method of section 78's round 2** (a temporary PostToolUse hook for `Bash` in the gitignored `.claude/settings.local.json`, which took effect mid-session even though the file did not exist beforehand, removed afterwards; one run each, plain `Bash` tool, harness behaviour at this date). The raw stdin of the hook:
+
+| call | `tool_input` keys | `duration_ms` | `tool_response` keys |
+| --- | --- | --- | --- |
+| finishes in time | `command` | 93 | `stdout`, `stderr`, `interrupted`, `isImage`, `noOutputExpected` |
+| passes its `timeout` (130 s, then 3 s) and is moved to the background | `command`, `timeout` | 130169 and 3451 | the same five plus `backgroundTaskId` and `timedOutAfterMs` (130000 and 3000); `stdout` is `""` |
+| `run_in_background: true` | `command`, `run_in_background` | 182 | the same five plus `backgroundTaskId` (no `timedOutAfterMs`); `stdout` is `""` |
+
+So on the CLI path an unfinished return is recognisable by `tool_response.backgroundTaskId` being present, and `timedOutAfterMs` says it was the timeout, not the caller's choice. Duration alone is NOT a usable fallback here: the 3 s timeout case is a backgrounded call with `duration_ms` 3451, far under the MCP path's 120000 threshold. The harness's own text ("moved to the background") is not in the payload at all, only in what the model sees. A `clavity ask` that the caller deliberately sent with `run_in_background` also carries a `backgroundTaskId` and is then an open `send`, not an unfinished compare, which the guard's category (`agy_guard_category`) must keep separate. Not captured: the completion notification (it is not a tool call, so no hook fires).
 
 ### §86 — The inconclusive-return path's process allowance (+1) is unmeasured on Windows
 
@@ -4370,9 +4382,11 @@ The row `PINNED consult: MCP agy_ask, inconclusive return (after its pre)` in `s
 
 ### §87 — Whether a later consult's baseline absorbs a file that a missed breach left behind is unmeasured
 
-**Status:** OPEN 2026-10-12 - not isolated in the section 78 probes; next step: leave an untracked file behind an unfinished consult, run a second consult, and read whether the guard reports that file or treats it as baseline
+**Status:** OPEN 2026-10-27 - MEASURED: a file left behind after an unfinished consult is absorbed into the next consult's baseline and never reported; the fix design (also compare against the last clean state) goes to the batched consult-guard branch with sections 88, 90 and 91
 
 In section 78's second probe the baseline already contained the first probe's file and the guard reported only the new delta, which is consistent with absorption but was not isolated. If absorption is confirmed, a breach that lands after an unfinished consult becomes invisible to every later consult, which bears on how loud the NOT VERIFIED notice has to be and on whether a later check should also compare against the last clean state.
+
+**MEASURED 2026-10-27 (Linux, a throwaway git repo, the shipped Pre and Post hooks driven with `agy_ask` payloads, state in a private `TMPDIR`, one run each).** Consult 1 returned unfinished (`duration_ms` 120005, a `[PEER STILL BUSY]` block): Post printed the NOT VERIFIED notice and consumed the baseline. An untracked file was then written (the breach after the Post). Consult 2, finished, with no change during it: Pre wrote a FRESH sync baseline that already contained the file, Post compared equal and printed nothing. The paired control, a new file created DURING consult 3, was reported ("VERSION CONTROL CHANGED DURING A REVIEW-ONLY CONSULT ... worktree/untracked files"). So absorption is confirmed: the sync slot re-baselines on every call (`clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh:75-86`), and a breach landing between an unfinished Post and the next Pre is invisible to every later consult. It is not pinned by a test on purpose: asserting today's silence would cement the defect.
 
 ### §88 — `agy-consult-recovery.sh` spends seconds in its own per-seam loop
 
