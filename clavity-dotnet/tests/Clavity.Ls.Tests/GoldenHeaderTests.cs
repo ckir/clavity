@@ -145,10 +145,12 @@ public sealed class GoldenHeaderTests : IDisposable
     {
         // Each region is under the per-file cap, but their sum is over it. Degrade to SEED, do NOT drop everything.
         File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED");
-        File.WriteAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName), new string('a', GoldenHeader.MaxBytes));
+        WriteGrowth(new string('a', GoldenHeader.MaxBytes));   // WITH its sidecar: without one GROWTH is refused for another reason and this row proves nothing (test audit MG-1)
         string? warned = null;
         Assert.Equal("SEED", GoldenHeader.TryReadCombined(_dir, w => warned = w));
-        Assert.NotNull(warned);   // the drop-GROWTH warning fired
+        Assert.NotNull(warned);
+        Assert.Contains("exceeds the", warned);   // the drop-GROWTH warning, not the missing-sidecar one
+        Assert.DoesNotContain("no .sha256 sidecar", warned);
     }
 
     [Fact]
