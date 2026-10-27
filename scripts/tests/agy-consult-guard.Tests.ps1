@@ -1331,6 +1331,16 @@ echo "digests=$n calls=$(wc -l < "$count")"
                 $out | Should -Not -Match 'ms timeout'
             } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
         }
+        It 'a backgrounded PowerShell clavity ask is classified like a Bash one (test audit BS-1)' {
+            $r = New-GuardRepo
+            try {
+                $p = CliPayload 'clavity ask "q" --review-only' $r (& $script:BgResp 130000) 130169 -Tool 'PowerShell'
+                Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+                $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+                $out | Should -Match 'consult not finished'
+                $out | Should -Match '130000 ms timeout'
+            } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+        }
         It 'a backgrounded await-reply (the terminal half) is unfinished too' {
             $r = New-GuardRepo
             try {
@@ -1398,6 +1408,10 @@ echo "digests=$n calls=$(wc -l < "$count")"
                 Invoke-BashHook -HookPath $script:Pre -Payload (Unfinished $r) | Out-Null
                 Invoke-BashHook -HookPath $script:Post -Payload (Unfinished $r) | Out-Null
                 $out = PreOut (Finished $r)
+                # PARSED, not regex-matched: Claude Code drops a hook output that is not this exact shape (test audit PP-1).
+                $j = $out | ConvertFrom-Json
+                $j.hookSpecificOutput.hookEventName | Should -BeExactly 'PreToolUse'
+                $j.hookSpecificOutput.additionalContext | Should -Match 'NOTICE \(baseline absorbs prior state\)'
                 $out | Should -Match 'PreToolUse'
                 $out | Should -Match 'NOTICE \(baseline absorbs prior state\)'
                 $out | Should -Match 'ended unfinished \(peer-busy\)'
