@@ -37,7 +37,11 @@ Describe 'project-store.sh' {
             $e = @{ HOME = (New-TestTempPath 'projhome'); USERPROFILE = (New-TestTempPath 'projhome') }
             foreach ($k in $Env.Keys) { $e[$k] = $Env[$k] }
             New-Item -ItemType Directory -Path $e.HOME -Force | Out-Null
-            Invoke-BashHook -HookPath $script:Script -Payload '' -Arguments $Arguments -Env $e
+            $r = Invoke-BashHook -HookPath $script:Script -Payload '' -Arguments $Arguments -Env $e
+            # Invoke-BashHook captures through Out-String, which re-joins a native command's lines with the PLATFORM newline (CRLF on
+            # Windows), so the capture is normalised here; the real byte contract is asserted from a redirected file by its own row.
+            $r.StdOut = $r.StdOut -replace "`r`n", "`n"
+            $r
         }
         $script:Expected = "[[!] $($script:Crit)]`n- RULE B first line,`n  continued line.`n- RULE A one line.`n`n[$($script:Load)]`n- RULE C.`n"
     }
