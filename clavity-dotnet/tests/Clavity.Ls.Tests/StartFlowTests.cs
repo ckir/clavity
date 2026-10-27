@@ -526,6 +526,7 @@ public sealed class StartFlowTests
         Assert.Equal(1, StartFlow.Start([Repo], fx));
         // Nothing else happened: no log directory, no pairing doc, no agy tab, no Claude.
         Assert.Equal(L("take-folder"), fx.Calls);
+        Assert.Equal([Repo], fx.FolderLocks);   // the folder typed, not the current directory and not empty
         Assert.Equal(StartFlow.FolderTaken(Repo) + Environment.NewLine, fx.Err.ToString());
     }
 
@@ -537,6 +538,7 @@ public sealed class StartFlowTests
         var fx = new Fake { Waiting = [W(Attached)], FolderHeld = true };
         Assert.Equal(1, StartFlow.Start(withId ? [Repo, "--attach", Attached] : [Repo, "--attach"], fx));
         Assert.Equal(L("take-folder"), fx.Calls);   // not "find", not "take": the folder is refused first
+        Assert.Equal([Repo], fx.FolderLocks);
         Assert.Equal(StartFlow.FolderTaken(Repo) + Environment.NewLine, fx.Err.ToString());
     }
 
@@ -579,6 +581,18 @@ public sealed class StartFlowTests
         Assert.Equal(L("take-folder"), fx.Calls);
         Assert.Contains("Access to the path '/home/u/.clavity/x.lock' is denied.", err);
         Assert.Contains(StartFlow.FolderLockFailed(Repo, "Access to the path '/home/u/.clavity/x.lock' is denied."), err);
+        Assert.DoesNotContain("already running", err);
+    }
+
+    [Fact]
+    public void A_folder_lock_that_fails_with_an_IO_error_says_why_and_is_not_called_a_running_session()
+    {
+        // SessionLock.TryTakeChecked throws IOException when the lock file cannot be created (disk full, name too long).
+        var fx = new Fake { FolderFails = new IOException("No space left on device") };
+        Assert.Equal(1, StartFlow.Start([Repo], fx));
+        var err = fx.Err.ToString();
+        Assert.Equal(L("take-folder"), fx.Calls);
+        Assert.Contains(StartFlow.FolderLockFailed(Repo, "No space left on device"), err);
         Assert.DoesNotContain("already running", err);
     }
 

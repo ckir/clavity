@@ -133,7 +133,72 @@ public sealed class FolderKeyTests : IDisposable
         Directory.CreateSymbolicLink(Path.Combine(_root, "b"), Path.Combine(_root, "a"));
         var task = Task.Run(() => FolderKey.Canonical(Path.Combine(_root, "a"), false));
         Assert.True(task.Wait(TimeSpan.FromSeconds(10)), "a symlink loop must not hang the key");
-        Assert.False(string.IsNullOrEmpty(task.Result));
+        // A loop of two links ends on the 41st hop, which is `a` (odd hops are `a`): the last path seen, not an empty or shared key.
+        Assert.Equal(Path.Combine(_root, "a"), task.Result);
+    }
+
+    [Fact]
+    public void A_chain_of_forty_links_resolves_and_the_forty_first_stops_where_it_stands()
+    {
+        // The cap is the kernel's 40 LINKS: 40 still reach the real folder, the 41st is treated as a plain directory.
+        if (OperatingSystem.IsWindows()) return;
+        var repo = Make("data", "repo");
+        var previous = repo;
+        for (var i = 1; i <= 41; i++)
+        {
+            previous = Link("c" + i, previous);
+            if (i == 40)
+                Assert.Equal(FolderKey.Canonical(repo, false), FolderKey.Canonical(previous, false));
+        }
+        Assert.Equal(Path.Combine(_root, "c1"), FolderKey.Canonical(previous, false));
+    }
+
+    [Fact]
+    public void A_link_target_with_dot_segments_a_doubled_separator_or_a_trailing_one_gives_the_real_folders_key()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var repo = Make("data", "repo");
+        Directory.CreateSymbolicLink(Path.Combine(_root, "rel"), "./data//repo/");
+        Directory.CreateSymbolicLink(Path.Combine(_root, "self"), ".");
+        Assert.Equal(FolderKey.Canonical(repo, false), FolderKey.Canonical(Path.Combine(_root, "rel"), false));
+        Assert.Equal(FolderKey.Canonical(_root, false), FolderKey.Canonical(Path.Combine(_root, "self"), false));
+    }
+
+    [Fact]
+    public void A_dot_dot_at_the_root_inside_a_link_target_stays_at_the_root()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var repo = Make("data", "repo");
+        var rootKey = FolderKey.Canonical(Path.GetPathRoot(_root)!, false);
+        Directory.CreateSymbolicLink(Path.Combine(_root, "past"), "/../../../../../../../.." + repo);
+        Directory.CreateSymbolicLink(Path.Combine(_root, "top"), Path.GetPathRoot(_root)!);
+        Directory.CreateSymbolicLink(Path.Combine(_root, "up"), string.Join('/', Enumerable.Repeat("..", 40)));
+        Assert.Equal(FolderKey.Canonical(repo, false), FolderKey.Canonical(Path.Combine(_root, "past"), false));
+        Assert.Equal(rootKey, FolderKey.Canonical(Path.Combine(_root, "top"), false));
+        Assert.Equal(rootKey, FolderKey.Canonical(Path.Combine(_root, "up"), false));
+    }
+
+    [Fact]
+    public void A_dot_dot_in_the_typed_folder_is_collapsed_as_text_before_any_link_is_followed()
+    {
+        // The comment in Canonical: the typed folder is made absolute lexically, because that is the path Claude is launched in.
+        if (OperatingSystem.IsWindows()) return;
+        var repo = Make("repo");
+        Make("deep", "sub");
+        Link("l2", Path.Combine(_root, "deep", "sub"));
+        var typed = Path.Combine(_root, "l2", "..", "repo");
+        Assert.Equal(FolderKey.Canonical(repo, false), FolderKey.Canonical(typed, false));
+        Assert.NotEqual(FolderKey.Canonical(Path.Combine(_root, "deep", "repo"), false), FolderKey.Canonical(typed, false));
+    }
+
+    [Fact]
+    public void The_case_folding_in_production_follows_the_operating_system()
+    {
+        // RealStartEffects passes FolderKey.IgnoreCaseHere, which no other test reads: on Windows and macOS two spellings
+        // differing only in case are ONE folder, on Linux they are two.
+        var lower = FolderKey.LockPath(_root, Path.Combine(_root, "repo"), FolderKey.IgnoreCaseHere);
+        var upper = FolderKey.LockPath(_root, Path.Combine(_root, "REPO"), FolderKey.IgnoreCaseHere);
+        Assert.Equal(OperatingSystem.IsWindows() || OperatingSystem.IsMacOS(), lower == upper);
     }
 
     [Fact]
