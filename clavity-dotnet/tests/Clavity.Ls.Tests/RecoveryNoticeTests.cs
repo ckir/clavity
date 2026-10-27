@@ -86,6 +86,17 @@ public class RecoveryNoticeTests
     }
 
     [Fact]
+    public void The_quoted_line_is_clipped_at_exactly_one_hundred_characters()
+    {
+        // Test audit MG-1: 'shorter than 600' passed for any clip from 50 to 500.
+        var hundred = new string('a', 100);
+        Assert.Contains($"'{hundred}')", RecoveryNotice.TerminalDetail("VERDICT:", WithAnswer(hundred)));          // exactly the limit: whole line
+        var d = RecoveryNotice.TerminalDetail("VERDICT:", WithAnswer(hundred + "b"));                              // one over: clipped to the limit
+        Assert.Contains($"'{hundred}')", d);
+        Assert.DoesNotContain(hundred + "b", d);
+    }
+
+    [Fact]
     public void A_cut_Answer_that_happens_to_end_on_a_bracket_VERDICT_line_gets_no_panel_hint()
     {
         // The prefix cut at the cap is not the reply's end, so its last line proves nothing about the closing line.
