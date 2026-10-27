@@ -227,6 +227,7 @@ Describe 'generate-cheatsheet-literals.ps1' {
         # THE FIXTURE MUST FAIL AT THE *WRITE*, NOT EARLIER. A missing or directory-shaped C# target
         # fails VALIDATION, which precedes both writes, and would prove nothing about ordering. A
         # READ-ONLY file validates fine and throws only when WriteAllText runs - the exact window.
+        if ((-not $IsWindows) -and ((& id -u) -eq '0')) { Set-ItResult -Skipped -Because 'APPROVED:NotAsRoot: root writes a read-only file, so the write cannot be made to fail'; return }
         $tmp = New-TestTempPath 'genatomic'
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
         try {

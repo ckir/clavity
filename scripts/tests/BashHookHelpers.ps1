@@ -313,10 +313,16 @@ function New-NoJqPath {
         # ONE bash call: one cp -s process per PATH directory; -n keeps the first name found, as PATH lookup would.
         & (Get-GitBashOrThrow) -c 'IFS=:; for d in $PATH; do [ -d "$d" ] || continue; cp -s -n "$d"/* "$1"/ 2>/dev/null; done; rm -f "$1/jq" "$1/jq.exe"' _ $result
     }
-    $probe = & (Get-GitBashOrThrow) -c 'PATH="$1"; export PATH; command -v jq >/dev/null 2>&1 && echo JQ; command -v grep >/dev/null 2>&1 && command -v bash >/dev/null 2>&1 && echo TOOLS' _ $result
-    $probe = @($probe)
-    if ($probe -contains 'JQ') { throw "New-NoJqPath: jq still reachable under '$result'" }
-    if ($probe -notcontains 'TOOLS') { throw "New-NoJqPath: grep/bash not reachable under '$result' (PATH is not usable)" }
+    try {
+        $probe = & (Get-GitBashOrThrow) -c 'PATH="$1"; export PATH; command -v jq >/dev/null 2>&1 && echo JQ; command -v grep >/dev/null 2>&1 && command -v bash >/dev/null 2>&1 && echo TOOLS' _ $result
+        $probe = @($probe)
+        if ($probe -contains 'JQ') { throw "New-NoJqPath: jq still reachable under '$result'" }
+        if ($probe -notcontains 'TOOLS') { throw "New-NoJqPath: grep/bash not reachable under '$result' (PATH is not usable)" }
+    } catch {
+        # The caller never receives the path when this throws, so nobody else can remove it (ROADMAP 93 item 8).
+        if (-not $IsWindows) { Remove-TestPath $result }
+        throw
+    }
     $result
 }
 

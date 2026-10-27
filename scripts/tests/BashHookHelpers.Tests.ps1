@@ -136,6 +136,17 @@ Describe 'BashHookHelpers (harness validation)' {
                 & (Get-GitBashOrThrow) -c 'PATH="$1"; export PATH; command -v grep >/dev/null 2>&1 && echo yes' _ $p | Should -Be 'yes'
             } finally { if (-not $IsWindows) { Remove-TestPath $p } }
         }
+        It 'New-NoJqPath leaves no temp directory behind when its own postcondition throws' -Skip:$IsWindows -Tag 'LinuxOnly' {
+            # A bash that claims jq is still reachable makes the postcondition throw; the half-built directory must go with it.
+            $fakeBash = Join-Path $script:xpDir 'bash-claims-jq.sh'
+            Set-Content -LiteralPath $fakeBash -Value "#!/bin/sh`necho JQ`n"
+            [IO.File]::SetUnixFileMode($fakeBash, [IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite -bor [IO.UnixFileMode]::UserExecute)
+            Mock Get-GitBashOrThrow { $fakeBash }
+            $before = @(Get-ChildItem -LiteralPath (Get-TestTempRoot) -Directory -Filter 'nojq-*' -ErrorAction SilentlyContinue).Count
+            { New-NoJqPath } | Should -Throw '*jq still reachable*'
+            $after = @(Get-ChildItem -LiteralPath (Get-TestTempRoot) -Directory -Filter 'nojq-*' -ErrorAction SilentlyContinue).Count
+            $after | Should -Be $before
+        }
         It 'Set-TestPathUnreadable blocks the BASH process, and Restore-TestPathReadable undoes it' {
             $f = Join-Path $script:xpDir 'secret.txt'; Set-Content -LiteralPath $f -Value 'x'
             $enforced = Set-TestPathUnreadable -Path $f

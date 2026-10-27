@@ -7,7 +7,7 @@
  https://polyformproject.org/licenses/noncommercial/1.0.0/
 #>
 
-# check-control-bytes - fail when a TRACKED Markdown file carries a C0 control byte (other than TAB, LF, CR) or
+# check-control-bytes - fail when a TRACKED Markdown or PowerShell file carries a C0 control byte (other than TAB, LF, CR) or
 # DEL. ROADMAP §49: an edit that interprets backslash escapes turns a written '\u0000' or '\b' into a real control
 # byte; git then either reclassifies the file as binary (it renders as nothing on GitHub) or - for a backspace -
 # still calls it text, so ONLY A BYTE SCAN sees it. Two live instances were repaired on 2026-09-29 (3a1d0bec).
@@ -32,19 +32,19 @@ function Get-ControlByteHits {
     }
 }
 
-# Every TRACKED *.md. FAILS CLOSED: a gate that cannot list the files it guards must not report "ok".
-function Get-TrackedMarkdown {
+# Every TRACKED *.md and *.ps1 (ROADMAP 93.9: a Pester suite held three raw NUL bytes the *.md-only scan could not see). FAILS CLOSED: a gate that cannot list the files it guards must not report "ok".
+function Get-TrackedScanFiles {
     param([string]$RepoRoot)
-    $raw = (& git -C $RepoRoot ls-files -z -- '*.md' 2>$null) -join ''
+    $raw = (& git -C $RepoRoot ls-files -z -- '*.md' '*.ps1' 2>$null) -join ''
     if ($LASTEXITCODE -ne 0) { throw "check-control-bytes: 'git ls-files' failed in '$RepoRoot' - cannot list the files this gate guards" }
     @($raw -split "`0" | Where-Object { $_ })
 }
 
 function Invoke-ControlByteCheck {
     param([string]$RepoRoot)
-    $files = @(Get-TrackedMarkdown -RepoRoot $RepoRoot)
+    $files = @(Get-TrackedScanFiles -RepoRoot $RepoRoot)
     $hits = @(Get-ControlByteHits -RepoRoot $RepoRoot -RelPaths $files)
-    if ($hits.Count -eq 0) { Write-Host "control bytes ok ($($files.Count) tracked *.md files scanned)"; exit 0 }
+    if ($hits.Count -eq 0) { Write-Host "control bytes ok ($($files.Count) tracked *.md and *.ps1 files scanned)"; exit 0 }
     foreach ($h in $hits) { Write-Host ("{0}:{1}:{2} byte=0x{3:X2}" -f $h.Path, $h.Line, $h.Column, $h.Byte) }
     Write-Host "check-control-bytes: $($hits.Count) control byte(s). Most often a backslash escape (\u0000, \b, \a, \r) that a tool interpreted - restore the characters the author wrote."
     exit 1

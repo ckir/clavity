@@ -136,6 +136,12 @@ Describe 'check-injected-context.ps1' {
             @{ tok = 'assertion-strength-reminder.sh' }
             @{ tok = './hooks/agy-seam-inject.sh' }
             @{ tok = '../knowledge/agy-capabilities.md' }
+            # The near-miss of the ellipsis rule below: a leaf that merely STARTS with periods is still a name.
+            @{ tok = '../a/...md' }
+            # `..` and `.` are real segments, not an ellipsis: a broken `../x/..` must still be resolved and reported (capstone round 1).
+            @{ tok = '../..' }
+            @{ tok = './a/..' }
+            @{ tok = '../x/..' }
         ) { (Test-IsPathCandidate -Token $tok) | Should -BeTrue }
 
         It 'does NOT treat <tok> as a candidate' -ForEach @(
@@ -154,6 +160,14 @@ Describe 'check-injected-context.ps1' {
             @{ tok = 'ghidrust skill --emit > SKILL.md' }
             @{ tok = 'os.path.dirname(__file__)/SKILL.md' }
             @{ tok = 'just check-injected-context' }
+        ) { (Test-IsPathCandidate -Token $tok) | Should -BeFalse }
+
+        It 'does NOT treat <tok> as a candidate: its leaf is only periods, an ellipsis and not a name' -ForEach @(
+            # ROADMAP 98: prose at agy-curate/SKILL.md:56 writes `../../../seed/...`. Windows normalisation strips the
+            # trailing periods ("../../../seed" exists) while Linux keeps them, so the gate was green on one OS and red on the other.
+            @{ tok = '../../../seed/...' }
+            @{ tok = '../a/...' }
+            @{ tok = './a/....' }
         ) { (Test-IsPathCandidate -Token $tok) | Should -BeFalse }
 
         It 'does NOT treat the directory reference <tok> as a file candidate' -ForEach @(
@@ -399,6 +413,35 @@ Describe 'check-injected-context.ps1' {
         }
     }
 
+    Context 'a broken relative traversal reaches the exit code (test audit, linux hygiene)' {
+        # The candidate rule is asserted token by token above; nothing ran a document through the CLI to see the REPORT. A regression
+        # in extraction or collection for a `..`-terminated reference would leave those rows green and ship a gate that misses it.
+        BeforeAll {
+            . $script:Script -RepoRoot $script:RepoRoot
+            $script:RunWithRef = {
+                param([string]$Ref)
+                $d = New-TestTempPath 'icc-trav'
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+                Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+                [IO.File]::WriteAllText((Join-Path $d 'seed/ref.md'), "See ``$Ref`` for the layout.`n", (New-Object System.Text.UTF8Encoding($false)))
+                $out = & pwsh -NoProfile -File $script:Script -RepoRoot $d 2>&1 | Out-String
+                $code = $LASTEXITCODE
+                Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue
+                [pscustomobject]@{ Code = $code; Out = $out }
+            }
+        }
+        It 'exits 1 and names a ..-terminated reference that leaves the repository' {
+            $r = & $script:RunWithRef '../../nonexistent/..'
+            $r.Code | Should -Be 1 -Because $r.Out
+            $r.Out | Should -Match 'broken: \.\./\.\./nonexistent/\.\.'
+        }
+        It 'does NOT fail on the same path ending in an ellipsis (the near-miss)' {
+            $r = & $script:RunWithRef '../../nonexistent/...'
+            $r.Code | Should -Be 0 -Because $r.Out
+        }
+    }
     Context 'reference resolution outcomes' {
         BeforeAll { . $script:Script -RepoRoot $script:RepoRoot }
 

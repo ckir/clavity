@@ -19,7 +19,8 @@ $norm = ([Text.Encoding]::UTF8.GetString($raw)) -replace "`r`n", "`n" -replace "
 $sha  = [Security.Cryptography.SHA256]::Create()
 $hash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($norm))) -replace '-', '').ToUpperInvariant()
 $text = Get-Content -Raw -Path $iss
-if ($text -notmatch [regex]::Escape("`"$hash`"")) {
+# The hash must sit on the define line itself: a comment or another define quoting the same hash is not the pin the uninstaller reads.
+if ($text -notmatch ('(?m)^#define ExpectedRegisterPs1Sha256 "' + $hash + '"\s*$')) {
     Write-Error "register-plugin-hash.iss is STALE. Run: just sync-register-hash"
     exit 1
 }

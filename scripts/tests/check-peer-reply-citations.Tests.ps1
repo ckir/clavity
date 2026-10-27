@@ -530,10 +530,10 @@ print(",".join(str(ord(c)) for c in ast.literal_eval(vals[0])))
         # the guard back to `except OSError:` leaves the whole suite green while a NUL-bearing path crashes
         # with an unhandled "ValueError: embedded null byte" traceback. This row is that missing pin.
         # THE NUL MUST REACH subprocess.run AS A DECODED STRING, which means the JSON on disk must carry the
-        # ESCAPE  , not a raw NUL byte: a raw control char is REJECTED by json.load first ("Invalid
-        # control character") and never reaches the spawn. ConvertTo-Json escapes a real [char]0 to  
+        # ESCAPE \u0000, not a raw NUL byte: a raw control char is REJECTED by json.load first ("Invalid
+        # control character") and never reaches the spawn. ConvertTo-Json escapes a real [char]0 to \u0000
         # for us (as Python's json.dump does), so json.load decodes it back to a NUL string at the spawn -
-        # the path this guard exists for. Building the literal ' ' by hand is brittle across shells.
+        # the path this guard exists for. Building the literal '\u0000' by hand is brittle across shells.
         $nul = [char]0
         $row = [ordered]@{ file = "no/such${nul}file.md"; quoted_line = 'anything' } | ConvertTo-Json -Compress
         $r = New-Reply ("[$row]")

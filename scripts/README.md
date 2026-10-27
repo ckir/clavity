@@ -22,7 +22,7 @@ directly.
 
 | Script | Purpose | Run via |
 |---|---|---|
-| `check-control-bytes.ps1` | Fail if a TRACKED `*.md` carries a C0 control byte (other than TAB, LF, CR) or DEL - usually a backslash escape a tool interpreted (ROADMAP §49). Scans bytes, not git's text/binary call; fails closed outside a git repo | `just check-control-bytes` |
+| `check-control-bytes.ps1` | Fail if a TRACKED `*.md` or `*.ps1` carries a C0 control byte (other than TAB, LF, CR) or DEL - usually a backslash escape a tool interpreted (ROADMAP §49). Scans bytes, not git's text/binary call; fails closed outside a git repo | `just check-control-bytes` |
 | `check-doc-stubs.ps1` | Fail if a doc deliberately reduced to a pointer stub has been re-fattened into a duplicate copy | `just check-doc-stubs` |
 | `check-tracker-format-excerpt.ps1` | Fail if the tracker-format excerpt in `docs/tracker-format.md` differs from, or is missing or duplicated in, any of the six promote-step skill copies (`open-issues`, `agy-capstone`, `agy-test-audit` x both plugins) | `just check-tracker-format-excerpt` |
 | `check-tracker-status.ps1` | Enforce `docs/tracker-format.md`: every ROADMAP section, backlog stub, fix-the-tool entry and the review-relay / agy-autotrain ROADMAP items has one valid `**Status:**` line with its evidence (`-List` prints the open items) | `just check-tracker-status` |

@@ -15,11 +15,13 @@ on:
     branches: [main]
     paths:
       - '**/*.md'
+      - '**/*.ps1'
       - 'scripts/check-control-bytes.ps1'
       - '.github/workflows/ci-control-bytes.yml'
   pull_request:
     paths:
       - '**/*.md'
+      - '**/*.ps1'
       - 'scripts/check-control-bytes.ps1'
       - '.github/workflows/ci-control-bytes.yml'
 

@@ -98,6 +98,20 @@ Describe 'check-control-bytes.ps1' {
         $out2 | Should -Match 'byte=0x07'
     }
 
+    It 'scans a tracked PowerShell script too, and still ignores a tracked file of another type' {
+        # ROADMAP 93.9: a Pester suite once held three raw NUL bytes in a comment and no gate could see it, because only *.md was listed.
+        $d = Join-Path $TestDrive 'repo8'
+        New-Item -ItemType Directory -Path $d | Out-Null
+        & git -C $d init -q 2>&1 | Out-Null
+        [IO.File]::WriteAllBytes((Join-Path $d 'a.ps1'), [byte[]](@(Get-Ascii "# x") + @(0) + @(Get-Ascii "y`n")))
+        [IO.File]::WriteAllBytes((Join-Path $d 'b.bin'), [byte[]](@(Get-Ascii "x") + @(0) + @(Get-Ascii "y`n")))
+        & git -C $d add a.ps1 b.bin
+        $out = & pwsh -NoProfile -File $script:Script -RepoRoot $d 2>&1 | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'a\.ps1:1:4 byte=0x00'
+        $out | Should -Not -Match 'b\.bin'
+    }
+
     It 'fails closed outside a git repository' {
         $d = Join-Path $TestDrive 'nogit7'
         New-Item -ItemType Directory -Path $d | Out-Null
@@ -108,7 +122,7 @@ Describe 'check-control-bytes.ps1' {
     }
 
     It 'the repository itself is clean' {
-        $files = @(Get-TrackedMarkdown -RepoRoot $script:RepoRoot)
+        $files = @(Get-TrackedScanFiles -RepoRoot $script:RepoRoot)
         $hits = @(Get-ControlByteHits -RepoRoot $script:RepoRoot -RelPaths $files)
         (@($hits | ForEach-Object { "$($_.Path):$($_.Line):$($_.Column)" }) -join ', ') | Should -BeExactly ''
     }

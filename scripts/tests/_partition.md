@@ -762,7 +762,7 @@ assertion-strength-reminder.Tests.ps1            54,9s   42 tests   <- 37 -> 42 
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file
                                                                       already warns above.
-BashHookHelpers.Tests.ps1                         1,7s   22 tests   <- FAST, re-measured 2026-08-05; +4 Job Object counter rows 2026-10-05 (Branch 20), time not re-measured; 12 -> 13 2026-10-06 (Branch 20 test-audit MG2: background-work counter row), time not re-measured; 13 -> 14 2026-10-06 (Branch 20 capstone R6 HB1: fsmonitor row), time not re-measured; 14 -> 15 2026-10-06 (Branch 20 capstone R7: caller GIT_CONFIG row), time not re-measured
+BashHookHelpers.Tests.ps1                         1,7s   23 tests   <- 22 -> 23 2026-10-27 (ROADMAP 93 item 8: New-NoJqPath cleanup row, time not re-measured); FAST, re-measured 2026-08-05; +4 Job Object counter rows 2026-10-05 (Branch 20), time not re-measured; 12 -> 13 2026-10-06 (Branch 20 test-audit MG2: background-work counter row), time not re-measured; 13 -> 14 2026-10-06 (Branch 20 capstone R6 HB1: fsmonitor row), time not re-measured; 14 -> 15 2026-10-06 (Branch 20 capstone R7: caller GIT_CONFIG row), time not re-measured
 check-agy-discipline-skills.Tests.ps1            43,2s  116 tests   <- FAST, re-measured 2026-09-13 (+2, section-15 panel-marker rows; was 110); 112 -> 116 2026-10-12 (section 78, Task 3: +4 rows), time NOT re-measured
   94 -> 107 on 2026-09-12 (AGY-TEST-AUDIT section 30 round 1): the transport/marker row now plants every
   skill the rules admit (3 -> 9), the checker-invocation row both directions (1 -> 2), an in-process
@@ -867,7 +867,7 @@ check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 check-growth-budget.Tests.ps1                    15,3s   15 tests   <- FAST, re-measured 2026-08-05
-check-injected-context.Tests.ps1                 91,5s  170 tests   <- SLOW as of 2026-08-24; was FAST -
+check-injected-context.Tests.ps1                 91,5s  179 tests   <- 170 -> 179 2026-10-27 (ROADMAP 98: ellipsis leaf rows, time not re-measured); SLOW as of 2026-08-24; was FAST -
   169 -> 170 on 2026-09-30 (Branch 1 AGY-TEST-AUDIT): a corrupt-index fallback row. Runtime NOT re-measured.
   157 -> 169 on 2026-09-30 (ROADMAP sweep Branch 1): 3 rows for §42 (drive-root repo root) and 9 for §54
   (resolution against the git index); the 91,5s runtime was NOT re-measured with them.
@@ -1079,10 +1079,10 @@ check-seed-artifacts-synced.Tests.ps1            74,0s   12 tests   <- re-measur
 check-seed-budget.Tests.ps1                       8,4s    4 tests   <- FAST, re-measured 2026-08-05
 check-user-facing-docs.Tests.ps1                 10,4s   15 tests   <- FAST, re-measured 2026-08-05
 compute-release.Tests.ps1                        25,0s    8 tests   <- SLOW, re-measured 2026-08-06
-check-control-bytes.Tests.ps1                    42,7s    9 tests   <- SLOW, NEW 2026-09-30 (ROADMAP §49, sweep Branch 1); 8 -> 9 the same day (AGY-TEST-AUDIT: the C0 range bound), runtime NOT re-measured.
+check-control-bytes.Tests.ps1                    42,7s    10 tests  <- SLOW, NEW 2026-09-30 (ROADMAP §49, sweep Branch 1); 8 -> 9 the same day (AGY-TEST-AUDIT: the C0 range bound), runtime NOT re-measured; 9 -> 10 2026-10-27 (hygiene branch: +tracked *.ps1 is scanned, ROADMAP 93.9).
   MEASURED at top level, two sequential runs, each its own pwsh + Pester cold start: 42,7s and 50,6s; background
   load not controlled. SLOW because the fast recipe was last measured at 480,5s against the 600s cap, so ~45s
-  more would crowd it; rows 6-7 start child pwsh processes and row 8 scans every tracked *.md.
+  more would crowd it; rows 6-7 start child pwsh processes and row 8 scans every tracked *.md and *.ps1.
 docs-audit-reminder.Tests.ps1                    28,3s   13 tests   <- 11 -> 12 2026-10-08 (capstone R3: +hyphen near-miss header is not an unconfirmed doc); 7 -> 11 2026-10-07 (Branch 21 Task 7: +CRLF, +unterminated last line, +bullet near-misses, +unreadable view); SLOW, NEW 2026-09-30 (docs-audit nudge, sweep
   Branch 1). MEASURED at top level, two sequential runs: 28,3s and 29,4s (each a cold start; background load not
   controlled). SLOW for the same fast-recipe headroom reason; every row drives Git Bash. 5 -> 7 the same day (AGY-TEST-AUDIT: the AUDIT-* count and the JSON envelope), runtime NOT re-measured.
@@ -1134,6 +1134,7 @@ path-lib.Tests.ps1                                9,5s   18 tests   <- FAST, ADD
                                                                       the first thing to revisit if that
                                                                       half starts straddling it again.
 check-installer-ascii.Tests.ps1                   10,7s   4 tests   <- SLOW, ADDED 2026-09-08 (section 28).
+register-hash-scripts.Tests.ps1                      11,4s   11 tests   <- 8 -> 11 2026-10-27 (test audit MG-1: 2 comment/other-define rows + a positive control); SLOW, ADDED 2026-10-27 (ROADMAP section 93 item 2; one run, box load uncontrolled): sync-register-hash.ps1 and check-register-hash-synced.ps1 in a copied tree.
                                                                       2 -> 4 on 2026-09-11 (AGY-TEST-AUDIT
                                                                       section 28): two rows pinning that the
                                                                       gate FAILS, each spawning a child pwsh
@@ -1173,7 +1174,7 @@ clavity-install.Tests.ps1                         7,9s   12 tests   <- SLOW, ADD
                                                                       blind spot itself was closed.
 check-tracker-status.Tests.ps1                UNMEASURED  36 tests   <- SLOW, NEW 2026-10-08 (a child pwsh per row, ~3.5s each: ~90-110s contended; SLOW on purpose - the fast half is cap-adjacent. The driver measures it idle at the Task 10 gates.)
 check-tracker-format-excerpt.Tests.ps1       UNMEASURED  9 tests    <- SLOW, NEW 2026-10-08 (a child pwsh per row, ~2s each; the driver measures it idle at the Task 10 gates.)
-run-pester-parallel.Tests.ps1                    55,0s  45 tests   <- SLOW, NEW 2026-10-12 (+1 row 2026-10-13: the ci-scripts.yml Linux job text pin; prototype runner; +6 rows for -Exclude, +3 for -ShowMessages, +1 for error-preference parity, same day; a child pwsh per row, each starting its own children; two solo runs 56,9s and 53,1s, box load uncontrolled - xrdp/Xorg and other sessions)
+run-pester-parallel.Tests.ps1                    55,0s  50 tests   <- 45 -> 50 2026-10-27 (ROADMAP 93 item 4: -MinTests and -RequireSuite rows, time not re-measured); SLOW, NEW 2026-10-12 (+1 row 2026-10-13: the ci-scripts.yml Linux job text pin; prototype runner; +6 rows for -Exclude, +3 for -ShowMessages, +1 for error-preference parity, same day; a child pwsh per row, each starting its own children; two solo runs 56,9s and 53,1s, box load uncontrolled - xrdp/Xorg and other sessions)
 TestTemp.Tests.ps1                         UNMEASURED  16 tests   <- FAST, NEW 2026-10-08 (in-process, sub-second rows: Remove-TestPath, the shared temp root, the sweep, its once-per-run flag, the killed-run backup restore)
 test-temp-discipline.Tests.ps1             UNMEASURED  4 tests    <- FAST, NEW 2026-10-08 (in-process scan of ~76 suite files, a few seconds)
 clavity-dotnet-setup.Tests.ps1             UNMEASURED  11 tests   <- FAST, NEW 2026-10-13 (ROADMAP section 68, Branch R: one bash child per row with a logging agy shim, ~0.7s each, 8,6s wall for the file solo on a loaded Linux box; the driver measures it idle with the Branch R gates)
