@@ -78,10 +78,18 @@ public sealed class GoldenHeaderTests : IDisposable
         Assert.Null(GoldenHeader.TryReadCombined(_dir));
     }
 
+    /// <summary>Writes the GROWTH file the way `curate-commit` does: the file and its sidecar over the same RAW text.</summary>
+    private void WriteGrowth(string text)
+    {
+        var p = Path.Combine(_dir, GoldenHeader.GrowthFileName);
+        File.WriteAllText(p, text);
+        File.WriteAllText(p + ".sha256", GoldenHeader.Sha256Hex(text));
+    }
+
     [Fact]
     public void TryReadCombined_returns_growth_alone_when_only_growth_present()
     {
-        File.WriteAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName), "GROWTH");
+        WriteGrowth("GROWTH");
         Assert.Equal("GROWTH", GoldenHeader.TryReadCombined(_dir));
     }
 
@@ -89,7 +97,7 @@ public sealed class GoldenHeaderTests : IDisposable
     public void TryReadCombined_concatenates_seed_then_growth_blank_line_separated()
     {
         File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED\n");
-        File.WriteAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName), "GROWTH\n");
+        WriteGrowth("GROWTH\n");
         Assert.Equal("SEED\n\nGROWTH", GoldenHeader.TryReadCombined(_dir));
     }
 
@@ -115,7 +123,7 @@ public sealed class GoldenHeaderTests : IDisposable
     public void TryReadCombined_ignores_legacy_once_growth_file_present()
     {
         File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED");
-        File.WriteAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName), "GROWTH");
+        WriteGrowth("GROWTH");
         File.WriteAllText(Path.Combine(_dir, GoldenHeader.LegacyFileName), "LEGACY");
         Assert.Equal("SEED\n\nGROWTH", GoldenHeader.TryReadCombined(_dir));
     }
@@ -242,6 +250,51 @@ public sealed class GoldenHeaderTests : IDisposable
         File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED");
         string? warned = null;
         Assert.Equal("SEED", GoldenHeader.TryReadCombined(_dir, w => warned = w));
+        Assert.Null(warned);
+    }
+
+    // ROADMAP backlog stub golden-header-growth-accepts-a-sidecarless-file: GROWTH is written ONLY by `curate-commit`, always with its
+    // sidecar, after the agy-curate human gate, so a GROWTH file with no sidecar is a direct write that bypassed that gate. SEED
+    // (installer-seeded) and the legacy flat file (migration) legitimately have none and keep being accepted.
+    [Fact]
+    public void TryReadCombined_refuses_a_GROWTH_file_that_has_no_sidecar_and_says_so()
+    {
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED");
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName), "GROWTH written without the gate");
+        string? warned = null;
+        Assert.Equal("SEED", GoldenHeader.TryReadCombined(_dir, w => warned = w));
+        Assert.NotNull(warned);
+        Assert.Contains("GROWTH", warned);
+        Assert.Contains("no .sha256 sidecar", warned);
+    }
+
+    [Fact]
+    public void A_sidecar_less_GROWTH_file_does_not_re_open_the_legacy_fallback()
+    {
+        // The migration window is gated on the GROWTH FILE's absence (TryReadCombined), so a refused GROWTH must not make a stale
+        // legacy golden-header.md reappear as if it were the learned rules.
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.LegacyFileName), "LEGACY");
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName), "GROWTH without a sidecar");
+        Assert.Null(GoldenHeader.TryReadCombined(_dir, _ => { }));
+    }
+
+    [Fact]
+    public void The_legacy_flat_file_alone_is_still_accepted_without_a_sidecar()
+    {
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.LegacyFileName), "LEGACY");
+        string? warned = null;
+        Assert.Equal("LEGACY", GoldenHeader.TryReadCombined(_dir, w => warned = w));
+        Assert.Null(warned);
+    }
+
+    [Fact]
+    public void A_GROWTH_file_with_a_matching_sidecar_is_still_accepted()
+    {
+        var p = Path.Combine(_dir, GoldenHeader.GrowthFileName);
+        File.WriteAllText(p, "GROWTH");
+        File.WriteAllText(p + ".sha256", GoldenHeader.Sha256Hex("GROWTH"));
+        string? warned = null;
+        Assert.Equal("GROWTH", GoldenHeader.TryReadCombined(_dir, w => warned = w));
         Assert.Null(warned);
     }
 
