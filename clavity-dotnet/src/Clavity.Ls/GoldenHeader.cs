@@ -153,7 +153,7 @@ public static class GoldenHeader
     /// One region file's content, or null if absent/empty/over-cap/invalid-UTF-8/sidecar-mismatched.
     /// IO-safe; over-cap and sidecar-mismatch both warn and degrade the region to absent.
     /// </summary>
-    private static string? TryReadFile(string path, Action<string>? warn = null)
+    private static string? TryReadFile(string path, Action<string>? warn = null, bool requireSidecar = false)
     {
         try
         {
@@ -185,6 +185,12 @@ public static class GoldenHeader
                 case SidecarVerdict.Mismatch:
                     warn?.Invoke($"golden-header region at {path} did not match its .sha256 sidecar — skipped");
                     return null;
+                // GROWTH only (requireSidecar): the file is written by `curate-commit` alone, always with its sidecar and only after the
+                // agy-curate human gate, so a GROWTH file with NO sidecar is a direct write that bypassed that gate. Same rule the
+                // driver cheatsheet reader applies (DriverCheatsheet.cs). SEED and the legacy flat file keep accepting an absent sidecar.
+                case SidecarVerdict.Absent when requireSidecar:
+                    warn?.Invoke($"golden-header GROWTH at {path} has no .sha256 sidecar - it was not written by curate-commit, skipped");
+                    return null;
                 // Absent = ACCEPT (installer-seeded SEED has no sidecar); Match = accept.
             }
 
@@ -213,7 +219,7 @@ public static class GoldenHeader
     public static string? TryReadCombined(string dir, Action<string>? warn = null)
     {
         var seed = TryReadFile(SeedPath(dir), warn);
-        var growth = TryReadFile(GrowthPath(dir), warn);
+        var growth = TryReadFile(GrowthPath(dir), warn, requireSidecar: true);
 
         // Migration window (panels A1 + R2-agy-1): a pre-split flat golden-header.md is a COMPLETE header —
         // it already contains the old baseline + learned rules. While NO growth file exists yet, inject the

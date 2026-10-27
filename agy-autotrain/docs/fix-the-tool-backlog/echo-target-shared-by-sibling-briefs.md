@@ -3,7 +3,7 @@ slug: echo-target-shared-by-sibling-briefs
 variant: clavity-dotnet
 observed: 2026-10-26
 source-inbox-entry: "- [anti-pattern] (driver/deterministic) When two review briefs share a filename prefix (a round-one brief and its re-ask)"
-status: OPEN
+status: CLOSED-BY-RULING
 ---
 
 # The echo check keys on the artifact's last line, which a round-one brief and its re-ask can share
@@ -58,3 +58,9 @@ than by brief wording.
 Adjacent: `token-mismatch-and-not-last-both-read-as-truncated` (one flag naming one cause for three
 conditions). This item is the same principle applied to the ECHO half of the check: the echo proves a
 line was quoted, not which file it came from.
+
+## Ruling (owner, 2026-10-27)
+
+CLOSED-BY-RULING after an AGY-FIRST sequencing consult. The driving-side workaround (a distinct closing line per brief naming its round and range) is carried in the cheatsheet GROWTH and was followed throughout the 2026-10-26/27 sessions: every sibling brief (`-r2`, `-r3`) ended on its own `END OF ... round N range ...` line and the echo check never confused them. A code-level disambiguation (a per-ask nonce the peer must also echo in chat) would add a second completeness contract to every discipline and a new false-flag class for a problem the convention already prevents. The accepted residual risk is the one described above: when two sibling briefs end on an IDENTICAL line the check can falsely PASS a peer that read the wrong brief; it cannot be seen by the driver. The workaround must stay in the cheatsheet.
+
+**Reopen if:** a peer reply is found to have reviewed the wrong sibling brief while the echo check passed (identical closing lines), or the cheatsheet rule is retired or no longer reaches the driving model.
