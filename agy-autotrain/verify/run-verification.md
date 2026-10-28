@@ -14,7 +14,7 @@ are mutually exclusive, so a machine has one. See the appendix for the invocatio
 
 1. **Liveness** - confirm the peer is reachable and idle before firing. Do not fire while it is busy.
 2. **Synchronous ask** - send a probe payload and get the reply.
-3. **Version** - note `agy --version`; stamp it on every result.
+3. **Version** - the version of the PEER PROCESS that answers the probe, not just `agy --version`: an auto-update replaces the binary on PATH while a running peer keeps the old one. On Linux pick the peer by `readlink /proc/<pid>/cwd` (it must be this repository; other sessions have their own peers) and run `/proc/<pid>/exe --version`; stamp that on every result. The gate compares the stamp with `agy --version` on PATH, so a lagging peer keeps nagging until it is restarted and the probes re-run.
 
 ## Per-probe procedure
 
