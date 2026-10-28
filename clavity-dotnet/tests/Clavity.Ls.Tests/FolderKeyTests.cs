@@ -229,4 +229,116 @@ public sealed class FolderKeyTests : IDisposable
         var name = Path.GetFileName(FolderKey.LockPath("/h", Path.Combine(_root, "any", "folder"), false));
         Assert.Matches("^agy-folder\\.[0-9a-f]{16}\\.lock$", name);
     }
+
+    // ROADMAP section 103: the Windows spellings the link walk cannot see (a subst drive, a loopback admin share). The helpers are
+    // pure and run everywhere; the end-to-end rows run only on Windows (windows-latest in CI), where `subst` needs no elevation.
+
+    [Theory]
+    [InlineData(@"\\localhost\C$\a\b", @"C:\a\b")]
+    [InlineData(@"\\LOCALHOST\d$", @"d:\")]
+    [InlineData(@"\\localhost\C$\", @"C:\")]
+    [InlineData(@"\\127.0.0.1\C$\x", @"C:\x")]
+    public void A_loopback_admin_share_is_written_back_as_its_drive(string share, string expected)
+    {
+        Assert.Equal(expected, FolderKey.RewriteLoopbackAdminShare(share));
+    }
+
+    [Theory]
+    [InlineData(@"\\localhost2\C$\x")]      // another host
+    [InlineData(@"\\server\C$\x")]          // a real network host
+    [InlineData(@"\\127.0.0.10\C$\x")]      // an address that merely starts like the loopback one
+    [InlineData(@"\\localhost\share\x")]    // an ordinary share, not an admin share
+    [InlineData(@"\\localhost\CC$\x")]      // two letters are not a drive
+    [InlineData(@"\\localhost\C$x\y")]      // the $ must end the share name
+    [InlineData(@"C:\x")]
+    [InlineData("/a/b")]
+    public void Any_other_path_is_left_exactly_as_it_is_by_the_loopback_rewrite(string path)
+    {
+        Assert.Equal(path, FolderKey.RewriteLoopbackAdminShare(path));
+    }
+
+    [Theory]
+    [InlineData(@"\\?\C:\real\repo", @"C:\real\repo")]
+    [InlineData(@"\\?\c:", "c:")]
+    [InlineData(@"\\?\UNC\srv\share\x", @"\\srv\share\x")]
+    [InlineData(@"\\?\unc\srv\share", @"\\srv\share")]
+    public void The_extended_prefix_of_a_final_path_is_removed(string final, string expected)
+    {
+        Assert.Equal(expected, FolderKey.StripExtendedPrefix(final));
+    }
+
+    [Theory]
+    [InlineData(@"C:\x")]
+    [InlineData(@"\\srv\share\x")]
+    [InlineData(@"\\?\Volume{01234567-89ab-cdef-0123-456789abcdef}\x")]   // no drive letter: nothing to name it by
+    [InlineData(@"\\?\1:\x")]                                            // a digit is not a drive letter
+    [InlineData("/a/b")]
+    public void A_path_without_a_removable_prefix_is_left_as_it_is(string path)
+    {
+        Assert.Equal(path, FolderKey.StripExtendedPrefix(path));
+    }
+
+    private static readonly object SubstGate = new();
+
+    private static void Subst(string arguments)
+    {
+        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("subst", arguments)
+        { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true })!;
+        process.WaitForExit();
+        Assert.True(process.ExitCode == 0, $"subst {arguments} exited {process.ExitCode}: {process.StandardError.ReadToEnd()}{process.StandardOutput.ReadToEnd()}");
+    }
+
+    [Fact]
+    public void A_subst_drive_gives_the_same_key_as_the_real_folder()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var real = Make("repo");
+        Make("other");
+        lock (SubstGate)
+        {
+            var used = DriveInfo.GetDrives().Select(d => char.ToUpperInvariant(d.Name[0])).ToHashSet();
+            var letter = "ZYXWVUTSRQPONMLKJIHGFED".First(c => !used.Contains(c));
+            Subst($"{letter}: \"{_root}\"");
+            try
+            {
+                Assert.Equal(FolderKey.Canonical(real, true), FolderKey.Canonical($"{letter}:\\repo", true));
+                Assert.Equal(FolderKey.Canonical(_root, true), FolderKey.Canonical($"{letter}:\\", true));
+                Assert.NotEqual(FolderKey.Canonical(real, true), FolderKey.Canonical($"{letter}:\\other", true));   // distractor: a sibling still differs
+                Assert.Equal(FolderKey.LockPath("/h", real, true), FolderKey.LockPath("/h", $"{letter}:\\repo", true));
+            }
+            finally
+            {
+                Subst($"{letter}: /D");
+            }
+        }
+    }
+
+    [Fact]
+    public void A_loopback_admin_share_gives_the_same_key_as_the_real_folder()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var real = Make("repo");
+        Make("other");
+        var share = $"\\\\localhost\\{real[0]}$\\{real[3..]}";
+        Assert.Equal(FolderKey.Canonical(real, true), FolderKey.Canonical(share, true));
+        Assert.NotEqual(FolderKey.Canonical(real, true), FolderKey.Canonical(share.Replace("repo", "other"), true));
+    }
+
+    [Fact]
+    public void A_folder_that_cannot_be_opened_keeps_its_lexical_key_and_does_not_throw()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var missing = Path.Combine(_root, "no", "such", "folder");
+        Assert.Equal(Path.GetFullPath(missing).ToUpperInvariant(), FolderKey.Canonical(missing, true));
+    }
+
+    [Fact]
+    public void A_plain_folder_keeps_the_key_it_always_had()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        // The final-path step must not change the lock file of a folder that needed no resolving: an upgrade would orphan it. The
+        // Windows directory, not a temp folder: a CI temp path carries an 8.3 short name (RUNNER~1), which the step deliberately expands.
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        Assert.Equal(Path.GetFullPath(windows).ToUpperInvariant(), FolderKey.Canonical(windows, true));
+    }
 }
