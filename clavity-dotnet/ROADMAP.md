@@ -4336,17 +4336,30 @@ Not done, each tracked on its own: §82 (`hook-spawn-budget` under parallel load
 
 ### §82 — `hook-spawn-budget` has never run under parallel load on Windows, so the parallel slow lane excludes it
 
-**Status:** OPEN 2026-10-12 - excluded from `test-scripts-slow-parallel`; needs one Windows run at `-ThrottleLimit 4` compared with a serial run
+**Status:** OPEN 2026-10-28 - measured: identical counts under the runner at `-ThrottleLimit 4` on Windows (169/169, twice); the suite is still excluded from `test-scripts-slow-parallel` pending the owner's decision to add it
 
 Every row of `scripts/tests/hook-spawn-budget.Tests.ps1` counts processes through a Windows Job Object (`Invoke-JobCountedBash`, `scripts/tests/BashHookHelpers.ps1`) against Git for Windows' `usr\bin\bash.exe`, so all 165 of its failures on Linux are structural and the real measurement cannot run there. The count is meant to be deterministic, but the harness has three wall-clock bounds (the hook exiting within 120 s, its output pipes closing within 10 s, the job draining within 30 s), and the suite's own header records 180-360 ms per process on the owner's machine.
 
 Linux proxy (`strace -ff -e trace=execve` over the real hooks, 82 rows plus a deliberately load-sensitive control, 3 runs idle and 3 under 16 CPU spinners on 8 cores, 498 runs, 0 errors): 0 of 82 rows varied in exec count, idle or loaded. The load was mild (median wall time 1.00x, p95 1.79x, max 2.56x) and the control separated idle from loaded only weakly, so this supports "deterministic counts", not "safe under heavy load". The slowest run was 4.9 s against the 30 s bound; on Windows the same hooks cost several times more per process. Next step: run the suite once on Windows serially and once under the runner at 4-way and compare counts and wall time; only then consider including it.
 
+**MEASURED 2026-10-28 (Windows 11, pwsh 7.6.9, Pester 6.2.0, non-elevated):** with the re-pinned exact counts (§100), the suite passed 169 of 169 serially (583.5 s and 569.3 s) and 169 of 169 inside two full runner sweeps at `-ThrottleLimit 4` (1175.7 s and 1211.6 s, run alongside other suites). The pass/fail count was identical in all four runs; no wall-clock bound tripped. The cost is about 2.0-2.1x its serial time under that load. Not controlled: other terminals and the agy tab, Defender, indexing. Whether to add it to `test-scripts-slow-parallel` (the `justfile` is unchanged) is the owner's call.
+
 ### §83 — The parallel lanes are unmeasured on Windows, and CI does not use them
 
-**Status:** OPEN 2026-10-12 - Linux figures only; `.github/workflows/ci-scripts.yml` still runs one `Invoke-Pester scripts/tests`
+**Status:** OPEN 2026-10-28 - measured on a local Windows box (not a `windows-latest` runner) - CI wiring still OPEN; `.github/workflows/ci-scripts.yml` still runs one `Invoke-Pester scripts/tests`
 
 `windows-latest` has fewer cores and slower process creation than the 8-core Linux box used in §81, and per-file start-up was the dominant overhead there (2.2x), so the Linux speed-ups are not a forecast for CI. `ForEach-Object -Parallel` needs PowerShell 7 (not Windows PowerShell 5.1). The CI sweep also runs checks the runner does not reproduce: that every container ran, that the registration oracle (`test-suite-registration.Tests.ps1`) ran, and a total-count floor. Before wiring the runner into CI: measure it on a Windows runner, and either port those three checks into it or keep the single-process sweep as the gate and use the lanes for the agent inner loop only.
+
+**MEASURED 2026-10-28 (local Windows 11 box, pwsh 7.6.9, Pester 6.2.0, throttle 4; two sweeps each, serial `Invoke-Pester -Path scripts/tests` vs `scripts/run-pester-parallel.ps1 -Directory scripts/tests -MinTests 100 -RequireSuite test-suite-registration`):**
+
+| Run | Passed | Failed | Skipped | Wall |
+| --- | --- | --- | --- | --- |
+| serial A | 2359 | 0 | 9 | 5794 s |
+| runner A | 2359 | 0 | 9 | 4671.6 s |
+| runner B | 2359 | 0 | 9 | 4704.3 s |
+| serial B | 2359 | 0 | 9 | 6905.8 s |
+
+Counts are identical (84 files, 0 bad containers, 0 no-result). The runner is 1.24-1.48x faster than serial on this box (range across the pairings), far below the Linux figure in §81; serial B ran last and its slowness may be load rather than the method. Not controlled: other terminals and the agy tab, Defender, indexing. This is a developer machine, not a `windows-latest` runner, so CI speed is still unmeasured. The runner has opt-in `-MinTests` and `-RequireSuite` that correspond to the CI sweep's count floor and registration-oracle check, and its summary reports `badContainers` and `noResult`; they were passed in these runs, but the runner was not compared line by line with the CI sweep's three checks. The lane is worth wiring only for the inner loop unless CI time matters, since the gain is about 20-30%.
 
 ### §84 — `agy-anomaly-reminder`'s ".git is a FILE" row asserts nothing on Linux
 
@@ -4376,9 +4389,12 @@ So on the CLI path an unfinished return is recognisable by `tool_response.backgr
 
 ### §86 — The inconclusive-return path's process allowance (+1) is unmeasured on Windows
 
-**Status:** OPEN 2026-10-12 - proven only by a Linux strace proxy (44 -> 45 successful execs); next step: run scripts/tests/hook-spawn-budget.Tests.ps1 on Windows and, if the row differs, set its -Max to the measured count
+**Status:** IMPLEMENTED 2026-10-28 - measured on Windows: the notice path adds 2 processes, not 1 (70 against 68); the row's `-Max` is now `PostMcp + 2`, built on branch `measure/windows-session`
+> **Previous status:** OPEN 2026-10-12 - proven only by a Linux strace proxy (44 -> 45 successful execs); next step: run scripts/tests/hook-spawn-budget.Tests.ps1 on Windows and, if the row differs, set its -Max to the measured count
 
 The row `PINNED consult: MCP agy_ask, inconclusive return (after its pre)` in `scripts/tests/hook-spawn-budget.Rows.ps1` allows `$script:ConsultPin.PostMcp + 1` processes: the one extra is the `jq -nc` inside `emit`, the only process the notice path adds. That suite counts through a Windows Job Object and cannot run on Linux, so the allowance rests on an `strace -ff` count of the real hook (normal return 44, backgrounded return 45, repeated twice, 2026-10-12). Related: section 82 (that suite has also never run under parallel load on Windows).
+
+**MEASURED 2026-10-28 (Windows 11, Git for Windows bash, non-elevated, `Measure-BashHookProcesses`, 3 runs per row, identical every time; boot is 2 processes).** The inconclusive-return row spawns 70 processes and the clean `PostMcp` row 68, so the difference is 2, not the 1 the Linux strace count gave (44 -> 45). The extra process on Windows was not identified (the `jq -nc` in `emit` is one; the second is unattributed). A `+1` allowance would be red the moment the pin is lowered to the measured value, so the row now allows `PostMcp + 2`. Section 100 holds the pins.
 
 ### §87 — Whether a later consult's baseline absorbs a file that a missed breach left behind is unmeasured
 
@@ -4392,11 +4408,14 @@ In section 78's second probe the baseline already contained the first probe's fi
 
 ### §88 — `agy-consult-recovery.sh` spends seconds in its own per-seam loop
 
-**Status:** OPEN 2026-10-27 - does NOT reproduce on Linux (0.18 to 0.26 s at 1031 seams); stays open for the Windows session (section 100) where it was measured
+**Status:** OPEN 2026-10-28 - reproduces on Windows (3.5 to 4.6 s for the whole hook at 1031 seams, 0.8 to 1.2 s at one seam); a bound is now worth building, not yet built
+> **Previous status:** OPEN 2026-10-27 - does NOT reproduce on Linux (0.18 to 0.26 s at 1031 seams); stays open for the Windows session (section 100) where it was measured
 
 Measured in Branch 20 Task 11 (2026-10-06): with every SessionStart hook started together and 1031 seams, `agy-consult-recovery.sh` took 6.2 / 6.0 s although it starts only 8 processes beyond boot. The time is bash's own per-seam loop (glob + keyword match + `-nt` per file), which a process budget cannot see. Its timeout was raised 10 -> 30 s for now; bounding that loop (or pruning concluded seams) is the real fix. Not yet scheduled.
 
 **Re-measured 2026-10-27 on Linux** (1031 synthetic seams of the shape the hook reads, in a throwaway repository, three runs back to back, uncontrolled background load from a browser and the desktop session): 0.257, 0.204 and 0.183 s for the whole hook, 1912 bytes of output. The loop is bash builtins only, so the cost is per-`stat` on Windows Git Bash (every process or path translation costs about 200 ms there), not the algorithm. The AGY-FIRST consult on this branch measured 0.17 s independently. Decision 2026-10-27: no change for Linux; a bound (cache the four marker paths and their mtimes outside the loop, or look only at seams newer than the newest marker) is worth building only after a Windows measurement shows it matters, so this entry joins section 100's Windows session.
+
+**MEASURED 2026-10-28 on Windows** (pwsh 7.6.9, Git for Windows bash, a throwaway repository from `New-HookFixture`, 1031 mixed seams: 257 `loose-*`, the other 774 `agy-capstone-*`, `agy-first-*` and `agy-panel-*`, `Add-FxSeams`; the whole hook through `Invoke-BashHook`, 3 runs each). 1 seam: 1.16 / 0.83 / 0.96 s. 1031 seams: 4.55 / 3.48 / 3.46 s (warm figure 3.5 s; the first run absorbs cold start). The loop therefore costs about 2.5 s here against 0.1 s on Linux, and the whole hook is about 3.7 times slower than at one seam. Control: `bash -c 'sleep 1'` timed with the same stopwatch read 1.21 s. The 6 s of 2026-10-06 was taken with every SessionStart hook started together, so this is the hook alone. Background load was uncontrolled (other terminals, the agy tab, Defender). A first attempt that produced only 4 files (a `switch` rebinding `$_`) was discarded; the file count is now printed and the generator throws on anything but 1031 unique names. The 30 s timeout is not near, but the cost is paid at every session start; the two bounds named above are now justified.
 
 ### §89 — Five Pester suites or rows fail on Linux by construction (a shell, a path, a shared session id, a file lock and missing exec bits)
 
@@ -4451,7 +4470,9 @@ Section 63 fixed only `build-dotnet.yml`, the scope the sweep named. The same na
 
 2026-10-27 progress (branch `chore/linux-hygiene`, merged in `46f4d383`): item 1 is STALE - measured, leaving jq reachable on the `New-NoJqPath` path already turns all four suites red because its postcondition throws in their setup; nothing to fix. Item 2 DONE (`scripts/tests/register-hash-scripts.Tests.ps1`, 11 rows; it also found that `check-register-hash-synced.ps1` accepted the hash quoted anywhere in the file, now anchored on the define line). Item 3 DONE (the yq-version rows run on Linux with a shell shim). Item 4 DONE (`run-pester-parallel.ps1 -MinTests/-RequireSuite`, the Linux lane passes `-MinTests 100 -RequireSuite test-suite-registration` and has `timeout-minutes: 30`). Item 5 DONE for the observation: the whole scripts suite was run as uid 0 in a container, which found 2 unapproved root failures (fixed) and 4 NotAsRoot rows missing from the conditional list (added). Item 8 partly done: `New-NoJqPath` now removes its temp dir when its own postcondition throws. Item 9 DONE (the three NUL bytes repaired, `check-control-bytes` scans tracked `*.ps1`).
 
-Still open: items 6 and 7 (the Windows inventory section and the console code page, owner on Windows); item 8's `Select-Object -Unique` in the inventory merge, the `Set-ItResult` rule candidate and the stale run-pester-parallel time text (needs an idle top-level measurement). One new observation from the root run: `release-lib.Tests.ps1` "fails closed to 'unknown' ... merge-tree exits >1" returns `conflict` under the older git of an Ubuntu 24.04 container; git-version dependent, not root, not yet measured on the CI image.
+2026-10-28 Windows session (branch `measure/windows-session`): item 6 DONE for the inventory (`## windows` written by one non-elevated run of `run-pester-parallel.ps1 -Directory scripts/tests -WriteSkipInventory`: 2359 passed, 0 failed, 9 skipped, 8 static + 1 conditional rows, no `NotAsRoot` row; the gate no longer fails closed on Windows). `Set-TestFileReadOnly`'s MSYS `[ -w ]` probe AGREES with `attrib +R` (measured with controls: writable before, blocked while `+R`, writable after `-R`; `(Get-Item).IsReadOnly` was True while set), so no change is needed. Item 7 CONFIRMED but not as `?`: with the console output code page 437 the child JSON turned an em dash (U+2014) into a hyphen (U+002D) while U+03B1 and U+00E9 survived (measured through the runner's exact transport, `& pwsh -File ... 2>&1 | Out-String` then `ConvertFrom-Json`); many row names contain an em dash. No skipped Windows row has one today, so the inventory is unaffected, but a skipped row with an em dash would be written with a hyphen and no longer match the same row on Linux. Fix shape: set `[Console]::OutputEncoding` to UTF-8 in the child (or write the result to a file). Not built.
+
+Still open: item 7's fix (above); item 8's `Select-Object -Unique` in the inventory merge, the `Set-ItResult` rule candidate and the stale run-pester-parallel time text (needs an idle top-level measurement). One new observation from the root run: `release-lib.Tests.ps1` "fails closed to 'unknown' ... merge-tree exits >1" returns `conflict` under the older git of an Ubuntu 24.04 container; git-version dependent, not root, not yet measured on the CI image.
 
 ### §94 — The clavity.svg wordmark names fonts a visitor's browser cannot load (formerly a local anomaly)
 
@@ -4502,9 +4523,12 @@ Fix shape (not chosen here): a fixed-width, time-ordered stamp - UTC `yyyyMMdd-H
 
 ### §100 — Windows process-count pins and one spawn-budget row were never run on Windows, and BSD `date`/`find -mmin` were never run on a Mac (formerly buried in §70 and §75)
 
-**Status:** OPEN 2026-10-27 - split out of sections 70 and 75 when they were marked SHIPPED; next step: one run of `scripts/tests/hook-spawn-budget.Tests.ps1` on the owner's Windows box, together with section 86
+**Status:** OPEN 2026-10-28 - the Windows half is done on branch `measure/windows-session` (pins lowered to the measured counts, the snooze row measured at its limit of 9); only the BSD `date`/`find -mmin` check on a Mac remains, and it cannot be done without a Mac
+> **Previous status:** OPEN 2026-10-27 - split out of sections 70 and 75 when they were marked SHIPPED; next step: one run of `scripts/tests/hook-spawn-budget.Tests.ps1` on the owner's Windows box, together with section 86
 
 Two measurements the shipped fixes left behind, each stated as the entry that built the fix recorded it. (1) From section 70: the WINDOWS process counts. `$ConsultPin` in `scripts/tests/hook-spawn-budget.Rows.ps1` was NOT lowered, because the budget suite runs on Windows only, a pin below the real count would turn red there, and an agy projection of "111 to 54" was inferred (2 Windows processes per external command) and withdrawn. The pins are ceilings, so the suite stays green; re-pin them from a Windows run. (2) From section 75: the Windows spawn-budget row `worst: snooze expired + 16 recent entries` was not run, and BSD `date`/`find -mmin` semantics are read from documentation and shimmed, not run on a Mac (the snooze age now uses `find -mmin -10080`). The Windows part rides the same run as section 86; the Mac part needs a Mac (section 75 recorded that none was available), so it may be closed by ruling if no Mac is ever available.
+
+**MEASURED 2026-10-28 (Windows 11, non-elevated; 3 runs per row, identical; boot 2).** `$ConsultPin` was re-pinned from the run, replacing the inferred ceilings: PreMcp 111 -> 65, PreAsk 114 -> 68, PreSend 117 -> 71, PostMcp 114 -> 68, PostAsk 117 -> 71, PostAwait 126 -> 80 (the agy projection of "111 to 54" in section 70 was wrong; 65 is the measurement). The whole suite was then run serially twice with the new pins: 169 passed, 0 failed, 583.5 s and 569.3 s. The row `worst: snooze expired + 16 recent entries` ran and spawns exactly 9 processes, its `-Max 9`, so it has no slack. Background load was uncontrolled (other terminals and the agy tab were open; Defender and indexing were not looked at).
 
 ### §101 — `clavity-ls start` allowed several Claudes in one folder, so a second one found the first one's work already done
 
@@ -4514,7 +4538,7 @@ Owner request, 2026-10-27: make `start` refuse to start in the same folder, "oth
 
 **Built.** Every `start` (plain and `--attach`) takes an exclusive lock on `~/.clavity/agy-folder.<first 16 hex of sha256 of the folder's resolved path>.lock` right after the folder is decided and checked, before the log directory, the pairing doc, the agy tab or the session lock, and holds it until its Claude ends (the OS drops it on a kill too, measured for the session lock in section 65). A second `start` in the same folder exits 1 with a message that names the folder and points at `git worktree`. A lock that cannot be taken for a reason of its own (an unwritable `~/.clavity`, a file name the filesystem refuses) is reported as that reason, never as a running session (`SessionLock.TryTakeChecked`). The key resolves every symbolic link one hop at a time, for the last component AND every parent, the way `realpath` does (a link's target is spliced in before any `..` applies, so `l1 -> l2/../repo` with `l2 -> deep/sub` lands in `deep/repo`; capstone round 1 measured that collapsing the text first picks another folder), because `DirectoryInfo.ResolveLinkTarget(true)` follows only a link at the last component (MEASURED 2026-10-27 on Linux: it returns null for `/srv/linkdir/repo` when `linkdir` is the link); case is folded on Windows and macOS. `StartArgs` now resolves a relative folder against the injected current directory. The "for another Claude in this folder" hint is removed. AGY-FIRST was run on the design (verdict aligned); its advice to resolve links with `ResolveLinkTarget` was refuted by the measurement above.
 
-**Not covered, stated so nobody assumes it.** `clavity-ls --mcp` (Claude Code started by hand) cannot be guarded: Claude Code starts it for every `claude` in the folder, even `claude mcp list` (section 65, Fork 3). `clavity-ls agy` is not guarded, since it must run while an attach starts. Windows directory junctions and mapped or UNC aliases of one folder are read through the same link API but were NOT measured (no Windows machine here); bind mounts are not resolved. A lock filesystem without locking (some NFS) can make an `IOException` look like a holder, because a failure counts as contention when the lock file exists afterwards. A case-sensitive macOS volume would treat two folders that differ only in case as one.
+**Not covered, stated so nobody assumes it.** `clavity-ls --mcp` (Claude Code started by hand) cannot be guarded: Claude Code starts it for every `claude` in the folder, even `claude mcp list` (section 65, Fork 3). `clavity-ls agy` is not guarded, since it must run while an attach starts. Windows directory junctions and mapped or UNC aliases of one folder are read through the same link API; measured 2026-10-28 (see section 103): junctions and symlinks resolve, a `subst` drive and a UNC path do not; bind mounts are not resolved. A lock filesystem without locking (some NFS) can make an `IOException` look like a holder, because a failure counts as contention when the lock file exists afterwards. A case-sensitive macOS volume would treat two folders that differ only in case as one.
 
 ### §102 — `[13b] TRUNCATED REPLY` fired on complete `adversarial-panel-review` replies because the brief's token and the driver's token disagreed
 
@@ -4528,6 +4552,14 @@ Reported by the owner from a parallel session that drives the `flux` project: th
 
 **Not built, stated so nobody assumes it.** A model that never reads the skill still writes the contradictory brief once; the notice now makes the cause visible on the first flag instead of the tenth. Running flux sessions that cached the old brief wording keep flagging until the brief changes.
 
+
+### §103 — The folder lock key does not resolve a `subst` drive or a UNC alias of the same folder (split out of §101)
+
+**Status:** OPEN 2026-10-28 - measured on Windows: junctions and symlinks give the same key, a `subst` drive and a UNC path give a different one, so a second `clavity-ls start` through either spelling is not refused
+
+Section 101 said Windows junctions and mapped or UNC aliases "were NOT measured". Measured 2026-10-28 (Windows 11, non-elevated, the real `FolderKey.cs` compiled with `Add-Type`, `Canonical(folder, ignoreCase: true)`; controls: a lower-case spelling and a trailing slash of the real path give the SAME key, a sibling folder gives a DIFFERENT one). Same key as the real folder: a junction as a PARENT component (`T\jct\repo`, `jct` -> `T\real`), a junction as the LAST component, and a symbolic link (creation worked without elevation on this box). NOT resolved: `subst Q: T\real` then `Q:\repo` keys as `Q:\REPO`, and `\\localhost\C$\...` (reachable without elevation) keys as `\\LOCALHOST\C$\...`. Neither is a reparse point that `DirectoryInfo.LinkTarget` reports (a `subst` drive is a DOS device mapping, a UNC path is another namespace), so the lock file names differ and two Claudes can run in one folder, which is what section 101 set out to prevent.
+
+Fix shape (not chosen): resolve the final path of an opened directory handle (`GetFinalPathNameByHandle`; not tried here) instead of, or after, the link walk, then fold case; a UNC admin share would still key as `\\localhost\...` unless it is mapped back to a local path, so the realistic scope is the `subst` and mapped-drive cases plus a documented limit for network paths. Reopen the section 101 claim only if the owner wants these closed.
 
 ## Non-goals / accepted limitations
 

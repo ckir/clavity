@@ -17,7 +17,9 @@ $script:HookCeiling = 13
 # section 70). Pinned at the count measured after Task 3 (2026-10-06, Measure-BashHookProcesses, two runs
 # identical) on a plain temp repo - no slack, because the count is deterministic: the path can no longer grow
 # back the ~23 processes Branch 20 removed. Before Branch 20: pre 134 / 137 / 140, post 137 / 140 / 149.
-$script:ConsultPin = @{ PreMcp = 111; PreAsk = 114; PreSend = 117; PostMcp = 114; PostAsk = 117; PostAwait = 126 }
+# RE-PINNED 2026-10-28 from a Windows run (ROADMAP sections 70, 100): 3 runs per row, identical, Git for Windows
+# bash (boot 2); the earlier values were ceilings inferred before any Windows count existed.
+$script:ConsultPin = @{ PreMcp = 65; PreAsk = 68; PreSend = 71; PostMcp = 68; PostAsk = 71; PostAwait = 80 }
 
 # BRANCH 21 DEBT (owner ruling O3): census-measured paths of the eight hooks Branch 21 fixes, totals INCLUDING
 # the 3 boot processes. The suite's debt row stays RED while this list is non-empty. Branch 21 removed each
@@ -163,14 +165,15 @@ $script:Rows = @(
         $p
     } -Fixture @{ NoClavity = $true } -Max $script:ConsultPin.PostMcp -Silent
     # Inconclusive return: the consult was moved to the background, so the post hook emits the NOT VERIFIED notice.
-    # +1 over the clean pin: the `jq -nc` inside `emit`, the only process the notice path adds.
+    # +2 over the clean pin, MEASURED on Windows 2026-10-28 (70 against 68, 3 runs; ROADMAP section 86 expected +1, the
+    # `jq -nc` inside `emit`, which was a Linux strace count of 44 -> 45).
     New-BudgetRow "$D/agy-consult-guard-post.sh" 'PINNED consult: MCP agy_ask, inconclusive return (after its pre)' {
         param($fx)
         $resp = @(@{ type = 'text'; text = 'MCP tool "plugin:clavity:clavity-ls/agy_ask" is still running after 120s. It was moved to the background as task t1 and keeps running.' })
         $p = New-ToolPayload $fx $mcp @{ prompt = 'x' } -Response $resp -DurationMs 120005
         $null = Invoke-BashHook -HookPath (Join-Path $script:RepoRoot "$D/agy-consult-guard-pre.sh") -Payload $p -Env $fx.Env
         $p
-    } -Fixture @{ NoClavity = $true } -Max ($script:ConsultPin.PostMcp + 1) -Expect 'consult not finished'
+    } -Fixture @{ NoClavity = $true } -Max ($script:ConsultPin.PostMcp + 2) -Expect 'consult not finished'
     New-BudgetRow "$D/agy-consult-guard-post.sh" 'PINNED consult: clavity ask (after its pre)' {
         param($fx)
         $p = New-BashPayload $fx 'clavity ask "x" --review-only'
