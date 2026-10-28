@@ -114,6 +114,21 @@ public static class FolderKey
     [DllImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern uint GetFinalPathNameByHandle(SafeFileHandle file, StringBuilder buffer, uint size, uint flags);
 
+    /// <summary>Runs a <c>GetFinalPathNameByHandle</c>-shaped <paramref name="query"/> into a buffer of 512 characters, grows it once when the
+    /// answer says the path is longer, and returns the result without its <c>\\?\</c> prefix; <paramref name="fallback"/> comes back when the
+    /// query reports failure (0) or still does not fit. Split out so the retry and the failure branch can be tested without a Windows handle.</summary>
+    public static string FinalPathFromQuery(string fallback, Func<StringBuilder, uint, uint> query)
+    {
+        var buffer = new StringBuilder(512);
+        var length = query(buffer, (uint)buffer.Capacity);
+        if (length > buffer.Capacity)
+        {
+            buffer = new StringBuilder((int)length + 1);
+            length = query(buffer, (uint)buffer.Capacity);
+        }
+        return length == 0 || length > buffer.Capacity ? fallback : StripExtendedPrefix(buffer.ToString());
+    }
+
     /// <summary>The kernel's final path of the folder: a <c>subst</c> drive, an 8.3 short name and every reparse point come back as the
     /// real long path (ROADMAP section 103). FILE_READ_ATTRIBUTES, not GENERIC_READ, so a folder that may be entered but not listed
     /// still opens. ANY failure (folder gone, access denied, no such export) keeps the lexical path: the lock must never stop a launch.</summary>
@@ -125,14 +140,7 @@ public static class FolderKey
             using var handle = CreateFile(path, FileReadAttributes, ShareAll, IntPtr.Zero, OpenExisting, BackupSemantics, IntPtr.Zero);
             if (handle.IsInvalid)
                 return path;
-            var buffer = new StringBuilder(512);
-            var length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Capacity, 0);
-            if (length > buffer.Capacity)
-            {
-                buffer = new StringBuilder((int)length + 1);
-                length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Capacity, 0);
-            }
-            return length == 0 || length > buffer.Capacity ? path : StripExtendedPrefix(buffer.ToString());
+            return FinalPathFromQuery(path, (buffer, size) => GetFinalPathNameByHandle(handle, buffer, size, 0));
         }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or ArgumentException or IOException)
         {
