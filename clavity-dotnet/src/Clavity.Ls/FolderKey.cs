@@ -4,8 +4,11 @@
 // You may obtain a copy of the License at:
 // https://polyformproject.org/licenses/noncommercial/1.0.0/
 
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
+using Microsoft.Win32.SafeHandles;
 
 namespace Clavity.Ls;
 
@@ -14,7 +17,9 @@ namespace Clavity.Ls;
 /// link resolved, one hop at a time, for the last component AND every parent. MEASURED 2026-10-27 on Linux:
 /// <c>DirectoryInfo.ResolveLinkTarget(true)</c> follows a link at the LAST component only and returns null for
 /// <c>/srv/linkdir/repo</c> when <c>linkdir</c> is the link, so it cannot be used for this. Windows junctions are read through
-/// the same <c>LinkTarget</c> but were NOT measured (no Windows machine here); case is folded where the filesystem usually does.</summary>
+/// the same <c>LinkTarget</c> (measured 2026-10-28: junctions and symlinks resolve; a <c>subst</c> drive and a UNC path do not, ROADMAP
+/// section 103). On Windows the walk is therefore followed by the kernel's own answer for the folder (<c>GetFinalPathNameByHandle</c>),
+/// after a loopback admin share is mapped back to its drive; case is folded where the filesystem usually does.</summary>
 public static class FolderKey
 {
     /// <summary>The kernel's own limit on nested links (ELOOP is 40 on Linux); a loop ends here with the last path seen.</summary>
@@ -66,7 +71,81 @@ public static class FolderKey
                 pending.AddFirst(part);
         }
         var path = Path.TrimEndingDirectorySeparator(resolved);
+        if (OperatingSystem.IsWindows())
+            path = Path.TrimEndingDirectorySeparator(WindowsFinalPath(path));
         return ignoreCase ? path.ToUpperInvariant() : path;
+    }
+
+    private static readonly Regex LoopbackAdminShare = new(
+        @"^\\\\(?:localhost|127\.0\.0\.1)\\(?<drive>[A-Za-z])\$(?:\\(?<rest>.*))?$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    /// <summary>A loopback administrative share (<c>\\localhost\C$\x</c>, <c>\\127.0.0.1\C$\x</c>) is the local drive's own folder, so it is
+    /// written back as <c>C:\x</c>; any other path comes back unchanged. Lexical and platform independent. A real network share and
+    /// this machine's own host name are NOT recognised (the accepted limit of ROADMAP section 103).</summary>
+    public static string RewriteLoopbackAdminShare(string path)
+    {
+        var match = LoopbackAdminShare.Match(path);
+        if (!match.Success)
+            return path;
+        var rest = match.Groups["rest"].Value;
+        return $"{match.Groups["drive"].Value}:\\{rest}";
+    }
+
+    /// <summary>The path a <c>GetFinalPathNameByHandle</c> result names, without the <c>\\?\</c> namespace prefix: <c>\\?\C:\x</c> becomes
+    /// <c>C:\x</c> and <c>\\?\UNC\srv\share</c> becomes <c>\\srv\share</c>. Any other form (a volume GUID path) is left as it is.</summary>
+    public static string StripExtendedPrefix(string path)
+    {
+        if (path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+            return @"\\" + path[8..];
+        if (path.StartsWith(@"\\?\", StringComparison.Ordinal) && path.Length >= 6 && char.IsAsciiLetter(path[4]) && path[5] == ':')
+            return path[4..];
+        return path;
+    }
+
+    private const uint FileReadAttributes = 0x0080;
+    private const uint ShareAll = 0x7;            // read | write | delete: never the reason another process fails
+    private const uint OpenExisting = 3;
+    private const uint BackupSemantics = 0x02000000;   // required to open a DIRECTORY at all
+
+    [DllImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern SafeFileHandle CreateFile(string fileName, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+
+    [DllImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern uint GetFinalPathNameByHandle(SafeFileHandle file, StringBuilder buffer, uint size, uint flags);
+
+    /// <summary>Runs a <c>GetFinalPathNameByHandle</c>-shaped <paramref name="query"/> into a buffer of 512 characters, grows it once when the
+    /// answer says the path is longer, and returns the result without its <c>\\?\</c> prefix; <paramref name="fallback"/> comes back when the
+    /// query reports failure (0) or still does not fit. Split out so the retry and the failure branch can be tested without a Windows handle.</summary>
+    public static string FinalPathFromQuery(string fallback, Func<StringBuilder, uint, uint> query)
+    {
+        var buffer = new StringBuilder(512);
+        var length = query(buffer, (uint)buffer.Capacity);
+        if (length > buffer.Capacity)
+        {
+            buffer = new StringBuilder((int)length + 1);
+            length = query(buffer, (uint)buffer.Capacity);
+        }
+        return length == 0 || length > buffer.Capacity ? fallback : StripExtendedPrefix(buffer.ToString());
+    }
+
+    /// <summary>The kernel's final path of the folder: a <c>subst</c> drive and every reparse point (and an 8.3 short name, which <c>Path.GetFullPath</c> already expands) come back as the
+    /// real long path (ROADMAP section 103). FILE_READ_ATTRIBUTES, not GENERIC_READ, so a folder that may be entered but not listed
+    /// still opens. ANY failure (folder gone, access denied, no such export) keeps the lexical path: the lock must never stop a launch.</summary>
+    private static string WindowsFinalPath(string lexical)
+    {
+        var path = RewriteLoopbackAdminShare(lexical);
+        try
+        {
+            using var handle = CreateFile(path, FileReadAttributes, ShareAll, IntPtr.Zero, OpenExisting, BackupSemantics, IntPtr.Zero);
+            if (handle.IsInvalid)
+                return path;
+            return FinalPathFromQuery(path, (buffer, size) => GetFinalPathNameByHandle(handle, buffer, size, 0));
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or ArgumentException or IOException)
+        {
+            return path;
+        }
     }
 
     /// <summary>The lock file for <paramref name="folder"/>: <c>~/.clavity/agy-folder.&lt;16 hex&gt;.lock</c>, from the first 8
