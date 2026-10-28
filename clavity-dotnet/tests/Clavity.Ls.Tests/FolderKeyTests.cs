@@ -338,7 +338,7 @@ public sealed class FolderKeyTests : IDisposable
     {
         if (!OperatingSystem.IsWindows()) return;
         // The final-path step must not change the lock file of a folder that needed no resolving: an upgrade would orphan it. The
-        // Windows directory, not a temp folder: a CI temp path carries an 8.3 short name (RUNNER~1), which the step deliberately expands.
+        // Windows directory, not a temp folder: a CI temp path carries an 8.3 short name (RUNNER~1), which Path.GetFullPath already expands.
         var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
         Assert.Equal(Path.GetFullPath(windows).ToUpperInvariant(), FolderKey.Canonical(windows, true));
     }
@@ -402,7 +402,7 @@ public sealed class FolderKeyTests : IDisposable
         var buffer = new StringBuilder(1024);
         Assert.True(GetShortPathName(real, buffer, (uint)buffer.Capacity) > 0, "GetShortPathName failed");
         var shortName = buffer.ToString();
-        // The input must really differ, or this test would pass without the step it guards (8.3 generation off on the volume).
+        // The input must really differ, or this test would pass whatever the code does (8.3 generation off on the volume). Two independent guards give this key (Path.GetFullPath and the final-path step), so only a mutant that disables both turns this row red.
         Assert.NotEqual(real, shortName, StringComparer.OrdinalIgnoreCase);
         Assert.Equal(FolderKey.Canonical(real, true), FolderKey.Canonical(shortName, true));
         Assert.NotEqual(FolderKey.Canonical(real, true), FolderKey.Canonical(GetShort(sibling), true));   // distractor: a sibling's short name still differs

@@ -129,7 +129,7 @@ public static class FolderKey
         return length == 0 || length > buffer.Capacity ? fallback : StripExtendedPrefix(buffer.ToString());
     }
 
-    /// <summary>The kernel's final path of the folder: a <c>subst</c> drive, an 8.3 short name and every reparse point come back as the
+    /// <summary>The kernel's final path of the folder: a <c>subst</c> drive and every reparse point (and an 8.3 short name, which <c>Path.GetFullPath</c> already expands) come back as the
     /// real long path (ROADMAP section 103). FILE_READ_ATTRIBUTES, not GENERIC_READ, so a folder that may be entered but not listed
     /// still opens. ANY failure (folder gone, access denied, no such export) keeps the lexical path: the lock must never stop a launch.</summary>
     private static string WindowsFinalPath(string lexical)
