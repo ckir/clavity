@@ -233,73 +233,40 @@ jobs:
           "pwsh: $($PSVersionTable.PSVersion)"
           "image: $env:ImageOS $env:ImageVersion"
 
-      # Every arm runs in THIS job, on THIS runner, one after the other, so the wall times are comparable. Each arm is its own
-      # step with continue-on-error so one failing arm does not hide the others; the numbers go to the step summary.
-      - name: Arm 1 - runner, throttle 4 (as the Linux job runs it)
-        id: a1
-        continue-on-error: true
+      - name: Regenerate the windows skip inventory on this runner and print it (base64, decode locally)
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -WriteSkipInventory -MinTests 100 -RequireSuite test-suite-registration -ThrottleLimit 4
+          "write exit=$LASTEXITCODE"
+          git --no-pager diff --stat
+          $b = [Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path scripts/tests/_skip-inventory.md)))
+          "INV-BEGIN"
+          for ($k = 0; $k -lt $b.Length; $k += 180) { "INV:" + $b.Substring($k, [math]::Min(180, $b.Length - $k)) }
+          "INV-END"
+
+      - name: Check mode against the regenerated file, run 1 of 3
         shell: pwsh
         run: |
           $sw = [Diagnostics.Stopwatch]::StartNew()
           pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -ShowMessages -MinTests 100 -RequireSuite test-suite-registration -ThrottleLimit 4
           $rc = $LASTEXITCODE
-          "ARM1 runner throttle=4 exit=$rc wall=$([math]::Round($sw.Elapsed.TotalSeconds,1))s" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "CHECK1 exit=$rc wall=$([math]::Round($sw.Elapsed.TotalSeconds,1))s"
           if ($rc -ne 0) { exit $rc }
 
-      - name: Arm 2 - runner, throttle 2
-        id: a2
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $sw = [Diagnostics.Stopwatch]::StartNew()
-          pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -ShowMessages -MinTests 100 -RequireSuite test-suite-registration -ThrottleLimit 2
-          $rc = $LASTEXITCODE
-          "ARM2 runner throttle=2 exit=$rc wall=$([math]::Round($sw.Elapsed.TotalSeconds,1))s" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
-          if ($rc -ne 0) { exit $rc }
-
-      - name: Arm 3 - serial Invoke-Pester (the current gate, verbatim checks)
-        id: a3
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force
-          $sw = [Diagnostics.Stopwatch]::StartNew()
-          $r = Invoke-Pester scripts/tests -Output Minimal -PassThru
-          $wall = [math]::Round($sw.Elapsed.TotalSeconds,1)
-          $bad = @($r.Containers | Where-Object { $_.Result -ne 'Passed' })
-          $line = "ARM3 serial passed=$($r.PassedCount) failed=$($r.FailedCount) skipped=$($r.SkippedCount) total=$($r.TotalCount) containers=$(@($r.Containers).Count) badContainers=$($bad.Count) wall=${wall}s"
-          $line | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
-          if ($r.FailedCount -gt 0 -or $bad.Count -gt 0) { exit 1 }
-
-      - name: Arm 4 - runner, throttle 4 again (warm repeat)
-        id: a4
-        continue-on-error: true
+      - name: Check mode against the regenerated file, run 2 of 3
         shell: pwsh
         run: |
           $sw = [Diagnostics.Stopwatch]::StartNew()
           pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -ShowMessages -MinTests 100 -RequireSuite test-suite-registration -ThrottleLimit 4
           $rc = $LASTEXITCODE
-          "ARM4 runner throttle=4 repeat exit=$rc wall=$([math]::Round($sw.Elapsed.TotalSeconds,1))s" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "CHECK2 exit=$rc wall=$([math]::Round($sw.Elapsed.TotalSeconds,1))s"
           if ($rc -ne 0) { exit $rc }
 
-      - name: Arm 5 - runner without hook-spawn-budget (throttle 4), then that suite serial
-        id: a5
-        continue-on-error: true
+      - name: Check mode against the regenerated file, run 3 of 3
         shell: pwsh
         run: |
-          Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force
           $sw = [Diagnostics.Stopwatch]::StartNew()
-          pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -ShowMessages -MinTests 100 -RequireSuite test-suite-registration -ThrottleLimit 4 -Exclude hook-spawn-budget
+          pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -ShowMessages -MinTests 100 -RequireSuite test-suite-registration -ThrottleLimit 4
           $rc = $LASTEXITCODE
-          $mid = [math]::Round($sw.Elapsed.TotalSeconds,1)
-          $r = Invoke-Pester scripts/tests/hook-spawn-budget.Tests.ps1 -Output Minimal -PassThru
-          "ARM5 runner-minus-hook exit=$rc runner_wall=${mid}s then hook-spawn-budget serial failed=$($r.FailedCount) passed=$($r.PassedCount) total_wall=$([math]::Round($sw.Elapsed.TotalSeconds,1))s" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
-          if ($rc -ne 0 -or $r.FailedCount -gt 0) { exit 1 }
-
-      - name: Verdict (fails if any arm failed, so a red run is visible)
-        if: always()
-        shell: pwsh
-        run: |
-          $o = @{ a1 = '${{ steps.a1.outcome }}'; a2 = '${{ steps.a2.outcome }}'; a3 = '${{ steps.a3.outcome }}'; a4 = '${{ steps.a4.outcome }}'; a5 = '${{ steps.a5.outcome }}' }
-          $o.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Name): $($_.Value)" } | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
-          if ($o.Values -contains 'failure') { exit 1 }
+          "CHECK3 exit=$rc wall=$([math]::Round($sw.Elapsed.TotalSeconds,1))s"
+          if ($rc -ne 0) { exit $rc }
