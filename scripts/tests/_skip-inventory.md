@@ -110,13 +110,13 @@ The last three are conditional, listed in `### conditional`. A listed line is do
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-anomaly-reminder.sh: startup, nothing captured prints the same on the bash 3.2 code path | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-anomaly-reminder.sh: startup, nothing captured starts at most 0 processes beyond bash boot | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: PINNED consult: MCP agy_ask (after its pre) prints the same on the bash 3.2 code path | WindowsOnly | - |
-| hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: PINNED consult: MCP agy_ask (after its pre) starts at most 114 processes beyond bash boot | WindowsOnly | - |
+| hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: PINNED consult: MCP agy_ask (after its pre) starts at most 68 processes beyond bash boot | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: PINNED consult: MCP agy_ask, inconclusive return (after its pre) prints the same on the bash 3.2 code path | WindowsOnly | - |
-| hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: PINNED consult: MCP agy_ask, inconclusive return (after its pre) starts at most 115 processes beyond bash boot | WindowsOnly | - |
+| hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: PINNED consult: MCP agy_ask, inconclusive return (after its pre) starts at most 70 processes beyond bash boot | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: PINNED consult: clavity ask (after its pre) prints the same on the bash 3.2 code path | WindowsOnly | - |
-| hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: PINNED consult: clavity ask (after its pre) starts at most 117 processes beyond bash boot | WindowsOnly | - |
+| hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: PINNED consult: clavity ask (after its pre) starts at most 71 processes beyond bash boot | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: PINNED consult: clavity await-reply (after a send) prints the same on the bash 3.2 code path | WindowsOnly | - |
-| hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: PINNED consult: clavity await-reply (after a send) starts at most 126 processes beyond bash boot | WindowsOnly | - |
+| hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: PINNED consult: clavity await-reply (after a send) starts at most 80 processes beyond bash boot | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: clavity send (post is a no-op) prints the same on the bash 3.2 code path | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: clavity send (post is a no-op) starts at most 13 processes beyond bash boot | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: command text mentions the consult CLI prints the same on the bash 3.2 code path | WindowsOnly | - |
@@ -126,11 +126,11 @@ The last three are conditional, listed in `### conditional`. A listed line is do
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: non-consult Bash call prints the same on the bash 3.2 code path | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh: non-consult Bash call starts at most 13 processes beyond bash boot | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh: PINNED consult: MCP agy_ask prints the same on the bash 3.2 code path | WindowsOnly | - |
-| hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh: PINNED consult: MCP agy_ask starts at most 111 processes beyond bash boot | WindowsOnly | - |
+| hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh: PINNED consult: MCP agy_ask starts at most 65 processes beyond bash boot | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh: PINNED consult: clavity ask prints the same on the bash 3.2 code path | WindowsOnly | - |
-| hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh: PINNED consult: clavity ask starts at most 114 processes beyond bash boot | WindowsOnly | - |
+| hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh: PINNED consult: clavity ask starts at most 68 processes beyond bash boot | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh: PINNED consult: clavity send prints the same on the bash 3.2 code path | WindowsOnly | - |
-| hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh: PINNED consult: clavity send starts at most 117 processes beyond bash boot | WindowsOnly | - |
+| hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh: PINNED consult: clavity send starts at most 71 processes beyond bash boot | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh: clavity await-reply (pre is a no-op) prints the same on the bash 3.2 code path | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh: clavity await-reply (pre is a no-op) starts at most 13 processes beyond bash boot | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget.clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh: command text mentions the consult CLI prints the same on the bash 3.2 code path | WindowsOnly | - |
@@ -245,3 +245,25 @@ The last three are conditional, listed in `### conditional`. A listed line is do
 | path-lib.Tests.ps1 | Get-RootRelativePath.normalises an UPPERCASE root | FsFeature:case-insensitive | - |
 | project-store.Tests.ps1 | project-store.sh.feeds curate-commit: the published GROWTH is the proposal byte for byte, has its sidecar, and the SessionStart nudge goes quiet | NeedsTool:clavity | no curate-commit binary (CLAVITY_CURATE_COMMIT_EXE, clavity-classic debug build, clavity-ls or clavity on PATH) is available |
 | review-relay-scripts.Tests.ps1 | collect.ps1.a failed rebuild leaves no stale collected.md (G4) | NotAsRoot | root is not bound by directory permissions |
+
+## windows
+
+### static
+
+| Suite | Row | Tag | Reason |
+| --- | --- | --- | --- |
+| BashHookHelpers.Tests.ps1 | BashHookHelpers (harness validation).cross-platform fixture helpers.New-NoJqPath leaves no temp directory behind when its own postcondition throws | LinuxOnly | - |
+| agy-consult-guard.Tests.ps1 | agy-consult-guard.WARNS when a SYMLINKED .git hook is planted during a consult | LinuxOnly | - |
+| agy-consult-guard.Tests.ps1 | agy-consult-guard.WARNS when a hook symlink is re-pointed at different bytes during a consult | LinuxOnly | - |
+| agy-consult-guard.Tests.ps1 | agy-consult-guard.WARNS when an UNREADABLE hook is planted during a consult | LinuxOnly | chmod 000 does not make a file unreadable to Git Bash on Windows |
+| agy-consult-guard.Tests.ps1 | agy-consult-guard.WARNS when an existing hook becomes unreadable | LinuxOnly | chmod 000 does not make a file unreadable to Git Bash on Windows |
+| agy-consult-guard.Tests.ps1 | agy-consult-guard.agy_guard_hash_files gives the same digests as the old cut\|sed pipeline | LinuxOnly | - |
+| agy-consult-guard.Tests.ps1 | agy-consult-guard.section 87 - the sentinel of an unfinished consult.has no time limit: a sentinel two days old still speaks | LinuxOnly | - |
+| register-plugin.Tests.ps1 | Test-AgentPresent.falls back to HOME when USERPROFILE is unset (the Linux/macOS case; no mocks, child process) | LinuxOnly | - |
+
+### conditional
+
+| Suite | Row | Tag | Reason |
+| --- | --- | --- | --- |
+| agy-discipline-reaching.Tests.ps1 | agy-discipline-reaching.sh.14c - the hook asserts the .clavity shield.the FALLBACK blames the DIRECTORY when the shield file was never created (capstone r2e) | FsFeature:dir-write-deny | denying WRITE on a directory is not dependable on Windows (an elevated token ignores the ACE); this row is measured under POSIX, where chmod is exact |
+| project-store.Tests.ps1 | project-store.sh.feeds curate-commit: the published GROWTH is the proposal byte for byte, has its sidecar, and the SessionStart nudge goes quiet | NeedsTool:clavity | no curate-commit binary (CLAVITY_CURATE_COMMIT_EXE, clavity-classic debug build, clavity-ls or clavity on PATH) is available |
