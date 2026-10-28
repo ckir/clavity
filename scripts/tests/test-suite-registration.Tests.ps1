@@ -383,52 +383,31 @@ foreach ($cont in $r.Containers) {
         # The lesson is that hand-rolled comment detection keeps losing. PowerShell already has a
         # tokenizer that knows every comment form, so ask IT which lines carry live code, then RUN the
         # guard's own source. Tokenize the run BLOCK only - the file is YAML, not PowerShell.
+        # R4 (ROADMAP section 83): the Windows job stopped carrying the oracle inline and runs the parallel runner, as the Linux job
+        # already did, so the guard is now the runner's -RequireSuite. The runner's own behaviour (it exits 1 when the required suite
+        # is absent, and when fewer than -MinTests ran) is pinned by run-pester-parallel.Tests.ps1; what is pinned HERE is the wiring:
+        # BOTH full-suite steps must pass those arguments, on a line YAML reads as the command and not as a comment.
         $wfPath  = Join-Path $script:RepoRoot '.github/workflows/ci-scripts.yml'
         $wfLines = @(Get-Content -LiteralPath $wfPath)
 
-        # Extract the `run: |` block of the full-suite Pester step, by indentation.
-        $stepIx = [Array]::FindIndex($wfLines, [Predicate[string]]{ param($l) $l -match '^\s*- name: Pester - full scripts suite' })
-        $stepIx | Should -BeGreaterThan -1 -Because 'the full-suite Pester step must exist in ci-scripts.yml, or nothing below is checking anything'
-        # BOUND THE SEARCH TO THIS STEP. FindIndex would otherwise run to end-of-file, so if this step
-        # ever stopped carrying a `run: |` the extractor would silently adopt a LATER step's block and
-        # certify the wrong thing. AGY-CAPSTONE round 4; measured NOT currently reachable (the run: | is
-        # 2 lines below the step, the next `- name:` is 15 below) - which is exactly when to fix it.
-        $nextStep = [Array]::FindIndex($wfLines, $stepIx + 1, [Predicate[string]]{ param($l) $l -match '^\s*- name:' })
-        if ($nextStep -lt 0) { $nextStep = $wfLines.Count }
-        $runIx = [Array]::FindIndex($wfLines, $stepIx, [Predicate[string]]{ param($l) $l -match '^\s*run: \|' })
-        $runIx | Should -BeGreaterThan -1 -Because 'that step must carry a run: | block'
-        $runIx | Should -BeLessThan $nextStep -Because 'the run: | block must belong to the full-suite Pester step itself, not to a later step the search ran on into'
-        $indent = ($wfLines[$runIx] -replace '\S.*$', '').Length
-        $block = @()
-        for ($n = $runIx + 1; $n -lt $wfLines.Count; $n++) {
-            $l = $wfLines[$n]
-            if ($l.Trim() -eq '') { $block += ''; continue }
-            if (($l -replace '\S.*$', '').Length -le $indent) { break }
-            $block += $l
+        $steps = @(for ($i = 0; $i -lt $wfLines.Count; $i++) { if ($wfLines[$i] -match '^\s*- name: Pester - full scripts suite') { $i } })
+        $steps.Count | Should -Be 2 -Because 'both the Windows job and the Linux job must run the full-suite step, or one platform is not gated'
+        foreach ($stepIx in $steps) {
+            # BOUND THE SEARCH TO THIS STEP (AGY-CAPSTONE round 4): never adopt a later step's run: line.
+            $nextStep = [Array]::FindIndex($wfLines, $stepIx + 1, [Predicate[string]]{ param($l) $l -match '^\s*- name:|^  \S' })
+            if ($nextStep -lt 0) { $nextStep = $wfLines.Count }
+            $runIx = [Array]::FindIndex($wfLines, $stepIx, [Predicate[string]]{ param($l) $l -match '^\s*run: ' })
+            $runIx | Should -BeGreaterThan -1 -Because 'that step must carry a run: line'
+            $runIx | Should -BeLessThan $nextStep -Because 'the run: line must belong to the full-suite Pester step itself, not to a later step the search ran on into'
+            # The command is the inline value; YAML ends a plain scalar at whitespace followed by '#', so that is a comment, not argv.
+            $cmd = ($wfLines[$runIx] -replace '^\s*run:\s*', '') -replace '\s#.*$', ''
+            $cmd | Should -Match 'run-pester-parallel\.ps1' -Because "the full-suite step must run the parallel runner as one inline command (got: $cmd)"
+            $tok = @($cmd -split '\s+' | Where-Object { $_ })
+            $val = { param($name) $ix = [Array]::IndexOf($tok, $name); if ($ix -ge 0 -and ($ix + 1) -lt $tok.Count) { $tok[$ix + 1] } }
+            (& $val '-Directory') | Should -BeExactly 'scripts/tests' -Because 'the runner must sweep the whole scripts/tests directory'
+            (@((& $val '-RequireSuite') -split ',') -ccontains 'test-suite-registration') | Should -BeTrue -Because 'the registration oracle must be a REQUIRED suite: it proves every other suite was discovered, and without it the run degrades to the count floor, which MEASURED 2026-08-31 tolerates losing ~89% of the suite'
+            [int](& $val '-MinTests') | Should -BeGreaterOrEqual 100 -Because 'the total-count floor must stay at the full-suite figure or higher'
         }
-        $block.Count | Should -BeGreaterThan 3 -Because 'an empty or truncated run block means this parse broke, not that CI is small'
-
-        # Ask PowerShell which lines carry NON-comment tokens. This is the part that kept being wrong.
-        $errs = $null
-        $toks = [System.Management.Automation.PSParser]::Tokenize(($block -join "`n"), [ref]$errs)
-        $liveLine = @{}
-        foreach ($tk in $toks) {
-            if ($tk.Type -ne 'Comment' -and $tk.Type -ne 'NewLine') { $liveLine[$tk.StartLine] = $true }
-        }
-        $live = @(for ($n = 1; $n -le $block.Count; $n++) { if ($liveLine.ContainsKey($n)) { $block[$n - 1] } })
-
-        $assign = @($live | Where-Object { $_ -match '\$oracle = @\(\$r\.Containers' })
-        $throwL = @($live | Where-Object { $_ -match 'if \(\$oracle\.Count -ne 1\)' })
-        $assign.Count | Should -Be 1 -Because 'ci-scripts.yml must ASSIGN $oracle on a line PowerShell itself considers live code - in any comment syntax'
-        $throwL.Count | Should -Be 1 -Because 'ci-scripts.yml must THROW when the oracle did not run, on a line PowerShell considers live code'
-
-        # Now RUN the guard's own source. $r is read from this scope by the scriptblock. A text match
-        # cannot see `-ne 2` or an inverted test; this can.
-        $guard = [scriptblock]::Create(($assign[0] + "`n" + $throwL[0]))
-        $r = [pscustomobject]@{ Containers = @([pscustomobject]@{ Item = 'scripts/tests/other.Tests.ps1' }) }
-        { & $guard } | Should -Throw -Because 'the guard must THROW when the registration oracle is absent from the run - that is the entire point of it'
-        $r = [pscustomobject]@{ Containers = @([pscustomobject]@{ Item = 'scripts/tests/test-suite-registration.Tests.ps1' }) }
-        { & $guard } | Should -Not -Throw -Because 'the guard must stay silent on a healthy run, or it is a false alarm rather than a gate'
 
         # The rationale comment is still required, separately: without it a later reader deletes the
         # guard as redundant. Asserted on raw text because a comment is exactly what this one is.
