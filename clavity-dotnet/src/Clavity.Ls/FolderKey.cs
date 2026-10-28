@@ -36,7 +36,7 @@ public static class FolderKey
         // resolved to, not to the text: l1 -> "l2/../repo" with l2 -> deep/sub lands in deep/repo, as the kernel does
         // (collapsing "l2/.." as text gave <root>/repo, a different folder). The typed folder is first made absolute
         // lexically, on purpose: that is the path Claude is launched in.
-        var full = Path.TrimEndingDirectorySeparator(Path.IsPathRooted(folder) ? folder : Path.GetFullPath(folder));
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
         var root = Path.GetPathRoot(full) ?? "";
         var pending = new LinkedList<string>(Segments(full[root.Length..]));
         var resolved = root;
@@ -71,7 +71,7 @@ public static class FolderKey
                 pending.AddFirst(part);
         }
         var path = Path.TrimEndingDirectorySeparator(resolved);
-        if (false && OperatingSystem.IsWindows())
+        if (OperatingSystem.IsWindows())
             path = Path.TrimEndingDirectorySeparator(WindowsFinalPath(path));
         return ignoreCase ? path.ToUpperInvariant() : path;
     }
