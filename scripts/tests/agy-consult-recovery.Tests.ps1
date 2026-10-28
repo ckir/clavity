@@ -253,6 +253,22 @@ Describe 'agy-consult-recovery section-7 matrix (representative fixtures; each r
     (Run $r) | Should -Not -Match 'agy-panel-r3-audit'
     Remove-Item -Recurse -Force $r
   }
+  It 'an agy-test-audit seam IS concluded once agy-test-audit.head is written, and a NEWER one is not (s88 hoist: every token of the pre-loop table)' {
+    # Mutant: drop agy-test-audit from the pre-loop token list (ROADMAP section 88) -> no marker is resolved for it -> the seam is reported forever -> reds.
+    $r = New-Repo; Seam $r 'agy-test-audit-r2-old.md'; Start-Sleep -Milliseconds 1100; Marker $r 'agy-test-audit'; Start-Sleep -Milliseconds 1100; Seam $r 'agy-test-audit-r3-new.md'
+    $out = Run $r
+    $out | Should -Not -Match 'agy-test-audit-r2-old'
+    $out | Should -Match 'agy-test-audit-r3-new'
+    Remove-Item -Recurse -Force $r
+  }
+  It 'an agy-first seam IS concluded once agy-first.head is written, and a NEWER one is not (s88 hoist: every token of the pre-loop table)' {
+    # Mutant: drop agy-first from the pre-loop token list (ROADMAP section 88) -> no marker is resolved for it -> the seam is reported forever -> reds.
+    $r = New-Repo; Seam $r 'agy-first-r2-old.md'; Start-Sleep -Milliseconds 1100; Marker $r 'agy-first'; Start-Sleep -Milliseconds 1100; Seam $r 'agy-first-r3-new.md'
+    $out = Run $r
+    $out | Should -Not -Match 'agy-first-r2-old'
+    $out | Should -Match 'agy-first-r3-new'
+    Remove-Item -Recurse -Force $r
+  }
   It 'a panel seam with NO agy-panel.head on disk is recognized on-convention (token list is the LITERAL table, not agy-marks contents)' {
     # Mutant: derive the token list from what is IN agy-marks/ -> agy-panel absent on a fresh install -> the seam takes the off-convention branch -> reds.
     $r = New-Repo; Seam $r 'agy-panel-r3-audit.md'

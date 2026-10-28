@@ -132,6 +132,17 @@ bad=()
 # (read-but-not-execute seams dir, a dangling link) makes every `-nt` comparison false, so the shown set is
 # in NAME order, not recency - say so below rather than silently imply the shown seams are the most recent.
 _ordering_lost=0
+# The four classification tokens are the whole marker universe: resolve each marker path through the same
+# builder agy-mark.sh writes with, and keep only the markers that exist (ROADMAP section 88: this used to be
+# one builder call and one existence test per SEAM, three stats a seam on Windows Git Bash). A lib that did not
+# load leaves the map empty, so every candidate is surfaced, as before.
+declare -A _mk=()
+if [ "$_marker_lib_ok" = 1 ]; then
+  for _t in agy-test-audit agy-capstone agy-panel agy-first; do
+    agy_marker_rel _mrel "$_t"
+    [ -e "$root/$_mrel" ] && _mk[$_t]="$root/$_mrel"
+  done
+fi
 for _s in "${_seams[@]}"; do
   _base=${_s##*/}
   # PURE-BASH lowercase (bash 4+); NOT $(... | tr ...) which forks per seam in this hot loop.
@@ -156,10 +167,11 @@ for _s in "${_seams[@]}"; do
     # Round = the number of the LAST `-rN` word (greedy `.*`); none -> the literal `?` (printed "r?").
     _rnd='?'
     [[ $_w =~ .*-r([0-9]+)- ]] && _rnd=${BASH_REMATCH[1]}
-    _marker=''
-    if [ "$_marker_lib_ok" = 1 ]; then agy_marker_rel _mrel "$_tok"; _marker="$root/$_mrel"; fi
-    # Concluded iff the seam's OWN marker is newer than it.
-    if [ -n "$_marker" ] && [ -e "$_marker" ] && [ "$_marker" -nt "$_s" ]; then
+    # Concluded iff the seam's OWN marker is newer than it. The marker path and its existence were resolved
+    # once per token above the loop (ROADMAP section 88): a token with no marker file has no entry, so no
+    # seam of it is ever concluded and costs no stat here.
+    _marker=${_mk[$_tok]:-}
+    if [ -n "$_marker" ] && [ "$_marker" -nt "$_s" ]; then
       continue
     fi
     [ -e "$_s" ] || _ordering_lost=1
