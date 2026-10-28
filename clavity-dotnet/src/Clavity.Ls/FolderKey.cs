@@ -140,7 +140,7 @@ public static class FolderKey
             using var handle = CreateFile(path, FileReadAttributes, ShareAll, IntPtr.Zero, OpenExisting, BackupSemantics, IntPtr.Zero);
             if (handle.IsInvalid)
                 return path;
-            return FinalPathFromQuery(path, (buffer, size) => GetFinalPathNameByHandle(handle, buffer, size, 0));
+            return FinalPathFromQuery(path, (buffer, size) => GetFinalPathNameByHandle(handle, buffer, size, 8));
         }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or ArgumentException or IOException)
         {
