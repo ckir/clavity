@@ -71,7 +71,7 @@ public static class FolderKey
                 pending.AddFirst(part);
         }
         var path = Path.TrimEndingDirectorySeparator(resolved);
-        if (false && OperatingSystem.IsWindows())
+        if (OperatingSystem.IsWindows())
             path = Path.TrimEndingDirectorySeparator(WindowsFinalPath(path));
         return ignoreCase ? path.ToUpperInvariant() : path;
     }
