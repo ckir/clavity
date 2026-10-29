@@ -19,7 +19,10 @@
 //! starts with `[req_id=...]`; agy replies setting `replyTo` to the request's signal id and
 //! echoing the `req_id`. Claude correlates on either.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+static REQ_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Mint a short, unique request id, e.g. `req-2x9f1k`.
 pub fn new_req_id() -> String {
@@ -27,7 +30,10 @@ pub fn new_req_id() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    format!("req-{}", to_base36(nanos))
+    let pid = u128::from(std::process::id() as u16);
+    let seq = u128::from(REQ_SEQ.fetch_add(1, Ordering::Relaxed) as u32);
+    let combined = (nanos << 48) | (pid << 32) | seq;
+    format!("req-{}", to_base36(combined))
 }
 
 fn to_base36(mut n: u128) -> String {
@@ -70,10 +76,15 @@ mod tests {
     #[test]
     fn req_id_is_unique_and_prefixed() {
         let a = new_req_id();
-        std::thread::sleep(std::time::Duration::from_nanos(1));
         let b = new_req_id();
         assert!(a.starts_with("req-") && b.starts_with("req-"));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn req_id_is_unique_across_rapid_burst() {
+        let ids: std::collections::HashSet<String> = (0..500).map(|_| new_req_id()).collect();
+        assert_eq!(ids.len(), 500);
     }
 
     #[test]

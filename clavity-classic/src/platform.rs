@@ -46,4 +46,41 @@ impl Os {
             Os::Unix => "bash",
         }
     }
+
+    /// Build a shell command to `cd` into `folder` and launch `agy <agy_args>` inside an existing
+    /// shell pane. Escapes single quotes for the platform's default shell (`pwsh` vs POSIX `sh`/`bash`).
+    pub fn relaunch_command(self, folder: &std::path::Path, agy_args: &str) -> String {
+        let path = folder.to_string_lossy();
+        match self {
+            Os::Windows => {
+                let escaped = path.replace('\'', "''");
+                format!("Set-Location -LiteralPath '{escaped}'; agy {agy_args}")
+            }
+            Os::Unix => {
+                let escaped = path.replace('\'', "'\\''");
+                format!("cd -- '{escaped}' && agy {agy_args}")
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn relaunch_command_windows_uses_set_location_and_doubles_single_quotes() {
+        let cmd = Os::Windows.relaunch_command(Path::new("C:/Users/O'Connor/repo"), "--flag");
+        assert_eq!(
+            cmd,
+            "Set-Location -LiteralPath 'C:/Users/O''Connor/repo'; agy --flag"
+        );
+    }
+
+    #[test]
+    fn relaunch_command_unix_uses_cd_and_posix_escapes_single_quotes() {
+        let cmd = Os::Unix.relaunch_command(Path::new("/home/o'connor/repo"), "--flag");
+        assert_eq!(cmd, "cd -- '/home/o'\\''connor/repo' && agy --flag");
+    }
 }

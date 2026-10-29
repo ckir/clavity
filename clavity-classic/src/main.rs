@@ -403,10 +403,7 @@ fn start(session: &str, args: Vec<String>) -> i32 {
         // Stale session: agy exited, the pane fell back to a shell. Relaunch agy in place (cd to the
         // requested folder first, as the pane may be elsewhere) and reopen the watch tab.
         warn!("session '{session}' exists but agy isn't running - relaunching agy");
-        let relaunch = format!(
-            "Set-Location -LiteralPath '{}'; agy {agy_args}",
-            folder.display()
-        );
+        let relaunch = platform::current().relaunch_command(&folder, &agy_args);
         if let Err(e) = tmux::send_keys(session, &relaunch, true) {
             eprintln!("failed to relaunch agy in psmux: {e}");
             return 1;
@@ -834,9 +831,17 @@ fn open_watch_tab(session: &str) {
     ) {
         return;
     }
+    let bin = tmux::psmux_bin();
+    if platform::current() != platform::Os::Windows {
+        let escaped_session = session.replace('\'', "'\\''");
+        info!("watch agy manually with:  {bin} attach -t '{escaped_session}'");
+        return;
+    }
     // Use the PowerShell call operator so a tmux path with spaces (e.g. C:\Program Files\…) is run
-    // as one command, not parsed as `C:\Program` + args.
-    let attach = format!("& '{}' attach -t {session}", tmux::psmux_bin());
+    // as one command, not parsed as `C:\Program` + args. Escape single quotes for PowerShell.
+    let escaped_bin = bin.replace('\'', "''");
+    let escaped_session = session.replace('\'', "''");
+    let attach = format!("& '{escaped_bin}' attach -t '{escaped_session}'");
     let spawned = Command::new("wt")
         .args([
             "new-tab",

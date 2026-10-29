@@ -14,6 +14,8 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
@@ -32,9 +34,16 @@ use sha2::{Digest, Sha256};
 /// REPO paths and cannot see the runtime files it is meant to bound.
 pub const MAX_BYTES: usize = 32 * 1024;
 
+/// How many pre-mutation snapshot slots to retain per artifact (AT-2). FIFO. Mirrors dotnet
+/// `GoldenHeader.SnapshotKeep`.
+pub const SNAPSHOT_KEEP: usize = 5;
+
 /// Cap on the `.sha256` sidecar file, in bytes. A sha256 hex digest is 64 characters, so 1 KiB is
 /// generous headroom for a trailing newline or BOM. Identical to dotnet `GoldenHeader.MaxSidecarBytes`.
 pub const MAX_SIDECAR_BYTES: u64 = 1024;
+
+static SNAPSHOT_COUNTER: AtomicU64 = AtomicU64::new(0);
+static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// The driver-seeded baseline region (installer-written). Mirrors dotnet `SeedFileName`.
 pub const SEED_FILE: &str = "golden-header.seed.md";
@@ -112,6 +121,18 @@ fn strip_leading_html_comments(s: &str) -> &str {
 /// and is SKIPPED (not loud), so the combined read degrades; a present-but-mismatched `.sha256` sidecar
 /// degrades the same way. The cap is checked on the raw on-disk bytes.
 fn try_read_file(path: &Path, warn: &mut dyn FnMut(&str), require_sidecar: bool) -> Option<String> {
+    let meta = fs::metadata(path).ok()?;
+    let len = meta.len();
+    if len == 0 {
+        return None;
+    }
+    if len > MAX_BYTES as u64 {
+        warn(&format!(
+            "golden-header region at {} is {len}B, over the {MAX_BYTES}B cap — skipped",
+            path.display()
+        ));
+        return None;
+    }
     let bytes = match fs::read(path) {
         Ok(b) => b,
         Err(_) => return None,
@@ -329,6 +350,50 @@ pub enum CommitError {
     Io(std::io::Error),
 }
 
+/// Format Unix epoch seconds as UTC `YYYYMMDD-HHMMSS` using Howard Hinnant's proleptic Gregorian
+/// `civil_from_days` algorithm (mirrors dotnet `DateTime.UtcNow.ToString("yyyyMMdd-HHmmss")`).
+fn utc_timestamp_yyyymmdd_hhmmss(secs: u64) -> String {
+    let days = (secs / 86_400) as i64;
+    let rem = secs % 86_400;
+    let hour = rem / 3_600;
+    let min = (rem % 3_600) / 60;
+    let sec = rem % 60;
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = (yoe as i64) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if m <= 2 { y + 1 } else { y };
+    format!("{year:04}{m:02}{d:02}-{hour:02}{min:02}{sec:02}")
+}
+
+/// True if `name` ends with `.YYYYMMDD-HHMMSS.bak` or `.YYYYMMDD-HHMMSS-NNNN.bak` (mirrors dotnet `DatedSlot`).
+fn is_dated_slot(name: &str) -> bool {
+    let Some(stem) = name.strip_suffix(".bak") else {
+        return false;
+    };
+    let Some((_, tail)) = stem.rsplit_once('.') else {
+        return false;
+    };
+    let bytes = tail.as_bytes();
+    let is_digits = |slice: &[u8]| slice.iter().all(u8::is_ascii_digit);
+    match bytes.len() {
+        15 => bytes[8] == b'-' && is_digits(&bytes[..8]) && is_digits(&bytes[9..15]),
+        20 => {
+            bytes[8] == b'-'
+                && bytes[15] == b'-'
+                && is_digits(&bytes[..8])
+                && is_digits(&bytes[9..15])
+                && is_digits(&bytes[16..20])
+        }
+        _ => false,
+    }
+}
+
 /// Atomically write the header, THEN atomically write the sidecar (hashing the RAW written bytes).
 /// Sidecar-after-target-rename so a rename failure leaves the OLD header + OLD sidecar consistent.
 /// UTF-8 no-BOM (Rust `fs::write` never adds a BOM). Caps on byte length.
@@ -345,16 +410,78 @@ pub fn commit(path: &Path, content: &str) -> Result<(), CommitError> {
             cap: MAX_BYTES,
         });
     }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(CommitError::Io)?;
+    let dir = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    if !dir.as_os_str().is_empty() && dir != Path::new(".") {
+        fs::create_dir_all(dir).map_err(CommitError::Io)?;
     }
+
+    // AT-2 snapshot ring (mirrors dotnet `GoldenHeader.Commit`): preserve the CURRENT header and its
+    // sidecar as one slot before replacing them, deduped on identical content.
+    if path.exists() {
+        let current = fs::read(path).map_err(CommitError::Io)?;
+        if current != bytes {
+            let counter = SNAPSHOT_COUNTER.fetch_add(1, Ordering::Relaxed) + 1;
+            let secs = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let stamp = format!("{}-{counter:04}", utc_timestamp_yyyymmdd_hhmmss(secs));
+            let bak = with_suffix(path, &format!(".{stamp}.bak"));
+            fs::copy(path, &bak).map_err(CommitError::Io)?;
+            let live_sidecar = sidecar_path(path);
+            if live_sidecar.exists() {
+                fs::copy(&live_sidecar, sidecar_path(&bak)).map_err(CommitError::Io)?;
+            }
+
+            if let (Some(base_name), Some(bak_name)) = (
+                path.file_name().and_then(|n| n.to_str()),
+                bak.file_name().and_then(|n| n.to_str()),
+            ) {
+                let prefix = format!("{base_name}.");
+                if let Ok(entries) = fs::read_dir(dir) {
+                    let mut slots: Vec<(u8, String, PathBuf)> = entries
+                        .filter_map(|e| e.ok())
+                        .filter_map(|e| {
+                            let name = e.file_name().into_string().ok()?;
+                            if name != bak_name
+                                && name.starts_with(&prefix)
+                                && name.ends_with(".bak")
+                            {
+                                let dated = u8::from(is_dated_slot(&name));
+                                Some((dated, name, e.path()))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    slots.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+                    for (_, _, stale) in slots.into_iter().skip(SNAPSHOT_KEEP - 1) {
+                        let _ = fs::remove_file(&stale);
+                        let stale_sidecar = sidecar_path(&stale);
+                        if stale_sidecar.exists() {
+                            let _ = fs::remove_file(&stale_sidecar);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let tmp_tag = format!(
+        ".{}-{}.tmp",
+        std::process::id(),
+        TMP_COUNTER.fetch_add(1, Ordering::Relaxed) + 1
+    );
     // 1) header: tmp -> rename over target (atomic).
-    let tmp = with_suffix(path, ".tmp");
+    let tmp = with_suffix(path, &tmp_tag);
     fs::write(&tmp, bytes).map_err(CommitError::Io)?;
     fs::rename(&tmp, path).map_err(CommitError::Io)?;
     // 2) sidecar (AFTER the target rename succeeds): 64 lc-hex, no newline, tmp -> rename.
     let sidecar = sidecar_path(path);
-    let sidecar_tmp = with_suffix(&sidecar, ".tmp");
+    let sidecar_tmp = with_suffix(&sidecar, &tmp_tag);
     fs::write(&sidecar_tmp, sha256_hex(bytes).as_bytes()).map_err(CommitError::Io)?;
     fs::rename(&sidecar_tmp, &sidecar).map_err(CommitError::Io)?;
     Ok(())
@@ -908,5 +1035,72 @@ mod tests {
         // trim. Mirrors dotnet `Apply_still_trims_trailing_ascii_whitespace`.
         let st = HeaderState::Active("HEADER  \t\r\n".to_string());
         assert_eq!(apply(&st, "MSG"), "HEADER\n\nMSG");
+    }
+
+    #[test]
+    fn utc_timestamp_and_dated_slot_match_dotnet_format() {
+        assert_eq!(utc_timestamp_yyyymmdd_hhmmss(0), "19700101-000000");
+        assert!(is_dated_slot(
+            "golden-header.growth.md.20261029-083000-0001.bak"
+        ));
+        assert!(is_dated_slot("golden-header.growth.md.20261029-083000.bak"));
+        assert!(!is_dated_slot("golden-header.growth.md.deadbeef.bak"));
+    }
+
+    #[test]
+    fn commit_rotates_and_prunes_bak_snapshot_ring_with_sidecars() {
+        let dir = fresh_dir("bak-ring");
+        let path = dir.join(GROWTH_FILE);
+
+        commit(&path, "V0").unwrap();
+        // Identical re-commit does not create a .bak slot.
+        commit(&path, "V0").unwrap();
+        let count_baks = || -> Vec<PathBuf> {
+            let mut baks: Vec<PathBuf> = fs::read_dir(&dir)
+                .unwrap()
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| {
+                    p.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.ends_with(".bak"))
+                })
+                .collect();
+            baks.sort();
+            baks
+        };
+        assert!(count_baks().is_empty());
+
+        // 7 distinct updates over V0 -> 7 snapshots created, pruned to SNAPSHOT_KEEP (5).
+        for i in 1..=7 {
+            commit(&path, &format!("V{i}")).unwrap();
+        }
+        let baks = count_baks();
+        assert_eq!(baks.len(), SNAPSHOT_KEEP);
+        for bak in &baks {
+            assert!(
+                sidecar_path(bak).exists(),
+                "every .bak must keep its matching .bak.sha256 sidecar: {}",
+                bak.display()
+            );
+        }
+        // Latest snapshot in the ring holds V6 (the state right before V7 was committed).
+        let newest_bak = baks.last().unwrap();
+        assert_eq!(fs::read_to_string(newest_bak).unwrap(), "V6");
+        assert_eq!(
+            fs::read_to_string(sidecar_path(newest_bak)).unwrap(),
+            sha256_hex(b"V6")
+        );
+
+        // No stray .tmp files left behind.
+        let stray_tmp: Vec<PathBuf> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.ends_with(".tmp"))
+            })
+            .collect();
+        assert!(stray_tmp.is_empty());
     }
 }
