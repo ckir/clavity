@@ -440,7 +440,8 @@ Context 'non-ASCII row names cross the process boundary intact' {
         $script:Em    = [string][char]0x2014
         $script:Alpha = [string][char]0x03B1
         $script:Cjk   = -join ([char]0x6F22, [char]0x5B57)
-        $script:UniNames = @("em${script:Em}dash", "alpha${script:Alpha}", "cjk${script:Cjk}")
+        $script:Rocket = [char]::ConvertFromUtf32(0x1F680)   # outside the BMP: a surrogate PAIR, two \uXXXX escapes on the wire
+        $script:UniNames = @("em${script:Em}dash", "alpha${script:Alpha}", "cjk${script:Cjk}", "rocket${script:Rocket}")
         $uniBody = "Describe 'u' {`n" + (($script:UniNames | ForEach-Object { "    It '$_' { 1 | Should -Be 2 }" }) -join "`n") + "`n}`n"
         $script:UniSuite = Join-Path $script:Work 'unicode.Tests.ps1'
         [IO.File]::WriteAllText($script:UniSuite, $uniBody, [Text.UTF8Encoding]::new($false))
