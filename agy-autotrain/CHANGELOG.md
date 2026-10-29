@@ -1,4 +1,13 @@
 # agy-autotrain - changelog
+## 0.8.0 - 2026-10-29
+
+### Features
+- feat(agy-autotrain): project the knowledge store through the human gate and warn when a machine has not (backlog stub fresh-install-injects-seed-only)
+
+### Fixes
+- fix(agy-autotrain): project-store.sh refuses an INDEX link that leaves the store
+- fix(golden-header): a GROWTH file with no sidecar is refused in both drivers (backlog stub, owner ruling 2026-10-27)
+
 ## 0.7.1 - 2026-10-13
 
 ### Fixes

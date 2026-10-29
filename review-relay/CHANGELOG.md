@@ -1,5 +1,10 @@
 # review-relay changelog
 
+## 0.3.2 - 2026-10-29
+
+### Fixes
+- fix(classic): log worktree cleanup failures as failed in agy-mcp-bridge and sanitize review-relay frontmatter
+
 ## 0.3.1 - 2026-10-13
 
 ### Fixes

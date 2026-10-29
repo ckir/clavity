@@ -1,4 +1,18 @@
 # classic changelog
+## 0.11.0 - 2026-10-29
+
+### Features
+- feat(guard): an unfinished consult leaves a sentinel and the next consult says its baseline absorbs what follows (ROADMAP 87)
+
+### Fixes
+- fix(classic): log worktree cleanup failures as failed in agy-mcp-bridge and sanitize review-relay frontmatter
+- fix(classic): platform-aware relaunch and watch tab, collision-free req-id, and golden-header .bak snapshot ring
+- fix(golden-header): a GROWTH file with no sidecar is refused in both drivers (backlog stub, owner ruling 2026-10-27)
+- fix(guard): redirect order and message variable shape required by the repo's own gates (plugin-hooks-payload, injected-context, test-temp)
+- fix(guard): a backgrounded Bash consult is an unfinished consult (ROADMAP 85)
+- fix(guard): the git-metadata axis sees a symlinked hook (ROADMAP 90)
+- fix(classic): accept --session before a subcommand
+
 ## 0.10.1 - 2026-10-13
 
 ### Fixes

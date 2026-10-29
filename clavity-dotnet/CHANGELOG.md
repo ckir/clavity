@@ -1,4 +1,25 @@
 # dotnet changelog
+## 0.13.0 - 2026-10-29
+
+### Features
+- feat(ls): the TRUNCATED REPLY notice names the expected token and the last line it saw
+- feat(guard): an unfinished consult leaves a sentinel and the next consult says its baseline absorbs what follows (ROADMAP 87)
+- feat(clavity-ls): one Claude per folder - a second start in the same folder is refused (section 101)
+
+### Fixes
+- fix(dotnet): prevent cold MethodInfo.GetParameters race on McpTools and use unique .tmp names in GoldenHeader.Commit
+- fix(site): outline the clavity.svg wordmark into a path so it needs no installed font (ROADMAP section 94)
+- fix(start): key the folder lock on the kernel's final path on Windows, so a subst drive and a loopback admin share reach the same lock (ROADMAP section 103)
+- fix(golden-header): a GROWTH file with no sidecar is refused in both drivers (backlog stub, owner ruling 2026-10-27)
+- fix(guard): redirect order and message variable shape required by the repo's own gates (plugin-hooks-payload, injected-context, test-temp)
+- fix(guard): a backgrounded Bash consult is an unfinished consult (ROADMAP 85)
+- fix(guard): the git-metadata axis sees a symlinked hook (ROADMAP 90)
+- fix(clavity-ls): resolve folder links like realpath, and count only links toward the hop cap (capstone round 1, section 101)
+- fix(ls): hold the just-written snapshot out of the ring prune; pin the full stamp (capstone round 1)
+- fix(ls): stamp snapshot ring slots with UTC date-time plus counter, evict legacy hex slots first (section 99)
+- fix(site-checks): check each attribute value on its own for check 6 (capstone round 1)
+- fix(site-checks): check 6 scans attribute values a visitor sees or hears (§96)
+
 ## 0.12.0 - 2026-10-13
 
 ### Features
