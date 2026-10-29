@@ -127,15 +127,16 @@ public sealed class FolderKeyTests : IDisposable
     }
 
     [Fact]
-    public void A_link_loop_ends_instead_of_hanging()
+    public async Task A_link_loop_ends_instead_of_hanging()
     {
         if (OperatingSystem.IsWindows()) return;
         Directory.CreateSymbolicLink(Path.Combine(_root, "a"), Path.Combine(_root, "b"));
         Directory.CreateSymbolicLink(Path.Combine(_root, "b"), Path.Combine(_root, "a"));
         var task = Task.Run(() => FolderKey.Canonical(Path.Combine(_root, "a"), false));
-        Assert.True(task.Wait(TimeSpan.FromSeconds(10)), "a symlink loop must not hang the key");
+        var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(10))) == task;
+        Assert.True(completed, "a symlink loop must not hang the key");
         // A loop of two links ends on the 41st hop, which is `a` (odd hops are `a`): the last path seen, not an empty or shared key.
-        Assert.Equal(Path.Combine(_root, "a"), task.Result);
+        Assert.Equal(Path.Combine(_root, "a"), await task);
     }
 
     [Fact]

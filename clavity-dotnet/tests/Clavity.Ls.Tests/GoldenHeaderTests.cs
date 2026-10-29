@@ -397,4 +397,17 @@ public sealed class GoldenHeaderTests : IDisposable
         // Mirrors Rust `apply_active_still_trims_trailing_ascii_whitespace`.
         Assert.Equal("HEADER\n\nMSG", GoldenHeader.Apply("HEADER  \t\r\n", "MSG"));
     }
+
+    [Fact]
+    public void Commit_leaves_no_stray_tmp_under_concurrent_writes()
+    {
+        // Concurrent Commit calls on the same target path must use distinct temporary filenames
+        // ({path}.{pid}-{counter}.tmp) so one writer's File.Move does not steal or delete another
+        // writer's in-flight .tmp file before its own File.Move runs.
+        var p = Path.Combine(_dir, GoldenHeader.SeedFileName);
+        Parallel.For(0, 8, i => GoldenHeader.Commit(p, $"SEED-{i}"));
+
+        var strayTmp = Directory.GetFiles(_dir).Where(f => f.EndsWith(".tmp", StringComparison.Ordinal));
+        Assert.Empty(strayTmp);
+    }
 }

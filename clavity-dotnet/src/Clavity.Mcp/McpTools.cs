@@ -20,6 +20,17 @@ public class McpTools
 {
     private readonly AgyView _view;
 
+    static McpTools() => WarmParameterCache();
+
+    /// <summary>Pre-populates <c>RuntimeMethodInfo.m_parameters</c> on all <see cref="McpTools"/> methods
+    /// so concurrent <c>WithTools&lt;McpTools&gt;()</c> calls cannot race on the first <c>GetParameters()</c>
+    /// allocation and drop <c>ExcludeFromSchema</c> for <see cref="IProgress{T}"/>.</summary>
+    public static void WarmParameterCache()
+    {
+        foreach (var method in typeof(McpTools).GetMethods())
+            _ = method.GetParameters();
+    }
+
     public McpTools(AgyView view) => _view = view;
 
     [McpServerTool(Name = "agy_look"), Description("Look at the active agy conversation's cascade trajectory as a size-bounded JSON summary (no verbose ids).")]

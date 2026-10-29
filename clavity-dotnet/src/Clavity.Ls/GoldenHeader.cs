@@ -102,6 +102,10 @@ public static class GoldenHeader
     /// across seconds the UTC date-time in front of it orders slots, and across processes it is reset.</summary>
     private static long _snapshotCounter;
 
+    /// <summary>Per-process counter appended to temporary filenames in <see cref="Commit"/> so concurrent
+    /// writers in the same or separate processes do not collide on <c>{path}.tmp</c>.</summary>
+    private static long _tmpCounter;
+
     /// <summary>A ring slot named by this code or by its pre-v26 form: UTC <c>yyyyMMdd-HHmmss</c>, optionally
     /// followed by the counter. Anything else in the ring is a clavity-v26 hex-tick slot (ROADMAP section 99).</summary>
     private static readonly Regex DatedSlot = new(@"\.\d{8}-\d{6}(?:-\d{4})?\.bak$", RegexOptions.CultureInvariant);
@@ -337,14 +341,16 @@ public static class GoldenHeader
             }
         }
 
+        var tmpTag = $"{Environment.ProcessId}-{Interlocked.Increment(ref _tmpCounter)}";
+
         // 1) header: tmp -> move over target (atomic).
-        var tmp = path + ".tmp";
+        var tmp = $"{path}.{tmpTag}.tmp";
         File.WriteAllText(tmp, content);
         File.Move(tmp, path, overwrite: true);
 
         // 2) sidecar (AFTER the target move succeeds): tmp -> move over the final sidecar path (atomic).
         var sidecarPath = path + ".sha256";
-        var sidecarTmp = sidecarPath + ".tmp";
+        var sidecarTmp = $"{sidecarPath}.{tmpTag}.tmp";
         File.WriteAllText(sidecarTmp, Sha256Hex(content));
         File.Move(sidecarTmp, sidecarPath, overwrite: true);
     }

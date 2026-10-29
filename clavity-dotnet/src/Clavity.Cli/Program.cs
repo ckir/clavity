@@ -53,6 +53,7 @@ if (args.Contains("--mcp"))
     builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
     builder.Services.AddSingleton(options);
     builder.Services.AddSingleton(sp => new AgyView(sp.GetRequiredService<AgyViewOptions>()));
+    McpTools.WarmParameterCache();
     builder.Services
         .AddMcpServer()
         .WithStdioServerTransport()

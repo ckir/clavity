@@ -25,6 +25,9 @@ namespace Clavity.Integration.Tests;
 // wrapper; AgyView's own integration test covers discover->connect->read->bound.)
 public class McpToolsIntegrationTests
 {
+    [System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void Init() => McpTools.WarmParameterCache();
+
     private sealed class FakeLs : LanguageServerService.LanguageServerServiceBase
     {
         private readonly GetCascadeTrajectoryResponse _trajectory;
@@ -284,5 +287,44 @@ public class McpToolsIntegrationTests
         var required = root.GetProperty("required").EnumerateArray().Select(e => e.GetString()).ToArray();
         Assert.DoesNotContain("discipline", required);
         Assert.DoesNotContain("artifactPath", required);
+    }
+
+    [Fact]
+    public void AgyAsk_input_schema_never_leaks_progress_under_concurrent_cold_registration()
+    {
+        // Regression test for the RuntimeMethodInfo.m_parameters race in Microsoft.Extensions.AI's
+        // ReflectionAIFunctionDescriptor..ctor: when two threads call WithTools<McpTools>() simultaneously
+        // on a cold MethodInfo, concurrent GetParameters() allocations cause Dictionary<ParameterInfo, ...>
+        // reference-equality lookups to miss ExcludeFromSchema=true for IProgress<ProgressNotificationValue>.
+        var method = typeof(McpTools).GetMethods().Single(m => m.Name == nameof(McpTools.AgyAsk) && !m.IsStatic);
+        var paramCacheField = method.GetType().GetField("m_parameters",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(paramCacheField);
+
+        for (var round = 0; round < 20; round++)
+        {
+            paramCacheField!.SetValue(method, null);
+            McpTools.WarmParameterCache();
+
+            using var barrier = new System.Threading.Barrier(4);
+            var leaked = new System.Collections.Concurrent.ConcurrentBag<string[]>();
+            Parallel.For(0, 4, _ =>
+            {
+                var services = new ServiceCollection();
+                services.AddSingleton(new AgyView(new AgyViewOptions
+                {
+                    CliLogPath = Path.Combine(Path.GetTempPath(), "schema-race-unused.log")
+                }));
+                services.AddMcpServer().WithTools<McpTools>();
+                using var sp = services.BuildServiceProvider();
+                barrier.SignalAndWait();
+                var tool = sp.GetServices<McpServerTool>().Single(t => t.ProtocolTool.Name == "agy_ask");
+                using var schema = JsonDocument.Parse(tool.ProtocolTool.InputSchema.GetRawText());
+                var props = schema.RootElement.GetProperty("properties").EnumerateObject().Select(p => p.Name).ToArray();
+                if (props.Contains("progress"))
+                    leaked.Add(props);
+            });
+            Assert.Empty(leaked);
+        }
     }
 }
