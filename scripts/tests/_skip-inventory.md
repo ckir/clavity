@@ -24,8 +24,6 @@ Approval vocabulary (closed). A skipped row is approved by a `-Tag` (its own or 
 
 The last three are conditional, listed in `### conditional`. A listed line is documentation, never a grant: approval lives in the test.
 
-<!-- UNMEASURED 2026-10-13: the windows section does not exist yet; the gate fails closed on Windows until the owner runs the generator there and commits the result -->
-
 ## linux
 
 ### static
@@ -265,5 +263,12 @@ The last three are conditional, listed in `### conditional`. A listed line is do
 
 | Suite | Row | Tag | Reason |
 | --- | --- | --- | --- |
+| BashHookHelpers.Tests.ps1 | BashHookHelpers (harness validation).cross-platform fixture helpers.Set-TestPathUnreadable blocks the BASH process, and Restore-TestPathReadable undoes it | NotAsRoot | this user (root?) is not bound by the deny |
+| agy-anomaly-reminder.Tests.ps1 | agy-anomaly-reminder.sh.REPORTS an unreadable anomalies file rather than counting zero | NotAsRoot | this host does not enforce the read deny against the hook process |
+| agy-autotrain-migrate-inbox.Tests.ps1 | agy-autotrain migrate-inbox hook.reports an UNREADABLE sidecar during recovery and touches nothing | NotAsRoot | this host does not enforce the read deny against the hook process |
+| agy-autotrain-migrate-inbox.Tests.ps1 | agy-autotrain migrate-inbox hook.stops and rolls back when the destination is UNREADABLE (an ACL deny) - an open, not a -r test, decides | NotAsRoot | this host does not enforce the read deny against the hook process |
+| agy-discipline-reaching.Tests.ps1 | agy-discipline-reaching.sh.14c - the hook asserts the .clavity shield.the FALLBACK WARNS - it does not fail silent - when it cannot assert the shield (capstone r2b) | NotAsRoot | the write-deny did not take for THIS bash (elevated token, or a filesystem that ignores ACLs), so the unassertable-shield state is unreachable here |
 | agy-discipline-reaching.Tests.ps1 | agy-discipline-reaching.sh.14c - the hook asserts the .clavity shield.the FALLBACK blames the DIRECTORY when the shield file was never created (capstone r2e) | FsFeature:dir-write-deny | denying WRITE on a directory is not dependable on Windows (an elevated token ignores the ACE); this row is measured under POSIX, where chmod is exact |
+| agy-ledger-lib.Tests.ps1 | agy-ledger-lib.sh.refusals - and each one names its cause.answers UNREADABLE - not ABSENT - when the ledger cannot be OPENED | NotAsRoot | the read-deny did not take for THIS bash (elevated token, or a filesystem that ignores ACLs), so the unreadable state is unreachable here |
+| docs-audit-reminder.Tests.ps1 | docs-audit-reminder.sh.reports an UNREADABLE view as unrecognisable rather than passing it silently | NotAsRoot | this host does not enforce the read deny against the hook process |
 | project-store.Tests.ps1 | project-store.sh.feeds curate-commit: the published GROWTH is the proposal byte for byte, has its sidecar, and the SessionStart nudge goes quiet | NeedsTool:clavity | no curate-commit binary (CLAVITY_CURATE_COMMIT_EXE, clavity-classic debug build, clavity-ls or clavity on PATH) is available |

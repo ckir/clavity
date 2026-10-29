@@ -261,6 +261,8 @@ jobs:
   dev-scripts:
     name: dev scripts (pwsh 7)
     runs-on: windows-latest
+    # A hung suite must not hold the runner for the 6-hour default; the parallel sweep takes 9 to 15 minutes here.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
@@ -468,22 +470,23 @@ jobs:
           if (-not $v) { throw "no Pester v6 module on disk after install" }
           "Pester $($v.Version) at $($v.ModuleBase)"
 
-      - name: Pester - full scripts suite (pwsh 7)
+      - name: Pester - full scripts suite, approved-skip gate + committed inventory (pwsh 7)
         shell: pwsh
-        run: |
-          Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force
-          $r = Invoke-Pester scripts/tests -Output Detailed -PassThru
-          if ($r.FailedCount -gt 0) { throw "$($r.FailedCount) Pester test(s) failed" }
-          $bad = @($r.Containers | Where-Object { $_.Result -ne 'Passed' })
-          if ($bad.Count -gt 0) { throw "$($bad.Count) container(s) failed to run or discover" }
-          if ($r.TotalCount -lt 100) { throw "only $($r.TotalCount) tests discovered - expected the full suite (>=100); a misnamed/misplaced *.Tests.ps1?" }
-          # The registration oracle must itself have run. test-suite-registration.Tests.ps1 asserts an
-          # EXACT equality between discovered containers and `git ls-files '*.Tests.ps1'`, which is what
-          # proves every other suite was discovered - but that row only runs while this suite is itself
-          # discovered. Without this check, losing THAT file degrades the whole gate to the count floor
-          # above, which tolerates losing ~89% of the suite.
-          $oracle = @($r.Containers | Where-Object { (Split-Path $_.Item -Leaf) -eq 'test-suite-registration.Tests.ps1' })
-          if ($oracle.Count -ne 1) { throw "the registration oracle did not run (found $($oracle.Count) container(s) named test-suite-registration.Tests.ps1) - it is the check that proves every other suite was discovered, so this run cannot be trusted" }
+        # THE PARALLEL RUNNER, AS THE LINUX JOB RUNS IT (ROADMAP section 83). This step was one serial `Invoke-Pester scripts/tests`
+        # with four checks written inline: no failed test, no container other than Passed, a TotalCount floor of 100, and exactly
+        # one container named test-suite-registration.Tests.ps1 (the registration oracle, which proves every other suite was discovered). The
+        # runner has each of them: a failed test or a bad container exits 1, -MinTests is the floor, -RequireSuite is the oracle,
+        # and -SkipInventory adds the approved-skip gate the serial step never had. A child that crashes or reports nothing also
+        # exits 1 (noResult).
+        # MEASURED on windows-latest (4 logical processors, 16 GB; 2026-10-28), same job, same runner: serial 915 s, runner at
+        # throttle 4 601 s and 531 s, at throttle 2 692 s; identical 2353 passed / 0 failed / 17 skipped over 84 files. The serial
+        # step took 907 s to 1386 s on ten recent CI runs. hook-spawn-budget, the suite most likely to flake under load, passed in
+        # every parallel run (seven, 169 of 169 each time). Do NOT quote the speed-up as a constant: the same runner at throttle 4 took 531 s to 601 s on one VM and
+        # 830 s to 894 s on another.
+        # The `## windows` section of scripts/tests/_skip-inventory.md was generated ON windows-latest, not on a developer box:
+        # the CI account is elevated, so the read-deny rows tagged NotAsRoot skip there and not on a normal box (a listed
+        # conditional row that did not skip is fine, so the section holds on both).
+        run: pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -ShowMessages -MinTests 100 -RequireSuite test-suite-registration
 
       - name: Verify-gate fixture tests (bash)
         # A COMMITTED, WIRED HOOK WHOSE ONLY TEST NOTHING RAN. `.claude/hooks/agy-verify-reminder.sh` is
@@ -522,8 +525,8 @@ jobs:
     # A hung suite must not hold the runner for the 6-hour default (the last green run took about 7.5 minutes).
     timeout-minutes: 30
     # The same suites as dev-scripts, run through scripts/run-pester-parallel.ps1 so the approved-skip gate and the
-    # committed per-OS inventory (scripts/tests/_skip-inventory.md, `## linux` section) apply. dev-scripts (Windows)
-    # keeps its plain Invoke-Pester until the owner has generated and measured the `## windows` section.
+    # committed per-OS inventory (scripts/tests/_skip-inventory.md, `## linux` section) apply. dev-scripts (Windows) runs
+    # the same runner against the `## windows` section (ROADMAP section 83).
     steps:
       - uses: actions/checkout@v7
 
