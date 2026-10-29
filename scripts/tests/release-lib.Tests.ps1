@@ -626,3 +626,11 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
         }
     }
 }
+
+Describe 'Get-PathBucket ($DevOnlyPaths coverage for site/ and header.txt)' {
+    It 'classifies site/ assets and header.txt as dev-only rather than unclassified' {
+        Get-PathBucket 'header.txt' | Should -BeExactly 'dev-only'
+        Get-PathBucket 'site/index.html' | Should -BeExactly 'dev-only'
+        Get-PathBucket 'site/assets/clavity.svg' | Should -BeExactly 'dev-only'
+    }
+}
