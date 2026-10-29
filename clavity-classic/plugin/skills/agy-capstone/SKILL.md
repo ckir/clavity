@@ -114,7 +114,7 @@ A bare "review-only" once let the peer write to the tree anyway. Wrap each round
    delete any file. Do not run mutating commands. Respond with analysis only."
 3. **Permission to pass** - the peer may decline or say it needs more; it must not act.
 4. **Point at files, not summaries** - write the review brief + the exact commit range to
-   `.clavity/seams/<topic>-capstone-r<N>.md` (the name MUST end in the discipline word: the SessionStart recovery hook recognises a seam by a whole hyphen-delimited word in its file name, and a seam without one is listed as 'unrecognised' at every session start, because no marker can conclude it) and send the peer the PATH; let it read the committed diff itself. Never
+   `.clavity/seams/<topic>-capstone-r<N>.md` (the name MUST contain the discipline word as a whole hyphen-delimited word: the SessionStart recovery hook recognises a seam by a whole hyphen-delimited word in its file name, and a seam without one is listed as 'unrecognised' at every session start, because no marker can conclude it) and send the peer the PATH; let it read the committed diff itself. Never
    consult it on a pasted summary of your own reading. Any measure-and-reproduce framing MUST name a
    scratch dir (`.clavity/scratch/<topic>/`) for the peer to work in, so it never writes to cwd.
    A named scratch directory does not bind a build's output, which lands in the working

@@ -390,7 +390,9 @@ Describe 'agy-consult-recovery test-audit coverage (verified gaps 2026-09-14)' {
       $file = 's104x-' + ($m.Groups[1].Value -replace '<N>', '1') + '.md'
       $r = New-Repo; Seam $r $file
       $out = Run $r
-      $out | Should -Match ("workflow position: $($skills[$name]) r") -Because "the hook must classify $file as $($skills[$name])"
+      # The round the skill's template carries must be READ as that round (r1), not degrade to the literal `r?` (capstone round 1: matching only `r` passed both).
+      $round = if ($file -match '-r1\.md$') { 'r1' } else { 'r\?' }
+      $out | Should -Match ("workflow position: $($skills[$name]) $round(\W|$)") -Because "the hook must classify $file as $($skills[$name]) $round"
       $out | Should -Not -Match 'unrecognised' -Because "$file must not be listed as unrecognised"
       Remove-Item -Recurse -Force $r
     }
@@ -406,6 +408,12 @@ Describe 'agy-consult-recovery test-audit coverage (verified gaps 2026-09-14)' {
     $line = [regex]::Match($out, '\d+ unrecognised seams are not shown\.[^"]*').Value
     $line | Should -Match 'List \.clavity/seams/\.' -Because 'the instruction to list the directory must survive the trim'
     $line.Length | Should -BeLessThan 90 -Because 'the trim exists to cut context noise (the old line was 136 characters)'
+    Remove-Item -Recurse -Force $r
+    # The second trimmed branch (an allowlist-failing name, reported as a bare count) carries the same tail (capstone round 1: it was unpinned).
+    $r = New-Repo; Seam $r 'agy-capstone-r5-ignore me.md'
+    $bad = [regex]::Match((Run $r), '\d+ unrecognised seams could not be named\.[^"]*').Value
+    $bad | Should -Match 'List \.clavity/seams/\.' -Because 'the could-not-be-named line must keep the instruction too'
+    $bad.Length | Should -BeLessThan 90 -Because 'the could-not-be-named line was trimmed with the other'
     Remove-Item -Recurse -Force $r
   }
   It 'G8: a GLOBAL $HOME/.claude/.no-agy suppresses the hook (distinct from the workspace .no-agy gate)' {

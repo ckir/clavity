@@ -90,7 +90,7 @@ A bare "review-only" once let the peer write to the tree anyway. Wrap each consu
 2. **Forbidden-actions banner** - state in the payload: "REVIEW-ONLY. Do not edit, create, move, or
    delete any file. Do not run mutating commands. Respond with analysis only."
 3. **Permission to pass** - the peer may decline or say it needs more; it must not act.
-4. **Point at files, not summaries** - write the fork/options to `.clavity/seams/<topic>-first.md` (the name MUST end in the discipline word: the SessionStart recovery hook recognises a seam by a whole hyphen-delimited word in its file name, and a seam without one is listed as 'unrecognised' at every session start, because no marker can conclude it) and send
+4. **Point at files, not summaries** - write the fork/options to `.clavity/seams/<topic>-first.md` (the name MUST contain the discipline word as a whole hyphen-delimited word: the SessionStart recovery hook recognises a seam by a whole hyphen-delimited word in its file name, and a seam without one is listed as 'unrecognised' at every session start, because no marker can conclude it) and send
    the peer the PATH; let it read the artifact itself. Never consult it on a pasted summary of your own
    measurements. Any measure-and-reproduce framing MUST name the scratch dir
    (`.clavity/scratch/<topic>/`) in the payload so the peer never writes to cwd.
