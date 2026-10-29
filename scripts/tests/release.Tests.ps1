@@ -203,4 +203,51 @@ function Get-DanglingReleaseCommits([string]$RepoRoot) { Undefined-Cmdlet-At-The
             (git rev-parse HEAD).Trim() | Should -Be $before
         } finally { Pop-Location; Remove-Item -Recurse -Force $s.Dir; Remove-Item -Recurse -Force $s.Bare }
     }
+
+    It '9. writes .clavity/release.log with header + refusal details and prints the log path on failure' {
+        $s = New-ReleaseScenario {
+            "# CL`n`n## 0.2.0`n- a`n" | Set-Content CHANGELOG.md
+            git add -A; git commit -q -m 'chore(release): clavity-v2 [x 0.2.0]'
+            "# CL`n`n## 0.2.0`n- a`n- b`n" | Set-Content CHANGELOG.md
+            git add -A; git commit -q -m 'fix(docs): touch changelog'
+        }
+        try {
+            $r = Invoke-ReleaseScript -Dir $s.Dir -ArgList @('-Resume')
+            $r.ExitCode | Should -Be 1
+            $logPath = Join-Path $s.Dir '.clavity/release.log'
+            $r.Output | Should -Match 'release: log -> .*release\.log'
+            (Test-Path -LiteralPath $logPath) | Should -BeTrue
+            $logText = Get-Content -LiteralPath $logPath -Raw
+            $logText | Should -Match '=== clavity release\.ps1 started'
+            $logText | Should -Match 'replaying your commits onto its parent CONFLICTS'
+            $logText | Should -Match 'release: -Resume refused'
+            $logText | Should -Match '=== FAILED at'
+        } finally { Pop-Location; Remove-Item -Recurse -Force $s.Dir; Remove-Item -Recurse -Force $s.Bare }
+    }
+
+    It '10. Invoke-LoggedCommand captures full stdout + stderr of a failing pre-flight command into release.log without aborting on the first stderr line' {
+        $s = New-ReleaseScenario {
+            Add-Content (Join-Path $PWD 'scripts/lib/release-lib.ps1') @'
+
+function Get-DanglingReleaseCommits([string]$RepoRoot) {
+    Invoke-LoggedCommand 'synthetic-preflight' {
+        & pwsh -NoProfile -Command "[Console]::Out.WriteLine('STEP_STDOUT_1'); [Console]::Error.WriteLine('STEP_STDERR_1'); [Console]::Out.WriteLine('STEP_STDOUT_2'); exit 7"
+    } 'pre-flight: synthetic step failed'
+}
+'@
+        }
+        try {
+            $r = Invoke-ReleaseScript -Dir $s.Dir -ArgList @()
+            $r.ExitCode | Should -Be 1
+            $logPath = Join-Path $s.Dir '.clavity/release.log'
+            (Test-Path -LiteralPath $logPath) | Should -BeTrue
+            $logText = Get-Content -LiteralPath $logPath -Raw
+            $logText | Should -Match 'STEP: synthetic-preflight'
+            $logText | Should -Match 'STEP_STDOUT_1'
+            $logText | Should -Match 'STEP_STDERR_1'
+            $logText | Should -Match 'STEP_STDOUT_2' -Because 'ErrorActionPreference=Stop must not kill the step on the first stderr line before later lines run'
+            $logText | Should -Match 'STEP: synthetic-preflight exited with code 7'
+            $logText | Should -Match 'release: pre-flight: synthetic step failed'
+        } finally { Pop-Location; Remove-Item -Recurse -Force $s.Dir; Remove-Item -Recurse -Force $s.Bare }
+    }
 }

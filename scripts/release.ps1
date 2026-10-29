@@ -14,7 +14,62 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $PSScriptRoot 'lib' 'release-lib.ps1')
 Set-Location $RepoRoot
-function Die($m){ Write-Host "release: $m" -ForegroundColor Red; exit 1 }
+
+$script:ReleaseLogPath = if (-not [string]::IsNullOrWhiteSpace($env:CLAVITY_RELEASE_LOG)) {
+    $env:CLAVITY_RELEASE_LOG
+} else {
+    Join-Path $RepoRoot '.clavity/release.log'
+}
+$logDir = Split-Path -Parent $script:ReleaseLogPath
+if ($logDir -and -not (Test-Path -LiteralPath $logDir)) {
+    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+}
+function Write-ReleaseLog([string]$Text) {
+    $clean = $Text -replace "`e\[[0-9;]*m", ''
+    Add-Content -LiteralPath $script:ReleaseLogPath -Value $clean -Encoding utf8NoBOM
+}
+$headSha = (git rev-parse HEAD 2>$null)
+Set-Content -LiteralPath $script:ReleaseLogPath -Value (
+    "=== clavity release.ps1 started $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')) ===`n" +
+    "repo:   $RepoRoot`n" +
+    "head:   $headSha`n" +
+    "flags:  WhatIf=$($WhatIf.IsPresent) Resume=$($Resume.IsPresent)"
+) -Encoding utf8NoBOM
+
+function Say-Red([string]$m) {
+    Write-ReleaseLog $m
+    Write-Host $m -ForegroundColor Red
+}
+function Die($m) {
+    Write-ReleaseLog "release: $m"
+    Write-ReleaseLog "=== FAILED at $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')) ==="
+    Write-Host "release: $m" -ForegroundColor Red
+    Write-Host "release: log -> $script:ReleaseLogPath" -ForegroundColor Red
+    exit 1
+}
+function Invoke-LoggedCommand([string]$StepName, [scriptblock]$Command, [string]$FailMessage) {
+    $stamp = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    Write-ReleaseLog "`n--- [$stamp] STEP: $StepName ---"
+    Write-Host "release: running $StepName..." -ForegroundColor Cyan
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $Command 2>&1 | ForEach-Object {
+            $line = if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                $_.ToString()
+            } else {
+                [string]$_
+            }
+            Write-Host $line
+            Write-ReleaseLog $line
+        }
+        $rc = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+    Write-ReleaseLog "--- STEP: $StepName exited with code $rc ---"
+    if ($rc -ne 0) { Die $FailMessage }
+}
 
 # --- Precondition-0 (F6/D2/F17/TO1) ---
 git fetch --tags --quiet; if ($LASTEXITCODE -ne 0) { Die "git fetch failed (offline?) — baseline/serial need true remote state" }
@@ -34,7 +89,7 @@ git diff --cached --quiet;if ($LASTEXITCODE -ne 0) { Die "staged changes present
 if ($Resume) {
     $state = Test-ResumeState $RepoRoot
     if (-not $state.Ok) {
-        foreach ($p in $state.Problems) { Write-Host "release: $p" -ForegroundColor Red }
+        foreach ($p in $state.Problems) { Say-Red "release: $p" }
         Die "-Resume refused — nothing was changed"
     }
     $subject = (git log -n1 --format=%s $state.Sha)
@@ -47,9 +102,9 @@ if ($Resume) {
     if ($conflict -ne 'clean') {
         $why = if ($conflict -eq 'conflict') { 'replaying your commits onto its parent CONFLICTS' }
                else { 'the replay could not be proven conflict-free' }
-        Write-Host "release: dropping $short is not safe — $why." -ForegroundColor Red
-        Write-Host "release: resolve by hand, then re-run without -Resume. To do it yourself:" -ForegroundColor Red
-        Write-Host "release:   git rebase --onto $short^ $short" -ForegroundColor Red
+        Say-Red "release: dropping $short is not safe — $why."
+        Say-Red "release: resolve by hand, then re-run without -Resume. To do it yourself:"
+        Say-Red "release:   git rebase --onto $short^ $short"
         Die "-Resume refused — nothing was changed"
     }
 
@@ -99,8 +154,8 @@ $r = & (Join-Path $PSScriptRoot 'compute-release.ps1')
 # on `Nothing` would let it through on a warning (agy adversarial review, 2026-07-21). A genuinely dev-only
 # range is classified, so this still can't cry wolf.
 if ($r.Unclassified.Count) {
-    Write-Host "release: these touched paths are UNCLASSIFIED — nobody would be versioned for them:" -ForegroundColor Red
-    foreach ($p in $r.Unclassified) { Write-Host "  $p" -ForegroundColor Red }
+    Say-Red "release: these touched paths are UNCLASSIFIED — nobody would be versioned for them:"
+    foreach ($p in $r.Unclassified) { Say-Red "  $p" }
     Die "refusing to release. Classify each path in scripts/lib/release-lib.ps1: `$SharedPaths (it ships to members) or `$DevOnlyPaths (it reaches no end user)."
 }
 if ($r.Nothing) { Write-Host "release: nothing to release (dev-only changes)." -ForegroundColor Yellow; exit 0 }
@@ -130,8 +185,7 @@ $script:Computed = $r; $script:Target = $target
 
 $dateStr = (Get-Date -Format 'yyyy-MM-dd')
 foreach ($b in $script:Computed.Bumps) {
-    & just bump $b.Key $b.Next
-    if ($LASTEXITCODE -ne 0) { Die "bump failed for $($b.Key)" }
+    Invoke-LoggedCommand "just bump $($b.Key) $($b.Next)" { & just bump $b.Key $b.Next } "bump failed for $($b.Key)"
     [void](Update-Changelog $RepoRoot $b $dateStr)
 }
 
@@ -149,19 +203,20 @@ $subject = "chore(release): $($script:Target) [$members]"
 $body    = Format-ReleaseNotes $script:Computed.Bumps
 $msgFile = New-TemporaryFile
 Set-Content -Path $msgFile -Value ("$subject`n`n$body") -NoNewline
-git commit -F $msgFile
-$commitRc = $LASTEXITCODE
-Remove-Item $msgFile
-if ($commitRc -ne 0) { Die "commit failed" }
+try {
+    Invoke-LoggedCommand "git commit ($($script:Target))" { git commit -F $msgFile } "commit failed"
+} finally {
+    Remove-Item $msgFile -Force -ErrorAction SilentlyContinue
+}
 
 # --- Local pre-flight (fast gate; no E2E/ISCC) ---
-& pwsh -File (Join-Path $PSScriptRoot 'check-roster.ps1');   if ($LASTEXITCODE -ne 0) { Die "pre-flight: roster drift — release roster and build/members.json disagree (CC2 gate)" }
-& just test-scripts;                                  if ($LASTEXITCODE -ne 0) { Die "pre-flight: scripts tests failed" }
-& just lint;                                          if ($LASTEXITCODE -ne 0) { Die "pre-flight: lint failed" }
-& just test;                                          if ($LASTEXITCODE -ne 0) { Die "pre-flight: tests failed" }
+Invoke-LoggedCommand 'check-roster.ps1' { & pwsh -File (Join-Path $PSScriptRoot 'check-roster.ps1') } 'pre-flight: roster drift — release roster and build/members.json disagree (CC2 gate)'
+Invoke-LoggedCommand 'just test-scripts' { & just test-scripts } 'pre-flight: scripts tests failed'
+Invoke-LoggedCommand 'just lint' { & just lint } 'pre-flight: lint failed'
+Invoke-LoggedCommand 'just test' { & just test } 'pre-flight: tests failed'
 foreach ($key in ($script:Computed.Bumps.Key | Select-Object -Unique)) {
-    & pwsh -File (Join-Path $PSScriptRoot 'check-versions.ps1') $key;             if ($LASTEXITCODE -ne 0) { Die "pre-flight: check-versions $key failed" }
-    & pwsh -File (Join-Path $PSScriptRoot 'check-versions.ps1') $key -Coverage;   if ($LASTEXITCODE -ne 0) { Die "pre-flight: coverage $key failed" }
+    Invoke-LoggedCommand "check-versions.ps1 $key" { & pwsh -File (Join-Path $PSScriptRoot 'check-versions.ps1') $key } "pre-flight: check-versions $key failed"
+    Invoke-LoggedCommand "check-versions.ps1 $key -Coverage" { & pwsh -File (Join-Path $PSScriptRoot 'check-versions.ps1') $key -Coverage } "pre-flight: coverage $key failed"
 }
 
 # --- Push sequence (F5): commit first; only then tag + push tag ---
@@ -189,10 +244,11 @@ function Invoke-GitPush([string]$Ref, [string]$What, [string[]]$FailHint = @()) 
     $maxAttempts = 3
     $timeoutSec  = 180
     function Stop-Push([string]$msg) {
-        foreach ($line in $FailHint) { Write-Host $line -ForegroundColor Red }
+        foreach ($line in $FailHint) { Say-Red $line }
         Die $msg
     }
     for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        Write-ReleaseLog "`n--- [$([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))] STEP: $What (attempt $attempt/$maxAttempts) ---"
         $o = [IO.Path]::GetTempFileName(); $e = [IO.Path]::GetTempFileName()
         $p = Start-Process git -ArgumentList @('push', 'origin', $Ref) -NoNewWindow -PassThru `
                               -RedirectStandardOutput $o -RedirectStandardError $e
@@ -206,7 +262,11 @@ function Invoke-GitPush([string]$Ref, [string]$What, [string[]]$FailHint = @()) 
             $text = "CLAVITY_PUSH_TIMEOUT: no response from origin within ${timeoutSec}s (connection dead or idle, not refused)"
         }
         Remove-Item $o, $e -Force -EA SilentlyContinue
-        if ($text) { Write-Host $text.TrimEnd() }
+        if ($text) {
+            Write-Host $text.TrimEnd()
+            Write-ReleaseLog $text.TrimEnd()
+        }
+        Write-ReleaseLog "--- STEP: $What exited with code $code ---"
         if ($code -eq 0) { return }
 
         if ($text -match $script:PushRejectRe) {
@@ -216,7 +276,9 @@ function Invoke-GitPush([string]$Ref, [string]$What, [string[]]$FailHint = @()) 
             Stop-Push "$What failed with an UNRECOGNISED error — refusing to retry blind, since a retry must never mask a rejection.`n$text"
         }
         if ($attempt -lt $maxAttempts) {
-            Write-Host "release: $What — transport failure (attempt $attempt/$maxAttempts), retrying in ${attempt}0s..." -ForegroundColor Yellow
+            $retryMsg = "release: $What — transport failure (attempt $attempt/$maxAttempts), retrying in ${attempt}0s..."
+            Write-ReleaseLog $retryMsg
+            Write-Host $retryMsg -ForegroundColor Yellow
             Start-Sleep -Seconds ($attempt * 10)
         }
     }
@@ -232,5 +294,8 @@ Invoke-GitPush $script:Target "push tag $($script:Target)" @(
 
 # --- Observability (F11/V2): print run URL, suggest non-blocking watch ---
 $repo = (gh repo view --json nameWithOwner -q .nameWithOwner 2>$null)
-Write-Host "release: tag $($script:Target) pushed. CI is gating + will auto-publish on green." -ForegroundColor Green
+$doneMsg = "release: tag $($script:Target) pushed. CI is gating + will auto-publish on green."
+Write-ReleaseLog $doneMsg
+Write-ReleaseLog "=== SUCCEEDED at $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')) ==="
+Write-Host $doneMsg -ForegroundColor Green
 if ($repo) { Write-Host "release: watch → https://github.com/$repo/actions   (or: gh run watch)" -ForegroundColor Green }
