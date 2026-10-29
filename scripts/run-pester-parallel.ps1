@@ -97,7 +97,9 @@ if ($Child) {
         })
         secs = [math]::Round($sw.Elapsed.TotalSeconds, 1)
     }
-    'PESTER-RESULT ' + ($summary | ConvertTo-Json -Compress -Depth 4)
+    # The parent reads this line through the console code page (`& pwsh ... | Out-String`), which mangles non-ASCII row names under
+    # a legacy page (437 turned an em dash into '-' and CJK into '??'; ROADMAP 93 item 7). EscapeNonAscii keeps the line pure ASCII.
+    'PESTER-RESULT ' + ($summary | ConvertTo-Json -Compress -Depth 4 -EscapeHandling EscapeNonAscii)
     exit 0
 }
 

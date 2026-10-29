@@ -430,4 +430,68 @@ Describe 'd' {
         (Get-Content -LiteralPath $inv -Raw) | Should -Match '(?s)## plan9\r?\n### static\r?\n\| Suite \| Row \| Tag \| Reason \|\r?\n\| --- \| --- \| --- \| --- \|\r?\n\| x\.Tests\.ps1 \| a\.b \| WindowsOnly \| - \|'
     }
 }
+
+# ROADMAP 93 item 7: the child hands its result to the parent as ONE stdout line, so a row name crosses the process boundary
+# in the console code page. Under code page 437 an em dash arrived as '-' and CJK as '??' (measured 2026-10-29 on Windows), which
+# made the SKIP-INVENTORY gate compare a UTF-8 file against a mangled name. This file is kept ASCII, so every non-ASCII character
+# is built from its code point.
+Context 'non-ASCII row names cross the process boundary intact' {
+    BeforeAll {
+        $script:Em    = [string][char]0x2014
+        $script:Alpha = [string][char]0x03B1
+        $script:Cjk   = -join ([char]0x6F22, [char]0x5B57)
+        $script:UniNames = @("em${script:Em}dash", "alpha${script:Alpha}", "cjk${script:Cjk}")
+        $uniBody = "Describe 'u' {`n" + (($script:UniNames | ForEach-Object { "    It '$_' { 1 | Should -Be 2 }" }) -join "`n") + "`n}`n"
+        $script:UniSuite = Join-Path $script:Work 'unicode.Tests.ps1'
+        [IO.File]::WriteAllText($script:UniSuite, $uniBody, [Text.UTF8Encoding]::new($false))
+        # The child's RAW stdout bytes. Decoding them first would hide the defect: under 437 the em dash is already ASCII ('-') by then.
+        function Read-ChildWire {
+            $psi = [Diagnostics.ProcessStartInfo]::new((Get-Process -Id $PID).Path)
+            foreach ($a in '-NoProfile', '-File', $script:Runner, '-Child', $script:UniSuite) { $psi.ArgumentList.Add($a) }
+            $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true; $psi.UseShellExecute = $false
+            $p = [Diagnostics.Process]::Start($psi)
+            $err = $p.StandardError.ReadToEndAsync()
+            $ms = [IO.MemoryStream]::new(); $p.StandardOutput.BaseStream.CopyTo($ms); $p.WaitForExit()
+            [pscustomobject]@{ Bytes = $ms.ToArray(); Exit = $p.ExitCode; Err = $err.Result }
+        }
+        # Runs the runner inside a THROWAWAY pwsh whose console output code page is 437, so no console state leaks into this process.
+        # If the code page cannot be set there (no console) the run proceeds under the ambient one: the row then holds on a UTF-8
+        # console too, and the byte-level rows above are what stay red regardless of the console.
+        $script:Cp437Wrapper = Join-Path $script:Work 'cp437-run.ps1'
+        Set-Content -LiteralPath $script:Cp437Wrapper -Value @(
+            'param($Runner, $Dir, $Inv)'
+            'try { [Console]::OutputEncoding = [Text.Encoding]::GetEncoding(437) } catch { }'
+            '& (Get-Process -Id $PID).Path -NoProfile -File $Runner -Directory $Dir -SkipInventory $Inv -WriteSkipInventory'
+            'exit $LASTEXITCODE'
+        )
+    }
+    It 'the child writes a PESTER-RESULT line made only of ASCII bytes' {
+        $w = Read-ChildWire
+        $w.Exit | Should -Be 0 -Because $w.Err
+        $text = [Text.Encoding]::ASCII.GetString($w.Bytes)
+        $text | Should -Match 'PESTER-RESULT \{' -Because 'the child must have produced its result line at all'
+        $firstHigh = [Array]::FindIndex($w.Bytes, [Predicate[byte]] { param($b) $b -gt 127 })
+        $firstHigh | Should -Be -1 -Because "byte $firstHigh of the child's stdout is not ASCII, so its decoding depends on the console code page"
+    }
+    It 'every non-ASCII failed-row name decodes to exactly the name the suite declared' {
+        $w = Read-ChildWire
+        $line = ([Text.Encoding]::ASCII.GetString($w.Bytes) -split "`r?`n" | Where-Object { $_ -like 'PESTER-RESULT *' } | Select-Object -Last 1)
+        $s = $line.Substring('PESTER-RESULT '.Length) | ConvertFrom-Json
+        foreach ($n in $script:UniNames) {
+            (@($s.failedNames) -ccontains "u.$n") | Should -BeTrue -Because "failed names were: $(@($s.failedNames) -join ' | ')"
+        }
+        # the near-miss the defect produced: an em dash that arrived as a hyphen must NOT be what we got
+        (@($s.failedNames) -ccontains 'u.em-dash') | Should -BeFalse
+    }
+    It 'a skipped row with an em dash reaches the written skip inventory as an em dash (console code page 437)' {
+        $d = Join-Path $script:Work 'uni-inv'; New-Item -ItemType Directory -Path $d -Force | Out-Null
+        $foreign = if ($IsWindows) { 'LinuxOnly' } else { 'WindowsOnly' }   # a skip tag that is foreign to this OS, as the other Context does
+        [IO.File]::WriteAllText((Join-Path $d 'fx.Tests.ps1'), "Describe 'd' {`n    It 'skip em${script:Em}dash' -Skip -Tag '$foreign' { 1 | Should -Be 2 }`n}`n", [Text.UTF8Encoding]::new($false))
+        $inv = Join-Path $script:Work 'uni-inv.md'
+        $out = & pwsh -NoProfile -File $script:Cp437Wrapper $script:Runner $d $inv 2>&1 | Out-String
+        $LASTEXITCODE | Should -Be 0 -Because $out
+        $t = [IO.File]::ReadAllText($inv, [Text.UTF8Encoding]::new($false))
+        $t.Contains("d.skip em${script:Em}dash") | Should -BeTrue -Because "the inventory said: $t"
+    }
+}
 }
