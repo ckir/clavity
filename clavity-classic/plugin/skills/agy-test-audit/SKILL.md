@@ -145,7 +145,7 @@ A bare "review-only" once let the peer write to the tree anyway. Wrap each consu
    delete any file. Do not run mutating commands. Respond with analysis only."
 3. **Permission to pass** - the peer may decline or say it needs more; it must not act.
 4. **Point at files, not summaries** - write the audit brief + the exact file list to
-   `.clavity/seams/<topic>.md` and send the peer the PATH; let it read the committed test+source files
+   `.clavity/seams/<topic>-test-audit.md` (the name MUST end in the discipline word: the SessionStart recovery hook recognises a seam by a whole hyphen-delimited word in its file name, and a seam without one is listed as 'unrecognised' at every session start, because no marker can conclude it) and send the peer the PATH; let it read the committed test+source files
    itself. Never consult it on a pasted summary of your own reading. Any measure-and-reproduce framing
    MUST name a scratch dir (`.clavity/scratch/<topic>/`) so the peer never writes to cwd.
    A named scratch directory does not bind a build's output, which lands in the working
@@ -159,10 +159,10 @@ A bare "review-only" once let the peer write to the tree anyway. Wrap each consu
    `.clavity/scratch/<topic>`, and the next write would fail mid-run:
 
 ```bash
-if ! bash "<BASE>/../../hooks/agy-mark.sh" prepare "seams/<topic>.md"; then
+if ! bash "<BASE>/../../hooks/agy-mark.sh" prepare "seams/<topic>-test-audit.md"; then
   # ABORT the discipline and say why. A skill that ignores this exit code converts a clean refusal
   # into a mid-run crash on the next write.
-  echo "agy-test-audit: ABORTING - could not prepare a shielded .clavity/ directory for seams/<topic>.md." >&2
+  echo "agy-test-audit: ABORTING - could not prepare a shielded .clavity/ directory for seams/<topic>-test-audit.md." >&2
   exit 1
 fi
 if ! bash "<BASE>/../../hooks/agy-mark.sh" prepare "scratch/<topic>/notes.md"; then

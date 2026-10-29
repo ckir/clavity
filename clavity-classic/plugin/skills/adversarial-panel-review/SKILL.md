@@ -451,7 +451,9 @@ consult-recovery reader (section 15) stops surfacing this panel's seams. The pan
 discipline here, so without this marker its seams are surfaced at every session start forever - it is the
 ONLY mechanism that concludes a panel seam. Write the marker through the shipped writer, never by hand: it
 asserts the `.clavity/` shield BEFORE the write and creates the directory it writes into. Its two siblings
-(agy-first, agy-test-audit) already carry this same contract.
+(agy-first, agy-test-audit) already carry this same contract. Name each panel seam
+`.clavity/seams/<topic>-panel-r<N>.md`: the hook recognises a seam by a whole hyphen-delimited word in its file
+name, and a name without one is listed as 'unrecognised' at every session start because no marker can conclude it.
 
 ```bash
 bash "<BASE>/../../hooks/agy-mark.sh" head "agy-panel" "$(git rev-parse HEAD)"
