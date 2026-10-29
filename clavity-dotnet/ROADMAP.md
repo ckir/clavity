@@ -4486,6 +4486,8 @@ Section 63 fixed only `build-dotnet.yml`, the scope the sweep named. The same na
 
 Still open: item 7's fix (above); item 8's `Select-Object -Unique` in the inventory merge, the `Set-ItResult` rule candidate and the stale run-pester-parallel time text (needs an idle top-level measurement). One new observation from the root run: `release-lib.Tests.ps1` "fails closed to 'unknown' ... merge-tree exits >1" returns `conflict` under the older git of an Ubuntu 24.04 container; git-version dependent, not root, not yet measured on the CI image.
 
+2026-10-29 Windows session (branch `docs/s93-partition-time`): item 8's stale run-pester-parallel time text is DONE. Measured at the top level on the owner's Windows box (Intel i3-2310M, 4 logical CPUs; pwsh 7.6.9): two solo Pester runs of `scripts/tests/run-pester-parallel.Tests.ps1`, 50 passed / 0 failed, wall 526,9 s and 515,5 s, Pester duration 519,0 s and 511,2 s, CPU 24 to 27 % just before each run; Defender and indexing were not controlled. That is neither the 55,0 s the table carried (a 2026-10-12 to 13 prototype-runner figure) nor the 240 to 270 s the second Windows handoff quoted from the Linux session, so the `_partition.md` row now carries 511,2 s with the range and the machine. Per-box, not a rule. Item 7's fix and the other item 8 leftovers stay open.
+
 ### §94 — The clavity.svg wordmark names fonts a visitor's browser cannot load (formerly a local anomaly)
 
 **Status:** IMPLEMENTED 2026-10-29 - the owner chose outlining; the wordmark in `site/assets/clavity.svg` is now one `<path>` drawn from Share Tech Mono (SIL OFL 1.1, the first face of the old stack), so it renders the same in every browser, with no font installed
