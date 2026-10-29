@@ -4481,9 +4481,12 @@ Still open: item 7's fix (above); item 8's `Select-Object -Unique` in the invent
 
 ### §94 — The clavity.svg wordmark names fonts a visitor's browser cannot load (formerly a local anomaly)
 
-**Status:** OPEN 2026-10-26 - the owner's art; the fix is the owner's choice among outlining the text, inlining the SVG with a web font, or matching the banner's stack
+**Status:** IMPLEMENTED 2026-10-29 - the owner chose outlining; the wordmark in `site/assets/clavity.svg` is now one `<path>` drawn from Share Tech Mono (SIL OFL 1.1, the first face of the old stack), so it renders the same in every browser, with no font installed
+> **Previous status:** OPEN 2026-10-26 - the owner's art; the fix is the owner's choice among outlining the text, inlining the SVG with a web font, or matching the banner's stack
 
 Measured at triage 2026-10-26: `site/assets/clavity.svg:105` sets the "Clavity" wordmark in `font-family="'Share Tech Mono','Orbitron','Courier New',monospace"`. None of the three named faces ships with a mainstream OS, and the page loads the file through `<img>` (`site/index.html:77`), where an SVG cannot fetch web fonts (and check 5 forbids third-party loads anyway), so the wordmark renders in whichever monospace fallback the visitor has and differs from the raster banner's wordmark. The other `<text>` elements in the file use `Arial, Helvetica, sans-serif` (lines 66-85) and are not affected. Options, in rising cost: convert the wordmark text to a `<path>` in the SVG editor (no font dependency at all, the usual answer for a logo); or inline the SVG into the page so a self-hosted font under `site/assets/` can apply; or accept the fallback and change the stack to one that renders the same everywhere. The art is excluded from the checker's scope, so no test guards this.
+
+**Built 2026-10-29.** `ShareTechMono-Regular.ttf` (google/fonts, `ofl/sharetechmono`) read with fontTools, each glyph of "Clavity" transformed to the old text box (105 units, 1 unit of letter-spacing, centred on x=824, baseline y=608; the trailing letter-spacing counts in the centring, as a browser does) and written as one path of 1.7 KB with the old fill and stroke. Rendered with cairosvg and checked by eye: the word sits where the text did. Limits stated: the old text asked for weight 700, which the face does not have, so the outline is the regular weight and is lighter than a browser's synthesized bold would have been; the banner's wordmark is an upper-case wide face, so this does NOT make the SVG match the raster banner (that was the third option, not chosen). The other `<text>` elements still name Arial and are unchanged.
 
 ### §95 — The README platform badge says Windows while the install section says cross-platform (formerly a local anomaly)
 
