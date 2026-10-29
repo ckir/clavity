@@ -68,14 +68,15 @@ def scrub_host_secrets() -> str | None:
     return _gemini_api_key
 
 
-# Ensure .agent exists for logging
-os.makedirs(".agent", exist_ok=True)
-logging.basicConfig(
-    filename=".agent/server.log",
-    level=logging.DEBUG,
-    format="%(asctime)s %(levelname)s %(message)s",
-)
-logging.info("Starting server")
+def _init_logging() -> None:
+    """Configure file logging under .agent/server.log when running as a server process."""
+    os.makedirs(".agent", exist_ok=True)
+    logging.basicConfig(
+        filename=".agent/server.log",
+        level=logging.DEBUG,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+    logging.info("Starting server")
 
 
 def extract_json(text: str) -> dict:
@@ -315,13 +316,7 @@ async def handle_call_tool(
 
     finally:
         logging.info(f"Task {task_id}: Cleanup")
-        # Log completion
-        status_str = "success" if success else "failed"
-        await log_completion(
-            target_dir, task_id, status_str, tokens_used=0, final_error=error_payload
-        )
-
-        # Cleanup worktree
+        # Cleanup worktree BEFORE logging completion so merge conflicts are recorded as failed
         if worktree_path:
             try:
                 await cleanup_worktree(target_dir, task_id, success=success)
@@ -330,6 +325,12 @@ async def handle_call_tool(
                 if not error_payload:
                     error_payload = f"Worktree cleanup failed: {str(e)}"
                 success = False
+
+        # Log completion
+        status_str = "success" if success else "failed"
+        await log_completion(
+            target_dir, task_id, status_str, tokens_used=0, final_error=error_payload
+        )
 
     # Return final result to Claude
     if success:
@@ -340,6 +341,7 @@ async def handle_call_tool(
 
 
 async def main():
+    _init_logging()
     # Scrub host AI-platform credentials BEFORE serving any delegation (and before
     # any harness subprocess can inherit os.environ). Captures GEMINI_API_KEY for
     # explicit pass-through. See scrub_host_secrets() / _SECRET_ENV_DENYLIST.

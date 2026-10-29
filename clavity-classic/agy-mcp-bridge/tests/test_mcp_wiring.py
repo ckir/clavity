@@ -61,3 +61,43 @@ def test_local_agent_config_accepts_wired_mcp_servers(tmp_path, monkeypatch):
     )
     assert len(cfg.mcp_servers) == 1
     assert cfg.mcp_servers[0].name == "agentmemory"
+
+
+@pytest.mark.asyncio
+async def test_cleanup_failure_is_logged_as_failed_in_telemetry(monkeypatch, tmp_path):
+    """When cleanup_worktree raises (e.g. merge conflict), log_completion must run
+    AFTER cleanup_worktree and record status='failed' with the cleanup error."""
+    recorded = {}
+
+    async def fake_init_db(target_dir):
+        pass
+
+    async def fake_log_start(target_dir, task_id, prompt):
+        pass
+
+    async def fake_create_worktree(target_dir, task_id):
+        return str(tmp_path / "wt")
+
+    async def fake_cleanup_worktree(target_dir, task_id, success=False):
+        raise RuntimeError("Merge conflict detected")
+
+    async def fake_log_completion(
+        target_dir, task_id, status, tokens_used=0, final_error=None
+    ):
+        recorded["status"] = status
+        recorded["final_error"] = final_error
+
+    monkeypatch.setattr(server, "init_db", fake_init_db)
+    monkeypatch.setattr(server, "log_start", fake_log_start)
+    monkeypatch.setattr(server, "create_worktree", fake_create_worktree)
+    monkeypatch.setattr(server, "cleanup_worktree", fake_cleanup_worktree)
+    monkeypatch.setattr(server, "log_completion", fake_log_completion)
+    monkeypatch.setenv("MOCK_AGENT_RESPONSE", '{"status": "completed"}')
+
+    res = await server.handle_call_tool(
+        "delegate_to_antigravity",
+        {"task_prompt": "do work", "target_dir": str(tmp_path)},
+    )
+    assert recorded["status"] == "failed"
+    assert "Merge conflict detected" in (recorded["final_error"] or "")
+    assert '"status": "failed"' in res[0].text

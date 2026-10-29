@@ -725,14 +725,15 @@ if (!window.__aiSaveDev) {
 
     function buildMarkdown(title, messages, platform) {
       const date      = new Date().toISOString().split('T')[0];
-      const safeTitle = title.replace(/"/g, '\\"');
+      const safeTitle = String(title).replace(/\\/g, '\\\\').replace(/[\r\n]+/g, ' ').replace(/"/g, '\\"');
+      const safeUrl   = String(location.href).replace(/[\r\n]+/g, '');
       const nonce     = newNonce();
 
       const frontmatter = [
         '---',
         `title: "${safeTitle}"`,
         `date: ${date}`,
-        `url: ${location.href}`,
+        `url: ${safeUrl}`,
         `platform: ${platform}`,
         'format: aisave-dev/1',
         `nonce: ${nonce}`,

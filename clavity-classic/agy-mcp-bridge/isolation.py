@@ -98,27 +98,22 @@ async def cleanup_worktree(target_dir: str, task_id: str, success: bool = False)
         return
 
     if success:
-        # The sub-agent leaves its work UNCOMMITTED in the worktree, and `git merge`
-        # only transfers committed history — so commit the worktree's changes onto
-        # its branch BEFORE removing it, otherwise the force-remove discards them.
-        await run_git_command(worktree_path, "add", "-A")
-        _, status_out, _ = await run_git_command(worktree_path, "status", "--porcelain")
-        if status_out.strip():
-            await run_git_command(
-                worktree_path,
-                "-c",
-                "user.email=agy@bridge",
-                "-c",
-                "user.name=agy-subagent",
-                "commit",
-                "--no-verify",  # internal transport commit; bypass target-repo hooks
-                "-m",
-                f"agy task {task_id}",
-            )
+        # Commit any remaining uncommitted changes in the worktree (no-op when
+        # commit_worktree was already called by the server), checking return code.
+        await commit_worktree(target_dir, task_id)
 
         # Now the branch carries the commit; remove the worktree and merge it back.
         await run_git_command(target_dir, "worktree", "remove", "-f", worktree_path)
-        code, out, err = await run_git_command(target_dir, "merge", branch_name)
+        code, out, err = await run_git_command(
+            target_dir,
+            "-c",
+            "user.email=agy@bridge",
+            "-c",
+            "user.name=agy-subagent",
+            "merge",
+            "--no-edit",
+            branch_name,
+        )
         if code != 0:
             await run_git_command(target_dir, "merge", "--abort")
             raise RuntimeError(
