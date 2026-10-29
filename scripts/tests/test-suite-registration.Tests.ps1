@@ -392,6 +392,10 @@ foreach ($cont in $r.Containers) {
 
         $steps = @(for ($i = 0; $i -lt $wfLines.Count; $i++) { if ($wfLines[$i] -match '^\s*- name: Pester - full scripts suite') { $i } })
         $steps.Count | Should -Be 2 -Because 'both the Windows job and the Linux job must run the full-suite step, or one platform is not gated'
+        # ONE STEP PER JOB, BY NAME (AGY-TEST-AUDIT, ROADMAP section 83): a count of 2 anywhere in the file stayed green when the Windows
+        # step was moved into the Linux job, leaving Windows ungated. A step belongs to the nearest job header above it (two-space key).
+        $jobOf = { param($ix) for ($j = $ix; $j -ge 0; $j--) { if ($wfLines[$j] -match '^  ([A-Za-z0-9_-]+):\s*$') { return $Matches[1] } } }
+        (@($steps | ForEach-Object { & $jobOf $_ } | Sort-Object) -join ',') | Should -BeExactly 'dev-scripts,dev-scripts-linux' -Because 'each of the Windows job (dev-scripts) and the Linux job (dev-scripts-linux) must carry its own full-suite step'
         foreach ($stepIx in $steps) {
             # BOUND THE SEARCH TO THIS STEP (AGY-CAPSTONE round 4): never adopt a later step's run: line.
             $nextStep = [Array]::FindIndex($wfLines, $stepIx + 1, [Predicate[string]]{ param($l) $l -match '^\s*- name:|^  \S' })
@@ -407,6 +411,11 @@ foreach ($cont in $r.Containers) {
             (& $val '-Directory') | Should -BeExactly 'scripts/tests' -Because 'the runner must sweep the whole scripts/tests directory'
             (@((& $val '-RequireSuite') -split ',') -ccontains 'test-suite-registration') | Should -BeTrue -Because 'the registration oracle must be a REQUIRED suite: it proves every other suite was discovered, and without it the run degrades to the count floor, which MEASURED 2026-08-31 tolerates losing ~89% of the suite'
             [int](& $val '-MinTests') | Should -BeGreaterOrEqual 100 -Because 'the total-count floor must stay at the full-suite figure or higher'
+            # AGY-TEST-AUDIT (ROADMAP section 83): the approved-skip gate is the reason the Windows job moved to the runner, and a flag that makes the
+            # runner exit 0 without running (-ListOnly) or rewrite the inventory instead of checking it (-WriteSkipInventory) leaves every check above green.
+            (& $val '-SkipInventory') | Should -BeExactly 'scripts/tests/_skip-inventory.md' -Because 'both jobs must check the committed skip inventory'
+            $allowed = @('-NoProfile', '-File', '-Directory', '-SkipInventory', '-ShowMessages', '-MinTests', '-RequireSuite')
+            @($tok | Where-Object { $_ -like '-*' -and $_ -notin $allowed }) | Should -BeNullOrEmpty -Because 'a flag outside the known list (-ListOnly exits 0 without running; -WriteSkipInventory rewrites instead of checking; an abbreviation of either) must be a deliberate edit to this list'
         }
 
         # The rationale comment is still required, separately: without it a later reader deletes the
