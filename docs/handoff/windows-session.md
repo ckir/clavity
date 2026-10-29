@@ -1,5 +1,8 @@
 # Handoff: the Windows measurement session
 
+> **SUPERSEDED 2026-10-29** by `docs/handoff/windows-session-2.md` (most items below are done; read the new file first, and note its trap about the `## windows` skip inventory).
+
+
 For a Claude session started on the owner's real Windows machine, after `git pull` of `main`. The Linux session that wrote this could not run
 any of it: its box has no Windows VM (Docker is Linux only, no `/dev/kvm`), so every item below is a measurement only Windows can give.
 Date written: 2026-10-28, `main` at the commit that merged this file.
