@@ -23,6 +23,11 @@ name: Build PR Binary
 #   - Manual dispatch needs write access, so a fork PR is built only after a maintainer chooses to. The token is
 #     read-only and no secret is used, but a PR's build scripts do run on the runner: read a fork PR first.
 on:
+  # TEMPORARY (remove after the first verified run): a new workflow cannot be dispatched until it is on main, so
+  # this lets PR #56 exercise it. Path-filtered so it fires only when this file itself changes.
+  pull_request:
+    paths:
+      - '.github/workflows/build-pr-binary.yml'
   workflow_dispatch:
     inputs:
       pr:
@@ -44,7 +49,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: build-pr-binary-${{ inputs.pr }}
+  group: build-pr-binary-${{ inputs.pr || github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -53,13 +58,15 @@ jobs:
     outputs:
       ref: ${{ steps.pr.outputs.ref }}
       sha: ${{ steps.pr.outputs.sha }}
+      product: ${{ steps.pr.outputs.product }}
     steps:
       - name: Validate PR and resolve its head
         id: pr
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ inputs.pr }}
+          PR: ${{ inputs.pr || github.event.pull_request.number }}
+          PRODUCT: ${{ inputs.product || 'both' }}
           REPO: ${{ github.repository }}
         run: |
           # The input goes through env, never into the script text, and must be plain digits.
@@ -68,20 +75,23 @@ jobs:
           [ -n "$sha" ] || { echo "could not resolve PR #$PR" >&2; exit 1; }
           [ "$state" = "open" ] || echo "::warning::PR #$PR is $state; building its last head anyway"
           # Pin the SHA that was looked at, so a push during the run cannot change what is built.
-          echo "ref=$sha" >> "$GITHUB_OUTPUT"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "Building PR #$PR at $sha (${{ inputs.product }})" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "ref=$sha"
+            echo "sha=$sha"
+            echo "product=$PRODUCT"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building PR #$PR at $sha ($PRODUCT)" >> "$GITHUB_STEP_SUMMARY"
 
   classic:
     needs: resolve
-    if: inputs.product == 'classic' || inputs.product == 'both'
+    if: needs.resolve.outputs.product == 'classic' || needs.resolve.outputs.product == 'both'
     uses: ./.github/workflows/build-classic.yml
     with:
       ref: ${{ needs.resolve.outputs.ref }}
 
   dotnet:
     needs: resolve
-    if: inputs.product == 'dotnet' || inputs.product == 'both'
+    if: needs.resolve.outputs.product == 'dotnet' || needs.resolve.outputs.product == 'both'
     uses: ./.github/workflows/build-dotnet.yml
     with:
       ref: ${{ needs.resolve.outputs.ref }}
