@@ -65,7 +65,7 @@ $roundDir = Join-Path $ws ('round-{0:D2}' -f $round)
 if ($meta.sourceType -eq 'diff') {
     $out = & git -C $root diff --end-of-options $meta.source 2>&1
     if ($LASTEXITCODE -ne 0) { Stop-Round "git diff $($meta.source) failed: $(($out | ForEach-Object { "$_" }) -join ' ')" }
-    $text = (($out | ForEach-Object { "$_" }) -join "`n") + "`n"
+    $text = (($out | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | ForEach-Object { "$_" }) -join "`n") + "`n"
     $ext = '.diff'
     $uploadName = "$Review.diff"
 } else {

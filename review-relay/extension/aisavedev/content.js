@@ -211,9 +211,10 @@ if (!window.__aiSaveDev) {
       );
 
       return deduped
-        .sort((a, b) =>
-          a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
-        )
+        .sort((a, b) => {
+          if (a.el === b.el) return 0;
+          return a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+        })
         .map(({ el, label }) => ({ label, content: htmlToMarkdown(el) }))
         .filter(m => m.content.trim());
     }
@@ -230,9 +231,15 @@ if (!window.__aiSaveDev) {
 
       const messages = [];
       // data-message-author-role has been stable since mid-2024
-      document.querySelectorAll('[data-message-author-role]').forEach(el => {
+      const allEls = Array.from(document.querySelectorAll('[data-message-author-role]'));
+      const dedupedEls = allEls.filter(el =>
+        !allEls.some(other => other !== el && other.contains(el))
+      );
+      dedupedEls.forEach(el => {
         const role    = el.getAttribute('data-message-author-role');
-        const label   = role === 'user' ? 'Human' : 'Assistant';
+        const label   = role === 'user' ? 'Human'
+                      : role === 'assistant' ? 'Assistant'
+                      : role ? role.charAt(0).toUpperCase() + role.slice(1) : 'Message';
         const content = htmlToMarkdown(el);
         if (content.trim()) messages.push({ label, content: content.trim() });
       });
@@ -673,9 +680,10 @@ if (!window.__aiSaveDev) {
           );
 
           const messages = deduped
-            .sort((a, b) =>
-              a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
-            )
+            .sort((a, b) => {
+              if (a.el === b.el) return 0;
+              return a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+            })
             .map(({ el, label }) => ({ label, content: htmlToMarkdown(el) }))
             .filter(m => m.content.trim().length > 5);
 
