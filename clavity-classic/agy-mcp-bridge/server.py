@@ -86,7 +86,11 @@ def extract_json(text: str) -> dict:
     is robust to trailing commentary that contains its own braces."""
     text = text.strip()
     try:
-        return json.loads(text)
+        whole = json.loads(text)
+        # Valid JSON that is not an object (`[]`, `"done"`, `42`) falls through to the brace scan:
+        # callers do `.get(...)` on the result, and an AttributeError there discards the worktree.
+        if isinstance(whole, dict):
+            return whole
     except json.JSONDecodeError:
         pass
 
