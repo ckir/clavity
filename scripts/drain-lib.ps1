@@ -197,7 +197,28 @@ function ConvertFrom-DrainGitQuotedPath([string]$Field) {
     # backslash, or — under the default core.quotepath=true — non-ASCII bytes. True for `status`, `clean`, and
     # `ls-files` output alike; unwrap it so downstream path comparisons see the real path.
     if ($Field.Length -ge 2 -and $Field[0] -eq '"' -and $Field[$Field.Length - 1] -eq '"') {
-        return ($Field.Substring(1, $Field.Length - 2) -replace '\\\\', '\') -replace '\\"', '"'
+        # ONE left-to-right pass over git's C escapes: \\ \" \a \b \f \n \r \t \v and 3-digit octal bytes (how git
+        # spells non-ASCII under core.quotepath=true, e.g. \303\251). Sequential -replace passes mis-decode `\\"`.
+        # Octal runs are collected as BYTES and decoded as UTF-8 together, so a multi-byte char round-trips.
+        $inner = $Field.Substring(1, $Field.Length - 2)
+        $sb = [System.Text.StringBuilder]::new()
+        $bytes = [System.Collections.Generic.List[byte]]::new()
+        $flush = { if ($bytes.Count -gt 0) { $null = $sb.Append([System.Text.Encoding]::UTF8.GetString($bytes.ToArray())); $bytes.Clear() } }
+        $simple = @{ 'a' = [char]7; 'b' = [char]8; 'f' = [char]12; 'n' = [char]10; 'r' = [char]13; 't' = [char]9; 'v' = [char]11; '\' = '\'; '"' = '"' }
+        $i = 0
+        while ($i -lt $inner.Length) {
+            $c = $inner[$i]
+            if ($c -ne '\' -or $i + 1 -ge $inner.Length) { & $flush; $null = $sb.Append($c); $i++; continue }
+            $n = $inner[$i + 1]
+            if ($n -match '[0-3]' -and $i + 3 -lt $inner.Length -and $inner.Substring($i + 1, 3) -match '^[0-3][0-7]{2}$') {
+                $bytes.Add([Convert]::ToByte($inner.Substring($i + 1, 3), 8)); $i += 4; continue
+            }
+            & $flush
+            if ($simple.ContainsKey([string]$n)) { $null = $sb.Append($simple[[string]$n]) } else { $null = $sb.Append($c).Append($n) }
+            $i += 2
+        }
+        & $flush
+        return $sb.ToString()
     }
     return $Field
 }
