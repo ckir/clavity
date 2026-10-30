@@ -141,6 +141,7 @@ if ($lastRel) {
         $serial = [int]($tag -replace '^clavity-v','')
         $abandoned = @(Get-AbandonedSerials $RepoRoot)
         $remote = git ls-remote --tags origin "refs/tags/$tag"
+        if ($LASTEXITCODE -ne 0) { Die "git ls-remote failed for '$tag' (exit $LASTEXITCODE)" }
         if (-not $remote -and ($serial -notin $abandoned)) { Die "last release prep '$tag' has NO remote tag (stuck release). Run: git push origin $tag  — or record it in scripts/release-abandoned.txt to abandon." }
         elseif (-not $remote) { Write-Host "release: '$tag' was retracted (in scripts/release-abandoned.txt) — serial burned, proceeding." -ForegroundColor DarkGray }
     }

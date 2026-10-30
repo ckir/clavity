@@ -17,7 +17,11 @@ $iss  = Join-Path (Join-Path (Join-Path $root 'installer') '_shared') 'register-
 $raw  = [IO.File]::ReadAllBytes($ps1)
 $norm = ([Text.Encoding]::UTF8.GetString($raw)) -replace "`r`n", "`n" -replace "`n", "`r`n"
 $sha  = [Security.Cryptography.SHA256]::Create()
-$hash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($norm))) -replace '-', '').ToUpperInvariant()
+try {
+    $hash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($norm))) -replace '-', '').ToUpperInvariant()
+} finally {
+    $sha.Dispose()
+}
 $text = Get-Content -Raw -Path $iss
 # The hash must sit on the define line itself: a comment or another define quoting the same hash is not the pin the uninstaller reads.
 if ($text -notmatch ('(?m)^#define ExpectedRegisterPs1Sha256 "' + $hash + '"\s*$')) {

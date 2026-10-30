@@ -36,12 +36,12 @@ function Fail([string]$msg) {
 
 # F24: a missing SEED (fresh clone, never drained) is 0 bytes ≤ budget — never a crash.
 $bytes = 0
-if (Test-Path $SeedPath) {
-    $bytes = [System.Text.Encoding]::UTF8.GetByteCount([System.IO.File]::ReadAllText($SeedPath))
+if (Test-Path -LiteralPath $SeedPath) {
+    $bytes = [System.IO.File]::ReadAllBytes($SeedPath).Length
 }
 
 if ($bytes -gt $MaxBytes) {
-    Fail "injected SEED is ${bytes}B > ${MaxBytes}B — consolidate via 'just drain-knowledge' or bump SEED_MAX_BYTES (the -MaxBytes default in scripts/check-seed-budget.ps1) deliberately"
+    Fail "injected SEED is ${bytes}B > ${MaxBytes}B — edit seed/golden-header.md directly and sync clavity-dotnet/plugin/seed/golden-header.md, or bump SEED_MAX_BYTES (the -MaxBytes default in scripts/check-seed-budget.ps1) deliberately"
 }
 
 Write-Host "check-seed-budget: OK — SEED ${bytes}B <= ${MaxBytes}B" -ForegroundColor Green

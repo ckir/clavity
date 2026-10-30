@@ -175,6 +175,61 @@ if (-not (Test-Path -LiteralPath $indexPath)) {
 # This is a SHAPE test, not a judgement. It does not ask whether the remaining text is any good; it asks
 # whether a large removal DECLARED ITSELF. A rule deliberately retired to a stub passes by saying so; a
 # rule gutted in silence fails. That is the most this class of gate can honestly do.
+
+# Pre-compute historical high-water mark for all store files in TWO git calls total ($O(1) subprocesses),
+# replacing the $O(rules x commits) log + ls-tree loop that previously ran on pre-push.
+$histMaxBytes = @{}
+$rawLog = @(& git -C $repo -c core.quotePath=false log --raw --no-abbrev --format='' $BaselineRef -- $StoreDir 2>$null | Where-Object { $_ -match '^:\d+' })
+if ($rawLog.Count -gt 0) {
+    $blobMap = @{}
+    $allBlobs = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($line in $rawLog) {
+        $parts = $line -split '\s+'
+        if ($parts.Count -lt 5) { continue }
+        $dstSha = $parts[3]
+        if ($dstSha -match '^[0-9a-fA-F]{40}$' -and $dstSha -ne '0000000000000000000000000000000000000000') {
+            $tabIdx = $line.IndexOf("`t")
+            if ($tabIdx -ge 0) {
+                $path = $line.Substring($tabIdx + 1)
+                $leaf = Split-Path $path -Leaf
+                if (-not $blobMap.ContainsKey($dstSha)) { $blobMap[$dstSha] = [System.Collections.Generic.List[string]]::new() }
+                $blobMap[$dstSha].Add($leaf)
+                $null = $allBlobs.Add($dstSha)
+            }
+        }
+    }
+    if ($allBlobs.Count -gt 0) {
+        $batchInput = ($allBlobs -join "`n") + "`n"
+        $psi = [System.Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = 'git'
+        foreach ($arg in @('-C', $repo, 'cat-file', '--batch-check=%(objectname) %(objectsize)')) { $null = $psi.ArgumentList.Add($arg) }
+        $psi.RedirectStandardInput = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.UseShellExecute = $false
+        $p = [System.Diagnostics.Process]::Start($psi)
+        $p.StandardInput.Write($batchInput)
+        $p.StandardInput.Close()
+        $batchOut = $p.StandardOutput.ReadToEnd()
+        $p.WaitForExit()
+        $p.Dispose()
+        foreach ($outLine in ($batchOut -split "`r?`n")) {
+            if (-not $outLine) { continue }
+            $outParts = $outLine -split '\s+'
+            if ($outParts.Count -ge 2) {
+                $sha = $outParts[0]
+                $sz = 0
+                if ([int]::TryParse($outParts[1], [ref]$sz) -and $blobMap.ContainsKey($sha)) {
+                    foreach ($fname in $blobMap[$sha]) {
+                        if (-not $histMaxBytes.ContainsKey($fname) -or $sz -gt $histMaxBytes[$fname]) {
+                            $histMaxBytes[$fname] = $sz
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 foreach ($f in $onDisk) {
     if ($f -eq 'INDEX.md') { continue }
     $bytes = [System.IO.File]::ReadAllBytes((Join-Path $abs $f)).Length
@@ -184,38 +239,8 @@ foreach ($f in $onDisk) {
         Problem "OBLITERATED: $f is 0 bytes. Every other check still passes - it is on disk, it is linked, and an empty file has no CRLF and no high bytes - which is exactly why this one exists. Retire a rule by editing it to a declared stub, never by emptying it."
         continue
     }
-    # THE HIGH-WATER MARK, not the tip - the same lesson as the deletion baseline, and it had to be
-    # learned TWICE. A capstone round caught that this check still compared against ${BaselineRef}, so
-    # committing a gutting made the previous size equal the current size, $kept became 1.0, and the gate
-    # passed while printing "none gutted undeclared". Fixing the deletion baseline and leaving its sibling
-    # on a moving ref is exactly the half-fold this repo keeps paying for.
-    #
-    # Comparing against the LARGEST size the file has ever had is monotonic, so a gutting stays visible
-    # however long ago it was committed - and it is the honest question anyway: has this rule lost most of
-    # what it once held?
-    $revs = @(& git -C $repo log --format=%H $BaselineRef -- "$StoreDir/$f" 2>$null | Where-Object { $_ })
-    if ($revs.Count -eq 0) { continue }     # new file, nothing to compare against
-    $wasBytes = 0
-    foreach ($rev in $revs) {
-        $entry = & git -C $repo ls-tree -l $rev -- "$StoreDir/$f" 2>$null
-        if (-not $entry) { continue }
-        # `ls-tree -l` prints: <mode> <type> <sha> <size>\t<path>
-        $sz = ($entry -split '\s+')[3]
-        $n = 0
-        if ([int]::TryParse($sz, [ref]$n) -and $n -gt $wasBytes) { $wasBytes = $n }
-    }
+    $wasBytes = if ($histMaxBytes.ContainsKey($f)) { $histMaxBytes[$f] } else { 0 }
     if ($wasBytes -le 0) { continue }
-    # THE MARK IS NEVER RE-BASELINED. A round-3 "fix" let the most recent commit carrying a declaration
-    # reset it; round 4 removed that. MEASURED: declare a retirement in one commit, silently delete the
-    # declaration line in the next, and a rule went 1,209 bytes -> 12 with the gate reporting OK, because
-    # it had re-baselined to the 26-byte declared stub. It also had NO legitimate case: when the current
-    # file DOES carry a declaration the check below already passes, so the re-baseline could only ever
-    # fire once the declaration had been REMOVED. It was a pure hole.
-    #
-    # What it was meant to solve - a rule shrinking below the floor across several individually reasonable
-    # edits - is answered by accepting the cost instead: that rule carries a one-line declaration. Cheap,
-    # one-time, and it keeps the baseline monotonic. A baseline anything in the repo can move is the defect
-    # this review has now found three separate times.
     $kept = $bytes / $wasBytes
     if ($kept -lt $ShrinkFloor) {
         $text = [System.IO.File]::ReadAllText((Join-Path $abs $f))
