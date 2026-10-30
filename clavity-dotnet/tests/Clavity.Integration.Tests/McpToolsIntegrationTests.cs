@@ -23,6 +23,7 @@ namespace Clavity.Integration.Tests;
 // T4 (integration, CI): the agy_look MCP tool over the in-proc fake LS — proves the tool delegates
 // to AgyView and serializes a bounded view. (Full MCP-transport coverage is unnecessary: the tool is a thin
 // wrapper; AgyView's own integration test covers discover->connect->read->bound.)
+[Collection("McpTools")]
 public class McpToolsIntegrationTests
 {
     [System.Runtime.CompilerServices.ModuleInitializer]
@@ -301,30 +302,37 @@ public class McpToolsIntegrationTests
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         Assert.NotNull(paramCacheField);
 
-        for (var round = 0; round < 20; round++)
+        try
         {
-            paramCacheField!.SetValue(method, null);
-            McpTools.WarmParameterCache();
-
-            using var barrier = new System.Threading.Barrier(4);
-            var leaked = new System.Collections.Concurrent.ConcurrentBag<string[]>();
-            Parallel.For(0, 4, _ =>
+            for (var round = 0; round < 20; round++)
             {
-                var services = new ServiceCollection();
-                services.AddSingleton(new AgyView(new AgyViewOptions
+                paramCacheField!.SetValue(method, null);
+                McpTools.WarmParameterCache();
+
+                using var barrier = new System.Threading.Barrier(4);
+                var leaked = new System.Collections.Concurrent.ConcurrentBag<string[]>();
+                Parallel.For(0, 4, _ =>
                 {
-                    CliLogPath = Path.Combine(Path.GetTempPath(), "schema-race-unused.log")
-                }));
-                services.AddMcpServer().WithTools<McpTools>();
-                using var sp = services.BuildServiceProvider();
-                barrier.SignalAndWait();
-                var tool = sp.GetServices<McpServerTool>().Single(t => t.ProtocolTool.Name == "agy_ask");
-                using var schema = JsonDocument.Parse(tool.ProtocolTool.InputSchema.GetRawText());
-                var props = schema.RootElement.GetProperty("properties").EnumerateObject().Select(p => p.Name).ToArray();
-                if (props.Contains("progress"))
-                    leaked.Add(props);
-            });
-            Assert.Empty(leaked);
+                    var services = new ServiceCollection();
+                    services.AddSingleton(new AgyView(new AgyViewOptions
+                    {
+                        CliLogPath = Path.Combine(Path.GetTempPath(), "schema-race-unused.log")
+                    }));
+                    services.AddMcpServer().WithTools<McpTools>();
+                    using var sp = services.BuildServiceProvider();
+                    barrier.SignalAndWait();
+                    var tool = sp.GetServices<McpServerTool>().Single(t => t.ProtocolTool.Name == "agy_ask");
+                    using var schema = JsonDocument.Parse(tool.ProtocolTool.InputSchema.GetRawText());
+                    var props = schema.RootElement.GetProperty("properties").EnumerateObject().Select(p => p.Name).ToArray();
+                    if (props.Contains("progress"))
+                        leaked.Add(props);
+                });
+                Assert.Empty(leaked);
+            }
+        }
+        finally
+        {
+            McpTools.WarmParameterCache();
         }
     }
 }
