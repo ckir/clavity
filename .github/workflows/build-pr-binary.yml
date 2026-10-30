@@ -23,11 +23,6 @@ name: Build PR Binary
 #   - Manual dispatch needs write access, so a fork PR is built only after a maintainer chooses to. The token is
 #     read-only and no secret is used, but a PR's build scripts do run on the runner: read a fork PR first.
 on:
-  # TEMPORARY (remove after the first verified run): a new workflow cannot be dispatched until it is on main, so
-  # this lets PR #56 exercise it. Path-filtered so it fires only when this file itself changes.
-  pull_request:
-    paths:
-      - '.github/workflows/build-pr-binary.yml'
   workflow_dispatch:
     inputs:
       pr:
@@ -49,7 +44,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: build-pr-binary-${{ inputs.pr || github.event.pull_request.number }}
+  group: build-pr-binary-${{ inputs.pr }}
   cancel-in-progress: true
 
 jobs:
@@ -65,8 +60,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ inputs.pr || github.event.pull_request.number }}
-          PRODUCT: ${{ inputs.product || 'both' }}
+          PR: ${{ inputs.pr }}
+          PRODUCT: ${{ inputs.product }}
           REPO: ${{ github.repository }}
         run: |
           # The input goes through env, never into the script text, and must be plain digits.
