@@ -74,9 +74,25 @@ async def test_mcp_server_available():
 
 
 @pytest.mark.asyncio
-async def test_delegate_to_antigravity_execution():
-    # We use the current directory because isolation requires an active git repo
-    target_directory = os.path.abspath(".")
+async def test_delegate_to_antigravity_execution(tmp_path):
+    import subprocess
+
+    target_directory = str(tmp_path)
+    subprocess.run(["git", "init", target_directory], check=True)
+    subprocess.run(
+        ["git", "-C", target_directory, "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", target_directory, "config", "user.name", "Test User"],
+        check=True,
+    )
+    readme = tmp_path / "README.md"
+    readme.write_text("init\n", encoding="utf-8")
+    subprocess.run(["git", "-C", target_directory, "add", "README.md"], check=True)
+    subprocess.run(
+        ["git", "-C", target_directory, "commit", "-m", "initial"], check=True
+    )
 
     env = os.environ.copy()
     env["MOCK_AGENT_RESPONSE"] = json.dumps(
@@ -110,7 +126,7 @@ async def test_delegate_to_antigravity_execution():
                     f"Agent did not return valid JSON: {result.content[0].text}"
                 )
 
-            assert response_json.get("status") in ["completed", "failed"]
+            assert response_json.get("status") == "completed"
 
             # Verify the telemetry database recorded the invocation
             db_path = os.path.join(target_directory, ".agent", "telemetry.db")
@@ -122,9 +138,4 @@ async def test_delegate_to_antigravity_execution():
                 )
                 row = await cursor.fetchone()
                 assert row is not None
-                assert row[0] in ["success", "failed", "timeout"]
-
-    # Cleanup the artifact
-    artifact_path = os.path.join(target_directory, "pytest_artifact.txt")
-    if os.path.exists(artifact_path):
-        os.remove(artifact_path)
+                assert row[0] == "success"
