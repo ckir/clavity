@@ -12,6 +12,7 @@ wiring. These cover `_build_mcp_servers()` and that the resulting config is
 accepted by the installed google-antigravity SDK.
 """
 
+import json
 import os
 import sys
 
@@ -171,3 +172,18 @@ async def test_invalid_arguments_rejected_before_init_db(
     with pytest.raises(ValueError):
         await server.handle_call_tool("delegate_to_antigravity", bad_args)
     assert init_called is False
+
+
+@pytest.mark.parametrize("text", ["[]", '"done"', "42", "null", "true"])
+def test_extract_json_rejects_non_object_json(text):
+    # Valid JSON that is not an object must not reach `parsed.get(...)` in the caller (AttributeError there
+    # discarded committed-worthy work); it must take the same JSONDecodeError path as unparseable output.
+    with pytest.raises(json.JSONDecodeError):
+        server.extract_json(text)
+
+
+def test_extract_json_recovers_object_wrapped_in_non_object_json():
+    assert server.extract_json('[{"status": "completed", "summary": "ok"}]') == {
+        "status": "completed",
+        "summary": "ok",
+    }
