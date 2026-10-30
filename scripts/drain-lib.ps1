@@ -197,7 +197,7 @@ function ConvertFrom-DrainGitQuotedPath([string]$Field) {
     # backslash, or — under the default core.quotepath=true — non-ASCII bytes. True for `status`, `clean`, and
     # `ls-files` output alike; unwrap it so downstream path comparisons see the real path.
     if ($Field.Length -ge 2 -and $Field[0] -eq '"' -and $Field[$Field.Length - 1] -eq '"') {
-        return ($Field.Substring(1, $Field.Length - 2) -replace '\\"', '"') -replace '\\\\', '\'
+        return ($Field.Substring(1, $Field.Length - 2) -replace '\\\\', '\') -replace '\\"', '"'
     }
     return $Field
 }
@@ -212,7 +212,7 @@ function Get-UntrackedDrainOutputFiles([string]$RepoRoot) {
     # The untracked files git itself reports under Get-DrainOutputPaths right now — the raw material for the
     # before/after diff drain-knowledge.ps1 uses to derive its output manifest. Never hand-roll this: asking git
     # is what makes the manifest correct without trusting the curator to self-report.
-    $lines = & git -C $RepoRoot ls-files --others --exclude-standard -- (Get-DrainOutputPaths) 2>$null
+    $lines = & git -C $RepoRoot -c core.quotePath=false ls-files --others --exclude-standard -- (Get-DrainOutputPaths) 2>$null
     $paths = [System.Collections.Generic.List[string]]::new()
     foreach ($l in @($lines)) {
         if ($l) { $paths.Add((ConvertTo-DrainNormalizedPath (ConvertFrom-DrainGitQuotedPath $l))) }
