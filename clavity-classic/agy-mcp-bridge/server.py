@@ -241,6 +241,8 @@ async def handle_call_tool(
 
             try:
                 parsed = json.loads(result_text)
+                if not isinstance(parsed, dict):
+                    raise json.JSONDecodeError("not a JSON object", result_text, 0)
                 status = parsed.get("status")
                 if status == "completed":
                     success = True
