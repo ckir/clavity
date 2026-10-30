@@ -118,7 +118,8 @@ function Install-Clavity {
         Start-Process -FilePath $dest -Wait -PassThru
     }
     if ($p.ExitCode -ne 0) { throw "Installer exited with code $($p.ExitCode)." }
-    Write-Host "clavity-$Variant installed. Open a terminal (PowerShell) and run:  clavity-ls start C:\path\to\project"
+    $bin = if ($Variant -eq "classic") { "clavity" } else { "clavity-ls" }
+    Write-Host "clavity-$Variant installed. Open a terminal (PowerShell) and run:  $bin start C:\path\to\project"
 }
 
 # Run only when invoked directly (not when dot-sourced by Pester tests).

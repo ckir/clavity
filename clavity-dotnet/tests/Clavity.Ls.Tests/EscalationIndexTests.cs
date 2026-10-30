@@ -46,4 +46,27 @@ public class EscalationIndexTests
         File.WriteAllText(Path.Combine(dir, "agy-assumptions.md"), "x");
         Assert.Equal(EscalationIndex.Build(dir), EscalationIndex.Build(dir));   // built once at startup, reused
     }
+
+    [Fact]
+    public void ResolveManualsDir_prefers_plugin_root_knowledge_dir_when_present()
+    {
+        var pluginRoot = Directory.CreateTempSubdirectory().FullName;
+        var expected = Path.Combine(pluginRoot, "knowledge");
+        Directory.CreateDirectory(expected);
+        var installRoot = Directory.CreateTempSubdirectory().FullName;
+
+        var resolved = EscalationIndex.ResolveManualsDir(pluginRoot, installRoot);
+
+        Assert.Equal(expected, resolved);
+    }
+
+    [Fact]
+    public void ResolveManualsDir_falls_back_to_install_root_when_plugin_root_is_null_or_blank()
+    {
+        var installRoot = Path.Combine(Path.GetTempPath(), "clavity-install-root");
+        var expected = Path.Combine(installRoot, "plugins", Clavity.Ls.Install.PluginInstaller.PluginName, "knowledge");
+
+        Assert.Equal(expected, EscalationIndex.ResolveManualsDir(null, installRoot));
+        Assert.Equal(expected, EscalationIndex.ResolveManualsDir("   ", installRoot));
+    }
 }
