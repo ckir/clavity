@@ -207,9 +207,10 @@ if ($rawLog.Count -gt 0) {
         $psi.RedirectStandardOutput = $true
         $psi.UseShellExecute = $false
         $p = [System.Diagnostics.Process]::Start($psi)
+        $outTask = $p.StandardOutput.ReadToEndAsync()   # drain stdout concurrently so a large blob list cannot deadlock on full pipes
         $p.StandardInput.Write($batchInput)
         $p.StandardInput.Close()
-        $batchOut = $p.StandardOutput.ReadToEnd()
+        $batchOut = $outTask.GetAwaiter().GetResult()
         $p.WaitForExit()
         $p.Dispose()
         foreach ($outLine in ($batchOut -split "`r?`n")) {
