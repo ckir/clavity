@@ -253,8 +253,8 @@ done
 _r1_rest=$(( _r1_n - _shown_r1 ))
 _r2_rest=$(( _r2_n - _shown_r2 ))
 [ "$_r1_rest" -gt 0 ] && _lines+=( "$_r1_rest more open seams are not shown. List .clavity/seams/ yourself before starting new work." )
-[ "$_r2_rest" -gt 0 ] && _lines+=( "$_r2_rest unrecognised seams are not shown. If you are resuming work you cannot see listed above, list .clavity/seams/ yourself before starting." )
-[ ${#bad[@]} -gt 0 ] && _lines+=( "${#bad[@]} unrecognised seams could not be named. If you are resuming work you cannot see listed above, list .clavity/seams/ yourself before starting." )
+[ "$_r2_rest" -gt 0 ] && _lines+=( "$_r2_rest unrecognised seams are not shown. Resuming unlisted work? List .clavity/seams/." )
+[ ${#bad[@]} -gt 0 ] && _lines+=( "${#bad[@]} unrecognised seams could not be named. Resuming unlisted work? List .clavity/seams/." )
 
 # R2-F3: if we fell back to name order, say so FIRST - the seams below are NOT ordered by recency, and
 # without this the shown set silently implies it is the most recent.

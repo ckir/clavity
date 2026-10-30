@@ -378,6 +378,44 @@ Describe 'agy-consult-recovery test-audit coverage (verified gaps 2026-09-14)' {
     $out | Should -Match '1 unrecognised seams are not shown'       # the 1 rank-2 seam is COUNTED, not dropped
     Remove-Item -Recurse -Force $r
   }
+  It 'S104-a: the seam file name each discipline skill TELLS the driver to use is a name the hook recognises (no seam is born unrecognised)' {
+    # ROADMAP section 104. Mutant: change one skill's seam path back to `<topic>.md` (or to a name with no discipline word) -> the pattern below
+    # does not match, or the hook lists the built name as `unrecognised` -> reds. The expected token is the DISCIPLINE's own, so a skill that
+    # names another discipline's word is caught too, and the two wrong-direction distractors prove the matcher can fail.
+    $skills = @{ 'agy-first' = 'agy-first'; 'agy-capstone' = 'agy-capstone'; 'agy-test-audit' = 'agy-test-audit'; 'adversarial-panel-review' = 'agy-panel' }
+    foreach ($name in $skills.Keys) {
+      $md = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "..\..\clavity-dotnet\plugin\skills\$name\SKILL.md")
+      $m = [regex]::Match($md, '\.clavity/seams/<topic>-([A-Za-z0-9<>-]+)\.md')
+      $m.Success | Should -BeTrue -Because "$name must name its seam file with the discipline word, or the recovery hook lists every seam it writes as unrecognised"
+      $file = 's104x-' + ($m.Groups[1].Value -replace '<N>', '1') + '.md'
+      $r = New-Repo; Seam $r $file
+      $out = Run $r
+      # The round the skill's template carries must be READ as that round (r1), not degrade to the literal `r?` (capstone round 1: matching only `r` passed both).
+      $round = if ($file -match '-r1\.md$') { 'r1' } else { 'r\?' }
+      $out | Should -Match ("workflow position: $($skills[$name]) $round(\W|$)") -Because "the hook must classify $file as $($skills[$name]) $round"
+      $out | Should -Not -Match 'unrecognised' -Because "$file must not be listed as unrecognised"
+      Remove-Item -Recurse -Force $r
+    }
+    # Distractor: the OLD instruction (`<topic>.md`) really does give an unrecognised seam, so the check above has the power to fail.
+    $r = New-Repo; Seam $r 's104x.md'
+    (Run $r) | Should -Match 'an unrecognised seam exists'
+    Remove-Item -Recurse -Force $r
+  }
+  It 'S104-b: the unrecognised-seams remainder line is short and still tells the reader to list .clavity/seams/' {
+    # Mutant: drop the instruction from the line (the owner kept it deliberately: a recovery reader errs loud) or restore the long wording -> reds.
+    $r = New-Repo; 1..5 | ForEach-Object { Seam $r "loose-$_.md" }
+    $out = Run $r
+    $line = [regex]::Match($out, '\d+ unrecognised seams are not shown\.[^"]*').Value
+    $line | Should -Match 'List \.clavity/seams/\.' -Because 'the instruction to list the directory must survive the trim'
+    $line.Length | Should -BeLessThan 90 -Because 'the trim exists to cut context noise (the old line was 136 characters)'
+    Remove-Item -Recurse -Force $r
+    # The second trimmed branch (an allowlist-failing name, reported as a bare count) carries the same tail (capstone round 1: it was unpinned).
+    $r = New-Repo; Seam $r 'agy-capstone-r5-ignore me.md'
+    $bad = [regex]::Match((Run $r), '\d+ unrecognised seams could not be named\.[^"]*').Value
+    $bad | Should -Match 'List \.clavity/seams/\.' -Because 'the could-not-be-named line must keep the instruction too'
+    $bad.Length | Should -BeLessThan 90 -Because 'the could-not-be-named line was trimmed with the other'
+    Remove-Item -Recurse -Force $r
+  }
   It 'G8: a GLOBAL $HOME/.claude/.no-agy suppresses the hook (distinct from the workspace .no-agy gate)' {
     # Mutant: change line 28 to read a different path (or delete the gate) -> the hook emits despite the global kill-switch -> reds. Only the WORKSPACE .no-agy was previously covered.
     $r = New-Repo; Seam $r 'agy-capstone-r5-x.md'
