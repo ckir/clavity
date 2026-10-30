@@ -90,7 +90,8 @@ See [`clavity-dotnet/README.md`](../README.md) for the Quick Start. Upgrading fr
       "command": "${CLAUDE_PLUGIN_DATA}/bin/clavity-ls.exe",
       "args": ["--mcp"],
       "env": {
-        "CLAVITY_AGY_IDLE_MAX_SECONDS": "1800"
+        "CLAVITY_AGY_IDLE_MAX_SECONDS": "1800",
+        "CLAUDE_PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}"
       }
     }
   }
