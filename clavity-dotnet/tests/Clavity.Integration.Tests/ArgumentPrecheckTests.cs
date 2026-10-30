@@ -21,6 +21,7 @@ namespace Clavity.Integration.Tests;
 // inside the SDK's binding, which the SDK reports as "An error occurred invoking 'agy_ask'." with the cause in its
 // log only (measured 2026-10-08: `payload` instead of `message`, 73 ms, nothing reached agy, read as a dead channel).
 // A CallToolFilter checks the names against the tool's own InputSchema before binding and names the mismatch.
+[Collection("McpTools")]
 public class ArgumentPrecheckTests
 {
     private static async Task<(McpClient Client, IAsyncDisposable Server)> ConnectAsync(bool withFilter)
@@ -33,6 +34,7 @@ public class ArgumentPrecheckTests
             CliLogPath = Path.Combine(Path.GetTempPath(), "precheck-unused.log"),
             BootRaceTimeout = TimeSpan.Zero,
         }));
+        McpTools.WarmParameterCache();
         var b = services.AddMcpServer()
             .WithStreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream())
             .WithTools<McpTools>();
