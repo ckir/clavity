@@ -6,6 +6,9 @@
 
 name: ci-installer-dotnet
 
+permissions:
+  contents: read
+
 # Continuous BUILD coverage for the dotnet member: build the per-RID clavity-ls binaries + run the validate
 # gates (version consistency, seed + cheatsheet byte budgets) on every push[main]/PR that touches the member,
 # its build workflow, this file, or the budget-check inputs. Delegates to the reusable build-dotnet.yml.
