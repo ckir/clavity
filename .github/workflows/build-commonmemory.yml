@@ -6,6 +6,9 @@
 
 name: build-commonmemory
 
+permissions:
+  contents: read
+
 # Validate-only (Inno retired 2026-09-14). commonmemory installs via `claude plugin` from the repo-root
 # .claude-plugin/marketplace.json — there is NO installer to build or ship. This reusable workflow now only
 # PROVES the member's version sources agree (plugin.json) and that every version-bearing file is
