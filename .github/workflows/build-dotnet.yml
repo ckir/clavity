@@ -6,6 +6,9 @@
 
 name: build-dotnet
 
+permissions:
+  contents: read
+
 # Reusable build half of the dotnet release. The Inno Setup installer was RETIRED (2026-09-14): clavity-dotnet
 # now installs via `claude plugin` + a fetch-on-first-run hook (clavity-dotnet/plugin/hooks/fetch-clavity-ls.sh)
 # that downloads the self-contained clavity-ls binary from the release. This workflow therefore publishes that
