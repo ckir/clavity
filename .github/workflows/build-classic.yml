@@ -6,6 +6,9 @@
 
 name: build-classic
 
+permissions:
+  contents: read
+
 # Reusable build+smoke half of the classic release, minus the publish step. Called by umbrella-release.yml
 # and runnable in isolation via workflow_dispatch. Monorepo consolidation: code now lives under
 # clavity-classic/ on main; the checkout is naked (no branch/SHA pin) and the job runs from that folder.
