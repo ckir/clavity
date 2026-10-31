@@ -4,6 +4,7 @@
 **/.mcp.json
 # Human-facing repository documentation - shipped, but not loaded into an agent's context.
 **/README.md
+**/README.*.md
 **/NOTICE
 **/LICENSE
 # Build and packaging inputs, not instruction text.
