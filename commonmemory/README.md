@@ -1,11 +1,14 @@
 # commonmemory (universal dual-plugin)
 
+[English](README.md) | [Ελληνικά](README.el.md)
+
 Shared cross-agent memory conventions for **Claude Code** and **Antigravity (`agy`)**. Both already
 connect to the same **agentmemory** store, so a memory one agent saves is recallable by the other —
 this plugin ships the *convention* (a single skill) that makes that shared store useful on purpose:
 tag `[common]` notes, and proactively recall them on task start / handoff. No binary, no MCP server.
 
 ## How it works
+
 - **Recall:** `memory_smart_search query="[common] <repo>"` before acting; honor the newest note's
   `Status:`; ignore stale handoffs.
 - **Save:** `[common] (<repo>) — <what> · Why: <why> · Status: <…> · Next: <…>` for handoffs, shared
@@ -23,7 +26,9 @@ commonmemory/
 ```
 
 ## Install
+
 ### Prerequisite
+
 **agentmemory** MCP server configured in BOTH CLIs (the same global
 [`@agentmemory/agentmemory`](https://www.npmjs.com/package/@agentmemory/agentmemory) module → one
 shared store). Register the same agentmemory MCP server in both Claude Code and agy, pointing at the
@@ -42,6 +47,7 @@ To uninstall: `claude plugin uninstall commonmemory@clavity`.
 **agy:** see "From a clone" below.
 
 **From a clone (developers):** install this plugin folder directly into both CLIs:
+
 ```
 claude plugin marketplace add ./commonmemory
 claude plugin install commonmemory@clavity-commonmemory-dev
@@ -49,11 +55,13 @@ agy    plugin install ./commonmemory
 ```
 
 ## Configuration
+
 **Required — one line per agent. The plugin does not work without this.**
 
 Installing the plugin makes the skill *available* but does **not** make either agent auto-search on
 its own. Add a one-line rule to each agent's global instructions so they recall `[common]` notes at
 the start of a task:
+
 - **agy** — in `~/.gemini/GEMINI.md` (inside its `<user_rules>` block):
   > At the start of a task, `memory_smart_search` for `[common] <repo>` notes (repo = the current
   > repository name) and read them before acting.
@@ -72,6 +80,7 @@ the start of a task:
   available, it does not wire up proactive recall.
 
 ## Docs
+
 - `skills/commonmemory/SKILL.md` — the shared-memory convention (read by both CLIs)
 - `rules/commonmemory.md` — agy-native proactive-recall rule (Claude ignores it)
 - `.claude-plugin/plugin.json` + `plugin.json` — Claude + agy manifests

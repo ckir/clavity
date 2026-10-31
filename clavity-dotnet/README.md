@@ -1,5 +1,7 @@
 # clavity-dotnet — pair Claude with a live agy peer
 
+[English](README.md) | [Ελληνικά](README.el.md)
+
 clavity-dotnet is the modern, greenfield **.NET 10** rebuild of clavity: it pairs
 [Claude Code](https://claude.com/claude-code) with a live [Antigravity (`agy`)](https://antigravity.google)
 peer, shipped as a universal dual-plugin. It is one member of the [`clavity` umbrella](../README.md) —

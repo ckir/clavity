@@ -1,5 +1,7 @@
 # review-relay
 
+[English](README.md) | [Ελληνικά](README.el.md)
+
 Review a spec, plan, document or code change with web AI models (ChatGPT, Meta AI, Gemini, or any other)
 in copy-paste rounds. Claude plays the main role: it prepares each round's prompt, checks every finding
 against the real text, and folds the true ones. You carry the text to the sites and save the replies with

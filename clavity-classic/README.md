@@ -5,6 +5,8 @@
 [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](https://www.rust-lang.org/)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-blue.svg)
 
+[English](README.md) | [Ελληνικά](README.el.md)
+
 **A remote control for [Antigravity](https://pypi.org/project/google-antigravity/) (`agy`).**
 clavity lets [Claude Code](https://claude.com/claude-code) drive a **live, signed-in `agy` session
 running in the same folder** — an ongoing, bidirectional, stateful collaboration where `agy` works
@@ -163,15 +165,15 @@ All optional; sensible defaults. Environment variables:
 | --- | --- | --- |
 | `AGY_SESSION` | `claude_agy` | psmux session name hosting the live agy. |
 | `AGY_TMUX_BIN` | `tmux` (resolved on `PATH`) | psmux/tmux binary; set only if it isn't on `PATH`. |
-| `AGY_DOORBELL` | _canonical line_ | The single-line wake string the responder skill keys on. |
+| `AGY_DOORBELL` | *canonical line* | The single-line wake string the responder skill keys on. |
 | `AGY_START_ARGS` | `--dangerously-skip-permissions` | Flags `start` passes to `agy`. |
-| `AGY_WATCH` | _enabled_ | On first launch, `start` opens a visible terminal tab (Windows Terminal) attached to agy so you can answer its auth/login prompts. Set `0`/`false`/`no` to disable. |
+| `AGY_WATCH` | *enabled* | On first launch, `start` opens a visible terminal tab (Windows Terminal) attached to agy so you can answer its auth/login prompts. Set `0`/`false`/`no` to disable. |
 | `AGY_RING_MIN_INTERVAL_MS` | `2000` | Minimum gap between doorbells, shared across `clavity ring` processes; closer rings are coalesced into a no-op so a runaway loop cannot burn agy's quota. `0` disables. |
-| `AGY_RING_STATE_FILE` | _per-session file_ | Where the last-ring timestamp is kept; override only for test isolation. |
+| `AGY_RING_STATE_FILE` | *per-session file* | Where the last-ring timestamp is kept; override only for test isolation. |
 | `AGY_IDLE_MARKER` | `? for shortcuts` | Footer text meaning agy is idle. |
 | `AGY_BUSY_MARKER` | `esc to cancel` | Footer text meaning agy is busy. |
 | `AGENTMEMORY_URL` | `http://127.0.0.1:3111` | agentmemory daemon REST base URL — used by `ask` / `await-reply` / `ping`. |
-| `AGENTMEMORY_SECRET` | _none_ | Bearer token for the daemon; sent only when set (the daemon requires it only when it too has a secret configured). |
+| `AGENTMEMORY_SECRET` | *none* | Bearer token for the daemon; sent only when set (the daemon requires it only when it too has a secret configured). |
 | `RUST_LOG` | `clavity=info` | Log verbosity, e.g. `RUST_LOG=clavity=debug`. |
 
 ---
@@ -193,7 +195,7 @@ All optional; sensible defaults. Environment variables:
 - **[Launching and driving agy](docs/launching-and-driving-agy.md)** — the full launch-command
   reference and Claude-driving walkthrough behind Quick start steps 4 and 5, including the optional
   SessionStart hook.
-- **Design spec** _(internal design provenance — not published)_ — the full
+- **Design spec** *(internal design provenance — not published)* — the full
   architecture and the empirical spikes it rests on (bus round-trip, `send-keys` wake, idle/busy
   detection, doorbell-while-busy queueing, the pwsh shell reality, the safety checkpoint).
 - **[Protocol runbook](docs/agy-remote-control-protocol.md)** — the exact Claude-side procedure,

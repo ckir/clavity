@@ -1,5 +1,7 @@
 # agy-autotrain — learn from every agy call, and keep the driving sharp
 
+[English](README.md) | [Ελληνικά](README.el.md)
+
 An **optional** Claude Code add-on for the agy-driving **learning loop**, with **no
 binary changes** (it composes the existing `clavity` commands + markdown). Everyday agy-driving usage
 feeds the loop, and the curated wisdom is injected back into every future call.
@@ -78,6 +80,7 @@ This registers agy-autotrain with Claude Code only (never agy, which has no use 
 `claude plugin uninstall agy-autotrain@clavity`.
 
 **From a clone (developers):**
+
 ```
 claude plugin install ./agy-autotrain
 ```
