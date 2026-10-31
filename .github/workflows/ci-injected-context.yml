@@ -6,6 +6,9 @@
 
 name: ci-injected-context
 
+permissions:
+  contents: read
+
 # The injected-context gate. Audits every file this repository injects into an AI agent's context
 # (spec 2026-08-08): encoding, plan-residue, tag-hygiene, namespace, payload-budget, and reference
 # resolution.
