@@ -6,6 +6,9 @@
 
 name: ci-control-bytes
 
+permissions:
+  contents: read
+
 # The control-byte gate (ROADMAP §49). Separate from ci-scripts.yml on purpose: a control byte lands in a
 # Markdown file anywhere in the tree, and ci-scripts only fires on scripts/**. This job runs one script and
 # takes seconds. The gate script and this workflow are in the path filter deliberately - without them,
