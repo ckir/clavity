@@ -36,6 +36,9 @@ concurrency:
   group: ci-member-docs-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   member-docs:
     runs-on: windows-latest
