@@ -228,9 +228,14 @@ impl MemBus {
             }
             let now = Instant::now();
             if now >= deadline {
+                let secs = timeout.as_secs();
+                let elapsed = if secs > 0 || timeout.subsec_millis() == 0 {
+                    format!("{secs}s")
+                } else {
+                    format!("{}ms", timeout.as_millis())
+                };
                 return Err(format!(
-                    "timeout after {}s waiting for reply to {req_id}",
-                    timeout.as_secs()
+                    "timeout after {elapsed} waiting for reply to {req_id}"
                 ));
             }
             debug!("await-reply: no match yet for {req_id}, sleeping {poll:?}");

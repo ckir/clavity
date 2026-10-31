@@ -111,12 +111,13 @@ keeps it honest:
 
 ## Injection is automatic - do NOT prepend the golden header yourself
 
-The `clavity` binary reads the compiled agy-driving wisdom from `%USERPROFILE%\.clavity\` and prepends it
-to every `ask` for you. Do NOT read or prepend it manually - doing so double-injects the header. The header
-is split in two: `golden-header.seed.md` (driver-shipped baseline) and `golden-header.growth.md` (what the
-agy-autotrain learning loop has added); the binary combines them, and falls back to a legacy flat
-`golden-header.md` only for a one-time migration. If none are present (add-on not installed), the binary
-silently skips injection and you drive with this baseline protocol.
+The `clavity` binary reads the compiled agy-driving wisdom from `%USERPROFILE%\.clavity\` and emits it to
+your (the driver's) stdout on the first `ask` of a session, while sending the peer `agy` only the request
+payload (plus `--review-only` when requested). Do NOT read or prepend the golden header into the peer
+payload manually. The header is split in two: `golden-header.seed.md` (driver-shipped baseline) and
+`golden-header.growth.md` (what the agy-autotrain learning loop has added); the binary combines them, and
+falls back to a legacy flat `golden-header.md` only for a one-time migration. If none are present (add-on
+not installed), the binary silently skips guidance emission and you drive with this baseline protocol.
 
 If the human asks you to permanently remember a project rule and no `agy-curate` skill is present,
 permanent learning needs the **agy-autotrain** add-on - tell them to re-run the clavity installer and

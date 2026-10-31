@@ -475,11 +475,12 @@ reading only the status code, so a pipeline that expected GROWTH to land reports
 was written. That is the silent-success blindspot this branch exists in the first place to avoid.
 
 **Every gate abort path - currently exit 2 and exit 3 - ENDS the run here. Do not continue to the Finish
-step below.** The inbox is left
-intact because nothing ever reaches the code that would reset it - not because the reset rule evaluated and
-declined. Those are different mechanisms and only the first one is true on this path: the Finish step
-resets `## Pending` on `curate-commit` exit 0, and on this path `curate-commit` is never invoked at all.
-Read this branch as terminal.
+step below.** Before exiting, if you claimed the inbox at step 1 by renaming `<USERPROFILE or HOME>/.clavity/agy-observations.md`
+to `agy-observations.processing-<unique>.md`, **restore those entries to `<USERPROFILE or HOME>/.clavity/agy-observations.md`**
+(by appending its `## Pending` bullets back to the canonical file, creating it with the standard header if absent, and
+then deleting your `agy-observations.processing-<unique>.md`) so the batch is never left stranded in the processing file.
+Otherwise the inbox is left intact because nothing ever reaches the Finish step that resets `## Pending` to dispositioned
+residue (`curate-commit` is never invoked on this path). Read this branch as terminal.
 
 **What this run has ALREADY done by the time it reaches here, and does NOT undo.** A gate abort is
 not a rollback, so state the partial effect rather than leaving an executor to guess at it:
@@ -490,7 +491,7 @@ not a rollback, so state the partial effect rather than leaving an executor to g
 | the compiled GROWTH proposal in `.clavity/curate-proposed/golden-header.growth.md` | left in place - same | same |
 | `knowledge/driver-cheatsheet.core.md` and its two GENERATED pins may have been regenerated | **no** | **IN THE REPOSITORY - these are uncommitted edits in the working tree** |
 | the two LIVE files, `%USERPROFILE%\.clavity\golden-header.growth.md` and `%USERPROFILE%\.clavity\driver-cheatsheet.growth.md` | **never written** - this is exactly what the gate withheld; `curate-commit` and `curate-commit --cheatsheet` are never invoked on this path | - |
-| the inbox `## Pending` section | untouched, per the paragraph above | - |
+| the inbox `## Pending` section | restored to `<USERPROFILE or HOME>/.clavity/agy-observations.md` (with no entries dropped), per the paragraph above | - |
 
 **This block describes the GATE's abort paths only** - the ones that arrive here, currently exit 2 and
 exit 3. An error exit (1) can happen anywhere: before any of the writes above, or after the Finish step

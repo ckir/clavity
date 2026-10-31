@@ -102,12 +102,26 @@ function Invoke-Main {
     # gates below so abort-drain can still trust it if either of those hard/soft-fails and leaves staging behind.
     $outputsBefore = @(Get-UntrackedDrainOutputFiles $RepoRoot)
     $headBefore = & git -C $RepoRoot rev-parse HEAD 2>$null   # F4B: pin HEAD across the curator run (checked in 5b)
-    if ($CuratorStub) { & $CuratorStub $staging $RepoRoot }   # test seam (stub-script PATH) run in place of the real curator
-    elseif (-not $SkipCurator) { Invoke-Curator $staging }
-    $outputsAfter = @(Get-UntrackedDrainOutputFiles $RepoRoot)
-    $newOutputs = @($outputsAfter | Where-Object { $outputsBefore -notcontains $_ })
-    $manifestPath = Get-DrainOutputManifestPath $inboxDir $runId
-    Write-DrainOutputManifest -ManifestPath $manifestPath -Paths $newOutputs
+    $curatorFailed = $true
+    try {
+        if ($CuratorStub) { & $CuratorStub $staging $RepoRoot }   # test seam (stub-script PATH) run in place of the real curator
+        elseif (-not $SkipCurator) { Invoke-Curator $staging }
+        $curatorFailed = $false
+    }
+    finally {
+        try {
+            $outputsAfter = @(Get-UntrackedDrainOutputFiles $RepoRoot)
+            $newOutputs = @($outputsAfter | Where-Object { $outputsBefore -notcontains $_ })
+            $manifestPath = Get-DrainOutputManifestPath $inboxDir $runId
+            Write-DrainOutputManifest -ManifestPath $manifestPath -Paths $newOutputs
+        }
+        catch {
+            # A manifest failure must not REPLACE the curator's own error (the real cause) when one is in flight; a
+            # missing manifest is already safe (abort-drain's no-manifest fallback is the conservative one).
+            if ($curatorFailed) { Write-Warning "drain-knowledge: could not write the output manifest while handling a curator failure: $($_.Exception.Message)" }
+            else { throw }
+        }
+    }
 
     # 5b. HEAD-PIN GATE (capstone F4B). The curator runs with --dangerously-skip-permissions, so it CAN `git commit`.
     # If it does, HEAD advances to include its own changes, and the protected-files gate below — which compares the

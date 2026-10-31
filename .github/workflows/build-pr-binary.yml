@@ -1,0 +1,92 @@
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
+name: Build PR Binary
+
+# Manual: build the binaries a pull request WOULD ship, without merging or tagging it. Run it from the
+# Actions tab (or `gh workflow run "Build PR Binary" -f pr=56 -f product=both`), then download the
+# artifacts from the run page:
+#   classic -> `classic-installer`      (the Inno Setup installer carrying clavity.exe + the bridge)
+#   dotnet  -> `dotnet-bin-<rid>`       (clavity-ls tarball + .sha256 for win-x64, linux-x64, osx-arm64, osx-x64)
+#
+# It reuses build-classic.yml / build-dotnet.yml exactly as umbrella-release.yml does, so a PR binary is built
+# by the same recipe, gates and smoke tests as a release binary and cannot drift from it. Nothing is published:
+# no release, no tag, no upload outside the run's own artifacts.
+#
+# KNOWN LIMITS
+#   - The build RECIPE comes from the branch this workflow is dispatched on (normally main); only the SOURCE
+#     comes from the PR. A PR that edits build-classic.yml / build-dotnet.yml is built with main's copy of them.
+#   - The PR head is built, not the merge result, so a PR that conflicts with main still builds.
+#   - Manual dispatch needs write access, so a fork PR is built only after a maintainer chooses to. The token is
+#     read-only and no secret is used, but a PR's build scripts do run on the runner: read a fork PR first.
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Pull request number to build (digits only, e.g. 56)'
+        required: true
+        type: string
+      product:
+        description: 'What to build'
+        required: true
+        type: choice
+        default: both
+        options:
+          - both
+          - classic
+          - dotnet
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: build-pr-binary-${{ inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.pr.outputs.ref }}
+      sha: ${{ steps.pr.outputs.sha }}
+      product: ${{ steps.pr.outputs.product }}
+    steps:
+      - name: Validate PR and resolve its head
+        id: pr
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          PRODUCT: ${{ inputs.product }}
+          REPO: ${{ github.repository }}
+        run: |
+          # The input goes through env, never into the script text, and must be plain digits.
+          [[ "$PR" =~ ^[0-9]+$ ]] || { echo "pr must be a number, got '$PR'" >&2; exit 1; }
+          read -r state sha < <(gh api "repos/$REPO/pulls/$PR" --jq '[.state, .head.sha] | @tsv')
+          [ -n "$sha" ] || { echo "could not resolve PR #$PR" >&2; exit 1; }
+          [ "$state" = "open" ] || echo "::warning::PR #$PR is $state; building its last head anyway"
+          # Pin the SHA that was looked at, so a push during the run cannot change what is built.
+          {
+            echo "ref=$sha"
+            echo "sha=$sha"
+            echo "product=$PRODUCT"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building PR #$PR at $sha ($PRODUCT)" >> "$GITHUB_STEP_SUMMARY"
+
+  classic:
+    needs: resolve
+    if: needs.resolve.outputs.product == 'classic' || needs.resolve.outputs.product == 'both'
+    uses: ./.github/workflows/build-classic.yml
+    with:
+      ref: ${{ needs.resolve.outputs.ref }}
+
+  dotnet:
+    needs: resolve
+    if: needs.resolve.outputs.product == 'dotnet' || needs.resolve.outputs.product == 'both'
+    uses: ./.github/workflows/build-dotnet.yml
+    with:
+      ref: ${{ needs.resolve.outputs.ref }}
