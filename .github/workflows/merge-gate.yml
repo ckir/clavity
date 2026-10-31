@@ -22,7 +22,7 @@ permissions:
 jobs:
   merge-gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 55
     steps:
       - name: Wait for all other checks on the PR head to pass
         env:
@@ -35,7 +35,7 @@ jobs:
           # Give sibling workflows (same pull_request event) time to register their check-runs, so we
           # never observe an empty/partial set and pass prematurely.
           sleep 60
-          deadline=$(( $(date +%s) + 1800 ))   # 30 min budget for the slowest sibling suite
+          deadline=$(( $(date +%s) + 2700 ))   # 45 min budget for the slowest sibling suite
           while :; do
             rows=$(gh api "repos/$REPO/commits/$SHA/check-runs" --paginate \
               -q '.check_runs[] | select(.name != "'"$SELF"'") | [.name, .status, (.conclusion // "")] | @tsv')

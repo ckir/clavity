@@ -13,6 +13,7 @@
 param([string]$RepoRoot)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath }
 $begin = '<!-- tracker-format:begin -->'; $end = '<!-- tracker-format:end -->'
 # EXPLICIT list: the suite's real-repo row proves it equals the set of skills that carry a promote step.

@@ -16,6 +16,7 @@
 param([string]$RepoRoot, [switch]$List)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath }
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Write-Host 'check-tracker-status: git is not on PATH - nothing was checked' -ForegroundColor Yellow; exit 2 }
 & git -C $RepoRoot rev-parse --git-dir *> $null

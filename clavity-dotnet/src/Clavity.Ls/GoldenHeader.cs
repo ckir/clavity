@@ -346,13 +346,29 @@ public static class GoldenHeader
         // 1) header: tmp -> move over target (atomic).
         var tmp = $"{path}.{tmpTag}.tmp";
         File.WriteAllText(tmp, content);
-        File.Move(tmp, path, overwrite: true);
+        AtomicMoveWithRetry(tmp, path);
 
         // 2) sidecar (AFTER the target move succeeds): tmp -> move over the final sidecar path (atomic).
         var sidecarPath = path + ".sha256";
         var sidecarTmp = $"{sidecarPath}.{tmpTag}.tmp";
         File.WriteAllText(sidecarTmp, Sha256Hex(content));
-        File.Move(sidecarTmp, sidecarPath, overwrite: true);
+        AtomicMoveWithRetry(sidecarTmp, sidecarPath);
+    }
+
+    private static void AtomicMoveWithRetry(string source, string destination)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                File.Move(source, destination, overwrite: true);
+                return;
+            }
+            catch (Exception ex) when (attempt <= 10 && ex is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(5 * attempt);
+            }
+        }
     }
 
     public static string Sha256Hex(string content) =>
