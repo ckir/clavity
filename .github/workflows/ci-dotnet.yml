@@ -17,6 +17,8 @@ on:
       - 'clavity-dotnet/**'
       - '.github/workflows/ci-dotnet.yml'
       - '.github/workflows/build-dotnet.yml'
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: windows-latest
