@@ -125,7 +125,7 @@ if (!window.__aiSaveDev) {
           case 'i':         return `*${kids}*`;
           case 'del':
           case 's':         return `~~${kids}~~`;
-          case 'code':      return `\`${kids.replace(/`/g, '\\`')}\``;
+          case 'code':      return `\`${kids.replace(/\\/g, '\\\\').replace(/`/g, '\\`')}\``;
           case 'h1':        return `\n\n# ${kids.trim()}\n\n`;
           case 'h2':        return `\n\n## ${kids.trim()}\n\n`;
           case 'h3':        return `\n\n### ${kids.trim()}\n\n`;
