@@ -82,13 +82,13 @@ function Get-SharedPathsFor([string]$Key) {
 }
 
 # Deliberately versionless: developer/CI surface that reaches no end-user artifact. Prefixes ending in '/'
-# match a subtree; the rest are exact repo-root files. Membership is checked ONLY after member-bound and
-# shared-shipping have had their say, so listing a prefix here can never mask a real bump.
+# match a subtree; the rest are exact repo-root files or wildcard patterns. Membership is checked ONLY after
+# member-bound and shared-shipping have had their say, so listing a prefix here can never mask a real bump.
 $script:DevOnlyPaths = @(
     'scripts/', '.github/', 'docs/', '.claude/', '.vscode/', '.worktrees/',
     '.antigravityignore', '.editorconfig', '.gitattributes', '.gitignore', '.mlc.toml',
     'CLAUDE.md', 'CODE_OF_CONDUCT.md', 'CONTRIBUTING.md', 'DevelopersCockpit.ps1',
-    'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'justfile', 'lefthook.yml',
+    'LICENSE', 'NOTICE', 'README.md', 'README.el.md', 'SECURITY.md', 'justfile', 'lefthook.yml',
     # Inno-retirement (2026-09-14). '.claude-plugin/' is the repo-ROOT marketplace that
     # `claude plugin marketplace add ckir/clavity` fetches LIVE from the repo (not a released asset), so a
     # change to it needs no member version bump - the members' versions live in their own plugin.json. Member
@@ -97,7 +97,7 @@ $script:DevOnlyPaths = @(
     # nobody). 'BundleCodeBase.ps1' is a dev tool that bundles the repo for the agy peer.
     # 'site/' is the GitHub Pages static site deployed live from main by pages.yml; 'header.txt' is the
     # PolyForm NC license-header template used by ci-license-headers.yml.
-    '.claude-plugin/', 'archive/', 'BundleCodeBase.ps1', 'site/', 'header.txt'
+    '.claude-plugin/', 'archive/', 'BundleCodeBase.ps1', 'site/', 'header.txt', '*.el.md'
 )
 function Get-DevOnlyPaths { $script:DevOnlyPaths }
 
@@ -105,6 +105,7 @@ function Test-DevOnlyPath([string]$Path) {
     $p = $Path -replace '\\', '/'
     foreach ($d in $script:DevOnlyPaths) {
         if ($d.EndsWith('/')) { if ($p.StartsWith($d)) { return $true } }
+        elseif ($d.Contains('*') -or $d.Contains('?')) { if ($p -like $d) { return $true } }
         elseif ($p -eq $d)    { return $true }
     }
     return $false
