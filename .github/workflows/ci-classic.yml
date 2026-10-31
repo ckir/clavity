@@ -19,6 +19,14 @@ on:
       - '.github/workflows/ci-classic.yml'
       - '.github/workflows/build-classic.yml'
 
+permissions:
+  contents: read
+  actions: read
+  packages: read
+  id-token: none
+  issues: none
+  pull-requests: none
+
 env:
   CARGO_TERM_COLOR: always
 
