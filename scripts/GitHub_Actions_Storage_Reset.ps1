@@ -78,14 +78,26 @@ if ($NonInteractive) {
 }
 
 if ("$confirmRuns".ToLower() -eq "y") {
-    Write-Host "Deleting workflow runs..." -ForegroundColor Red
-    foreach ($run in $Runs) {
-        Write-Host "Deleting run $($run.databaseId)..." -NoNewline
-        # Removed --yes flag as it is not supported/needed when deleting by ID
-        gh run delete $run.databaseId
-        Write-Host " Done." -ForegroundColor Green
+    if (-not $Runs) {
+        Write-Host "Nothing to delete." -ForegroundColor Green
+    } else {
+        Write-Host "Deleting $($Runs.Count) workflow runs with 16-way parallelism..." -ForegroundColor Red
+        if ($PSVersionTable.PSVersion.Major -ge 7) {
+            $Runs.databaseId | ForEach-Object -Parallel {
+                # No --yes flag: not supported/needed when deleting by ID (gh 2.85.0)
+                gh run delete $_ > $null
+            } -ThrottleLimit 16
+        } else {
+            # Fallback for Windows PowerShell 5.1 (no ForEach-Object -Parallel)
+            foreach ($run in $Runs) {
+                gh run delete $run.databaseId > $null
+            }
+        }
+        Write-Host "Batch deletion complete." -ForegroundColor Green
+        if ($Runs.Count -ge 500) {
+            Write-Host "Hit 500-run batch limit - rerun script to clear remainder." -ForegroundColor Yellow
+        }
     }
-    Write-Host "Batch deletion complete." -ForegroundColor Green
 } else {
     Write-Host "Skipping workflow run deletion." -ForegroundColor Yellow
 }

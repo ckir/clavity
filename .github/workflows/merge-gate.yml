@@ -36,9 +36,10 @@ jobs:
           # never observe an empty/partial set and pass prematurely.
           sleep 60
           deadline=$(( $(date +%s) + 2700 ))   # 45 min budget for the slowest sibling suite
+          zero_count=0
           while :; do
             rows=$(gh api "repos/$REPO/commits/$SHA/check-runs" --paginate \
-              -q '.check_runs[] | select(.name != "'"$SELF"'") | [.name, .status, (.conclusion // "")] | @tsv')
+              -q '.check_runs[] | select(.name != "'"$SELF"'" and (.name | startswith("'"$SELF"' /") | not)) | [.name, .status, (.conclusion // "")] | @tsv')
             failed=$(printf '%s\n' "$rows" | awk -F'\t' 'NF && $2=="completed" && $3!="success" && $3!="neutral" && $3!="skipped"')
             if [ -n "$failed" ]; then
               echo "FAILED / non-passing checks:"; printf '%s\n' "$failed"; exit 1
@@ -47,6 +48,13 @@ jobs:
             present=$(printf '%s\n' "$rows" | awk -F'\t' 'NF' | wc -l | tr -d ' ')
             if [ "$present" -gt 0 ] && [ "$pending" -eq 0 ]; then
               echo "all $present sibling check(s) passed"; printf '%s\n' "$rows"; exit 0
+            fi
+            if [ "$present" -eq 0 ]; then
+              zero_count=$((zero_count + 1))
+              if [ "$zero_count" -ge 3 ]; then
+                echo "no sibling checks registered after grace period (path-filtered PR); passing"
+                exit 0
+              fi
             fi
             if [ "$(date +%s)" -ge "$deadline" ]; then
               echo "timed out waiting for checks (present=$present pending=$pending)"; printf '%s\n' "$rows"; exit 1
