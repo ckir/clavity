@@ -6,6 +6,9 @@
 
 name: ci-scripts
 
+permissions:
+  contents: read
+
 # TWO CONTRACTS, TWO ENGINES - the split is by where the code actually RUNS, not by folder taste.
 #
 #   installer-5-1 - installer/_shared/register-plugin.ps1 runs on an END-USER Windows box, where only
