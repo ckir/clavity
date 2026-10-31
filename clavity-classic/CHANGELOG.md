@@ -1,4 +1,17 @@
 # classic changelog
+## 0.12.0 - 2026-10-31
+
+### Features
+- feat(plugin): platform-handoff skill, hand platform-bound work to a session that can run it
+
+### Fixes
+- fix(classic): fall through to brace scan when agent reply is non-object JSON
+- fix: avoid cat-file pipe deadlock and guard non-object mock JSON
+- fix(scripts): drain error manifest, unescape paths, optimize check-knowledge-store, and validate tracker status
+- fix(classic): validate bridge arguments, handle mock failures, format ms timeouts
+- fix(plugin): section 104 capstone round 1 fold - the skills say "contain", the rows pin the round and the second remainder line
+- fix(plugin): new seams are born recognised and the unrecognised-seams notice is shorter (ROADMAP section 104)
+
 ## 0.11.0 - 2026-10-29
 
 ### Features

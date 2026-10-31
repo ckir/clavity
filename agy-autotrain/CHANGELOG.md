@@ -1,4 +1,9 @@
 # agy-autotrain - changelog
+## 0.8.1 - 2026-10-31
+
+### Fixes
+- fix(autotrain): restore uncurated observations on human gate abort
+
 ## 0.8.0 - 2026-10-29
 
 ### Features

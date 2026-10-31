@@ -1,4 +1,17 @@
 # dotnet changelog
+## 0.14.0 - 2026-10-31
+
+### Features
+- feat(plugin): platform-handoff skill, hand platform-bound work to a session that can run it
+
+### Fixes
+- fix(dotnet): serialize McpTools integration test classes to prevent cold reflection race
+- fix(dotnet): resolve plugin knowledge dir fallback and installer binary name
+- fix(ci): encode tracker output as UTF-8, retry concurrent header moves, and extend merge-gate timeout
+- fix(plugin): section 104 capstone round 1 fold - the skills say "contain", the rows pin the round and the second remainder line
+- fix(plugin): new seams are born recognised and the unrecognised-seams notice is shorter (ROADMAP section 104)
+- fix(pester): keep non-ASCII row names intact across the runner's child process (ROADMAP section 93 item 7)
+
 ## 0.13.0 - 2026-10-29
 
 ### Features

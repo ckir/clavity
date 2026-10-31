@@ -1,5 +1,10 @@
 # review-relay changelog
 
+## 0.3.3 - 2026-10-31
+
+### Fixes
+- fix(review-relay): lock disposal in finally, filter ErrorRecords, normalize scrape roles
+
 ## 0.3.2 - 2026-10-29
 
 ### Fixes
