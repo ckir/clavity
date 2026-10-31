@@ -12,6 +12,7 @@ wiring. These cover `_build_mcp_servers()` and that the resulting config is
 accepted by the installed google-antigravity SDK.
 """
 
+import json
 import os
 import sys
 
@@ -101,3 +102,88 @@ async def test_cleanup_failure_is_logged_as_failed_in_telemetry(monkeypatch, tmp
     assert recorded["status"] == "failed"
     assert "Merge conflict detected" in (recorded["final_error"] or "")
     assert '"status": "failed"' in res[0].text
+
+
+@pytest.mark.asyncio
+async def test_mock_failed_status_does_not_merge_or_log_success(monkeypatch, tmp_path):
+    """When MOCK_AGENT_RESPONSE reports status='failed', cleanup_worktree must
+    receive success=False and log_completion must record status='failed'."""
+    recorded = {}
+
+    async def fake_init_db(target_dir):
+        pass
+
+    async def fake_log_start(target_dir, task_id, prompt):
+        pass
+
+    async def fake_create_worktree(target_dir, task_id):
+        return str(tmp_path / "wt")
+
+    async def fake_cleanup_worktree(target_dir, task_id, success=False):
+        recorded["cleanup_success"] = success
+
+    async def fake_log_completion(
+        target_dir, task_id, status, tokens_used=0, final_error=None
+    ):
+        recorded["status"] = status
+        recorded["final_error"] = final_error
+
+    monkeypatch.setattr(server, "init_db", fake_init_db)
+    monkeypatch.setattr(server, "log_start", fake_log_start)
+    monkeypatch.setattr(server, "create_worktree", fake_create_worktree)
+    monkeypatch.setattr(server, "cleanup_worktree", fake_cleanup_worktree)
+    monkeypatch.setattr(server, "log_completion", fake_log_completion)
+    monkeypatch.setenv(
+        "MOCK_AGENT_RESPONSE", '{"status": "failed", "summary": "unit test failure"}'
+    )
+
+    res = await server.handle_call_tool(
+        "delegate_to_antigravity",
+        {"task_prompt": "do work", "target_dir": str(tmp_path)},
+    )
+    assert recorded["cleanup_success"] is False
+    assert recorded["status"] == "failed"
+    assert "unit test failure" in (recorded["final_error"] or "")
+    assert '"status": "failed"' in res[0].text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_args",
+    [
+        {"task_prompt": "", "target_dir": "/tmp"},
+        {"task_prompt": "ok", "target_dir": ""},
+        {"task_prompt": "ok", "target_dir": None},
+        {"task_prompt": "ok", "target_dir": "/tmp", "timeout_seconds": 0},
+        {"task_prompt": "ok", "target_dir": "/tmp", "timeout_seconds": -5},
+        {"task_prompt": "ok", "target_dir": "/tmp", "timeout_seconds": True},
+    ],
+)
+async def test_invalid_arguments_rejected_before_init_db(
+    monkeypatch, bad_args
+):
+    init_called = False
+
+    async def fake_init_db(target_dir):
+        nonlocal init_called
+        init_called = True
+
+    monkeypatch.setattr(server, "init_db", fake_init_db)
+    with pytest.raises(ValueError):
+        await server.handle_call_tool("delegate_to_antigravity", bad_args)
+    assert init_called is False
+
+
+@pytest.mark.parametrize("text", ["[]", '"done"', "42", "null", "true"])
+def test_extract_json_rejects_non_object_json(text):
+    # Valid JSON that is not an object must not reach `parsed.get(...)` in the caller (AttributeError there
+    # discarded committed-worthy work); it must take the same JSONDecodeError path as unparseable output.
+    with pytest.raises(json.JSONDecodeError):
+        server.extract_json(text)
+
+
+def test_extract_json_recovers_object_wrapped_in_non_object_json():
+    assert server.extract_json('[{"status": "completed", "summary": "ok"}]') == {
+        "status": "completed",
+        "summary": "ok",
+    }

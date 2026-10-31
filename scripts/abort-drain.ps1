@@ -37,7 +37,7 @@ function Get-ModifiedTrackedPaths([string]$RepoRoot) {
     # path inside that same field; only the NEW path (the one that still exists in the working tree) matters
     # here. Git DOES C-quote a path (wraps it in double quotes with backslash escapes) when it contains a double
     # quote, a backslash, or — under the default core.quotepath=true — non-ASCII bytes; unwrap that.
-    $lines = & git -C $RepoRoot status --porcelain --untracked-files=no 2>$null
+    $lines = & git -C $RepoRoot -c core.quotePath=false status --porcelain --untracked-files=no 2>$null
     $paths = [System.Collections.Generic.List[string]]::new()
     foreach ($line in @($lines)) {
         if (-not $line -or $line.Length -lt 4) { continue }
@@ -47,9 +47,7 @@ function Get-ModifiedTrackedPaths([string]$RepoRoot) {
             $arrow = $field.IndexOf(' -> ')
             if ($arrow -ge 0) { $field = $field.Substring($arrow + 4) }
         }
-        if ($field.Length -ge 2 -and $field[0] -eq '"' -and $field[$field.Length - 1] -eq '"') {
-            $field = ($field.Substring(1, $field.Length - 2) -replace '\\"', '"') -replace '\\\\', '\'
-        }
+        $field = ConvertFrom-DrainGitQuotedPath $field
         $paths.Add((ConvertTo-DrainNormalizedPath $field))
     }
     return $paths

@@ -86,7 +86,11 @@ def extract_json(text: str) -> dict:
     is robust to trailing commentary that contains its own braces."""
     text = text.strip()
     try:
-        return json.loads(text)
+        whole = json.loads(text)
+        # Valid JSON that is not an object (`[]`, `"done"`, `42`) falls through to the brace scan:
+        # callers do `.get(...)` on the result, and an AttributeError there discards the worktree.
+        if isinstance(whole, dict):
+            return whole
     except json.JSONDecodeError:
         pass
 
@@ -198,6 +202,17 @@ async def handle_call_tool(
     target_dir = arguments.get("target_dir")
     timeout_seconds = arguments.get("timeout_seconds", 120)
 
+    if not isinstance(task_prompt, str) or not task_prompt.strip():
+        raise ValueError("Invalid or empty task_prompt")
+    if not isinstance(target_dir, str) or not target_dir.strip():
+        raise ValueError("Invalid or empty target_dir")
+    if (
+        isinstance(timeout_seconds, bool)
+        or not isinstance(timeout_seconds, (int, float))
+        or timeout_seconds <= 0
+    ):
+        raise ValueError("Invalid timeout_seconds (must be a positive number)")
+
     # Generate unique task ID
     task_id = str(uuid.uuid4())[:8]
 
@@ -230,8 +245,15 @@ async def handle_call_tool(
 
             try:
                 parsed = json.loads(result_text)
-                if parsed.get("status") in ["completed", "failed"]:
+                if not isinstance(parsed, dict):
+                    raise json.JSONDecodeError("not a JSON object", result_text, 0)
+                status = parsed.get("status")
+                if status == "completed":
                     success = True
+                elif status == "failed":
+                    error_payload = f"Agent reported failure: {parsed.get('summary') or result_text[:200]}"
+                else:
+                    error_payload = f"Mock agent returned unexpected status: {status!r}"
             except json.JSONDecodeError:
                 error_payload = "Mock agent did not return valid JSON."
 

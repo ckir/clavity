@@ -1089,7 +1089,7 @@ docs-audit-reminder.Tests.ps1                    28,3s   13 tests   <- 11 -> 12 
 docs-audit.Tests.ps1                            130,0s   95 tests   <- SLOW, re-measured 2026-08-06; 85 -> 88 on
   2026-09-30 (ROADMAP §47: the roster filter and Get-FindingsSummary), 88 -> 90 the same day (AGY-TEST-AUDIT: every non-confirming outcome; the -Only run keeps the full roster), runtime NOT re-measured.
 drain-knowledge.Tests.ps1                        40,5s    8 tests   <- SLOW, re-measured 2026-08-06
-drain-lib.Tests.ps1                               4,2s   36 tests   <- FAST, re-measured 2026-08-24 WARM.
+drain-lib.Tests.ps1                               4,2s   42 tests   <- FAST, re-measured 2026-08-24 WARM.
                                                                       COUNT 29 -> 36 on 2026-08-28 (AGY-TEST-AUDIT
                                                                       covered the output-manifest producer).
   (cold 6,1s) after the test-audit closure added 2 tests and strengthened 3.

@@ -47,126 +47,129 @@ try {
     Stop-Collect "another collect is running for $(Split-Path -Leaf $roundDir) (could not lock $lockPath); nothing was written"
 }
 
-$rm = try { Get-Content -LiteralPath (Join-Path $roundDir 'round.json') -Raw | ConvertFrom-Json } catch { Stop-Collect "round.json is not valid JSON: $($_.Exception.Message)" }
-$started = ConvertTo-RoundStartedAtUtc $rm.startedAt
-$thisNo = [int]((Split-Path -Leaf $roundDir).Substring(6))
-$next = @($rounds | Where-Object { [int]($_.Name.Substring(6)) -gt $thisNo }) | Select-Object -First 1
-$ended = $null
-if ($next -and (Test-Path -LiteralPath (Join-Path $next.FullName 'round.json'))) {
-    $nm = try { Get-Content -LiteralPath (Join-Path $next.FullName 'round.json') -Raw | ConvertFrom-Json } catch { Stop-Collect "$($next.Name)/round.json is not valid JSON: $($_.Exception.Message)" }
-    $ended = ConvertTo-RoundStartedAtUtc $nm.startedAt
-}
+try {
+    $rm = try { Get-Content -LiteralPath (Join-Path $roundDir 'round.json') -Raw | ConvertFrom-Json } catch { Stop-Collect "round.json is not valid JSON: $($_.Exception.Message)" }
+    $started = ConvertTo-RoundStartedAtUtc $rm.startedAt
+    $thisNo = [int]((Split-Path -Leaf $roundDir).Substring(6))
+    $next = @($rounds | Where-Object { [int]($_.Name.Substring(6)) -gt $thisNo }) | Select-Object -First 1
+    $ended = $null
+    if ($next -and (Test-Path -LiteralPath (Join-Path $next.FullName 'round.json'))) {
+        $nm = try { Get-Content -LiteralPath (Join-Path $next.FullName 'round.json') -Raw | ConvertFrom-Json } catch { Stop-Collect "$($next.Name)/round.json is not valid JSON: $($_.Exception.Message)" }
+        $ended = ConvertTo-RoundStartedAtUtc $nm.startedAt
+    }
 
-# Spec T: the review's capture window starts at the LOWEST-numbered round that has a round.json,
-# not at this round's own start - a round-tagged capture saved after a later round started must
-# still be reachable by number.
-$firstRoundWithJson = @($rounds | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'round.json') }) | Select-Object -First 1
-if (-not $firstRoundWithJson) { Stop-Collect 'no round has a round.json' }
-$reviewStart = if ($firstRoundWithJson.FullName -eq $roundDir) {
-    $started
-} else {
-    $frm = try { Get-Content -LiteralPath (Join-Path $firstRoundWithJson.FullName 'round.json') -Raw | ConvertFrom-Json } catch { Stop-Collect "$($firstRoundWithJson.Name)/round.json is not valid JSON: $($_.Exception.Message)" }
-    ConvertTo-RoundStartedAtUtc $frm.startedAt
-}
+    # Spec T: the review's capture window starts at the LOWEST-numbered round that has a round.json,
+    # not at this round's own start - a round-tagged capture saved after a later round started must
+    # still be reachable by number.
+    $firstRoundWithJson = @($rounds | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'round.json') }) | Select-Object -First 1
+    if (-not $firstRoundWithJson) { Stop-Collect 'no round has a round.json' }
+    $reviewStart = if ($firstRoundWithJson.FullName -eq $roundDir) {
+        $started
+    } else {
+        $frm = try { Get-Content -LiteralPath (Join-Path $firstRoundWithJson.FullName 'round.json') -Raw | ConvertFrom-Json } catch { Stop-Collect "$($firstRoundWithJson.Name)/round.json is not valid JSON: $($_.Exception.Message)" }
+        ConvertTo-RoundStartedAtUtc $frm.startedAt
+    }
 
-$inboxDir = Resolve-RelayInbox $Inbox
-if (-not (Test-Path -LiteralPath $inboxDir -PathType Container)) { Stop-Collect "inbox folder not found: $inboxDir" }
+    $inboxDir = Resolve-RelayInbox $Inbox
+    if (-not (Test-Path -LiteralPath $inboxDir -PathType Container)) { Stop-Collect "inbox folder not found: $inboxDir" }
 
-$candidates = @(Get-ChildItem -LiteralPath $inboxDir -File -Filter '*.md' |
-    Where-Object { $_.LastWriteTimeUtc -gt $reviewStart } | Sort-Object LastWriteTimeUtc)
+    $candidates = @(Get-ChildItem -LiteralPath $inboxDir -File -Filter '*.md' |
+        Where-Object { $_.LastWriteTimeUtc -gt $reviewStart } | Sort-Object LastWriteTimeUtc)
 
-$captures = @(
-    foreach ($f in $candidates) {
-        $inWindow = $f.LastWriteTimeUtc -gt $started -and ($null -eq $ended -or $f.LastWriteTimeUtc -lt $ended)
-        $c = $null
-        $readErr = $null
-        try {
-            $c = Read-AiSaveCapture $f.FullName
-        } catch {
-            $readErr = $_
-        }
-        if ($readErr) {
-            Stop-Collect "could not read $($f.Name) ($($readErr.Exception.Message)); it may still be downloading or open in another program. Nothing was written - run collect again."
-        }
-        if ($null -eq $c) { continue }
-        # Spec T: a tagged capture is included only when its Review/Round match this run, regardless
-        # of window; an untagged capture is included only when it falls in the existing window.
-        if ($c.Tag) {
-            if ($c.Tag.Review -ceq $Review -and $c.Tag.Round -eq $thisNo) {
+    $captures = @(
+        foreach ($f in $candidates) {
+            $inWindow = $f.LastWriteTimeUtc -gt $started -and ($null -eq $ended -or $f.LastWriteTimeUtc -lt $ended)
+            $c = $null
+            $readErr = $null
+            try {
+                $c = Read-AiSaveCapture $f.FullName
+            } catch {
+                $readErr = $_
+            }
+            if ($readErr) {
+                Stop-Collect "could not read $($f.Name) ($($readErr.Exception.Message)); it may still be downloading or open in another program. Nothing was written - run collect again."
+            }
+            if ($null -eq $c) { continue }
+            # Spec T: a tagged capture is included only when its Review/Round match this run, regardless
+            # of window; an untagged capture is included only when it falls in the existing window.
+            if ($c.Tag) {
+                if ($c.Tag.Review -ceq $Review -and $c.Tag.Round -eq $thisNo) {
+                    [pscustomobject]@{ File = $f; Capture = $c }
+                }
+            } elseif ($inWindow) {
                 [pscustomobject]@{ File = $f; Capture = $c }
             }
-        } elseif ($inWindow) {
-            [pscustomobject]@{ File = $f; Capture = $c }
+        }
+    )
+    if ($captures.Count -eq 0) {
+        Write-Host "collect: no AiSave captures in $inboxDir saved after $($started.ToString('o'))$(if ($ended) { " and before $($ended.ToString('o'))" })"
+        exit 2
+    }
+
+    $rows = [System.Collections.Generic.List[string]]::new()
+    $bodies = [System.Collections.Generic.List[string]]::new()
+    $n = 0
+    $repliesDir = Join-Path $roundDir 'replies'
+    $summaryPath = Join-Path $roundDir 'collected.md'
+    if ((Test-Path -LiteralPath $summaryPath) -and $PSCmdlet.ShouldProcess($summaryPath, 'remove previous summary')) { Remove-Item -LiteralPath $summaryPath }
+    foreach ($old in @(Get-ChildItem -LiteralPath $repliesDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d{2}-' })) {
+        if ($PSCmdlet.ShouldProcess($old.FullName, 'remove previous copy')) { Remove-Item -LiteralPath $old.FullName }
+    }
+    foreach ($item in $captures) {
+        $n++
+        $c = $item.Capture
+        $copyName = '{0:D2}-{1}' -f $n, $item.File.Name
+        $proof = Get-RelayReadProof -Reply $c.Reply -EndMarkerCode $rm.endMarker -ExpectedLastLine $rm.expectedLastLine
+        $verdict = Get-RelayVerdict $c.Reply
+        $counts = Get-RelayCounts -Findings @(Get-RelayFindings $c.Reply) -Verdict $verdict
+        $reported = if ($null -ne $proof.ReportedLineCount) { $proof.ReportedLineCount } else { '-' }
+        $rows.Add("| $n | $($c.Platform) | $($proof.Result) | $reported | $verdict | $($counts.BLOCKING) | $($counts.MATERIAL) | $($counts.MINOR) | $($counts.UNKNOWN) |")
+        $replyBody = $c.Reply
+        if ([string]::IsNullOrWhiteSpace($replyBody)) {
+            $replyBody = '(This capture has no reply - it has no "## Assistant" section. It was probably saved before the model finished answering. Save it again once the answer is complete.)'
+            $hint = ''
+            if ($c.Format -eq 'aisave' -and $c.DeclaredFormat -eq 'aisave-dev/1' -and $c.NoRoleMarkers) {
+                # R1: AiSaveDev already saved this file, but its scraper fell back (the site's layout drifted) and wrote no human or
+                # assistant marker. "Save it again with AiSaveDev" would be wrong advice, and so would "saved before the model finished".
+                $hint = ' AiSaveDev could not find the turns on this page - the site may have changed.'
+                $replyBody = "(This capture has no reply.$hint)"
+            } elseif ($c.DeclaredFormat -eq 'aisave-dev/1') {
+                # An AiSaveDev capture that kept its human marker was saved before the answer: the generic text above is right, and
+                # the plain-AiSave hint below is not (AiSaveDev already saved it).
+            } elseif ($c.Format -eq 'aisave') {
+                # G2 (owner ruling 2026-09-29): a plain AiSave capture has no unambiguous turn delimiter,
+                # so a reply that quotes its own "---" + "## Human" (a transcript in a code block, say) hides
+                # the reply. The parser is left alone; the failure stays loud and names the fix.
+                $hint = ' If the answer WAS complete, it probably quotes a "## Human" heading, which a plain AiSave capture cannot tell apart from a new turn: save it again with AiSaveDev instead.'
+                $replyBody = $replyBody.TrimEnd(')') + $hint + ')'
+            }
+            $cause = if ($c.Format -eq 'aisave' -and $c.DeclaredFormat -eq 'aisave-dev/1' -and $c.NoRoleMarkers) { '' } else { ' (saved before the model finished?)' }
+            Write-Warning "collect: $($item.File.Name) has no reply$cause$hint"
+        }
+        $bodies.Add("## $n. $($c.Platform) - $($c.Title)`n`nSource: ``replies/$copyName`` ($($c.Url))`n`n$replyBody`n")
+        if ($PSCmdlet.ShouldProcess((Join-Path $roundDir 'replies' $copyName), 'copy capture')) {
+            Copy-Item -LiteralPath $item.File.FullName -Destination (Join-Path $roundDir 'replies' $copyName)
         }
     }
-)
-if ($captures.Count -eq 0) {
-    Write-Host "collect: no AiSave captures in $inboxDir saved after $($started.ToString('o'))$(if ($ended) { " and before $($ended.ToString('o'))" })"
+
+    $summary = @(
+        "# review-relay: $Review, round $($rm.round)"
+        ''
+        "Collected $([DateTime]::UtcNow.ToString('o')) from ``$inboxDir``. Expected end marker ``$($rm.endMarker)``; expected last content line: ``$($rm.expectedLastLine)``; artifact line count $($rm.expectedLineCount) (information only)."
+        ''
+        '| # | Site | Read proof | Reported lines | Verdict | BLOCKING | MATERIAL | MINOR | UNKNOWN |'
+        '|---|---|---|---|---|---|---|---|---|'
+        $rows
+        ''
+        $bodies
+    ) -join "`n"
+
+    if ($PSCmdlet.ShouldProcess($summaryPath, 'write summary')) {
+        [IO.File]::WriteAllText($summaryPath, $summary, [Text.UTF8Encoding]::new($false))
+        Write-Host "collect: $($captures.Count) capture(s) -> $summaryPath"
+    }
+} finally {
     $lock.Dispose()
-    exit 2
 }
-
-$rows = [System.Collections.Generic.List[string]]::new()
-$bodies = [System.Collections.Generic.List[string]]::new()
-$n = 0
-$repliesDir = Join-Path $roundDir 'replies'
-$summaryPath = Join-Path $roundDir 'collected.md'
-if ((Test-Path -LiteralPath $summaryPath) -and $PSCmdlet.ShouldProcess($summaryPath, 'remove previous summary')) { Remove-Item -LiteralPath $summaryPath }
-foreach ($old in @(Get-ChildItem -LiteralPath $repliesDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d{2}-' })) {
-    if ($PSCmdlet.ShouldProcess($old.FullName, 'remove previous copy')) { Remove-Item -LiteralPath $old.FullName }
-}
-foreach ($item in $captures) {
-    $n++
-    $c = $item.Capture
-    $copyName = '{0:D2}-{1}' -f $n, $item.File.Name
-    $proof = Get-RelayReadProof -Reply $c.Reply -EndMarkerCode $rm.endMarker -ExpectedLastLine $rm.expectedLastLine
-    $verdict = Get-RelayVerdict $c.Reply
-    $counts = Get-RelayCounts -Findings @(Get-RelayFindings $c.Reply) -Verdict $verdict
-    $reported = if ($null -ne $proof.ReportedLineCount) { $proof.ReportedLineCount } else { '-' }
-    $rows.Add("| $n | $($c.Platform) | $($proof.Result) | $reported | $verdict | $($counts.BLOCKING) | $($counts.MATERIAL) | $($counts.MINOR) | $($counts.UNKNOWN) |")
-    $replyBody = $c.Reply
-    if ([string]::IsNullOrWhiteSpace($replyBody)) {
-        $replyBody = '(This capture has no reply - it has no "## Assistant" section. It was probably saved before the model finished answering. Save it again once the answer is complete.)'
-        $hint = ''
-        if ($c.Format -eq 'aisave' -and $c.DeclaredFormat -eq 'aisave-dev/1' -and $c.NoRoleMarkers) {
-            # R1: AiSaveDev already saved this file, but its scraper fell back (the site's layout drifted) and wrote no human or
-            # assistant marker. "Save it again with AiSaveDev" would be wrong advice, and so would "saved before the model finished".
-            $hint = ' AiSaveDev could not find the turns on this page - the site may have changed.'
-            $replyBody = "(This capture has no reply.$hint)"
-        } elseif ($c.DeclaredFormat -eq 'aisave-dev/1') {
-            # An AiSaveDev capture that kept its human marker was saved before the answer: the generic text above is right, and
-            # the plain-AiSave hint below is not (AiSaveDev already saved it).
-        } elseif ($c.Format -eq 'aisave') {
-            # G2 (owner ruling 2026-09-29): a plain AiSave capture has no unambiguous turn delimiter,
-            # so a reply that quotes its own "---" + "## Human" (a transcript in a code block, say) hides
-            # the reply. The parser is left alone; the failure stays loud and names the fix.
-            $hint = ' If the answer WAS complete, it probably quotes a "## Human" heading, which a plain AiSave capture cannot tell apart from a new turn: save it again with AiSaveDev instead.'
-            $replyBody = $replyBody.TrimEnd(')') + $hint + ')'
-        }
-        $cause = if ($c.Format -eq 'aisave' -and $c.DeclaredFormat -eq 'aisave-dev/1' -and $c.NoRoleMarkers) { '' } else { ' (saved before the model finished?)' }
-        Write-Warning "collect: $($item.File.Name) has no reply$cause$hint"
-    }
-    $bodies.Add("## $n. $($c.Platform) - $($c.Title)`n`nSource: ``replies/$copyName`` ($($c.Url))`n`n$replyBody`n")
-    if ($PSCmdlet.ShouldProcess((Join-Path $roundDir 'replies' $copyName), 'copy capture')) {
-        Copy-Item -LiteralPath $item.File.FullName -Destination (Join-Path $roundDir 'replies' $copyName)
-    }
-}
-
-$summary = @(
-    "# review-relay: $Review, round $($rm.round)"
-    ''
-    "Collected $([DateTime]::UtcNow.ToString('o')) from ``$inboxDir``. Expected end marker ``$($rm.endMarker)``; expected last content line: ``$($rm.expectedLastLine)``; artifact line count $($rm.expectedLineCount) (information only)."
-    ''
-    '| # | Site | Read proof | Reported lines | Verdict | BLOCKING | MATERIAL | MINOR | UNKNOWN |'
-    '|---|---|---|---|---|---|---|---|---|'
-    $rows
-    ''
-    $bodies
-) -join "`n"
-
-if ($PSCmdlet.ShouldProcess($summaryPath, 'write summary')) {
-    [IO.File]::WriteAllText($summaryPath, $summary, [Text.UTF8Encoding]::new($false))
-    Write-Host "collect: $($captures.Count) capture(s) -> $summaryPath"
-}
-$lock.Dispose()
+exit 0
 exit 0

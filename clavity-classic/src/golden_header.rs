@@ -8,9 +8,9 @@
 //! written by either variant is read identically by the other. The wisdom is split into two
 //! independently-owned region files under a resolved directory (default `<home>/.clavity`):
 //! `golden-header.seed.md` (driver-seeded baseline) + `golden-header.growth.md` (written by
-//! `curate-commit`). Read as SEED-then-GROWTH and prepended to every ask; a pre-split flat
-//! `golden-header.md` is read ALONE as a one-time migration fallback. Pure functions only (no global
-//! state); the binary wires them into `ask`, `curate-commit`, and `doctor`.
+//! `curate-commit`). Read as SEED-then-GROWTH and emitted to the driver on the first `ask` of a session;
+//! a pre-split flat `golden-header.md` is read ALONE as a one-time migration fallback. Pure functions only
+//! (no global state); the binary wires them into `ask`, `curate-commit`, and `doctor`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -158,11 +158,9 @@ fn try_read_file(path: &Path, warn: &mut dyn FnMut(&str), require_sidecar: bool)
     // has a sidecar-less SEED (installer/_shared/golden-header-data.iss). Sidecar unreadable = treat
     // exactly as absent, accept. Sidecar present but mismatched = warn and degrade this region to
     // ABSENT, mirroring the over-cap path above.
-    // NOTE this does NOT match the region-body check above, which reads the file first and only then
-    // compares `bytes.len()` — so an oversized REGION is still loaded into memory before it is rejected.
-    // dotnet checks `FileInfo.Length` first for BOTH (GoldenHeader.cs), and is the better shape; the
-    // region-body check here should follow, but that is a behavior change and is deliberately not made
-    // in the same edit as this comment. Do not "restore symmetry" by deleting this note.
+    // Both `try_read_file` (above) and `verify_sidecar` (below) check `fs::metadata(path).len()` against
+    // their cap BEFORE calling `fs::read(path)`, matching dotnet's `FileInfo.Length` pre-check in
+    // `GoldenHeader.cs` so neither an oversized region nor an oversized sidecar is loaded into memory.
     match verify_sidecar(path, &bytes) {
         SidecarVerdict::Oversize(len) => {
             warn(&format!(

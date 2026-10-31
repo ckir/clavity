@@ -150,12 +150,25 @@ if (Test-Path -LiteralPath $ftDir -PathType Container) {
                 $shas = @(([regex]'[0-9a-fA-F]{7,40}').Matches($(if ($fm.ContainsKey('fixed-by')) { $fm['fixed-by'] } else { '' })))
                 if ($shas.Count -eq 0) { $problems.Add("NO-SHA  $where  SHIPPED needs fixed-by: <sha, ...>") }
                 foreach ($s in $shas) { Test-Sha $s.Value $where }
-                if (-not $fm.ContainsKey('fixed-on')) { $problems.Add("NO-DATE  $where  SHIPPED needs fixed-on: <YYYY-MM-DD>") }
+                if (-not $fm.ContainsKey('fixed-on')) {
+                    $problems.Add("NO-DATE  $where  SHIPPED needs fixed-on: <YYYY-MM-DD>")
+                } else {
+                    $d = [datetime]::MinValue
+                    if (-not [datetime]::TryParseExact($fm['fixed-on'], 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$d)) {
+                        $problems.Add("BAD-DATE  $where  '$($fm['fixed-on'])' is not a calendar date (yyyy-MM-dd)")
+                    }
+                }
             }
             'KILLED' { if (-not $fm.ContainsKey('reason') -or $fm['reason'].Length -lt 12) { $problems.Add("NO-REASON  $where  KILLED needs reason: of at least 12 characters") } }
             'CLOSED-BY-RULING' { if (-not (@($lines) -match '^\*\*Reopen if:\*\* \S')) { $problems.Add("NO-REOPEN  $where  CLOSED-BY-RULING needs a '**Reopen if:** ...' line") } }
         }
-        if ($fm.ContainsKey('released-in') -and $tok -ne 'SHIPPED') { $problems.Add("RELEASED-ON-UNSHIPPED  $where  released-in: is only valid on SHIPPED") }
+        if ($fm.ContainsKey('released-in')) {
+            if ($tok -ne 'SHIPPED') {
+                $problems.Add("RELEASED-ON-UNSHIPPED  $where  released-in: is only valid on SHIPPED")
+            } elseif ($fm['released-in'] -notmatch '^clavity-v\d+$') {
+                $problems.Add("BAD-RELEASED  $where  '$($fm['released-in'])' is not 'clavity-vN'")
+            }
+        }
         $entries.Add([pscustomobject]@{ Tracker = 'fix-the-tool'; Id = $f.Name; Token = $tok; Open = ($OpenTokens -contains $tok); Where = $where; Title = (($lines | Where-Object { $_ -match '^slug:' } | Select-Object -First 1) -replace '^slug:\s*', ''); Text = '' })
     }
 }
