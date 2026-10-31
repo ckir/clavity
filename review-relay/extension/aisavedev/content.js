@@ -166,7 +166,7 @@ if (!window.__aiSaveDev) {
         if (!rows.length) return '';
         const cells = rows.map(row =>
           Array.from(row.querySelectorAll('th, td'))
-            .map(cell => walk(cell).trim().replace(/\|/g, '\\|').replace(/\n+/g, ' '))
+            .map(cell => walk(cell).trim().replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\n+/g, ' '))
         );
         if (!cells[0]?.length) return '';
         const header = `| ${cells[0].join(' | ')} |`;
