@@ -32,7 +32,14 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 # Delegated commands resolve from the repo root regardless of the caller's cwd.
-Set-Location $PSScriptRoot
+$script:RepoRoot = if ($PSScriptRoot) {
+    $PSScriptRoot
+} elseif ($MyInvocation.MyCommand -and ($MyInvocation.MyCommand.PSObject.Properties['Path']) -and $MyInvocation.MyCommand.Path) {
+    Split-Path -Parent $MyInvocation.MyCommand.Path
+} else {
+    (Get-Location).Path
+}
+Set-Location -LiteralPath $script:RepoRoot
 
 # ---------------------------------------------------------------------------
 # Presentation (honors NO_COLOR + non-TTY like the model)
@@ -122,7 +129,7 @@ function Invoke-FullGate {
 function Invoke-VersionCheckAll {
     $anyFail = $false
     foreach ($m in $script:Versioned) {
-        & pwsh -File (Join-Path $PSScriptRoot 'scripts/check-versions.ps1') $m
+        & pwsh -File (Join-Path $script:RepoRoot 'scripts/check-versions.ps1') $m
         if ($LASTEXITCODE -ne 0) { $anyFail = $true; Write-C "  [FAIL] $m" 'Yellow' }
         else                     { Write-C "  [ ok ] $m" 'Green' }
     }
