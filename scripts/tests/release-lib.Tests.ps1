@@ -627,11 +627,13 @@ Describe 'Get-DanglingReleaseCommits / Test-ResumeState / Get-DropConflictStatus
     }
 }
 
-Describe 'Get-PathBucket ($DevOnlyPaths coverage for site/, header.txt, and Greek docs)' {
-    It 'classifies site/ assets, header.txt, and Greek docs as dev-only rather than unclassified' {
+Describe 'Get-PathBucket ($DevOnlyPaths coverage for site/, marketing/, header.txt, and Greek docs)' {
+    It 'classifies site/ assets, marketing/ assets, header.txt, and Greek docs as dev-only rather than unclassified' {
         Get-PathBucket 'header.txt' | Should -BeExactly 'dev-only'
         Get-PathBucket 'site/index.html' | Should -BeExactly 'dev-only'
         Get-PathBucket 'site/assets/clavity.svg' | Should -BeExactly 'dev-only'
+        Get-PathBucket 'marketing/README.md' | Should -BeExactly 'dev-only'
+        Get-PathBucket 'marketing/campaigns/guidelines.md' | Should -BeExactly 'dev-only'
         Get-PathBucket 'README.el.md' | Should -BeExactly 'dev-only'
         Get-PathBucket 'CONTRIBUTING.el.md' | Should -BeExactly 'dev-only'
     }
