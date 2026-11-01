@@ -1,0 +1,95 @@
+<!doctype html>
+<!--
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Changelog - Clavity Release History</title>
+<meta name="description" content="Release history and recent updates across Clavity monorepo members.">
+<link rel="canonical" href="https://ckir.github.io/clavity/changelog/">
+<meta property="og:title" content="Changelog - Clavity Release History">
+<meta property="og:description" content="Release notes and changelog for Clavity.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://ckir.github.io/clavity/changelog/">
+<meta property="og:image" content="https://ckir.github.io/clavity/assets/og.jpg">
+<link rel="icon" type="image/svg+xml" href="../assets/clavity.svg">
+<link rel="stylesheet" href="../style.css">
+<script src="../analytics.js" defer></script>
+<script src="../script.js" defer></script>
+</head>
+<body>
+<nav class="site-nav" aria-label="Main Navigation">
+  <div class="nav-wrap">
+    <a class="nav-brand" href="../">
+      <img src="../assets/clavity.svg" width="28" height="28" alt="Clavity">
+      <span>Clavity</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="../how-it-works/">How It Works</a></li>
+      <li><a href="../products/bridge/">Products</a></li>
+      <li><a href="../docs/">Docs</a></li>
+      <li><a href="../roadmap/">Roadmap</a></li>
+      <li><a href="../community/">Community</a></li>
+      <li><a href="../beta/">Beta</a></li>
+    </ul>
+    <a class="cta nav-cta" href="../beta/" data-analytics-event="beta_cta_clicked" data-analytics-props='{"location":"nav"}'>Join Beta</a>
+  </div>
+</nav>
+
+<main class="wrap">
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="../">Home</a><span>/</span><span>Changelog</span>
+  </nav>
+
+  <header>
+    <h1>Release Changelog</h1>
+    <p class="subline">Comprehensive release history across all Clavity ecosystem members.</p>
+  </header>
+
+  <section>
+    <h2>Monorepo Releases</h2>
+    <p>Clavity ships coordinated umbrella releases tagged <code>clavity-v&lt;N&gt;</code> on GitHub. Each release bundles compiled binaries, SHA-256 checksums, and marketplace plugins.</p>
+    <ul>
+      <li><a href="https://github.com/ckir/clavity/releases">Browse All GitHub Releases</a> — Download release binaries and checksum files.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Per-Member Changelogs</h2>
+    <p>Each member maintains its own strict conventional changelog in the repository:</p>
+    <ul>
+      <li><a href="https://github.com/ckir/clavity/blob/main/clavity-dotnet/CHANGELOG.md">clavity-dotnet CHANGELOG</a> — Language Server updates and MCP tooling.</li>
+      <li><a href="https://github.com/ckir/clavity/blob/main/clavity-classic/CHANGELOG.md">clavity-classic CHANGELOG</a> — Standalone Rust bridge updates.</li>
+      <li><a href="https://github.com/ckir/clavity/blob/main/agy-autotrain/CHANGELOG.md">agy-autotrain CHANGELOG</a> — Knowledge capture and probe improvements.</li>
+      <li><a href="https://github.com/ckir/clavity/blob/main/commonmemory/CHANGELOG.md">commonmemory CHANGELOG</a> — Cross-agent notebook enhancements.</li>
+      <li><a href="https://github.com/ckir/clavity/blob/main/review-relay/CHANGELOG.md">review-relay CHANGELOG</a> — Web model review and browser extension updates.</li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap footer-grid">
+    <img src="../assets/profile.png" width="96" height="96" alt="Clavity emblem">
+    <div>
+      <p>Licensed under <a href="https://github.com/ckir/clavity/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a>.</p>
+      <nav aria-label="Project links">
+        <a href="../">Home</a> | 
+        <a href="../about/">About</a> | 
+        <a href="../pricing/">Pricing</a> | 
+        <a href="../roadmap/">Roadmap</a> | 
+        <a href="https://github.com/ckir/clavity">Repository</a> | 
+        <a href="https://github.com/ckir/clavity/issues">Issues</a>
+      </nav>
+      <p class="fine">Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of Anthropic. This is an independent project, not affiliated with, endorsed by, or sponsored by Google or Anthropic.</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

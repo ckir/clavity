@@ -1,0 +1,121 @@
+<!doctype html>
+<!--
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Product Roadmap - Clavity Engineering Milestones</title>
+<meta name="description" content="Public engineering roadmap, current implementation milestones, and upcoming capabilities for Clavity.">
+<link rel="canonical" href="https://ckir.github.io/clavity/roadmap/">
+<meta property="og:title" content="Product Roadmap - Clavity Engineering Milestones">
+<meta property="og:description" content="Engineering milestones and development roadmap for Clavity.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://ckir.github.io/clavity/roadmap/">
+<meta property="og:image" content="https://ckir.github.io/clavity/assets/og.jpg">
+<link rel="icon" type="image/svg+xml" href="../assets/clavity.svg">
+<link rel="stylesheet" href="../style.css">
+<script src="../analytics.js" defer></script>
+<script src="../script.js" defer></script>
+</head>
+<body>
+<nav class="site-nav" aria-label="Main Navigation">
+  <div class="nav-wrap">
+    <a class="nav-brand" href="../">
+      <img src="../assets/clavity.svg" width="28" height="28" alt="Clavity">
+      <span>Clavity</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="../how-it-works/">How It Works</a></li>
+      <li><a href="../products/bridge/">Products</a></li>
+      <li><a href="../docs/">Docs</a></li>
+      <li><a href="./" aria-current="page">Roadmap</a></li>
+      <li><a href="../community/">Community</a></li>
+      <li><a href="../beta/">Beta</a></li>
+    </ul>
+    <a class="cta nav-cta" href="../beta/" data-analytics-event="beta_cta_clicked" data-analytics-props='{"location":"nav"}'>Join Beta</a>
+  </div>
+</nav>
+
+<main class="wrap">
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="../">Home</a><span>/</span><span>Roadmap</span>
+  </nav>
+
+  <header>
+    <h1>Product Roadmap</h1>
+    <p class="subline">Measured outcomes and verified milestones. We document actual capabilities and active research rather than speculative promises.</p>
+  </header>
+
+  <section>
+    <h2>Current Status: Public Beta</h2>
+    <div class="cards">
+      <div class="card driver">
+        <h3>Shipped &amp; Verified</h3>
+        <p class="tag">Production Ready</p>
+        <ul>
+          <li>Cross-platform Language Server MCP bridge (<code>clavity-dotnet</code>).</li>
+          <li>Failover Rust bridge over psmux / agentmemory (<code>clavity-classic</code>).</li>
+          <li>Adversarial Panel Review with expert seats (<code>adversarial-panel-review</code>).</li>
+          <li>Pre-completion capstone code review gate (<code>agy-capstone</code>).</li>
+          <li>Test suite exhaustiveness mutation audit (<code>agy-test-audit</code>).</li>
+          <li>Automated repo defect capture and backlog triage.</li>
+          <li>Shared memory convention (<code>commonmemory</code>) &amp; Web review relay (<code>review-relay</code>).</li>
+        </ul>
+      </div>
+
+      <div class="card peer">
+        <h3>Active Beta Focus</h3>
+        <p class="tag">In Progress</p>
+        <ul>
+          <li>Public beta intake and cross-platform installation validation.</li>
+          <li>Refining empirical cheatsheet distillation in <code>agy-autotrain</code>.</li>
+          <li>Expanding support to next-generation Gemini and Claude frontier models.</li>
+          <li>Developer experience ergonomics and diagnostic error recovery.</li>
+        </ul>
+      </div>
+
+      <div class="card driver">
+        <h3>Under Investigation (Commercial Hypotheses)</h3>
+        <p class="tag">Future Research</p>
+        <ul>
+          <li>Headless CI/CD GitHub Actions bot running capstone gates on Pull Requests.</li>
+          <li>Centralized team review policy enforcement across multi-developer repositories.</li>
+          <li>Cryptographically verifiable review audit logs for compliance requirements.</li>
+          <li>Enterprise SSO and private team knowledge repositories.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Track Progress in Git</h2>
+    <p>Detailed milestone tracking and closed backlog entries are audited directly in the monorepo: <a href="https://github.com/ckir/clavity/blob/main/clavity-dotnet/ROADMAP.md">clavity-dotnet ROADMAP on GitHub</a>.</p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap footer-grid">
+    <img src="../assets/profile.png" width="96" height="96" alt="Clavity emblem">
+    <div>
+      <p>Licensed under <a href="https://github.com/ckir/clavity/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a>.</p>
+      <nav aria-label="Project links">
+        <a href="../">Home</a> | 
+        <a href="../about/">About</a> | 
+        <a href="../pricing/">Pricing</a> | 
+        <a href="../roadmap/">Roadmap</a> | 
+        <a href="https://github.com/ckir/clavity">Repository</a> | 
+        <a href="https://github.com/ckir/clavity/issues">Issues</a>
+      </nav>
+      <p class="fine">Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of Anthropic. This is an independent project, not affiliated with, endorsed by, or sponsored by Google or Anthropic.</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

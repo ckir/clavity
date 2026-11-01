@@ -22,6 +22,7 @@
 <meta property="og:image" content="https://ckir.github.io/clavity/assets/og.jpg">
 <link rel="icon" type="image/svg+xml" href="./assets/clavity.svg">
 <link rel="stylesheet" href="./style.css">
+<script src="./analytics.js" defer></script>
 <script src="./script.js" defer></script>
 <!--
 Art conversion commands ($ART is the folder holding the original artwork):
@@ -42,6 +43,24 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
 -->
 </head>
 <body>
+<nav class="site-nav" aria-label="Main Navigation">
+  <div class="nav-wrap">
+    <a class="nav-brand" href="./">
+      <img src="./assets/clavity.svg" width="28" height="28" alt="Clavity">
+      <span>Clavity</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="./how-it-works/">How It Works</a></li>
+      <li><a href="./products/bridge/">Products</a></li>
+      <li><a href="./docs/">Docs</a></li>
+      <li><a href="./roadmap/">Roadmap</a></li>
+      <li><a href="./community/">Community</a></li>
+      <li><a href="./beta/">Beta</a></li>
+    </ul>
+    <a class="cta nav-cta" href="./beta/" data-analytics-event="beta_cta_clicked" data-analytics-props='{"location":"nav"}'>Join Beta</a>
+  </div>
+</nav>
+
 <header class="hero">
   <img class="banner" src="./assets/banner.webp" width="1670" height="941" alt="Clavity: a glowing bridge connecting a Claude Code terminal on the left to a Google Antigravity terminal on the right.">
   <div class="wrap">
@@ -56,11 +75,62 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
       <li class="peer"><span class="stage">Test audit</span><span class="role">agy (peer)</span><code>agy-test-audit</code></li>
     </ol>
     <p class="legend">Claude Code is the driver (it implements and verifies). Antigravity (agy) is the peer (it reviews and recommends). Orange marks the driver, blue marks the peer.</p>
-    <p><a class="cta" href="#install">Install</a></p>
+    <div class="hero-actions">
+      <a class="cta" href="./beta/" data-analytics-event="beta_cta_clicked" data-analytics-props='{"location":"hero"}'>Join Public Beta</a>
+      <a class="cta-secondary" href="#install">Quick Install</a>
+    </div>
   </div>
 </header>
 
 <main class="wrap">
+  <section id="demo" aria-label="Terminal Pairing Demo">
+    <div class="demo-window">
+      <div class="demo-header">
+        <span class="demo-dot red"></span>
+        <span class="demo-dot yellow"></span>
+        <span class="demo-dot green"></span>
+        <span class="demo-title">clavity workspace — dual agent collaboration</span>
+      </div>
+      <div class="demo-grid">
+        <div class="demo-pane driver-pane">
+          <span class="pane-title">Driver: Claude Code (Left Terminal)</span>
+          <code>$ claude</code><br>
+          <code>&gt; /brainstorm "Implement auth token refresh"</code><br>
+          <code>... Drafted 2026-11-01-auth-spec.md</code><br>
+          <code>Calling agy peer: adversarial-panel-review...</code><br>
+          <code>[PASS] Spec hardened. Proceeding to implementation.</code><br>
+          <code>Running agy-capstone review on commit e4f12a...</code>
+        </div>
+        <div class="demo-pane peer-pane">
+          <span class="pane-title">Peer: Google Antigravity (Right Terminal)</span>
+          <code>$ agy-peer --listen</code><br>
+          <code>[PANEL REVIEW] 3 seats convened: SecOps, Arch, Perf</code><br>
+          <code>Found: token expiration missing clock skew buffer.</code><br>
+          <code>[CAPSTONE] Auditing committed code &amp; tests...</code><br>
+          <code>VERDICT: GREEN (0 blocking defects, tests hardened)</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="values">
+    <h2>Why dual-agent collaboration?</h2>
+    <ul class="value-grid">
+      <li class="value-card">
+        <h3>Independent Peer Review</h3>
+        <p>Breaks self-confirmation bias. Claude Code builds while an independent Gemini model in Antigravity challenges architectural assumptions and reviews diffs before merge.</p>
+      </li>
+      <li class="value-card">
+        <h3>Adversarial Quality Gates</h3>
+        <p>Multi-seat review panels, rounds-until-green capstone reviews, and rigorous test audits catch edge cases that single agents routinely miss.</p>
+      </li>
+      <li class="value-card">
+        <h3>Shared Memory &amp; Learning</h3>
+        <p>Cross-agent memory ensures facts and bug patterns discovered by one agent are immediately known by the other, eliminating repetitive failures.</p>
+      </li>
+    </ul>
+  </section>
+
   <section id="how">
     <h2>How it works</h2>
     <p>clavity starts a Claude Code instance and an Antigravity (agy) instance in the same folder. Claude Code is the driver: it implements and verifies. Antigravity is the peer: it reviews and recommends.</p>
@@ -73,7 +143,7 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
     <blockquote data-readme-quote="waiver-2">
       <p>In case you have problem to start agy (e.g. quota exhausted, Google's servers are down) you can switch to subagents mode by prompt. Say for example "Waive agy for this and use subagents".</p>
     </blockquote>
-    <p>The full text is in the <a href="https://github.com/ckir/clavity/blob/main/README.md">README</a>.</p>
+    <p>For the complete stage-by-stage workflow breakdown, explore <a href="./how-it-works/">How Collaboration Works</a> or consult the <a href="https://github.com/ckir/clavity/blob/main/README.md">README</a>.</p>
     <img class="art" src="./assets/clavity.svg" width="1647" height="928" alt="The clavity wordmark above a bridge of light between an orange Claude Code panel and a blue Antigravity panel." loading="lazy">
   </section>
 
@@ -85,31 +155,31 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
         <h3>clavity-dotnet</h3>
         <p class="tag">Primary - pick exactly one</p>
         <p>The modern .NET rebuild: pairs Claude with a live agy peer through a local Language Server that gives Claude agy_look, agy_status and agy_ask.</p>
-        <a href="https://github.com/ckir/clavity/blob/main/clavity-dotnet/README.md">clavity-dotnet README</a>
+        <p><a href="./products/bridge/">Product details</a> | <a href="https://github.com/ckir/clavity/blob/main/clavity-dotnet/README.md">clavity-dotnet README</a></p>
       </li>
       <li class="card driver">
         <h3>clavity-classic</h3>
         <p class="tag">Failover - pick exactly one</p>
         <p>The original Rust-based bridge: Claude drives a live agy peer through a psmux doorbell and the agentmemory bus. Use it if clavity-dotnet is unavailable.</p>
-        <a href="https://github.com/ckir/clavity/blob/main/clavity-classic/README.md">clavity-classic README</a>
+        <p><a href="./products/bridge/">Product details</a> | <a href="https://github.com/ckir/clavity/blob/main/clavity-classic/README.md">clavity-classic README</a></p>
       </li>
       <li class="card peer">
         <h3>agy-autotrain</h3>
         <p class="tag">Opt-in add-on</p>
-        <p>Auto-trains clavity's agy knowledge from everyday usage: capture, curate, verify, then compile into a manual.</p>
-        <a href="https://github.com/ckir/clavity/blob/main/agy-autotrain/README.md">agy-autotrain README</a>
+        <p>Auto-trains clavity's agy knowledge from everyday usage. It watches the pair work, extracts insight, verify, then compile into a manual.</p>
+        <p><a href="./products/agent-knowledge/">Product details</a> | <a href="https://github.com/ckir/clavity/blob/main/agy-autotrain/README.md">agy-autotrain README</a></p>
       </li>
       <li class="card peer">
         <h3>commonmemory</h3>
         <p class="tag">Opt-in add-on</p>
         <p>A shared notebook so Claude and agy share facts across the pairing. Needs <a href="https://www.npmjs.com/package/@agentmemory/agentmemory">@agentmemory/agentmemory</a>.</p>
-        <a href="https://github.com/ckir/clavity/blob/main/commonmemory/README.md">commonmemory README</a>
+        <p><a href="./products/shared-memory/">Product details</a> | <a href="https://github.com/ckir/clavity/blob/main/commonmemory/README.md">commonmemory README</a></p>
       </li>
       <li class="card peer">
         <h3>review-relay</h3>
         <p class="tag">Opt-in add-on</p>
         <p>Assisted copy-paste review rounds with web AI models, with Claude preparing each round and verifying the findings.</p>
-        <a href="https://github.com/ckir/clavity/blob/main/review-relay/README.md">review-relay README</a>
+        <p><a href="./products/review-relay/">Product details</a> | <a href="https://github.com/ckir/clavity/blob/main/review-relay/README.md">review-relay README</a></p>
       </li>
     </ul>
   </section>
@@ -142,11 +212,19 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
   </section>
 
   <section id="guides">
-    <h2>Guides</h2>
+    <h2>Guides &amp; Resources</h2>
+    <p>Explore comprehensive technical documentation in our <a href="./docs/">Documentation Portal</a> or access the offline guides directly:</p>
     <ul>
       <li><a href="https://github.com/ckir/clavity/blob/main/docs/USER_GUIDE.pdf">User guide (PDF)</a></li>
       <li><a href="https://github.com/ckir/clavity/blob/main/docs/USER_GUIDE.html">User guide (HTML)</a></li>
+      <li><a href="./docs/">Full Documentation Index</a></li>
     </ul>
+  </section>
+
+  <section id="beta-invite">
+    <h2>Join the Public Beta</h2>
+    <p>Clavity is free for public evaluation under the PolyForm Noncommercial 1.0.0 license. Evaluate the bridge in your local workspace or register for commercial pilot updates.</p>
+    <p><a class="cta" href="./beta/" data-analytics-event="beta_cta_clicked" data-analytics-props='{"location":"beta_section"}'>Explore the Beta Program</a></p>
   </section>
 </main>
 
@@ -155,7 +233,15 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
     <img src="./assets/profile.png" width="96" height="96" alt="Clavity emblem">
     <div>
       <p>Licensed under <a href="https://github.com/ckir/clavity/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a>.</p>
-      <nav aria-label="Project links"><a href="https://github.com/ckir/clavity">Repository</a> | <a href="https://github.com/ckir/clavity/issues">Issues</a></nav>
+      <nav aria-label="Project links">
+        <a href="./">Home</a> | 
+        <a href="./about/">About</a> | 
+        <a href="./pricing/">Pricing</a> | 
+        <a href="./roadmap/">Roadmap</a> | 
+        <a href="./changelog/">Changelog</a> | 
+        <a href="https://github.com/ckir/clavity">Repository</a> | 
+        <a href="https://github.com/ckir/clavity/issues">Issues</a>
+      </nav>
       <p class="fine">Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of Anthropic. This is an independent project, not affiliated with, endorsed by, or sponsored by Google or Anthropic.</p>
     </div>
   </div>

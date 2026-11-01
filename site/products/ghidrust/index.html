@@ -1,0 +1,114 @@
+<!doctype html>
+<!--
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>ghidrust (Historical Notice) - Clavity Project Status</title>
+<meta name="description" content="Status notice regarding ghidrust: headless Ghidra reverse-engineering MCP tool spun out to standalone project.">
+<link rel="canonical" href="https://ckir.github.io/clavity/products/ghidrust/">
+<meta property="og:title" content="ghidrust (Historical Notice) - Clavity Project Status">
+<meta property="og:description" content="Project status and migration notice for ghidrust.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://ckir.github.io/clavity/products/ghidrust/">
+<meta property="og:image" content="https://ckir.github.io/clavity/assets/og.jpg">
+<link rel="icon" type="image/svg+xml" href="../../assets/clavity.svg">
+<link rel="stylesheet" href="../../style.css">
+<script src="../../analytics.js" defer></script>
+<script src="../../script.js" defer></script>
+</head>
+<body>
+<nav class="site-nav" aria-label="Main Navigation">
+  <div class="nav-wrap">
+    <a class="nav-brand" href="../../">
+      <img src="../../assets/clavity.svg" width="28" height="28" alt="Clavity">
+      <span>Clavity</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="../../how-it-works/">How It Works</a></li>
+      <li><a href="./" aria-current="page">Products</a></li>
+      <li><a href="../../docs/">Docs</a></li>
+      <li><a href="../../roadmap/">Roadmap</a></li>
+      <li><a href="../../community/">Community</a></li>
+      <li><a href="../../beta/">Beta</a></li>
+    </ul>
+    <a class="cta nav-cta" href="../../beta/" data-analytics-event="beta_cta_clicked" data-analytics-props='{"location":"nav"}'>Join Beta</a>
+  </div>
+</nav>
+
+<main class="wrap">
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="../../">Home</a><span>/</span><a href="../../products/bridge/">Products</a><span>/</span><span>ghidrust</span>
+  </nav>
+
+  <header>
+    <span class="badge badge-addon">Project Migration Notice</span>
+    <h1>ghidrust</h1>
+    <p class="subline">Headless Ghidra reverse-engineering over MCP — migrated to standalone repository.</p>
+  </header>
+
+  <section>
+    <div class="note">
+      <p><strong>Status Update (September 14, 2026):</strong> <code>ghidrust</code> was fully retired from the Clavity monorepo to maintain Clavity's exclusive focus on multi-agent collaboration. Its reverse-engineering capabilities have been superseded by the standalone plugin <code>re-ghidra-mcp-cc</code>.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Original Capabilities</h2>
+    <p><code>ghidrust</code> was a single-binary pure-Rust MCP server exposing 19 reverse-engineering tools (decompiler, disassembly navigation, symbol renames, cross-references) connected to a persistent headless Ghidra JVM process.</p>
+  </section>
+
+  <section>
+    <h2>Where to Find It Today</h2>
+    <p>Developers seeking headless Ghidra reverse-engineering inside Claude Code should install the dedicated standalone tool:</p>
+    <div class="commands">
+      <li><code>claude plugin install re-ghidra-mcp-cc@aiplugins</code></li>
+    </div>
+    <p>For migration history and release notes, consult the <a href="https://github.com/ckir/clavity/blob/main/docs/migrating-from-the-inno-installers.md">migration guide in the repository</a>.</p>
+  </section>
+
+  <section>
+    <h2>Active Clavity Products</h2>
+    <ul class="cards">
+      <li class="card driver">
+        <h3>Clavity Bridge</h3>
+        <p class="tag">Flagship</p>
+        <p>Language Server pairing Claude Code and Google Antigravity.</p>
+        <p><a href="../../products/bridge/">View Clavity Bridge</a></p>
+      </li>
+      <li class="card peer">
+        <h3>agy-autotrain</h3>
+        <p class="tag">Add-on</p>
+        <p>Continuous empirical knowledge synthesis for Antigravity peers.</p>
+        <p><a href="../../products/agent-knowledge/">View agy-autotrain</a></p>
+      </li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap footer-grid">
+    <img src="../../assets/profile.png" width="96" height="96" alt="Clavity emblem">
+    <div>
+      <p>Licensed under <a href="https://github.com/ckir/clavity/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a>.</p>
+      <nav aria-label="Project links">
+        <a href="../../">Home</a> | 
+        <a href="../../about/">About</a> | 
+        <a href="../../pricing/">Pricing</a> | 
+        <a href="../../roadmap/">Roadmap</a> | 
+        <a href="https://github.com/ckir/clavity">Repository</a> | 
+        <a href="https://github.com/ckir/clavity/issues">Issues</a>
+      </nav>
+      <p class="fine">Ghidra is a trademark of the National Security Agency; Antigravity is a trademark of Google LLC; Claude is a trademark of Anthropic. This is an independent project, not affiliated with or endorsed by the NSA, Google, or Anthropic.</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

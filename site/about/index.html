@@ -1,0 +1,101 @@
+<!doctype html>
+<!--
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>About Clavity - Project Philosophy &amp; Authors</title>
+<meta name="description" content="Learn about Clavity's origins, engineering philosophy, privacy principles, and open-source licensing.">
+<link rel="canonical" href="https://ckir.github.io/clavity/about/">
+<meta property="og:title" content="About Clavity - Project Philosophy &amp; Authors">
+<meta property="og:description" content="The philosophy and engineering principles behind Clavity.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://ckir.github.io/clavity/about/">
+<meta property="og:image" content="https://ckir.github.io/clavity/assets/og.jpg">
+<link rel="icon" type="image/svg+xml" href="../assets/clavity.svg">
+<link rel="stylesheet" href="../style.css">
+<script src="../analytics.js" defer></script>
+<script src="../script.js" defer></script>
+</head>
+<body>
+<nav class="site-nav" aria-label="Main Navigation">
+  <div class="nav-wrap">
+    <a class="nav-brand" href="../">
+      <img src="../assets/clavity.svg" width="28" height="28" alt="Clavity">
+      <span>Clavity</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="../how-it-works/">How It Works</a></li>
+      <li><a href="../products/bridge/">Products</a></li>
+      <li><a href="../docs/">Docs</a></li>
+      <li><a href="../roadmap/">Roadmap</a></li>
+      <li><a href="../community/">Community</a></li>
+      <li><a href="../beta/">Beta</a></li>
+    </ul>
+    <a class="cta nav-cta" href="../beta/" data-analytics-event="beta_cta_clicked" data-analytics-props='{"location":"nav"}'>Join Beta</a>
+  </div>
+</nav>
+
+<main class="wrap">
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="../">Home</a><span>/</span><span>About</span>
+  </nav>
+
+  <header>
+    <h1>About Clavity</h1>
+    <p class="subline">Pioneering multi-agent collaboration protocols for software engineering.</p>
+  </header>
+
+  <section>
+    <h2>Origins &amp; Philosophy</h2>
+    <p>As AI coding assistants have grown in capability, their primary failure mode has shifted from syntax errors to subtle logical hallucinations: writing code that appears plausible, alongside unit tests that silently pass without verifying actual edge cases.</p>
+    <p>Clavity was created by Costas Kirgoussios to explore a simple thesis: <strong>autonomous coding agents must be peer-reviewed by an independent model family before code is committed</strong>. By combining Anthropic's Claude Code and Google's Antigravity into a coordinated driver-peer relationship, Clavity brings the rigor of human peer review to automated software development.</p>
+  </section>
+
+  <section>
+    <h2>Privacy &amp; Security Principles</h2>
+    <ul>
+      <li><strong>Local Execution:</strong> The Clavity Language Server runs entirely on your local workstation. It requires zero cloud proxies and zero proprietary hosted servers.</li>
+      <li><strong>Zero Code Ingestion:</strong> We never inspect, store, or transmit your proprietary source code, git diffs, terminal outputs, or model prompts.</li>
+      <li><strong>Ethical Telemetry:</strong> Clavity does not bundle desktop telemetry or analytics trackers inside its runtime binaries.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Licensing &amp; Legal Notices</h2>
+    <p>All first-party software in this repository is licensed under the <a href="https://github.com/ckir/clavity/blob/main/LICENSE">PolyForm Noncommercial License 1.0.0</a>. You are free to inspect, modify, evaluate, and use Clavity for noncommercial research, personal development, and open-source projects.</p>
+    <p>For commercial software development, consult our <a href="../pricing/">pricing overview</a> or register for our commercial pilot program.</p>
+  </section>
+
+  <section>
+    <h2>Trademarks</h2>
+    <p class="fine">"Antigravity" is a trademark of Google LLC. "Claude" and "Claude Code" are trademarks of Anthropic. "Ghidra" is a trademark of the National Security Agency. Clavity is an independent open-source project, not affiliated with, endorsed by, or sponsored by Google, Anthropic, or the NSA. These trademarks are used strictly to identify the external developer tools this software interoperates with.</p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap footer-grid">
+    <img src="../assets/profile.png" width="96" height="96" alt="Clavity emblem">
+    <div>
+      <p>Licensed under <a href="https://github.com/ckir/clavity/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a>.</p>
+      <nav aria-label="Project links">
+        <a href="../">Home</a> | 
+        <a href="./">About</a> | 
+        <a href="../pricing/">Pricing</a> | 
+        <a href="../roadmap/">Roadmap</a> | 
+        <a href="https://github.com/ckir/clavity">Repository</a> | 
+        <a href="https://github.com/ckir/clavity/issues">Issues</a>
+      </nav>
+      <p class="fine">Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of Anthropic. This is an independent project, not affiliated with, endorsed by, or sponsored by Google or Anthropic.</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!doctype html>
+<!--
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>commonmemory - Shared Cross-Agent Memory for Clavity</title>
+<meta name="description" content="A shared cross-agent memory convention enabling Claude Code and Antigravity to persist and cross-read notes, decisions, and gotchas.">
+<link rel="canonical" href="https://ckir.github.io/clavity/products/shared-memory/">
+<meta property="og:title" content="commonmemory - Shared Cross-Agent Memory for Clavity">
+<meta property="og:description" content="Cross-agent memory convention using the agentmemory signal bus.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://ckir.github.io/clavity/products/shared-memory/">
+<meta property="og:image" content="https://ckir.github.io/clavity/assets/og.jpg">
+<link rel="icon" type="image/svg+xml" href="../../assets/clavity.svg">
+<link rel="stylesheet" href="../../style.css">
+<script src="../../analytics.js" defer></script>
+<script src="../../script.js" defer></script>
+</head>
+<body>
+<nav class="site-nav" aria-label="Main Navigation">
+  <div class="nav-wrap">
+    <a class="nav-brand" href="../../">
+      <img src="../../assets/clavity.svg" width="28" height="28" alt="Clavity">
+      <span>Clavity</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="../../how-it-works/">How It Works</a></li>
+      <li><a href="./" aria-current="page">Products</a></li>
+      <li><a href="../../docs/">Docs</a></li>
+      <li><a href="../../roadmap/">Roadmap</a></li>
+      <li><a href="../../community/">Community</a></li>
+      <li><a href="../../beta/">Beta</a></li>
+    </ul>
+    <a class="cta nav-cta" href="../../beta/" data-analytics-event="beta_cta_clicked" data-analytics-props='{"location":"nav"}'>Join Beta</a>
+  </div>
+</nav>
+
+<main class="wrap">
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="../../">Home</a><span>/</span><a href="../../products/bridge/">Products</a><span>/</span><span>Shared Memory</span>
+  </nav>
+
+  <header>
+    <span class="badge badge-peer">Opt-in Add-on</span>
+    <h1>commonmemory</h1>
+    <p class="subline">Shared cross-agent memory convention and notebook built on the <code>agentmemory</code> signal bus.</p>
+  </header>
+
+  <section>
+    <h2>Problem Solved</h2>
+    <p>In standard multi-agent workflows, each agent maintains its own ephemeral context window. When Claude discovers a subtle dependency bug or project convention, that insight is lost when a subagent exits, and remains invisible to the Antigravity peer unless manually repeated in prompts.</p>
+    <p><code>commonmemory</code> establishes a standardized tagging convention and persistent memory notebook that both Claude Code and Antigravity can write to and query dynamically.</p>
+  </section>
+
+  <section>
+    <h2>Main Capabilities</h2>
+    <ul>
+      <li><strong>Structured Fact Tagging:</strong> Categorizes project learnings under standard tags (<code>decisions</code>, <code>gotchas</code>, <code>bugfix</code>, <code>architecture</code>).</li>
+      <li><strong>Cross-Session Persistence:</strong> Keeps critical repository knowledge available across separate terminal invocations.</li>
+      <li><strong>Proactive Context Injection:</strong> Teaches agents when to consult the shared memory store before planning new features.</li>
+      <li><strong>Zero Cloud Relays:</strong> Operates locally via the lightweight <code>@agentmemory/agentmemory</code> package.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Installation &amp; Setup</h2>
+    <p>1. Ensure the <code>@agentmemory/agentmemory</code> dependency is installed:</p>
+    <div class="commands">
+      <li><code>npm install -g @agentmemory/agentmemory</code></li>
+    </div>
+    <p>2. Install the Clavity plugin:</p>
+    <div class="commands">
+      <li><code>claude plugin install commonmemory@clavity</code></li>
+    </div>
+  </section>
+
+  <section>
+    <h2>Requirements &amp; Prerequisites</h2>
+    <table class="spec-table">
+      <thead>
+        <tr><th>Requirement</th><th>Specification</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Runtime Dependency</td><td>Node.js / npm (for <code>@agentmemory/agentmemory</code>)</td></tr>
+        <tr><td>Host Plugin</td><td>Clavity Bridge (<code>clavity-dotnet</code> or <code>clavity-classic</code>)</td></tr>
+        <tr><td>Supported Agents</td><td>Claude Code and Google Antigravity</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Known Limitations</h2>
+    <ul>
+      <li>Requires Node.js runtime on PATH to support the agentmemory CLI bus.</li>
+      <li>Memory entries are scoped to the active workspace repository.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>GitHub Destination</h2>
+    <p>View source code and specifications in the repository: <a href="https://github.com/ckir/clavity/tree/main/commonmemory">commonmemory on GitHub</a>.</p>
+  </section>
+
+  <section>
+    <h2>Related Products</h2>
+    <ul class="cards">
+      <li class="card driver">
+        <h3>Clavity Bridge</h3>
+        <p class="tag">Flagship</p>
+        <p>The primary driver-peer Language Server connecting Claude and Antigravity.</p>
+        <p><a href="../../products/bridge/">View Bridge</a></p>
+      </li>
+      <li class="card peer">
+        <h3>review-relay</h3>
+        <p class="tag">Add-on</p>
+        <p>Assisted review rounds with external web AI models.</p>
+        <p><a href="../../products/review-relay/">View review-relay</a></p>
+      </li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap footer-grid">
+    <img src="../../assets/profile.png" width="96" height="96" alt="Clavity emblem">
+    <div>
+      <p>Licensed under <a href="https://github.com/ckir/clavity/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a>.</p>
+      <nav aria-label="Project links">
+        <a href="../../">Home</a> | 
+        <a href="../../about/">About</a> | 
+        <a href="../../pricing/">Pricing</a> | 
+        <a href="../../roadmap/">Roadmap</a> | 
+        <a href="https://github.com/ckir/clavity">Repository</a> | 
+        <a href="https://github.com/ckir/clavity/issues">Issues</a>
+      </nav>
+      <p class="fine">Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of Anthropic. This is an independent project, not affiliated with, endorsed by, or sponsored by Google or Anthropic.</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

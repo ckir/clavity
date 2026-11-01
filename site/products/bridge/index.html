@@ -1,0 +1,164 @@
+<!doctype html>
+<!--
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Clavity Bridge - Claude Code &amp; Antigravity MCP Bridge</title>
+<meta name="description" content="Pair Claude Code with a live Google Antigravity peer in the same workspace via a high-performance Language Server MCP bridge.">
+<link rel="canonical" href="https://ckir.github.io/clavity/products/bridge/">
+<meta property="og:title" content="Clavity Bridge - Claude Code &amp; Antigravity MCP Bridge">
+<meta property="og:description" content="Language Server bridging Claude Code and Antigravity over stdio MCP.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://ckir.github.io/clavity/products/bridge/">
+<meta property="og:image" content="https://ckir.github.io/clavity/assets/og.jpg">
+<link rel="icon" type="image/svg+xml" href="../../assets/clavity.svg">
+<link rel="stylesheet" href="../../style.css">
+<script src="../../analytics.js" defer></script>
+<script src="../../script.js" defer></script>
+</head>
+<body>
+<nav class="site-nav" aria-label="Main Navigation">
+  <div class="nav-wrap">
+    <a class="nav-brand" href="../../">
+      <img src="../../assets/clavity.svg" width="28" height="28" alt="Clavity">
+      <span>Clavity</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="../../how-it-works/">How It Works</a></li>
+      <li><a href="./" aria-current="page">Products</a></li>
+      <li><a href="../../docs/">Docs</a></li>
+      <li><a href="../../roadmap/">Roadmap</a></li>
+      <li><a href="../../community/">Community</a></li>
+      <li><a href="../../beta/">Beta</a></li>
+    </ul>
+    <a class="cta nav-cta" href="../../beta/" data-analytics-event="beta_cta_clicked" data-analytics-props='{"location":"nav"}'>Join Beta</a>
+  </div>
+</nav>
+
+<main class="wrap">
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="../../">Home</a><span>/</span><a href="../../products/bridge/">Products</a><span>/</span><span>Bridge</span>
+  </nav>
+
+  <header>
+    <span class="badge badge-driver">Flagship Integration</span>
+    <h1>Clavity Bridge</h1>
+    <p class="subline">High-performance Language Server and MCP bridge connecting Claude Code and Google Antigravity.</p>
+  </header>
+
+  <section>
+    <h2>Problem Solved</h2>
+    <p>Single-agent coding tools operate in an isolated confirmation loop: the same model that generates an implementation also validates it, often overlooking subtle edge cases, invalid test assertions, or architectural drift. Running two independent AI tools manually requires tedious copy-pasting across terminal tabs.</p>
+    <p>Clavity Bridge automates direct peer communication between Claude Code (driver) and Antigravity (peer) within the same repository workspace.</p>
+  </section>
+
+  <section>
+    <h2>Implementations &amp; Architecture</h2>
+    <p>The bridge provides two mutually exclusive implementations:</p>
+    <div class="cards">
+      <div class="card driver">
+        <h3>clavity-dotnet (Primary)</h3>
+        <p class="tag">Cross-Platform (.NET 10)</p>
+        <p>A modern Language Server (<code>clavity-ls</code>) that exposes Antigravity to Claude Code as an in-process MCP server over stdio. Automatically downloads verified pre-built binaries on first run.</p>
+        <p><a href="https://github.com/ckir/clavity/tree/main/clavity-dotnet">Explore source on GitHub</a></p>
+      </div>
+      <div class="card driver">
+        <h3>clavity-classic (Failover)</h3>
+        <p class="tag">Windows Only (Rust)</p>
+        <p>The original bridge implementation written in pure Rust. Uses a <code>psmux</code> doorbell and the <code>agentmemory</code> signal bus to communicate with a live Antigravity peer.</p>
+        <p><a href="https://github.com/ckir/clavity/tree/main/clavity-classic">Explore source on GitHub</a></p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Main Capabilities</h2>
+    <ul>
+      <li><strong>Adversarial Panel Review:</strong> Convenes multi-seat expert review panels (Architecture, Security, Performance) via Antigravity before implementation begins.</li>
+      <li><strong>Pre-Completion Capstone Review:</strong> Multi-round, citation-verified code audits (<code>agy-capstone</code>) that must pass before a task is marked complete.</li>
+      <li><strong>Test Audit Hardening:</strong> Exhaustive test suite audits (<code>agy-test-audit</code>) verifying that unit tests actually catch regressions.</li>
+      <li><strong>Automatic Defect Capture:</strong> Collects repository bugs encountered during agent execution into a ranked backlog via <code>start the triage</code>.</li>
+      <li><strong>Zero Network Relays:</strong> All communications execute locally over stdio and process pipes.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Installation &amp; Setup</h2>
+    <p>Install the marketplace plugin directly in your terminal:</p>
+    <div class="commands">
+      <li><code>claude plugin marketplace add ckir/clavity</code></li>
+      <li><code>claude plugin install clavity@clavity</code></li>
+    </div>
+    <p>The plugin automatically fetches the matching <code>clavity-ls</code> binary for Windows x64, Linux x64, macOS Apple Silicon, or macOS Intel from GitHub Releases.</p>
+  </section>
+
+  <section>
+    <h2>Requirements &amp; Prerequisites</h2>
+    <table class="spec-table">
+      <thead>
+        <tr><th>Requirement</th><th>Specification</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>AI Driver</td><td>Claude Code CLI (authenticated)</td></tr>
+        <tr><td>AI Peer</td><td>Google Antigravity CLI (<code>agy</code>, authenticated)</td></tr>
+        <tr><td>Prerequisite Plugin</td><td><a href="https://github.com/obra/superpowers">superpowers</a> installed in Claude Code</td></tr>
+        <tr><td>Supported OS</td><td>Windows 10/11 x64, Linux x64 (glibc 2.31+), macOS 12+ (arm64/x64)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Known Limitations</h2>
+    <ul>
+      <li>Requires an active Google Antigravity quota or local fallback mode.</li>
+      <li>Peer review rounds consume API tokens across both model providers.</li>
+      <li><code>clavity-classic</code> is limited to Windows systems.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Related Products</h2>
+    <ul class="cards">
+      <li class="card peer">
+        <h3>agy-autotrain</h3>
+        <p class="tag">Add-on</p>
+        <p>Continuous empirical learning from daily driver interactions.</p>
+        <p><a href="../../products/agent-knowledge/">View agy-autotrain</a></p>
+      </li>
+      <li class="card peer">
+        <h3>commonmemory</h3>
+        <p class="tag">Add-on</p>
+        <p>Shared persistent cross-agent notebook and note tagging.</p>
+        <p><a href="../../products/shared-memory/">View commonmemory</a></p>
+      </li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap footer-grid">
+    <img src="../../assets/profile.png" width="96" height="96" alt="Clavity emblem">
+    <div>
+      <p>Licensed under <a href="https://github.com/ckir/clavity/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a>.</p>
+      <nav aria-label="Project links">
+        <a href="../../">Home</a> | 
+        <a href="../../about/">About</a> | 
+        <a href="../../pricing/">Pricing</a> | 
+        <a href="../../roadmap/">Roadmap</a> | 
+        <a href="https://github.com/ckir/clavity">Repository</a> | 
+        <a href="https://github.com/ckir/clavity/issues">Issues</a>
+      </nav>
+      <p class="fine">Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of Anthropic. This is an independent project, not affiliated with, endorsed by, or sponsored by Google or Anthropic.</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

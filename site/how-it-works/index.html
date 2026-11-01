@@ -1,0 +1,148 @@
+<!doctype html>
+<!--
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>How It Works - Clavity Dual-Agent Architecture</title>
+<meta name="description" content="Detailed explanation of the 6-stage adversarial collaboration between Claude Code (driver) and Google Antigravity (peer).">
+<link rel="canonical" href="https://ckir.github.io/clavity/how-it-works/">
+<meta property="og:title" content="How It Works - Clavity Dual-Agent Architecture">
+<meta property="og:description" content="The 6-stage adversarial workflow pairing Claude Code and Google Antigravity.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://ckir.github.io/clavity/how-it-works/">
+<meta property="og:image" content="https://ckir.github.io/clavity/assets/og.jpg">
+<link rel="icon" type="image/svg+xml" href="../assets/clavity.svg">
+<link rel="stylesheet" href="../style.css">
+<script src="../analytics.js" defer></script>
+<script src="../script.js" defer></script>
+</head>
+<body>
+<nav class="site-nav" aria-label="Main Navigation">
+  <div class="nav-wrap">
+    <a class="nav-brand" href="../">
+      <img src="../assets/clavity.svg" width="28" height="28" alt="Clavity">
+      <span>Clavity</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="./" aria-current="page">How It Works</a></li>
+      <li><a href="../products/bridge/">Products</a></li>
+      <li><a href="../docs/">Docs</a></li>
+      <li><a href="../roadmap/">Roadmap</a></li>
+      <li><a href="../community/">Community</a></li>
+      <li><a href="../beta/">Beta</a></li>
+    </ul>
+    <a class="cta nav-cta" href="../beta/" data-analytics-event="beta_cta_clicked" data-analytics-props='{"location":"nav"}'>Join Beta</a>
+  </div>
+</nav>
+
+<main class="wrap">
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="../">Home</a><span>/</span><span>How It Works</span>
+  </nav>
+
+  <header>
+    <h1>How Collaboration Works</h1>
+    <p class="subline">An adversarial division of labor: Claude Code drives implementation while Google Antigravity inspects and audits.</p>
+  </header>
+
+  <section>
+    <h2>The Core Principle: Driver vs. Peer</h2>
+    <p>Most AI coding assistants suffer from self-confirmation bias: an agent that misunderstands a specification will generate flawed code, write flawed tests that reflect the misunderstanding, and report that all tests passed green. Human developers are forced to manually audit every diff line-by-line.</p>
+    <p>Clavity breaks this confirmation bias by pairing two distinct model families in the same workspace directory:</p>
+    <ul>
+      <li><strong>Claude Code (Driver):</strong> Formulates plans, edits code, executes builds, and tests implementations.</li>
+      <li><strong>Google Antigravity (Peer):</strong> Convenes expert review panels, audits specifications before coding starts, and runs adversarial capstone checks before code completion.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>The 6-Stage Lifecycle</h2>
+    <ol class="stages" aria-label="Detailed workflow stages">
+      <li class="driver">
+        <span class="stage">1. Brainstorm</span>
+        <span class="role">Claude (driver)</span>
+        <p>Interactive interview refining requirements into a structured design document before writing any code.</p>
+      </li>
+      <li class="peer">
+        <span class="stage">2. Spec Review</span>
+        <span class="role">agy panel (peer)</span>
+        <code>adversarial-panel-review</code>
+        <p>Antigravity convenes independent expert seats (Architecture, Security, Performance) to challenge assumptions.</p>
+      </li>
+      <li class="peer">
+        <span class="stage">3. Plan Review</span>
+        <span class="role">agy panel (peer)</span>
+        <code>adversarial-panel-review</code>
+        <p>Implementation plan tasks are audited for logical ordering, dependency risks, and measurable verification gates.</p>
+      </li>
+      <li class="driver">
+        <span class="stage">4. Build</span>
+        <span class="role">Claude (driver)</span>
+        <p>Claude implements code changes incrementally in thin slices, verifying locally via compiler and unit tests.</p>
+      </li>
+      <li class="peer">
+        <span class="stage">5. Capstone</span>
+        <span class="role">agy (peer)</span>
+        <code>agy-capstone</code>
+        <p>Rounds-until-green adversarial review of committed diffs. Peer cites exact file:line proofs before human gate.</p>
+      </li>
+      <li class="peer">
+        <span class="stage">6. Test Audit</span>
+        <span class="role">agy (peer)</span>
+        <code>agy-test-audit</code>
+        <p>Hardens test suites against vacuous assertions, ensuring test suites would catch future regressions.</p>
+      </li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Prompt Waivers &amp; Fallbacks</h2>
+    <p>Every review stage is fully optional. If Antigravity is offline or quota is exhausted, you can instruct Claude Code via prompt:</p>
+    <ul>
+      <li><em>"Waive agy for this step"</em> — Claude proceeds solo without peer review.</li>
+      <li><em>"Waive agy for this and use subagents"</em> — Claude delegates review rounds to internal subagents.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Automatic Defect Capture</h2>
+    <p>While navigating code, Claude automatically records pre-existing defects or anomalies discovered during the session. At the conclusion of any task, say <strong>"start the triage"</strong> to compile, rank, and organize those findings into a prioritized backlog.</p>
+  </section>
+
+  <section>
+    <h2>Ready to Pair?</h2>
+    <p>Evaluate Clavity in your own development workspace:</p>
+    <div class="hero-actions">
+      <a class="cta" href="../beta/" data-analytics-event="beta_cta_clicked" data-analytics-props='{"location":"how_it_works"}'>Join Public Beta</a>
+      <a class="cta-secondary" href="../#install">View Installation Commands</a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap footer-grid">
+    <img src="../assets/profile.png" width="96" height="96" alt="Clavity emblem">
+    <div>
+      <p>Licensed under <a href="https://github.com/ckir/clavity/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a>.</p>
+      <nav aria-label="Project links">
+        <a href="../">Home</a> | 
+        <a href="../about/">About</a> | 
+        <a href="../pricing/">Pricing</a> | 
+        <a href="../roadmap/">Roadmap</a> | 
+        <a href="https://github.com/ckir/clavity">Repository</a> | 
+        <a href="https://github.com/ckir/clavity/issues">Issues</a>
+      </nav>
+      <p class="fine">Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of Anthropic. This is an independent project, not affiliated with, endorsed by, or sponsored by Google or Anthropic.</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

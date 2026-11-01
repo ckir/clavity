@@ -1,0 +1,186 @@
+<!doctype html>
+<!--
+ Copyright (c) 2026 Costas Kirgoussios
+
+ This software is licensed under the PolyForm Noncommercial License 1.0.0.
+ You may obtain a copy of the License at:
+ https://polyformproject.org/licenses/noncommercial/1.0.0/
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Public Beta Program - Clavity AI Agent Pairing</title>
+<meta name="description" content="Join the Clavity public beta evaluation program. Free evaluation, open access, and optional community registration.">
+<link rel="canonical" href="https://ckir.github.io/clavity/beta/">
+<meta property="og:title" content="Public Beta Program - Clavity AI Agent Pairing">
+<meta property="og:description" content="Free public evaluation of Clavity's dual-agent collaboration framework.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://ckir.github.io/clavity/beta/">
+<meta property="og:image" content="https://ckir.github.io/clavity/assets/og.jpg">
+<link rel="icon" type="image/svg+xml" href="../assets/clavity.svg">
+<link rel="stylesheet" href="../style.css">
+<script src="../analytics.js" defer></script>
+<script src="../script.js" defer></script>
+</head>
+<body>
+<nav class="site-nav" aria-label="Main Navigation">
+  <div class="nav-wrap">
+    <a class="nav-brand" href="../">
+      <img src="../assets/clavity.svg" width="28" height="28" alt="Clavity">
+      <span>Clavity</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="../how-it-works/">How It Works</a></li>
+      <li><a href="../products/bridge/">Products</a></li>
+      <li><a href="../docs/">Docs</a></li>
+      <li><a href="../roadmap/">Roadmap</a></li>
+      <li><a href="../community/">Community</a></li>
+      <li><a href="./" aria-current="page">Beta</a></li>
+    </ul>
+    <a class="cta nav-cta" href="./" data-analytics-event="beta_cta_clicked" data-analytics-props='{"location":"nav"}'>Join Beta</a>
+  </div>
+</nav>
+
+<main class="wrap">
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="../">Home</a><span>/</span><span>Beta Program</span>
+  </nav>
+
+  <header>
+    <span class="badge badge-peer">Free Evaluation</span>
+    <h1>Clavity Public Beta Program</h1>
+    <p class="subline">Evaluate dual-agent pairing in your own codebase. No account or registration is required to start.</p>
+  </header>
+
+  <section>
+    <div class="note">
+      <p><strong>Zero Gatekeeping:</strong> You can install and use Clavity right now from your terminal without providing an email address or joining a waitlist. Registration below is entirely optional for developers seeking release announcements or commercial pilot participation.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quickstart Evaluation</h2>
+    <p>Install the bridge directly in Claude Code:</p>
+    <div class="commands">
+      <li><code>claude plugin marketplace add ckir/clavity</code></li>
+      <li><code>claude plugin install clavity@clavity</code></li>
+    </div>
+    <p>Launch a pairing session by running <code>/brainstorm</code> in any repository with <a href="https://github.com/obra/superpowers">superpowers</a> installed.</p>
+  </section>
+
+  <section>
+    <h2>Optional Beta Interest &amp; Pilot Registration</h2>
+    <p>Submit your details to receive milestone release notifications, share feedback directly with maintainers, or register interest in future commercial team pilots.</p>
+
+    <div class="form-card">
+      <form id="beta-intake-form" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="email">Developer Email Address <span aria-hidden="true">*</span></label>
+          <input class="form-input" type="email" id="email" name="email" placeholder="alex@example.com" required autocomplete="email">
+          <span class="form-help">We never share your email. Used solely for release notes and pilot updates.</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="role">Developer Profile <span aria-hidden="true">*</span></label>
+          <select class="form-select" id="role" name="role" required>
+            <option value="">Select your development context...</option>
+            <option value="individual">Individual Software Developer / Open Source</option>
+            <option value="team">Engineering Team (2–15 developers)</option>
+            <option value="company">Enterprise / Organization (16+ developers)</option>
+            <option value="researcher">AI Framework Researcher / Evaluator</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Components of Primary Interest</label>
+          <div class="checkbox-group">
+            <label class="checkbox-item">
+              <input type="checkbox" name="components" value="bridge" checked>
+              <span>Clavity Bridge (Language Server MCP pairing)</span>
+            </label>
+            <label class="checkbox-item">
+              <input type="checkbox" name="components" value="agent-knowledge">
+              <span>agy-autotrain (Autonomous empirical learning)</span>
+            </label>
+            <label class="checkbox-item">
+              <input type="checkbox" name="components" value="shared-memory">
+              <span>commonmemory (Shared cross-agent notebook)</span>
+            </label>
+            <label class="checkbox-item">
+              <input type="checkbox" name="components" value="review-relay">
+              <span>review-relay (Web AI model review rounds)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="workflow">Current AI Coding Workflow</label>
+          <input class="form-input" type="text" id="workflow" name="workflow" placeholder="e.g. Claude Code with Opus 5, Antigravity with Gemini 3.1 Pro, Cursor">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="usecase">Primary Use Case or Evaluation Goals</label>
+          <textarea class="form-textarea" id="usecase" name="usecase" placeholder="Describe the challenges you hope dual-agent review will solve in your codebase..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <div class="checkbox-group">
+            <label class="checkbox-item">
+              <input type="checkbox" id="commercial-interest" name="commercial-interest">
+              <span><strong>Interested in future commercial edition / team pilot</strong> (centralized review policies, CI/CD PR bots)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="comments">Additional Comments or Specific Hardware/OS Needs</label>
+          <textarea class="form-textarea" id="comments" name="comments" placeholder="Any questions or specific distribution needs..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <div class="checkbox-group">
+            <label class="checkbox-item">
+              <input type="checkbox" id="privacy" name="privacy" required>
+              <span>I acknowledge that Clavity processes my pairing sessions locally and that this registration is subject to the <a href="../about/">privacy commitment</a>. <span aria-hidden="true">*</span></span>
+            </label>
+          </div>
+        </div>
+
+        <button type="submit" id="form-submit-btn" class="cta">Submit Beta Interest</button>
+
+        <div id="form-status" class="status-msg"></div>
+      </form>
+    </div>
+  </section>
+
+  <section>
+    <h2>Community Feedback &amp; Bug Triage</h2>
+    <p>Already running Clavity? Share your findings:</p>
+    <ul>
+      <li><a href="https://github.com/ckir/clavity/issues" data-analytics-event="feedback_clicked" data-analytics-props='{"destination":"discussions"}'>GitHub Discussions</a> — Share pairing sessions and ask questions.</li>
+      <li><a href="https://github.com/ckir/clavity/issues" data-analytics-event="feedback_clicked" data-analytics-props='{"destination":"issues"}'>Report an Issue</a> — File reproducible bugs and environmental anomalies.</li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap footer-grid">
+    <img src="../assets/profile.png" width="96" height="96" alt="Clavity emblem">
+    <div>
+      <p>Licensed under <a href="https://github.com/ckir/clavity/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a>.</p>
+      <nav aria-label="Project links">
+        <a href="../">Home</a> | 
+        <a href="../about/">About</a> | 
+        <a href="../pricing/">Pricing</a> | 
+        <a href="../roadmap/">Roadmap</a> | 
+        <a href="https://github.com/ckir/clavity">Repository</a> | 
+        <a href="https://github.com/ckir/clavity/issues">Issues</a>
+      </nav>
+      <p class="fine">Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of Anthropic. This is an independent project, not affiliated with, endorsed by, or sponsored by Google or Anthropic.</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
