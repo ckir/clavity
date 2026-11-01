@@ -35,9 +35,10 @@ commonmemory/CONTRIBUTING.md
 .github/ISSUE_TEMPLATE/beta_feedback.md
 CODE_OF_CONDUCT.md
 
-# --- Umbrella / evaluator (5) ---
+# --- Umbrella / evaluator (6) ---
 docs/README.md
 docs/marketing/README.md
+marketing/README.md
 docs/migrating-from-the-inno-installers.md
 clavity-classic/docs/how-it-works.md
 clavity-classic/docs/launching-and-driving-agy.md
