@@ -188,6 +188,13 @@ function Invoke-DocsAudit {
     }
 }
 
+function Invoke-FullClean {
+    Write-C '  This will remove ALL untracked and ignored files (git clean -fdx).' 'Yellow'
+    $go = Read-Choice '  proceed? (y/n)' @('y', 'n')
+    if ($go -ne 'y') { return }
+    Invoke-Cmd 'git clean -fdx'
+}
+
 # Health check — probe each dev tool independently; one missing tool never stops the sweep (spec §Housekeeping).
 $script:HealthProbes = @(
     [pscustomobject]@{ Name = 'just';                      Cmd = 'just --version' }
@@ -260,6 +267,7 @@ $script:Actions = @(
 
     # [4] HOUSEKEEPING
     [pscustomobject]@{ Key = 'A'; Tier = 3; Desc = 'Docs accuracy audit';       Note = 'paid; never a gate'; Handler = { Invoke-DocsAudit } }
+    [pscustomobject]@{ Key = 'C'; Tier = 3; Desc = 'Full Clean';                Note = 'mutates'; Handler = { Invoke-FullClean } }
     [pscustomobject]@{ Key = 'H'; Tier = 3; Desc = 'Health check (tool versions)'; Note = ''; Handler = { Invoke-HealthCheck } }
     [pscustomobject]@{ Key = 'I'; Tier = 3; Desc = 'Install git hooks';        Note = '';        Cmd = 'lefthook install' }
     [pscustomobject]@{ Key = 'N'; Tier = 3; Desc = 'Validate members manifest';Note = '';        Cmd = 'pwsh -File scripts/validate-members-manifest.ps1' }
