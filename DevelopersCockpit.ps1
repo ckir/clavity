@@ -195,6 +195,26 @@ function Invoke-FullClean {
     Invoke-Cmd 'git clean -fdx'
 }
 
+function Invoke-DrainKnowledge {
+    $mode = Read-Choice '  scope — (p)review dry-run / (e)xecute drain' @('p', 'e')
+    if (-not $mode) { return }
+    switch ($mode) {
+        'p' { Invoke-Cmd 'just drain-knowledge -WhatIf' }
+        'e' {
+            $go = Read-Choice '  proceed with live drain? (y/n)' @('y', 'n')
+            if ($go -ne 'y') { Write-C '  aborted.' 'DarkGray'; return }
+            Invoke-Cmd 'just drain-knowledge'
+        }
+    }
+}
+
+function Invoke-CiStatus {
+    Write-C '  --- PR STATUS ---' 'Cyan'
+    Invoke-Cmd 'gh pr status'
+    Write-C '  --- RECENT RUNS ---' 'Cyan'
+    Invoke-Cmd 'gh run list --limit 5'
+}
+
 # Health check — probe each dev tool independently; one missing tool never stops the sweep (spec §Housekeeping).
 $script:HealthProbes = @(
     [pscustomobject]@{ Name = 'just';                      Cmd = 'just --version' }
@@ -250,16 +270,20 @@ $script:Actions = @(
     # [1] INNER LOOP
     [pscustomobject]@{ Key = 'B'; Tier = 0; Desc = 'Build all';                Note = '';        Cmd = 'just build' }
     [pscustomobject]@{ Key = 'T'; Tier = 0; Desc = 'Test all';                 Note = '';        Cmd = 'just test' }
+    [pscustomobject]@{ Key = 'K'; Tier = 0; Desc = 'Test scripts (parallel)';  Note = '';        Cmd = 'just test-scripts-fast-parallel' }
     [pscustomobject]@{ Key = 'F'; Tier = 0; Desc = 'Format all';               Note = 'mutates'; Cmd = 'just fmt' }
     [pscustomobject]@{ Key = 'M'; Tier = 0; Desc = 'Build + test ONE member';  Note = '';        Handler = { Invoke-MemberBuildTest } }
 
     # [2] QUALITY GATE
     [pscustomobject]@{ Key = 'L'; Tier = 1; Desc = 'Lint all';                 Note = '';        Cmd = 'just lint' }
     [pscustomobject]@{ Key = 'G'; Tier = 1; Desc = 'Full gate (lint + test)';  Note = '';        Handler = { Invoke-FullGate } }
+    [pscustomobject]@{ Key = 'E'; Tier = 1; Desc = 'Pre-push gate (15 checks)';Note = '';        Cmd = 'lefthook run pre-push' }
     [pscustomobject]@{ Key = 'V'; Tier = 1; Desc = 'Check versions (all 5)';   Note = '';        Handler = { Invoke-VersionCheckAll } }
     [pscustomobject]@{ Key = 'S'; Tier = 1; Desc = 'Seed-sync check';          Note = '';        Cmd = 'just seed-sync-check' }
 
     # [3] SHIP & RELEASE (owner-gated)
+    [pscustomobject]@{ Key = 'D'; Tier = 2; Desc = 'Release dry-run (preview vN)'; Note = '';    Cmd = 'just release-dry' }
+    [pscustomobject]@{ Key = 'Z'; Tier = 2; Desc = 'Release resume dry-run';   Note = '';        Cmd = 'just release-resume-dry' }
     [pscustomobject]@{ Key = 'U'; Tier = 2; Desc = 'Version bump member';      Note = 'writes';  Handler = { Invoke-BumpMember } }
     [pscustomobject]@{ Key = 'R'; Tier = 2; Desc = 'Tag & push clavity-vN';    Note = 'OWNER';   Handler = { Invoke-TagPush } }
     [pscustomobject]@{ Key = 'W'; Tier = 2; Desc = 'Trigger umbrella release'; Note = 'OWNER';   Handler = { Invoke-TriggerRelease } }
@@ -270,7 +294,10 @@ $script:Actions = @(
     [pscustomobject]@{ Key = 'C'; Tier = 3; Desc = 'Full Clean';                Note = 'mutates'; Handler = { Invoke-FullClean } }
     [pscustomobject]@{ Key = 'H'; Tier = 3; Desc = 'Health check (tool versions)'; Note = ''; Handler = { Invoke-HealthCheck } }
     [pscustomobject]@{ Key = 'I'; Tier = 3; Desc = 'Install git hooks';        Note = '';        Cmd = 'lefthook install' }
+    [pscustomobject]@{ Key = 'J'; Tier = 3; Desc = 'Drain knowledge (autotrain)'; Note = '';      Handler = { Invoke-DrainKnowledge } }
     [pscustomobject]@{ Key = 'N'; Tier = 3; Desc = 'Validate members manifest';Note = '';        Cmd = 'pwsh -File scripts/validate-members-manifest.ps1' }
+    [pscustomobject]@{ Key = 'O'; Tier = 3; Desc = 'Open roadmap / tracker status'; Note = '';   Cmd = 'pwsh -File scripts/check-tracker-status.ps1 -List' }
+    [pscustomobject]@{ Key = 'X'; Tier = 3; Desc = 'CI & PR status';            Note = '';        Handler = { Invoke-CiStatus } }
     [pscustomobject]@{ Key = 'Q'; Tier = 3; Desc = 'Quit';                     Note = '';        Handler = { $script:Quit = $true } }
 )
 
