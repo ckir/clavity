@@ -1,0 +1,52 @@
+name: "🧪 Public Beta Feedback"
+description: Share observations, review quality feedback, or ergonomics impressions from the public beta
+title: "[Beta Feedback]: "
+labels: ["beta-feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for participating in the Clavity public beta! Your feedback directly shapes our roadmap.
+  - type: dropdown
+    id: role
+    attributes:
+      label: Developer Context
+      options:
+        - "Individual Developer / Open Source"
+        - "Small Team (2–10 developers)"
+        - "Enterprise / Large Organization"
+        - "Researcher / Tool Builder"
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Primary Component Evaluated
+      options:
+        - "clavity-dotnet (Language Server MCP bridge)"
+        - "clavity-classic (Rust bridge)"
+        - "agy-autotrain"
+        - "commonmemory"
+        - "review-relay"
+        - "All / Full Suite"
+    validations:
+      required: true
+  - type: textarea
+    id: experience
+    attributes:
+      label: Workflow Experience & Highlights
+      description: What worked well? How did dual-agent pairing compare to your previous solo-agent workflow?
+    validations:
+      required: true
+  - type: textarea
+    id: review_quality
+    attributes:
+      label: Review Discipline Observations
+      description: Did adversarial-panel-review or agy-capstone catch real bugs? Were there false positives or unhelpful citations?
+    validations:
+      required: true
+  - type: textarea
+    id: commercial_input
+    attributes:
+      label: Commercial / Team Needs (Optional)
+      description: If evaluating for a team, what features would be required for broader team deployment (e.g. CI/CD gates, policy enforcement)?

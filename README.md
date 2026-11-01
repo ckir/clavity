@@ -41,6 +41,12 @@ Want claude and agy share memories? Install commonmemory (needs [`@agentmemory/a
 
 The rest of this file is technical documentation for AI agents and developers. Feel free to update this section to reflect current state and improvements.
 
+> 🚀 **Public Beta:** Clavity is in open public beta for developer evaluation. Visit the [official website](https://ckir.github.io/clavity/) or [learn about the beta program](https://ckir.github.io/clavity/beta/).
+>
+> 📖 **Documentation:** Explore the [Documentation Portal](docs/README.md), [User Guide (PDF)](docs/USER_GUIDE.pdf), or [User Guide (HTML)](docs/USER_GUIDE.html).
+>
+> 🗺️ **Roadmap:** Follow active engineering outcomes in [clavity-dotnet/ROADMAP.md](clavity-dotnet/ROADMAP.md) and on the [public roadmap](https://ckir.github.io/clavity/roadmap/).
+
 ### Which product do I need?
 
 This repository contains five independent products. You only need to install the ones you actually want to use.

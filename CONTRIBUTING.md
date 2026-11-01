@@ -1,7 +1,7 @@
 # Contributing to clavity
 
-Thanks for helping out. Contributions are very welcome — **especially Linux/macOS support**, since
-the project is Windows-verified today.
+Thanks for helping out. Contributions are very welcome. The flagship bridge (`clavity-dotnet`) is cross-platform
+(Windows, Linux, macOS), while `clavity-classic` is Windows-only.
 
 > **Monorepo note:** this repo hosts five products (clavity-dotnet, clavity-classic,
 > agy-autotrain, commonmemory, review-relay). The dev setup below is for **clavity-classic** (Rust); the other

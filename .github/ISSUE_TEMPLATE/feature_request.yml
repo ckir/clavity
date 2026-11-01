@@ -1,0 +1,40 @@
+name: "💡 Feature Request"
+description: Propose an enhancement, new review seat, or new integration
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Suggest an improvement or new capability for Clavity.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Functional Area
+      options:
+        - "Clavity Bridge (MCP / Language Server)"
+        - "Review Disciplines (panel review, capstone, test audit)"
+        - "Knowledge & Memory (autotrain, commonmemory)"
+        - "Model Interoperability (new peer models)"
+        - "Developer Experience & Tooling"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What challenge or friction does this feature solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed Solution / Approach
+      description: How would you like this to work?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative designs or workarounds you have evaluated?

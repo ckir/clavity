@@ -6,15 +6,15 @@
 
 ## How verified
 
-<!-- Monorepo: the cargo commands below are for clavity-classic (the Rust product) and must be run from
-     `clavity-classic/` — there is no root Cargo.toml, so they fail from the repo root. Other products
-     build per their own CLAUDE.md (e.g. `dotnet test tests/Clavity.Ls.Tests`, `just test`). -->
+<!-- Run verification relevant to the modified member(s): -->
 
-- [ ] `cargo test --all --features test-fakes` passes *(from `clavity-classic/`)*
-- [ ] `cargo clippy --all-targets --features test-fakes -- -D warnings` is clean *(from `clavity-classic/`)*
-- [ ] `cargo fmt --all --check` is clean *(from `clavity-classic/`)*
-- [ ] **Live acceptance runbook** (see `CONTRIBUTING.md`) — OS: `____`
-      <!-- Required when touching the doorbell, the checkpoint, or a platform port. -->
+- [ ] `just test` passes locally across all tools
+- [ ] `just lint` is clean
+- [ ] `dotnet test tests/Clavity.Ls.Tests` *(if touching clavity-dotnet)*
+- [ ] `cargo test --all --features test-fakes` *(if touching clavity-classic)*
+- [ ] `python3 -m unittest discover -s .github/site-checks` *(if touching site/)*
+- [ ] `python3 .github/site-checks/check_site.py --site site --readme README.md` *(if touching site/)*
+- [ ] `just check-control-bytes` is clean *(if touching markdown or scripts)*
 
 ## Notes
 
