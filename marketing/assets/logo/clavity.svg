@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1647" height="928" viewBox="0 0 1647 928" role="img" aria-labelledby="title desc">
+  <title id="title">Clavity — Claude Code CLI and Google Antigravity CLI bridge</title>
+  <desc id="desc">A neon orange and cyan futuristic bridge connecting two terminal windows, with a square-edged Clavity wordmark.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#020713"/><stop offset=".55" stop-color="#052b70"/><stop offset="1" stop-color="#001333"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#ffb14a"/><stop offset=".45" stop-color="#ff4b18"/><stop offset="1" stop-color="#ff7a24"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#00eaff"/><stop offset=".5" stop-color="#087dff"/><stop offset="1" stop-color="#00d9ff"/>
+    </linearGradient>
+    <linearGradient id="bridgeStroke" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#b6aaff"/><stop offset=".48" stop-color="#00cfff"/><stop offset="1" stop-color="#00e9ff"/>
+    </linearGradient>
+    <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#061a4b" stop-opacity=".1"/><stop offset="1" stop-color="#020817" stop-opacity=".9"/>
+    </linearGradient>
+    <filter id="glowOrange" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glowBlue" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="20"/>
+    </filter>
+    <clipPath id="leftWindow"><path d="M53 187 L503 254 Q531 258 531 284 L531 570 Q531 597 505 600 L57 632 Q25 635 25 603 L25 220 Q25 181 53 187Z"/></clipPath>
+    <clipPath id="rightWindow"><path d="M1147 252 L1587 193 Q1622 188 1622 224 L1622 601 Q1622 638 1586 635 L1148 603 Q1118 601 1118 571 L1118 283 Q1118 256 1147 252Z"/></clipPath>
+  </defs>
+  <rect width="1647" height="928" fill="url(#bg)"/>
+  <ellipse cx="824" cy="430" rx="680" ry="310" fill="#003bff" opacity=".13" filter="url(#softGlow)"/>
+  <ellipse cx="225" cy="430" rx="310" ry="210" fill="#ff4b16" opacity=".13" filter="url(#softGlow)"/>
+  <ellipse cx="1410" cy="420" rx="300" ry="220" fill="#00baff" opacity=".13" filter="url(#softGlow)"/>
+
+  <!-- Light streams connecting the terminals -->
+  <g fill="none" stroke-linecap="round">
+    <g stroke="#ff6a24" stroke-width="5" opacity=".9" filter="url(#glowOrange)">
+      <path d="M530 327 C603 324 612 377 702 382"/><path d="M530 350 C603 349 623 398 702 399"/>
+      <path d="M530 375 C604 374 621 414 702 415"/><path d="M530 401 C602 402 621 430 702 430"/>
+      <path d="M530 451 C602 452 620 424 702 422"/><path d="M530 476 C602 474 623 442 702 441"/>
+      <path d="M530 499 C602 496 623 458 702 455"/>
+    </g>
+    <g stroke="#00bfff" stroke-width="5" opacity=".95" filter="url(#glowBlue)">
+      <path d="M945 382 C1030 378 1045 325 1118 324"/><path d="M945 399 C1027 399 1045 348 1118 348"/>
+      <path d="M945 415 C1025 416 1044 375 1118 375"/><path d="M945 430 C1026 431 1048 402 1118 402"/>
+      <path d="M945 422 C1024 423 1048 450 1118 450"/><path d="M945 441 C1024 442 1046 477 1118 477"/>
+      <path d="M945 455 C1023 457 1046 501 1118 502"/>
+    </g>
+  </g>
+  <g fill="#ffb64e"><circle cx="574" cy="338" r="2.6"/><circle cx="611" cy="370" r="2"/><circle cx="664" cy="389" r="2.4"/><circle cx="575" cy="488" r="2.2"/><circle cx="643" cy="458" r="2"/></g>
+  <g fill="#00eaff"><circle cx="1057" cy="323" r="2.4"/><circle cx="1073" cy="357" r="2"/><circle cx="1014" cy="391" r="2.5"/><circle cx="1072" cy="457" r="2.4"/><circle cx="1044" cy="488" r="2"/></g>
+
+  <!-- Left terminal -->
+  <path d="M53 187 L503 254 Q531 258 531 284 L531 570 Q531 597 505 600 L57 632 Q25 635 25 603 L25 220 Q25 181 53 187Z" fill="#020817" stroke="url(#orange)" stroke-width="4" filter="url(#glowOrange)"/>
+  <g clip-path="url(#leftWindow)">
+    <path d="M15 181 L540 260 L540 305 L15 246Z" fill="#111b34" opacity=".92"/>
+  </g>
+  <circle cx="68" cy="221" r="8.5" fill="#ff4545"/><circle cx="98" cy="225" r="8.5" fill="#ffca36"/><circle cx="126" cy="228" r="8.5" fill="#00df80"/>
+  <path d="M70 273 L87 285 L70 297 M96 303 L116 303" fill="none" stroke="#8eb8ff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Claude-inspired starburst mark -->
+  <g transform="translate(135 393)" stroke="#ff6328" stroke-width="7" stroke-linecap="round">
+    <path d="M0 -48V48 M-48 0H48 M-34 -34L34 34 M34 -34L-34 34 M-18 -45L18 45 M18 -45L-18 45 M-45 -18L45 18 M45 -18L-45 18"/>
+  </g>
+  <text x="205" y="409" font-family="Arial, Helvetica, sans-serif" font-size="54" letter-spacing="-2" fill="#f7f8ff">Claude</text>
+  <text x="374" y="418" font-family="Arial, Helvetica, sans-serif" font-size="35" letter-spacing="-1.4" fill="#9bb9ed">Code CLI</text>
+  <g fill="#2b4679">
+    <rect x="94" y="483" width="330" height="12" rx="6"/><rect x="94" y="507" width="257" height="12" rx="6"/><rect x="94" y="531" width="197" height="12" rx="6"/>
+  </g>
+  <rect x="94" y="558" width="88" height="13" rx="6.5" fill="#ff642b"/>
+
+  <!-- Right terminal -->
+  <path d="M1147 252 L1587 193 Q1622 188 1622 224 L1622 601 Q1622 638 1586 635 L1148 603 Q1118 601 1118 571 L1118 283 Q1118 256 1147 252Z" fill="#020817" stroke="url(#cyan)" stroke-width="4" filter="url(#glowBlue)"/>
+  <g clip-path="url(#rightWindow)">
+    <path d="M1108 254 L1635 184 L1635 230 L1108 306Z" fill="#071936" opacity=".95"/>
+  </g>
+  <circle cx="1148" cy="278" r="7" fill="#ff4545"/><circle cx="1171" cy="276" r="7" fill="#ffca36"/><circle cx="1196" cy="273" r="7" fill="#00df80"/>
+  <path d="M1144 321 L1157 331 L1144 341 M1167 344 L1178 344" fill="none" stroke="#8eb8ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Stylized Antigravity A -->
+  <path d="M1174 445 L1194 369 Q1202 348 1215 357 Q1222 362 1227 375 L1257 443 Q1264 458 1250 456 Q1240 456 1234 443 L1209 388 L1190 447 Q1184 463 1172 455 Q1161 450 1174 445Z" fill="#00d7ff"/>
+  <path d="M1174 445 L1194 369 Q1202 348 1215 357 Q1222 362 1227 375 L1215 399 L1190 447 Q1184 463 1172 455 Q1161 450 1174 445Z" fill="#ffb84a" opacity=".9"/>
+  <path d="M1204 365 Q1212 349 1225 360 Q1232 366 1237 379 L1227 402 L1215 399Z" fill="#bd70ff" opacity=".9"/>
+  <text x="1289" y="393" font-family="Arial, Helvetica, sans-serif" font-size="43" letter-spacing="-1.7" fill="#f7f8ff">Google</text>
+  <text x="1289" y="440" font-family="Arial, Helvetica, sans-serif" font-size="37" letter-spacing="-1.2" fill="#8fb5f6">Antigravity CLI</text>
+  <g fill="#18529d">
+    <rect x="1164" y="489" width="338" height="12" rx="6"/><rect x="1164" y="515" width="259" height="12" rx="6"/><rect x="1164" y="541" width="201" height="12" rx="6"/>
+  </g>
+  <rect x="1164" y="550" width="91" height="12" rx="6" fill="url(#cyan)"/>
+
+  <!-- Central bridge emblem -->
+  <rect x="700" y="277" width="246" height="222" rx="46" fill="#05183e" stroke="url(#bridgeStroke)" stroke-width="6" filter="url(#glowBlue)"/>
+  <rect x="710" y="287" width="226" height="202" rx="38" fill="#031536" stroke="#356cff" stroke-width="1.5"/>
+  <g fill="none" stroke="#eaf7ff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M748 405 Q822 300 896 405"/>
+    <path d="M751 405 H894"/>
+    <path d="M749 425 H896"/>
+    <path d="M753 377 V438 M891 377 V438"/>
+    <path d="M768 387 V405 M786 367 V405 M805 352 V405 M824 348 V405 M843 352 V405 M862 367 V405 M879 387 V405"/>
+    <path d="M748 405 L748 438 M896 405 L896 438"/>
+    <path d="M741 438 H758 M886 438 H903"/>
+  </g>
+
+  <!-- Wordmark: editable vector text; monospace fallback keeps the angular coder feel -->
+  <text x="824" y="608" text-anchor="middle" font-family="'Share Tech Mono','Orbitron','Courier New',monospace" font-size="105" font-weight="700" letter-spacing="1" fill="#f8faff" stroke="#8daeff" stroke-width=".5" paint-order="stroke">Clavity</text>
+
+  <!-- Reflective futuristic floor -->
+  <path d="M0 704 Q410 657 824 662 Q1265 656 1647 704 L1647 928 L0 928Z" fill="url(#floor)"/>
+  <path d="M0 705 Q410 658 824 662 Q1265 657 1647 705" fill="none" stroke="url(#bridgeStroke)" stroke-width="3" opacity=".9" filter="url(#glowBlue)"/>
+  <ellipse cx="824" cy="722" rx="710" ry="58" fill="none" stroke="#1478ff" stroke-width="2" opacity=".45"/>
+  <ellipse cx="824" cy="722" rx="710" ry="58" fill="none" stroke="#ff5c24" stroke-width="1.5" opacity=".3"/>
+  <g opacity=".2" filter="url(#softGlow)">
+    <path d="M125 710 L165 710 L160 928 L105 928Z" fill="#ff4e18"/>
+    <path d="M500 690 L550 690 L570 928 L480 928Z" fill="#ff6025"/>
+    <path d="M740 690 L790 690 L810 928 L720 928Z" fill="#006bff"/>
+    <path d="M1020 690 L1070 690 L1090 928 L1000 928Z" fill="#00cfff"/>
+    <path d="M1370 700 L1420 700 L1450 928 L1350 928Z" fill="#007dff"/>
+  </g>
+</svg>
