@@ -84,6 +84,31 @@ machine instead. In a folder
 neither has seen before, both agy and Claude Code ask you to trust it, each in its own window: answer agy's in its tab,
 or it does not pair.
 
+### Running Claude under a profile
+
+`start` launches Claude Code with the environment it inherited from your shell (it adds only the three `CLAVITY_*`
+variables below), so a [Claude Code profile](https://docs.anthropic.com/en/docs/claude-code/settings) is selected the
+same way as for a bare `claude`: set `CLAUDE_CONFIG_DIR` before running `start`. Everything Claude reads from that
+directory - `settings.json`, `CLAUDE.md`, the enabled plugins and their fetched `clavity-ls` binary - comes from the
+profile, so the `clavity` plugin must be installed under the same profile (run `claude plugin install clavity@clavity`
+with the variable set) or the MCP server has nothing to launch. Claude's own flags pass through after the folder.
+
+Windows (pwsh; the variable lasts for that shell):
+
+```powershell
+$env:CLAUDE_CONFIG_DIR = "$HOME\.claude-profiles\test"
+clavity-ls start C:\path\to\your\project
+```
+
+Linux/macOS (one-off prefix, or `export` it for the shell):
+
+```bash
+CLAUDE_CONFIG_DIR=~/.claude-profiles/test clavity-ls start ~/path/to/your/project
+```
+
+`--attach` works the same way - the variable only has to reach the shell that runs `start`, not the one running
+`clavity-ls agy`.
+
 ## Command reference
 
 - `clavity-ls start <folder> [--attach [<session-id>]] [claude-args...]` — launch a visible agy tab + Claude Code in `<folder>`

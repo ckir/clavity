@@ -82,6 +82,32 @@ Claude στο ίδιο αποθετήριο). Μόνο το `clavity-ls start` �
 στο δικό σας μηχάνημα. Σε έναν φάκελο που κανένα από τα δύο δεν έχει ξαναδεί, τόσο το agy όσο και το Claude Code ζητούν επιβεβαίωση εμπιστοσύνης,
 το καθένα στο δικό του παράθυρο: απαντήστε στο agy στην καρτέλα του, διαφορετικά δεν θα γίνει ζεύξη.
 
+### Εκτέλεση του Claude με προφίλ
+
+Το `start` εκκινεί το Claude Code με το περιβάλλον που κληρονόμησε από το shell σας (προσθέτει μόνο τις τρεις μεταβλητές
+`CLAVITY_*` παρακάτω), επομένως ένα [προφίλ του Claude Code](https://docs.anthropic.com/en/docs/claude-code/settings)
+επιλέγεται όπως και για ένα απλό `claude`: ορίστε το `CLAUDE_CONFIG_DIR` πριν εκτελέσετε το `start`. Όλα όσα διαβάζει το
+Claude από αυτόν τον κατάλογο - `settings.json`, `CLAUDE.md`, τα ενεργά πρόσθετα και το εκτελέσιμο `clavity-ls` που έχουν
+κατεβάσει - προέρχονται από το προφίλ, άρα το πρόσθετο `clavity` πρέπει να είναι εγκατεστημένο στο ίδιο προφίλ (εκτελέστε
+`claude plugin install clavity@clavity` με τη μεταβλητή ορισμένη), διαφορετικά ο MCP server δεν έχει τι να εκκινήσει. Οι
+παράμετροι του ίδιου του Claude περνούν μετά τον φάκελο.
+
+Windows (pwsh· η μεταβλητή ισχύει για αυτό το shell):
+
+```powershell
+$env:CLAUDE_CONFIG_DIR = "$HOME\.claude-profiles\test"
+clavity-ls start C:\path\to\your\project
+```
+
+Linux/macOS (πρόθεμα μίας εκτέλεσης, ή `export` για όλο το shell):
+
+```bash
+CLAUDE_CONFIG_DIR=~/.claude-profiles/test clavity-ls start ~/path/to/your/project
+```
+
+Το `--attach` λειτουργεί με τον ίδιο τρόπο - η μεταβλητή χρειάζεται μόνο στο shell που εκτελεί το `start`, όχι σε αυτό
+που εκτελεί το `clavity-ls agy`.
+
 ## Αναφορά εντολών
 
 - `clavity-ls start <folder> [--attach [<session-id>]] [claude-args...]` — εκκίνηση ορατής καρτέλας agy + Claude Code στον `<folder>`
