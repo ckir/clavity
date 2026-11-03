@@ -57,7 +57,18 @@ public interface IStartEffects
     /// <summary>Holds this session's `.alive` lock for as long as `clavity-ls agy` runs it (<see cref="SessionLock.TryTake"/>;
     /// the id is fresh, so nobody else can hold it).</summary>
     IDisposable HoldSessionAlive(SessionPaths paths);
+    /// <summary>Runs <paramref name="cmd"/> with its output captured. Throws <see cref="Win32Exception"/> when the program
+    /// cannot be started; on timeout kills the whole process tree and returns <c>TimedOut: true</c>.</summary>
+    CommandResult RunCaptured(LaunchCommand cmd, TimeSpan timeout);
+    /// <summary>The per-profile setup lock: polls until it holds it; null when <paramref name="wait"/> elapses. Throws
+    /// <see cref="IOException"/> or <see cref="UnauthorizedAccessException"/> for a reason of its own (as <see cref="TryTakeFolder"/>).</summary>
+    IDisposable? TakeProfileLock(string profileName, TimeSpan wait);
+    /// <summary>The shell's <c>CLAUDE_CONFIG_DIR</c>; null or empty when unset.</summary>
+    string? AmbientConfigDir { get; }
 }
+
+/// <summary>A captured process result.</summary>
+public sealed record CommandResult(int ExitCode, string StdOut, string StdErr, bool TimedOut);
 
 /// <summary>The `clavity-ls start` and `clavity-ls agy` verbs. Exit codes: 2 for a bad argument or a missing folder, 1 for a
 /// refusal (a program missing, no terminal, agy ended before pairing), otherwise Claude's (or the agy script's) own.</summary>

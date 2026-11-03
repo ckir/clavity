@@ -107,4 +107,8 @@ internal sealed class RealStartEffects : IStartEffects
 
     public IDisposable HoldSessionAlive(SessionPaths paths) =>
         SessionLock.TryTake(paths.Alive) ?? throw new IOException($"cannot hold {paths.Alive}: another process holds it.");
+
+    public CommandResult RunCaptured(LaunchCommand cmd, TimeSpan timeout) => throw new NotImplementedException();   // Task 4
+    public IDisposable? TakeProfileLock(string profileName, TimeSpan wait) => throw new NotImplementedException();   // Task 4
+    public string? AmbientConfigDir => throw new NotImplementedException();   // Task 4
 }
