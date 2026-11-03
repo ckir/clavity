@@ -94,6 +94,136 @@ public sealed class StartFlowTests
         Assert.Equal(Repo, claude.WorkingDirectory);
     }
 
+    // ---- start --profile (spec Design 2, 4) ----
+
+    private const string ProfileDir = "/p/work/claude";
+    private const string BothEnabledList =
+        "[{\"id\":\"clavity@clavity\",\"scope\":\"user\",\"enabled\":true}," +
+        "{\"id\":\"superpowers@superpowers-marketplace\",\"scope\":\"user\",\"enabled\":true}]";
+    private static readonly string DoctorOut =
+        "{\"schema\":\"agent-profile/doctor/1\",\"checks\":[{\"id\":\"launch_environment\",\"data\":" +
+        "{\"name\":\"CLAUDE_CONFIG_DIR\",\"value\":\"" + ProfileDir + "\"}}]}";
+
+    private static Fake ProfileFake(bool windows = false, Dictionary<string, object>? extra = null, string? ambient = null,
+        bool takeSucceeds = true)
+    {
+        var tool = windows ? "agent-profile.exe" : "agent-profile";
+        var script = new Dictionary<string, object>
+        {
+            [tool + " claude doctor work --json"] = new CommandResult(0, DoctorOut, "", false),
+        };
+        if (extra is not null)
+            foreach (var (k, v) in extra)
+                script[k] = v;
+        return new Fake
+        {
+            IsWindows = windows,
+            Script = script,
+            DefaultResult = new CommandResult(0, BothEnabledList, "", false),
+            AmbientConfigDir = ambient,
+            TakeSucceeds = takeSucceeds,
+        };
+    }
+
+    private static int FirstCmd(Fake fx) => fx.Calls.FindIndex(c => c.StartsWith("cmd:", StringComparison.Ordinal));
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Profile_start_runs_setup_after_the_folder_lock_and_before_logs_and_hands_Claude_the_dir(bool windows)
+    {
+        var fx = ProfileFake(windows);
+        Assert.Equal(0, StartFlow.Start([Repo, "--profile", "work"], fx));
+        var take = fx.Calls.IndexOf("take-folder");
+        var firstCmd = FirstCmd(fx);
+        var release = fx.Calls.IndexOf("profile-release");
+        var mkdir = fx.Calls.IndexOf("mkdir");
+        Assert.True(take >= 0 && take < firstCmd, string.Join(",", fx.Calls));
+        Assert.True(firstCmd < release && release < mkdir, string.Join(",", fx.Calls));
+        Assert.Equal(ProfileDir, fx.Ran.Single(c => c.FileName == "claude").Environment["CLAUDE_CONFIG_DIR"]);
+        if (windows)
+            Assert.DoesNotContain("CLAUDE_CONFIG_DIR", fx.Ran.Single(c => c.FileName == "wt").Environment.Keys);
+        else
+            Assert.All(fx.Scripts, s => Assert.DoesNotContain("CLAUDE_CONFIG_DIR", s.Content));
+    }
+
+    [Fact]
+    public void Attach_with_a_profile_sets_up_only_after_the_session_is_taken()
+    {
+        var fx = ProfileFake();
+        Assert.Equal(0, StartFlow.Start([Repo, "--attach", Attached, "--profile", "work"], fx));
+        Assert.True(fx.Calls.IndexOf("take") < FirstCmd(fx), string.Join(",", fx.Calls));
+        Assert.Equal(ProfileDir, fx.Ran.Single(c => c.FileName == "claude").Environment["CLAUDE_CONFIG_DIR"]);
+    }
+
+    [Fact]
+    public void Attach_that_cannot_take_the_session_runs_no_setup()
+    {
+        var fx = ProfileFake(takeSucceeds: false);
+        Assert.Equal(1, StartFlow.Start([Repo, "--attach", Attached, "--profile", "work"], fx));
+        Assert.DoesNotContain(fx.Calls, c => c.StartsWith("cmd:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Setup_failure_exits_1_and_leaves_nothing_behind()
+    {
+        var fx = ProfileFake(extra: new()
+        {
+            ["claude plugin list --json"] = new CommandResult(0, "[]", "", false),
+            ["claude plugin marketplace list --json"] = new CommandResult(0, "[]", "", false),
+            ["claude plugin install superpowers@superpowers-marketplace -y --scope user"] = new CommandResult(1, "", "boom", false),
+        });
+        // First plugin enabled, second absent: list answers per call, so script a sequence.
+        var n = 0;
+        fx.Script["claude plugin list --json"] = (Func<CommandResult>)(() =>
+            new CommandResult(0, n++ == 0 ? BothEnabledList.Replace("superpowers@superpowers-marketplace", "other@x") : "[]", "", false));
+        Assert.Equal(1, StartFlow.Start([Repo, "--profile", "work"], fx));
+        foreach (var forbidden in new[] { "mkdir", "prune", "doc", "script", "terminal" })
+            Assert.DoesNotContain(forbidden, fx.Calls);
+        Assert.DoesNotContain(fx.Calls, c => c.StartsWith("run:", StringComparison.Ordinal));
+        Assert.Contains("release-folder", fx.Calls);
+        Assert.Contains("clavity: ", fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Ambient_CLAUDE_CONFIG_DIR_that_differs_is_noted_once_and_overridden()
+    {
+        var fx = ProfileFake(ambient: "/other/");
+        Assert.Equal(0, StartFlow.Start([Repo, "--profile", "work"], fx));
+        var notices = fx.Err.ToString().Split('\n').Where(l => l.Contains("CLAUDE_CONFIG_DIR")).ToArray();
+        var notice = Assert.Single(notices);
+        Assert.Contains("/other/", notice);
+        Assert.Contains(ProfileDir, notice);
+        Assert.Equal(ProfileDir, fx.Ran.Single(c => c.FileName == "claude").Environment["CLAUDE_CONFIG_DIR"]);
+    }
+
+    [Fact]
+    public void Ambient_equal_after_normalisation_prints_no_notice()
+    {
+        var fx = ProfileFake(ambient: ProfileDir + "/");
+        Assert.Equal(0, StartFlow.Start([Repo, "--profile", "work"], fx));
+        Assert.DoesNotContain("CLAUDE_CONFIG_DIR", fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Bad_profile_value_is_exit_2_with_the_clavity_prefix()
+    {
+        var fx = new Fake();
+        Assert.Equal(2, StartFlow.Start([Repo, "--profile"], fx));
+        Assert.StartsWith("clavity: ", fx.Err.ToString());
+        Assert.Empty(fx.Calls);
+    }
+
+    [Fact]
+    public void Without_profile_no_setup_command_runs()
+    {
+        var fx = new Fake { AmbientConfigDir = "/other" };
+        Assert.Equal(0, StartFlow.Start([Repo], fx));
+        Assert.DoesNotContain(fx.Calls, c => c.StartsWith("cmd:", StringComparison.Ordinal));
+        Assert.DoesNotContain("CLAUDE_CONFIG_DIR", fx.Ran.Single(c => c.FileName == "claude").Environment.Keys);
+        Assert.DoesNotContain("CLAUDE_CONFIG_DIR", fx.Err.ToString());
+    }
+
     [Fact]
     public void A_folder_that_is_not_a_git_repository_is_warned_about_and_start_goes_on()
     {

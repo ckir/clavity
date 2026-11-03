@@ -45,6 +45,32 @@ public class LauncherTests
         };
 
     [Fact]
+    public void ClaudeConfigDir_reaches_Claude_only()
+    {
+        var options = new LaunchOptions
+        {
+            Folder = "/home/o/repo",
+            SessionId = "11111111-2222-3333-4444-555555555555",
+            AgyLogFilePath = "/home/o/log",
+            AgyEndpointFilePath = "/home/o/ep",
+            SkipPermissions = true,
+            ClaudeConfigDir = "/p/work/claude",
+        };
+        var plan = Launcher.Build(options);
+        Assert.Equal("/p/work/claude", plan.ClaudeLaunch.Environment["CLAUDE_CONFIG_DIR"]);
+        Assert.DoesNotContain("CLAUDE_CONFIG_DIR", plan.AgyTab.Environment.Keys);
+        Assert.DoesNotContain("CLAUDE_CONFIG_DIR", DecodeScript(plan));
+        Assert.DoesNotContain("CLAUDE_CONFIG_DIR", Launcher.BuildPosixScript(options, "/c", "/e"));
+    }
+
+    [Fact]
+    public void No_ClaudeConfigDir_means_no_variable()
+    {
+        var plan = Launcher.Build(Opts());
+        Assert.DoesNotContain("CLAUDE_CONFIG_DIR", plan.ClaudeLaunch.Environment.Keys);
+    }
+
+    [Fact]
     public void AgyTab_is_wt_new_tab_running_pwsh_with_baked_env_and_per_session_log()
     {
         var plan = Launcher.Build(Opts());

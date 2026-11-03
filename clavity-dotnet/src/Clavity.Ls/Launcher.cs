@@ -54,6 +54,9 @@ public sealed class LaunchOptions
     /// <summary>The shell the Windows agy tab runs: <c>pwsh</c>, or <c>powershell</c> where PowerShell 7 is absent
     /// (<see cref="PickWindowsShell"/>; the tab script is measured to work under both).</summary>
     public string WindowsShell { get; init; } = "pwsh";
+    /// <summary>`start --profile`: the agent-profile directory handed to CLAUDE CODE ONLY as CLAUDE_CONFIG_DIR. Null omits
+    /// it. Never in the agy tab's environment or the POSIX script: agy must keep its own configuration.</summary>
+    public string? ClaudeConfigDir { get; init; }
 }
 
 /// <summary>
@@ -107,18 +110,21 @@ public static class Launcher
 
         // The per-session identity Claude (and its clavity --mcp child) reads. CLAVITY_AGY_LOG presence implies
         // clavity-launched — the bare CLAVITY_LAUNCHED marker is dropped (spec §4).
+        var claudeEnv = new SortedDictionary<string, string>(StringComparer.Ordinal)
+        {
+            [AgyEnvironment.LogPathVar] = options.AgyLogFilePath,
+            [AgyEnvironment.SessionIdVar] = options.SessionId,
+            // The clavity --mcp child reads THIS to find the paired agy - the SAME per-session file agy
+            // publishes to above. ResolveEndpointPath honours the var; the launcher just populates it.
+            [AgyEnvironment.EndpointPathVar] = options.AgyEndpointFilePath,
+        };
+        if (options.ClaudeConfigDir is { } configDir)
+            claudeEnv["CLAUDE_CONFIG_DIR"] = configDir;
         var claudeLaunch = new LaunchCommand(
             FileName: "claude",
             Arguments: options.ClaudeArgs.ToArray(),
             WorkingDirectory: options.Folder,
-            Environment: new SortedDictionary<string, string>(StringComparer.Ordinal)
-            {
-                [AgyEnvironment.LogPathVar] = options.AgyLogFilePath,
-                [AgyEnvironment.SessionIdVar] = options.SessionId,
-                // The clavity --mcp child reads THIS to find the paired agy - the SAME per-session file agy
-                // publishes to above. ResolveEndpointPath honours the var; the launcher just populates it.
-                [AgyEnvironment.EndpointPathVar] = options.AgyEndpointFilePath,
-            });
+            Environment: claudeEnv);
 
         return new LaunchPlan(agyTab, claudeLaunch);
     }

@@ -108,7 +108,56 @@ internal sealed class RealStartEffects : IStartEffects
     public IDisposable HoldSessionAlive(SessionPaths paths) =>
         SessionLock.TryTake(paths.Alive) ?? throw new IOException($"cannot hold {paths.Alive}: another process holds it.");
 
-    public CommandResult RunCaptured(LaunchCommand cmd, TimeSpan timeout) => throw new NotImplementedException();   // Task 4
-    public IDisposable? TakeProfileLock(string profileName, TimeSpan wait) => throw new NotImplementedException();   // Task 4
-    public string? AmbientConfigDir => throw new NotImplementedException();   // Task 4
+    public CommandResult RunCaptured(LaunchCommand cmd, TimeSpan timeout)
+    {
+        var psi = new ProcessStartInfo(cmd.FileName)
+        {
+            WorkingDirectory = cmd.WorkingDirectory,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (var arg in cmd.Arguments)
+            psi.ArgumentList.Add(arg);
+        foreach (var (key, value) in cmd.Environment)
+            psi.Environment[key] = value;
+        using var process = Process.Start(psi)!;   // throws Win32Exception when the program cannot be started
+        // Both pipes drain concurrently, so a full pipe never blocks the child.
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        if (process.WaitForExit(timeout))
+        {
+            process.WaitForExit();   // the redirected streams are complete only after this overload
+            return new CommandResult(process.ExitCode, stdout.GetAwaiter().GetResult(), stderr.GetAwaiter().GetResult(), false);
+        }
+        try
+        {
+            process.Kill(entireProcessTree: true);
+        }
+        catch (InvalidOperationException)
+        {
+            // it ended between the timeout and the kill
+        }
+        process.WaitForExit(TimeSpan.FromSeconds(5));
+        // A grandchild that escaped the kill may keep the pipes open; do not wait on the readers past a short grace.
+        Task.WaitAll([stdout, stderr], TimeSpan.FromSeconds(2));
+        return new CommandResult(-1, stdout.IsCompletedSuccessfully ? stdout.Result : "",
+            stderr.IsCompletedSuccessfully ? stderr.Result : "", true);
+    }
+
+    public IDisposable? TakeProfileLock(string profileName, TimeSpan wait)
+    {
+        var path = Path.Combine(UserProfile, ".clavity", $"agy-profile.{profileName}.lock");
+        var clock = Stopwatch.StartNew();
+        while (true)
+        {
+            if (SessionLock.TryTakeChecked(path) is { } held)
+                return held;
+            if (clock.Elapsed >= wait)
+                return null;
+            Thread.Sleep(250);
+        }
+    }
+
+    public string? AmbientConfigDir => Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR");
 }
