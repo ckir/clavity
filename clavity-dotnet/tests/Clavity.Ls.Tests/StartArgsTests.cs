@@ -108,6 +108,61 @@ public class StartArgsTests
     }
 
     [Fact]
+    public void Profile_directly_after_the_folder_is_consumed()
+    {
+        var a = StartArgs.Parse(new[] { Repo, "--profile", "work", "--model", "opus" }, Cwd);
+        Assert.Equal("work", a.Profile);
+        Assert.Equal(new[] { "--model", "opus" }, a.ClaudeArgs);
+        Assert.False(a.Attach);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Profile_and_attach_may_come_in_either_order(bool profileFirst)
+    {
+        var args = profileFirst
+            ? new[] { Repo, "--profile", "work", "--attach", Sid }
+            : new[] { Repo, "--attach", Sid, "--profile", "work" };
+        var a = StartArgs.Parse(args, Cwd);
+        Assert.Equal("work", a.Profile);
+        Assert.True(a.Attach);
+        Assert.Equal(Sid, a.AttachSessionId);
+        Assert.Empty(a.ClaudeArgs);
+    }
+
+    [Fact]
+    public void Attach_without_an_id_followed_by_profile_keeps_both()
+    {
+        var a = StartArgs.Parse(new[] { Repo, "--attach", "--profile", "work" }, Cwd);
+        Assert.True(a.Attach);
+        Assert.Null(a.AttachSessionId);
+        Assert.Equal("work", a.Profile);
+        Assert.Empty(a.ClaudeArgs);
+    }
+
+    [Fact]
+    public void Profile_without_the_flag_is_null()
+        => Assert.Null(StartArgs.Parse(new[] { Repo }, Cwd).Profile);
+
+    [Fact]
+    public void Profile_after_a_Claude_argument_belongs_to_Claude()
+    {
+        var a = StartArgs.Parse(new[] { Repo, "-c", "--profile", "x" }, Cwd);
+        Assert.Null(a.Profile);
+        Assert.Equal(new[] { "-c", "--profile", "x" }, a.ClaudeArgs);
+    }
+
+    [Theory]
+    [InlineData(new object[] { new[] { "--profile" } })]
+    [InlineData(new object[] { new[] { "--profile", "" } })]
+    [InlineData(new object[] { new[] { "--profile", "  " } })]
+    [InlineData(new object[] { new[] { "--profile", "-x" } })]
+    [InlineData(new object[] { new[] { "--profile", "a", "--profile", "b" } })]
+    public void Bad_profile_values_are_usage_errors(string[] tail)
+        => Assert.Throws<ArgumentException>(() => StartArgs.Parse(new[] { Repo }.Concat(tail).ToArray(), Cwd));
+
+    [Fact]
     public void A_relative_folder_is_resolved_against_the_given_current_directory_not_the_process_one()
     {
         var cwd = Path.Combine(Path.GetTempPath(), "clavity-args-cwd");

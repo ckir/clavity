@@ -6,13 +6,18 @@
 
 namespace Clavity.Ls;
 
-/// <summary>Parsed <c>clavity-ls start [folder] [--attach [&lt;session-id&gt;]] [claude-args...]</c>.</summary>
-public sealed record StartArgs(string Folder, bool Attach, string? AttachSessionId, string[] ClaudeArgs)
+/// <summary>Parsed <c>clavity-ls start [folder] [--attach [&lt;session-id&gt;]] [--profile &lt;name&gt;] [claude-args...]</c>
+/// (<c>--attach</c> and <c>--profile</c> in either order).</summary>
+public sealed record StartArgs(string Folder, bool Attach, string? AttachSessionId, string? Profile, string[] ClaudeArgs)
 {
     public const string AttachFlag = "--attach";
+    public const string ProfileFlag = "--profile";
 
-    /// <summary>The folder is the first argument unless it starts with '-'. <c>--attach</c> is ours only DIRECTLY after
-    /// it (or first, with no folder), so every later argument still reaches Claude untouched. Its id is optional (ROADMAP
+    /// <summary>The folder is the first argument unless it starts with '-'. <c>--attach</c> and <c>--profile</c> are ours
+    /// only in the run of arguments DIRECTLY after it (or first, with no folder), in either order, so every later
+    /// argument still reaches Claude untouched. <c>--profile</c> takes a required value (non-blank, not starting with
+    /// '-') and may appear once; a missing or bad value or a repeat throws <see cref="ArgumentException"/>. The
+    /// <c>--attach</c> id is optional (ROADMAP
     /// section 65: with none, `start` pairs with the one agy session waiting in the folder): a valid id is consumed; an
     /// argument SHAPED like an id but invalid throws <see cref="ArgumentException"/> (a mistyped id must not silently
     /// become a prompt); anything else is Claude's. Only a valid id ever becomes part of a file name.</summary>
@@ -32,23 +37,47 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
 
         var attach = false;
         string? id = null;
-        if (i < rest.Length && rest[i] == AttachFlag)
+        string? profile = null;
+        while (i < rest.Length)
         {
-            attach = true;
-            i++;
-            if (i < rest.Length && SessionPaths.IsValidSessionId(rest[i]))
+            if (rest[i] == AttachFlag && !attach)
             {
-                id = rest[i];
+                attach = true;
+                i++;
+                if (i < rest.Length && SessionPaths.IsValidSessionId(rest[i]))
+                {
+                    id = rest[i];
+                    i++;
+                }
+                else if (i < rest.Length && LooksLikeAnId(rest[i]))
+                {
+                    throw new ArgumentException(
+                        $"{AttachFlag} '{rest[i]}' is not a session id - use the one `clavity-ls agy` printed, or none.");
+                }
+            }
+            else if (rest[i] == ProfileFlag)
+            {
+                if (profile is not null)
+                {
+                    throw new ArgumentException($"{ProfileFlag} may be given only once.");
+                }
+
+                i++;
+                if (i >= rest.Length || string.IsNullOrWhiteSpace(rest[i]) || rest[i].StartsWith('-'))
+                {
+                    throw new ArgumentException($"{ProfileFlag} needs a profile name (a non-blank value not starting with '-').");
+                }
+
+                profile = rest[i];
                 i++;
             }
-            else if (i < rest.Length && LooksLikeAnId(rest[i]))
+            else
             {
-                throw new ArgumentException(
-                    $"{AttachFlag} '{rest[i]}' is not a session id - use the one `clavity-ls agy` printed, or none.");
+                break;
             }
         }
 
-        return new StartArgs(folder, attach, id, rest[i..]);
+        return new StartArgs(folder, attach, id, profile, rest[i..]);
     }
 
     // Hex digits and dashes only, 8 or more: what a mistyped or truncated session id looks like.
