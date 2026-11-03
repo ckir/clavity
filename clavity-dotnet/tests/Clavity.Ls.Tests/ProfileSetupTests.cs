@@ -112,7 +112,7 @@ public sealed class ProfileSetupTests
         });
         Assert.Equal(Dir, ProfileSetup.Run(fx, "work"));
         Assert.Equal(L("cmd:" + Create, "profile-lock", "cmd:" + Doctor,
-            "cmd:" + List, "cmd:claude plugin enable clavity@clavity", "cmd:" + List,
+            "cmd:" + List, "cmd:claude plugin enable clavity@clavity --scope user", "cmd:" + List,
             "cmd:" + List, "profile-release"), Cmds(fx));
     }
 
@@ -171,6 +171,39 @@ public sealed class ProfileSetupTests
         Assert.Null(ProfileSetup.Run(fx, "work"));
         Assert.Contains("clavity: ", fx.Err.ToString());
         Assert.Equal("profile-release", fx.Calls[^1]);
+    }
+
+    [Fact]
+    public void Doctor_without_a_config_dir_reports_its_output()
+    {
+        var fx = NewFake(new() { [Doctor] = new CommandResult(0, "STDOUT-MARK not json", "STDERR-MARK", false) });
+        Assert.Null(ProfileSetup.Run(fx, "work"));
+        Assert.StartsWith("clavity: ", fx.Err.ToString());
+        Assert.Contains("STDOUT-MARK", fx.Err.ToString());
+        Assert.Contains("STDERR-MARK", fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Missing_profile_directory_reports_the_doctor_output()
+    {
+        var fx = new Fake
+        {
+            Script = new Dictionary<string, object> { [Doctor] = new CommandResult(5, DoctorJson(Dir), "STDERR-MARK", false) },
+            MissingDirs = new() { Dir },
+        };
+        Assert.Null(ProfileSetup.Run(fx, "work"));
+        Assert.StartsWith("clavity: ", fx.Err.ToString());
+        Assert.Contains("STDERR-MARK", fx.Err.ToString());
+        Assert.Contains(Dir, fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Plugin_not_enabled_after_setup_reports_the_list_output()
+    {
+        var fx = NewFake(new() { [List] = Ok("[] LIST-MARK"), [MktList] = Ok("[{\"name\":\"clavity\"}]") });
+        Assert.Null(ProfileSetup.Run(fx, "work"));
+        Assert.StartsWith("clavity: ", fx.Err.ToString());
+        Assert.Contains("LIST-MARK", fx.Err.ToString());
     }
 
     [Fact]

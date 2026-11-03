@@ -84,7 +84,7 @@ Claude στο ίδιο αποθετήριο). Μόνο το `clavity-ls start` �
 
 ### Εκτέλεση του Claude με προφίλ
 
-Ο απλούστερος τρόπος είναι το `--profile`, που χρησιμοποιεί το [agent-profile](https://github.com/ckir/agent-profile) για να κάνει
+Ο απλούστερος τρόπος είναι το `--profile`, που χρησιμοποιεί το [agent-profile](https://github.com/ckir/aiprofiles) για να κάνει
 τη ρύθμιση για εσάς:
 
 ```bash
@@ -133,7 +133,7 @@ CLAUDE_CONFIG_DIR=~/.claude-profiles/test clavity-ls start ~/path/to/your/projec
 
 - `clavity-ls start <folder> [--attach [<session-id>]] [--profile <name>] [claude-args...]` — εκκίνηση ορατής καρτέλας agy + Claude Code στον `<folder>`
   (καταγραφή ανά συνεδρία· προεπιλογή ο τρέχων κατάλογος). Το `--attach` εκκινεί μόνο το Claude, συνδεδεμένο με το agy που ξεκίνησε το
-  `clavity-ls agy`· χωρίς id επιλέγει το ένα agy που περιμένει σε αυτόν τον φάκελο. Το `--profile` ρυθμίζει και χρησιμοποιεί ένα επώνυμο προφίλ Claude του [agent-profile](https://github.com/ckir/agent-profile) (βλ. παραπάνω).
+  `clavity-ls agy`· χωρίς id επιλέγει το ένα agy που περιμένει σε αυτόν τον φάκελο. Το `--profile` ρυθμίζει και χρησιμοποιεί ένα επώνυμο προφίλ Claude του [agent-profile](https://github.com/ckir/aiprofiles) (βλ. παραπάνω).
 - `clavity-ls agy [folder]` — Linux/macOS: εκτέλεση του agy νέας συνεδρίας σε αυτό το τερματικό και εμφάνιση της εντολής `start --attach` για άλλο τερματικό.
 - `clavity-ls --mcp` — εκτέλεση του MCP stdio server (`agy_look` / `agy_status` / `agy_ask`)· εκκινείται αυτόματα μέσω του `.mcp.json`.
 - `clavity-ls install [--plugin <name>]` — καταχώριση προσθέτου σε κάθε εντοπισμένο πράκτορα (Claude Code και/ή agy)· προεπιλεγμένο είναι το βασικό

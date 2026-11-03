@@ -22,6 +22,7 @@ public static class ProfileSetup
 
     private const string ConfigDirVar = "CLAUDE_CONFIG_DIR";
     private const int DoctorWarnings = 5;
+    private const int OutputCap = 2000;
 
     private sealed record Plugin(string Id, string Marketplace, string Source);
 
@@ -36,7 +37,7 @@ public static class ProfileSetup
     {
         var tool = fx.IsWindows ? "agent-profile.exe" : "agent-profile";
         if (!fx.OnPath(tool))
-            return Fail(fx, $"{tool} is not on PATH - install agent-profile (https://github.com/ckir/agent-profile), then retry.");
+            return Fail(fx, $"{tool} is not on PATH - install agent-profile (https://github.com/ckir/aiprofiles), then retry.");
         if (!fx.ClaudeFindable())
             return Fail(fx, $"{(fx.IsWindows ? "claude.exe" : "claude")} is not on PATH - install Claude Code, then retry.");
 
@@ -67,9 +68,9 @@ public static class ProfileSetup
             return null;
         var dir = ProfileJson.ReadConfigDir(doctor.StdOut);
         if (dir is null)
-            return Fail(fx, $"agent-profile doctor for '{profile}' did not report a {ConfigDirVar}.");
+            return Fail(fx, $"agent-profile doctor for '{profile}' did not report a {ConfigDirVar}{Detail(doctor)}.");
         if (!fx.DirectoryExists(dir))
-            return Fail(fx, $"the profile directory {dir} does not exist.");
+            return Fail(fx, $"the profile directory {dir} does not exist{Detail(doctor)}.");
 
         foreach (var plugin in Plugins)
             if (!EnsurePlugin(fx, dir, plugin))
@@ -79,14 +80,14 @@ public static class ProfileSetup
 
     private static bool EnsurePlugin(IStartEffects fx, string dir, Plugin plugin)
     {
-        var state = ListState(fx, dir, plugin);
+        var state = ListState(fx, dir, plugin, out _);
         if (state is null)
             return false;
         if (state == PluginState.Enabled)
             return true;
         if (state == PluginState.Disabled)
         {
-            if (Claude(fx, dir, ["plugin", "enable", plugin.Id], StepTimeout) is null)
+            if (Claude(fx, dir, ["plugin", "enable", plugin.Id, "--scope", "user"], StepTimeout) is null)
                 return false;
         }
         else
@@ -100,20 +101,20 @@ public static class ProfileSetup
             if (Claude(fx, dir, ["plugin", "install", plugin.Id, "-y", "--scope", "user"], NetworkTimeout) is null)
                 return false;
         }
-        var after = ListState(fx, dir, plugin);
+        var after = ListState(fx, dir, plugin, out var afterList);
         if (after is null)
             return false;
         if (after != PluginState.Enabled)
         {
-            Fail(fx, $"plugin {plugin.Id} is not enabled in {dir} after setup.");
+            Fail(fx, $"plugin {plugin.Id} is not enabled in {dir} after setup{Detail(afterList)}.");
             return false;
         }
         return true;
     }
 
-    private static PluginState? ListState(IStartEffects fx, string dir, Plugin plugin)
+    private static PluginState? ListState(IStartEffects fx, string dir, Plugin plugin, out CommandResult? list)
     {
-        var list = Claude(fx, dir, ["plugin", "list", "--json"], StepTimeout);
+        list = Claude(fx, dir, ["plugin", "list", "--json"], StepTimeout);
         return list is null ? null : ProfileJson.ReadPluginState(list.StdOut, plugin.Id);
     }
 
@@ -145,11 +146,22 @@ public static class ProfileSetup
         }
         if (!(okExit?.Invoke(result) ?? result.ExitCode == 0))
         {
-            var output = string.Join(" ", new[] { result.StdErr.Trim(), result.StdOut.Trim() }.Where(s => s.Length > 0));
-            Fail(fx, $"`{line}` failed with exit code {result.ExitCode}{(output.Length > 0 ? ": " + output : "")}");
+            Fail(fx, $"`{line}` failed with exit code {result.ExitCode}{Detail(result)}");
             return null;
         }
         return result;
+    }
+
+    /// <summary>": " + the command's stderr and a bounded slice of its stdout, or "" when both are empty.</summary>
+    private static string Detail(CommandResult? result)
+    {
+        if (result is null)
+            return "";
+        var stdout = result.StdOut.Trim();
+        if (stdout.Length > OutputCap)
+            stdout = stdout[..OutputCap] + "...";
+        var output = string.Join(" ", new[] { result.StdErr.Trim(), stdout }.Where(s => s.Length > 0));
+        return output.Length > 0 ? ": " + output : "";
     }
 
     private static string? Fail(IStartEffects fx, string message)

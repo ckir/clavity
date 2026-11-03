@@ -86,7 +86,7 @@ or it does not pair.
 
 ### Running Claude under a profile
 
-The simplest route is `--profile`, which uses [agent-profile](https://github.com/ckir/agent-profile) to do the setup
+The simplest route is `--profile`, which uses [agent-profile](https://github.com/ckir/aiprofiles) to do the setup
 for you:
 
 ```bash
@@ -135,7 +135,7 @@ CLAUDE_CONFIG_DIR=~/.claude-profiles/test clavity-ls start ~/path/to/your/projec
 - `clavity-ls start <folder> [--attach [<session-id>]] [--profile <name>] [claude-args...]` — launch a visible agy tab + Claude Code in `<folder>`
   (per-session log; defaults to the current directory). `--attach` starts Claude only, paired with the agy that
   `clavity-ls agy` started; without an id it picks the one agy waiting in that folder. `--profile` sets up and uses a named
-  [agent-profile](https://github.com/ckir/agent-profile) Claude profile (see above).
+  [agent-profile](https://github.com/ckir/aiprofiles) Claude profile (see above).
 - `clavity-ls agy [folder]` — Linux/macOS: run a new session's agy in this terminal and print the `start --attach`
   command for another.
 - `clavity-ls --mcp` — run the MCP stdio server (`agy_look` / `agy_status` / `agy_ask`); started

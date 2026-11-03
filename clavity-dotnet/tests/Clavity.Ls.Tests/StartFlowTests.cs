@@ -157,6 +157,25 @@ public sealed class StartFlowTests
     }
 
     [Fact]
+    public void Profile_start_runs_create_and_releases_the_profile_lock_exactly_once()
+    {
+        var fx = ProfileFake();
+        Assert.Equal(0, StartFlow.Start([Repo, "--profile", "work"], fx));
+        Assert.Single(fx.Calls, c => c.EndsWith(" claude create work", StringComparison.Ordinal));
+        Assert.Single(fx.Calls, c => c == "profile-release");
+        Assert.True(fx.Calls.IndexOf("profile-release") < fx.Calls.IndexOf("mkdir"), string.Join(",", fx.Calls));
+    }
+
+    [Fact]
+    public void Attach_with_a_profile_runs_create_and_releases_the_profile_lock_exactly_once()
+    {
+        var fx = ProfileFake();
+        Assert.Equal(0, StartFlow.Start([Repo, "--attach", Attached, "--profile", "work"], fx));
+        Assert.Single(fx.Calls, c => c.EndsWith(" claude create work", StringComparison.Ordinal));
+        Assert.Single(fx.Calls, c => c == "profile-release");
+    }
+
+    [Fact]
     public void Attach_that_cannot_take_the_session_runs_no_setup()
     {
         var fx = ProfileFake(takeSucceeds: false);
@@ -182,6 +201,7 @@ public sealed class StartFlowTests
             Assert.DoesNotContain(forbidden, fx.Calls);
         Assert.DoesNotContain(fx.Calls, c => c.StartsWith("run:", StringComparison.Ordinal));
         Assert.Contains("release-folder", fx.Calls);
+        Assert.Contains("profile-release", fx.Calls);
         Assert.Contains("clavity: ", fx.Err.ToString());
     }
 
