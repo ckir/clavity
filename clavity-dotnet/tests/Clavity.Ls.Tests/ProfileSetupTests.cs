@@ -79,6 +79,71 @@ public sealed class ProfileSetupTests
     }
 
     [Fact]
+    public void Network_steps_get_the_network_timeout_and_every_other_step_the_local_one()
+    {
+        var fx = NewFake(new()
+        {
+            [List] = Seq(Ok("[]"), Ok(Plugins(("clavity@clavity", "true"))),
+                Ok(Plugins(("clavity@clavity", "true"))),
+                Ok(Plugins(("clavity@clavity", "true"), ("superpowers@superpowers-marketplace", "true")))),
+            [MktList] = Ok("[]"),
+        });
+        Assert.Equal(Dir, ProfileSetup.Run(fx, "work"));
+        var local = TimeSpan.FromSeconds(30);
+        var network = TimeSpan.FromSeconds(120);
+        Assert.Equal(local, fx.Timeouts[Create]);
+        Assert.Equal(local, fx.Timeouts[Doctor]);
+        Assert.Equal(local, fx.Timeouts[List]);
+        Assert.Equal(local, fx.Timeouts[MktList]);
+        Assert.Equal(network, fx.Timeouts[MktAddClavity]);
+        Assert.Equal(network, fx.Timeouts[MktAddSuper]);
+        Assert.Equal(network, fx.Timeouts[InstallClavity]);
+        Assert.Equal(network, fx.Timeouts[InstallSuper]);
+        Assert.Equal(network, fx.LockWait);
+    }
+
+    [Fact]
+    public void Disabled_plugin_enable_uses_the_local_timeout()
+    {
+        var fx = NewFake(new()
+        {
+            [List] = Seq(Ok(Plugins(("clavity@clavity", "false"))), Ok(Plugins(("clavity@clavity", "true"))),
+                Ok(Plugins(("clavity@clavity", "true"), ("superpowers@superpowers-marketplace", "true")))),
+        });
+        Assert.Equal(Dir, ProfileSetup.Run(fx, "work"));
+        Assert.Equal(TimeSpan.FromSeconds(30), fx.Timeouts["claude plugin enable clavity@clavity --scope user"]);
+    }
+
+    [Fact]
+    public void Enable_failing_stops_before_any_further_command_and_releases_the_lock()
+    {
+        var fx = NewFake(new()
+        {
+            [List] = Ok(Plugins(("clavity@clavity", "false"))),
+            ["claude plugin enable clavity@clavity --scope user"] = new CommandResult(1, "", "denied", false),
+        });
+        Assert.Null(ProfileSetup.Run(fx, "work"));
+        Assert.Contains("claude plugin enable clavity@clavity --scope user` failed with exit code 1: denied", fx.Err.ToString());
+        Assert.Equal(L("cmd:" + Create, "profile-lock", "cmd:" + Doctor,
+            "cmd:" + List, "cmd:claude plugin enable clavity@clavity --scope user", "profile-release"), Cmds(fx));
+    }
+
+    [Theory]
+    [InlineData(typeof(IOException))]
+    [InlineData(typeof(UnauthorizedAccessException))]
+    public void Profile_lock_that_cannot_be_taken_fails_cleanly_before_doctor(Type exceptionType)
+    {
+        var fx = new Fake
+        {
+            Script = NewFake().Script,
+            ProfileLockFails = (Exception)Activator.CreateInstance(exceptionType, "disk full")!,
+        };
+        Assert.Null(ProfileSetup.Run(fx, "work"));
+        Assert.Contains("clavity: cannot take the setup lock for profile 'work': disk full", fx.Err.ToString());
+        Assert.Equal(L("cmd:" + Create, "profile-lock"), Cmds(fx));
+    }
+
+    [Fact]
     public void Marketplace_already_configured_is_not_added()
     {
         var fx = NewFake(new()

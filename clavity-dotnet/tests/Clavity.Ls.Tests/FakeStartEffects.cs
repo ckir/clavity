@@ -141,6 +141,12 @@ internal sealed class Fake : IStartEffects
     public readonly List<LaunchCommand> CapturedRan = new();
     public bool ProfileLockHeld { get; init; }
     public string? AmbientConfigDir { get; init; }
+    /// <summary>Thrown by <see cref="TakeProfileLock"/> (what an unwritable lock directory does on a real disk).</summary>
+    public Exception? ProfileLockFails { get; init; }
+    /// <summary>The timeout each captured command line was given (test audit MG-01: the fake used to drop it).</summary>
+    public readonly Dictionary<string, TimeSpan> Timeouts = new();
+    /// <summary>The wait the profile lock was asked for.</summary>
+    public TimeSpan? LockWait { get; private set; }
 
     public static string Line(LaunchCommand cmd) => string.Join(' ', new[] { cmd.FileName }.Concat(cmd.Arguments));
 
@@ -149,6 +155,7 @@ internal sealed class Fake : IStartEffects
         var line = Line(cmd);
         Calls.Add("cmd:" + line);
         CapturedRan.Add(cmd);
+        Timeouts[line] = timeout;
         if (!Script.TryGetValue(line, out var r))
             return DefaultResult;
         if (r is Func<CommandResult> f)
@@ -159,6 +166,9 @@ internal sealed class Fake : IStartEffects
     public IDisposable? TakeProfileLock(string profileName, TimeSpan wait)
     {
         Calls.Add("profile-lock");
+        LockWait = wait;
+        if (ProfileLockFails is not null)
+            throw ProfileLockFails;
         return ProfileLockHeld ? null : new Release(Calls, "profile-release");
     }
 

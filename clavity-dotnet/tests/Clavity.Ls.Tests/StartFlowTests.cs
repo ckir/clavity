@@ -105,7 +105,7 @@ public sealed class StartFlowTests
         "{\"name\":\"CLAUDE_CONFIG_DIR\",\"value\":\"" + ProfileDir + "\"}}]}";
 
     private static Fake ProfileFake(bool windows = false, Dictionary<string, object>? extra = null, string? ambient = null,
-        bool takeSucceeds = true)
+        bool takeSucceeds = true, List<WaitingSession>? waiting = null)
     {
         var tool = windows ? "agent-profile.exe" : "agent-profile";
         var script = new Dictionary<string, object>
@@ -122,6 +122,7 @@ public sealed class StartFlowTests
             DefaultResult = new CommandResult(0, BothEnabledList, "", false),
             AmbientConfigDir = ambient,
             TakeSucceeds = takeSucceeds,
+            Waiting = waiting ?? new(),
         };
     }
 
@@ -181,6 +182,42 @@ public sealed class StartFlowTests
         var fx = ProfileFake(takeSucceeds: false);
         Assert.Equal(1, StartFlow.Start([Repo, "--attach", Attached, "--profile", "work"], fx));
         Assert.DoesNotContain(fx.Calls, c => c.StartsWith("cmd:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Attach_setup_failure_exits_1_launches_nothing_and_releases_both_locks()
+    {
+        var fx = ProfileFake(extra: new()
+        {
+            ["agent-profile claude create work"] = new CommandResult(1, "", "boom", false),
+        });
+        Assert.Equal(1, StartFlow.Start([Repo, "--attach", Attached, "--profile", "work"], fx));
+        Assert.DoesNotContain(fx.Calls, c => c.StartsWith("run:", StringComparison.Ordinal));
+        Assert.DoesNotContain("wait", fx.Calls);
+        Assert.Contains("release", fx.Calls);
+        Assert.Contains("release-folder", fx.Calls);
+        Assert.Contains("clavity: ", fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Attach_with_a_profile_and_no_id_pairs_with_the_waiting_session_under_the_profile()
+    {
+        var fx = ProfileFake(waiting: [W(Attached)]);
+        Assert.Equal(0, StartFlow.Start([Repo, "--attach", "--profile", "work"], fx));
+        Assert.True(fx.Calls.IndexOf("take") < FirstCmd(fx), string.Join(",", fx.Calls));
+        var claude = fx.Ran.Single(c => c.FileName == "claude");
+        Assert.Equal(ProfileDir, claude.Environment["CLAUDE_CONFIG_DIR"]);
+        Assert.Equal(Attached, claude.Environment[AgyEnvironment.SessionIdVar]);
+    }
+
+    [Fact]
+    public void Attach_with_a_profile_notes_an_ambient_CLAUDE_CONFIG_DIR_that_differs()
+    {
+        var fx = ProfileFake(ambient: "/other/");
+        Assert.Equal(0, StartFlow.Start([Repo, "--attach", Attached, "--profile", "work"], fx));
+        var notice = Assert.Single(fx.Err.ToString().Split('\n'), l => l.Contains("CLAUDE_CONFIG_DIR"));
+        Assert.Contains("/other/", notice);
+        Assert.Contains(ProfileDir, notice);
     }
 
     [Fact]
