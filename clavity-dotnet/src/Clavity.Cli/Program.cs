@@ -74,6 +74,13 @@ if (args.Length == 1 && args[0] is "--version" or "-V")
     return 0;
 }
 
+// `clavity-ls --help` / `<verb> --help` - BEFORE any verb dispatch, so `install --help` prints help instead of installing.
+if (CliVerbs.IsHelpRequest(args))
+{
+    Console.WriteLine(CliVerbs.HelpText());
+    return 0;
+}
+
 // `clavity-ls curate-commit [--cheatsheet]` — atomically write a compiled region (read from stdin) to the shared path.
 if (args.Length > 0 && args[0] == "curate-commit")
 {
@@ -108,5 +115,5 @@ if (args.Length > 0 && args[0] == "agy")
 if (args.Length > 0 && args[0] == "start")
     return StartFlow.Start(args.Skip(1).ToArray(), new Clavity.Cli.RealStartEffects());
 
-Console.WriteLine("clavity-ls — usage: clavity-ls start [folder] [--attach <session-id>] [--profile <name>] [claude-args...]   |   clavity-ls agy [folder]   (Linux/macOS: agy in this terminal)   |   clavity-ls --mcp   (MCP stdio server: agy_look / agy_status / agy_ask)   |   clavity-ls --version");
+Console.WriteLine(CliVerbs.HelpText());
 return 0;
