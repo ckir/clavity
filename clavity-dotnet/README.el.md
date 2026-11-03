@@ -84,7 +84,28 @@ Claude στο ίδιο αποθετήριο). Μόνο το `clavity-ls start` �
 
 ### Εκτέλεση του Claude με προφίλ
 
-Το `start` εκκινεί το Claude Code με το περιβάλλον που κληρονόμησε από το shell σας (προσθέτει μόνο τις τρεις μεταβλητές
+Ο απλούστερος τρόπος είναι το `--profile`, που χρησιμοποιεί το [agent-profile](https://github.com/ckir/agent-profile) για να κάνει
+τη ρύθμιση για εσάς:
+
+```bash
+clavity-ls start ~/path/to/your/project --profile work
+```
+
+Το `--profile <name>` μπαίνει αμέσως μετά τον φάκελο, με όποια σειρά ως προς το `--attach`. Τα `agent-profile` και `claude` πρέπει
+να βρίσκονται και τα δύο στο PATH. Το `start` εκτελεί `agent-profile claude create <name>`, διαβάζει τον κατάλογο του προφίλ από το
+`agent-profile claude doctor <name> --json`, εγκαθιστά σε αυτόν τα `clavity@clavity` και `superpowers@superpowers-marketplace`
+(προσθέτοντας πρώτα τα marketplaces `ckir/clavity` και `obra/superpowers-marketplace`, εφόσον λείπουν), ενεργοποιεί όποιο από τα δύο
+πρόσθετα είναι απενεργοποιημένο, και μετά εκκινεί το Claude με το `CLAUDE_CONFIG_DIR` ορισμένο σε αυτόν τον κατάλογο. Σημειώσεις:
+
+- Εάν το shell σας έχει ήδη διαφορετικό `CLAUDE_CONFIG_DIR`, το `--profile` το παρακάμπτει και τυπώνει μονόγραμμη ειδοποίηση στο stderr.
+- Εάν αποτύχει οποιοδήποτε βήμα της ρύθμισης, το `start` τερματίζει με κωδικό 1 χωρίς να ανοίξει τίποτα.
+- Ένα νέο προφίλ ξεκινά κενό: το Claude του σάς ζητά να συνδεθείτε (τα διαπιστευτήρια δεν αντιγράφονται από άλλο προφίλ).
+- Τη μεταβλητή τη λαμβάνει μόνο η διεργασία του Claude· η καρτέλα του agy όχι.
+- Δύο εκτελέσεις `start --profile X` σε διαφορετικούς φακέλους σειριοποιούνται ανά όνομα προφίλ, ώστε να μη ρυθμίζουν το ίδιο προφίλ ταυτόχρονα.
+
+#### Η χειροκίνητη διαδρομή
+
+Χωρίς το `--profile`, το `start` εκκινεί το Claude Code με το περιβάλλον που κληρονόμησε από το shell σας (προσθέτει μόνο τις τρεις μεταβλητές
 `CLAVITY_*` παρακάτω), επομένως ένα [προφίλ του Claude Code](https://docs.anthropic.com/en/docs/claude-code/settings)
 επιλέγεται όπως και για ένα απλό `claude`: ορίστε το `CLAUDE_CONFIG_DIR` πριν εκτελέσετε το `start`. Όλα όσα διαβάζει το
 Claude από αυτόν τον κατάλογο - `settings.json`, `CLAUDE.md`, τα ενεργά πρόσθετα και το εκτελέσιμο `clavity-ls` που έχουν
@@ -110,9 +131,9 @@ CLAUDE_CONFIG_DIR=~/.claude-profiles/test clavity-ls start ~/path/to/your/projec
 
 ## Αναφορά εντολών
 
-- `clavity-ls start <folder> [--attach [<session-id>]] [claude-args...]` — εκκίνηση ορατής καρτέλας agy + Claude Code στον `<folder>`
+- `clavity-ls start <folder> [--attach [<session-id>]] [--profile <name>] [claude-args...]` — εκκίνηση ορατής καρτέλας agy + Claude Code στον `<folder>`
   (καταγραφή ανά συνεδρία· προεπιλογή ο τρέχων κατάλογος). Το `--attach` εκκινεί μόνο το Claude, συνδεδεμένο με το agy που ξεκίνησε το
-  `clavity-ls agy`· χωρίς id επιλέγει το ένα agy που περιμένει σε αυτόν τον φάκελο.
+  `clavity-ls agy`· χωρίς id επιλέγει το ένα agy που περιμένει σε αυτόν τον φάκελο. Το `--profile` ρυθμίζει και χρησιμοποιεί ένα επώνυμο προφίλ Claude του [agent-profile](https://github.com/ckir/agent-profile) (βλ. παραπάνω).
 - `clavity-ls agy [folder]` — Linux/macOS: εκτέλεση του agy νέας συνεδρίας σε αυτό το τερματικό και εμφάνιση της εντολής `start --attach` για άλλο τερματικό.
 - `clavity-ls --mcp` — εκτέλεση του MCP stdio server (`agy_look` / `agy_status` / `agy_ask`)· εκκινείται αυτόματα μέσω του `.mcp.json`.
 - `clavity-ls install [--plugin <name>]` — καταχώριση προσθέτου σε κάθε εντοπισμένο πράκτορα (Claude Code και/ή agy)· προεπιλεγμένο είναι το βασικό
