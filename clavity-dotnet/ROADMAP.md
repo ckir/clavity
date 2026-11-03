@@ -4596,6 +4596,16 @@ Safe routes, from the §88 consult (none chosen): (1) make the skills write thei
 
 **Not done, a separate ruling:** the peer's third route. Rank 2 fills whatever the 3 slots leave free (`agy-consult-recovery.sh` `_shown_r2`), so a repository with no open on-convention seam lists the 3 newest unrecognised seams one per line at every session start; not backfilling would be the largest cut and it changes what a recovery hook shows for a seam that may really be interrupted, so it waits for the owner (the hook's rule is that recovery errs loud). The peer's other idea, a first-class `agy-negotiate` token, needs a fifth marker and writer. Its claim that 101 of the 229 are `-negotiate-` seams restates this entry's fork-or-negotiat count and is not measured for `negotiate` alone (6 of 22 here).
 
+### §105 — `clavity-ls start --profile <name>` sets up and launches Claude under an agent-profile profile
+
+**Status:** IMPLEMENTED 2026-11-03 - `start <folder> --profile <name>` creates the profile with `agent-profile`, installs `clavity` and `superpowers` into it, and launches Claude with `CLAUDE_CONFIG_DIR` set (branch `feat/start-profile`; commits `ceac8de0` parse, `d9a6bfb6` + `c0d49450` ProfileJson readers, `3b13eb91` ProfileSetup, `8bc25a1c` + `949164d1` StartFlow wiring and bounded RunCaptured)
+
+Spec: `docs/superpowers/specs/2026-11-03-start-profile-design.md`. Panel history: 3 agy rounds, not GREEN, builder check clean.
+
+**Built 2026-11-03.** `--profile <name>` follows the folder (either order with `--attach`). `start` runs `agent-profile claude create`, reads the directory from `agent-profile claude doctor --json`, installs `clavity@clavity` and `superpowers@superpowers-marketplace` (adding the marketplaces if absent), enables them if disabled, then launches Claude with `CLAUDE_CONFIG_DIR`; a differing ambient value is overridden with a one-line stderr notice; a setup failure exits 1 with nothing opened; setup is serialised per profile name; the agy tab does not get the variable. The manual `CLAUDE_CONFIG_DIR` route stays documented (README EN + EL).
+
+**Not done:** a Windows run is unmeasured (this box is Linux). **Measured 2026-11-03 on Linux with the real `agent-profile` 0.1.1 and `claude`, scratch profile:** first `start --profile` ran create, doctor, then for each plugin list, marketplace list, `marketplace add`, `install <id> -y --scope user`, list, and both plugins were installed (`clavity` 0.14.0, `superpowers` 7.0.1) with `-y` and stdin not a TTY; a second run issued only create, doctor and two lists (no add, no install); six concurrent `agent-profile claude create` pairs were all safe (exit 0, one "created", one "already exists"). Not measured: the Claude launch itself (the scratch run stopped at the agy pairing wait), the install timeout path, and `install --marketplace` as a one-command replacement; plugin versions are not pinned (the latest is installed); the `agent-profile` repo-mapping fallback is an owner non-goal.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the

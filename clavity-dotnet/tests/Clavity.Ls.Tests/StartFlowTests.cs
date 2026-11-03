@@ -18,133 +18,6 @@ public sealed class StartFlowTests
     private static readonly string Repo = Path.Combine(Path.GetTempPath(), "clavity-flow-repo");
     private const string Attached = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";   // a session id `clavity-ls agy` printed
 
-    private sealed class Fake : IStartEffects
-    {
-        public readonly List<string> Calls = new();
-        public readonly List<LaunchCommand> Ran = new();
-        public readonly StringWriter Err = new();
-        public bool IsWindows { get; init; }
-        public TextWriter Error => Err;
-        public string UserProfile => Path.Combine(Path.GetTempPath(), "clavity-flow-home");
-        public string CurrentDirectory => Path.Combine(Path.GetTempPath(), "clavity-flow-cwd");
-        public string NewSessionId() => "11111111-2222-3333-4444-555555555555";
-
-        public bool FolderExists { get; init; } = true;
-        public bool AgyOnPath { get; init; } = true;
-        public bool PwshOnPath { get; init; } = true;
-        public bool ClaudeThere { get; init; } = true;
-        public Exception? DocFails { get; init; }
-        public bool TerminalOpens { get; init; } = true;
-        public bool Pairs { get; init; } = true;
-        /// <summary>Exit code per program name; null = the program cannot be started (Win32Exception).</summary>
-        public Dictionary<string, int?> Exit { get; init; } = new() { ["wt"] = 0, ["claude"] = 0 };
-        public bool InputRedirected { get; init; }
-        public int ScriptExit { get; init; }
-
-        public bool GitExists { get; init; } = true;
-        public readonly List<(string Path, string Content)> Scripts = new();
-
-        /// <summary>A .git exists only inside an existing folder (capstone R7: a .git inside a missing folder is a state no
-        /// real disk produces); <see cref="GitExists"/> false is a folder that is not a git repository.</summary>
-        public bool DirectoryExists(string path) =>
-            !MissingDirs.Contains(path) &&
-            (path.EndsWith(".git", StringComparison.Ordinal) ? FolderExists && GitExists : FolderExists);
-        public void CreateDirectory(string path) => Calls.Add("mkdir");
-        public void PruneLogs(string logsDir) => Calls.Add("prune");
-        public string? ReadProjectId(string agyHome) => null;
-        public bool OnPath(string exe)
-        {
-            Calls.Add("onpath:" + exe);
-            return exe == "agy" ? AgyOnPath : exe == "pwsh.exe" ? PwshOnPath : false;
-        }
-        public bool ClaudeFindable()
-        {
-            Calls.Add("claude?");
-            return ClaudeThere;
-        }
-        public string MaterializePairingDoc(string dir)
-        {
-            Calls.Add("doc");
-            if (DocFails is not null)
-                throw DocFails;
-            return Path.Combine(dir, "agy-pairing-INSTALL.md");
-        }
-        public void WriteScript(string path, string content)
-        {
-            Calls.Add("script");
-            Scripts.Add((path, content));
-        }
-        public bool OpenPosixTerminal(SessionPaths paths, string folder)
-        {
-            Calls.Add("terminal");
-            return TerminalOpens;
-        }
-        public bool WaitForPairing(SessionPaths paths)
-        {
-            Calls.Add("wait");
-            return Pairs;
-        }
-        public int Run(LaunchCommand cmd, bool wait)
-        {
-            Calls.Add($"run:{cmd.FileName}:{(wait ? "wait" : "nowait")}");
-            Ran.Add(cmd);
-            return Exit[cmd.FileName] ?? throw new Win32Exception(2, "The system cannot find the file specified.");
-        }
-        public void WaitForEnter() => Calls.Add("enter");
-        public int RunScriptHere(string scriptPath)
-        {
-            Calls.Add("here");
-            return ScriptExit;
-        }
-
-        public List<WaitingSession> Waiting { get; init; } = new();
-        public bool TakeSucceeds { get; init; } = true;
-        public readonly List<(string Path, string Folder)> FolderRecords = new();
-
-        public void WriteSessionFolder(string path, string folder)
-        {
-            Calls.Add("folder");
-            FolderRecords.Add((path, folder));
-        }
-        /// <summary>What a search across ALL folders adds (capstone R1: the same folder through a symlink lands here).</summary>
-        public List<WaitingSession> Elsewhere { get; init; } = new();
-        /// <summary>`.folder` records by session id (what `clavity-ls agy` wrote).</summary>
-        public Dictionary<string, string> Records { get; init; } = new();
-        public HashSet<string> MissingDirs { get; init; } = new();
-
-        public IReadOnlyList<WaitingSession> FindWaitingSessions(string? folder)
-        {
-            Calls.Add(folder is null ? "find-all" : "find");
-            return folder is null ? Waiting.Concat(Elsewhere).ToList() : Waiting;
-        }
-        public string? ReadSessionFolder(SessionPaths paths) => Records.GetValueOrDefault(paths.SessionId);
-        public IDisposable? TryTakeSession(SessionPaths paths)
-        {
-            Calls.Add("take");
-            return TakeSucceeds ? new Release(Calls, "release") : null;
-        }
-        public bool FolderHeld { get; init; }
-        public Exception? FolderFails { get; init; }
-        public readonly List<string> FolderLocks = new();
-        public IDisposable? TryTakeFolder(string folder)
-        {
-            Calls.Add("take-folder");
-            FolderLocks.Add(folder);
-            if (FolderFails is not null)
-                throw FolderFails;
-            return FolderHeld ? null : new Release(Calls, "release-folder");
-        }
-        public IDisposable HoldSessionAlive(SessionPaths paths)
-        {
-            Calls.Add("alive");
-            return new Release(Calls, "alive-release");
-        }
-        private sealed class Release(List<string> calls, string name) : IDisposable
-        {
-            public void Dispose() => calls.Add(name);
-        }
-    }
-
     private static string[] L(params string[] calls) => calls;
 
     // ---- start, Windows ----
@@ -219,6 +92,193 @@ public sealed class StartFlowTests
         var claude = fx.Ran.Single();
         Assert.Equal(["-c"], claude.Arguments);
         Assert.Equal(Repo, claude.WorkingDirectory);
+    }
+
+    // ---- start --profile (spec Design 2, 4) ----
+
+    private const string ProfileDir = "/p/work/claude";
+    private const string BothEnabledList =
+        "[{\"id\":\"clavity@clavity\",\"scope\":\"user\",\"enabled\":true}," +
+        "{\"id\":\"superpowers@superpowers-marketplace\",\"scope\":\"user\",\"enabled\":true}]";
+    private static readonly string DoctorOut =
+        "{\"schema\":\"agent-profile/doctor/1\",\"checks\":[{\"id\":\"launch_environment\",\"data\":" +
+        "{\"name\":\"CLAUDE_CONFIG_DIR\",\"value\":\"" + ProfileDir + "\"}}]}";
+
+    private static Fake ProfileFake(bool windows = false, Dictionary<string, object>? extra = null, string? ambient = null,
+        bool takeSucceeds = true, List<WaitingSession>? waiting = null)
+    {
+        var tool = windows ? "agent-profile.exe" : "agent-profile";
+        var script = new Dictionary<string, object>
+        {
+            [tool + " claude doctor work --json"] = new CommandResult(0, DoctorOut, "", false),
+        };
+        if (extra is not null)
+            foreach (var (k, v) in extra)
+                script[k] = v;
+        return new Fake
+        {
+            IsWindows = windows,
+            Script = script,
+            DefaultResult = new CommandResult(0, BothEnabledList, "", false),
+            AmbientConfigDir = ambient,
+            TakeSucceeds = takeSucceeds,
+            Waiting = waiting ?? new(),
+        };
+    }
+
+    private static int FirstCmd(Fake fx) => fx.Calls.FindIndex(c => c.StartsWith("cmd:", StringComparison.Ordinal));
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Profile_start_runs_setup_after_the_folder_lock_and_before_logs_and_hands_Claude_the_dir(bool windows)
+    {
+        var fx = ProfileFake(windows);
+        Assert.Equal(0, StartFlow.Start([Repo, "--profile", "work"], fx));
+        var take = fx.Calls.IndexOf("take-folder");
+        var firstCmd = FirstCmd(fx);
+        var release = fx.Calls.IndexOf("profile-release");
+        var mkdir = fx.Calls.IndexOf("mkdir");
+        Assert.True(take >= 0 && take < firstCmd, string.Join(",", fx.Calls));
+        Assert.True(firstCmd < release && release < mkdir, string.Join(",", fx.Calls));
+        Assert.Equal(ProfileDir, fx.Ran.Single(c => c.FileName == "claude").Environment["CLAUDE_CONFIG_DIR"]);
+        if (windows)
+            Assert.DoesNotContain("CLAUDE_CONFIG_DIR", fx.Ran.Single(c => c.FileName == "wt").Environment.Keys);
+        else
+            Assert.All(fx.Scripts, s => Assert.DoesNotContain("CLAUDE_CONFIG_DIR", s.Content));
+    }
+
+    [Fact]
+    public void Attach_with_a_profile_sets_up_only_after_the_session_is_taken()
+    {
+        var fx = ProfileFake();
+        Assert.Equal(0, StartFlow.Start([Repo, "--attach", Attached, "--profile", "work"], fx));
+        Assert.True(fx.Calls.IndexOf("take") < FirstCmd(fx), string.Join(",", fx.Calls));
+        Assert.Equal(ProfileDir, fx.Ran.Single(c => c.FileName == "claude").Environment["CLAUDE_CONFIG_DIR"]);
+    }
+
+    [Fact]
+    public void Profile_start_runs_create_and_releases_the_profile_lock_exactly_once()
+    {
+        var fx = ProfileFake();
+        Assert.Equal(0, StartFlow.Start([Repo, "--profile", "work"], fx));
+        Assert.Single(fx.Calls, c => c.EndsWith(" claude create work", StringComparison.Ordinal));
+        Assert.Single(fx.Calls, c => c == "profile-release");
+        Assert.True(fx.Calls.IndexOf("profile-release") < fx.Calls.IndexOf("mkdir"), string.Join(",", fx.Calls));
+    }
+
+    [Fact]
+    public void Attach_with_a_profile_runs_create_and_releases_the_profile_lock_exactly_once()
+    {
+        var fx = ProfileFake();
+        Assert.Equal(0, StartFlow.Start([Repo, "--attach", Attached, "--profile", "work"], fx));
+        Assert.Single(fx.Calls, c => c.EndsWith(" claude create work", StringComparison.Ordinal));
+        Assert.Single(fx.Calls, c => c == "profile-release");
+    }
+
+    [Fact]
+    public void Attach_that_cannot_take_the_session_runs_no_setup()
+    {
+        var fx = ProfileFake(takeSucceeds: false);
+        Assert.Equal(1, StartFlow.Start([Repo, "--attach", Attached, "--profile", "work"], fx));
+        Assert.DoesNotContain(fx.Calls, c => c.StartsWith("cmd:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Attach_setup_failure_exits_1_launches_nothing_and_releases_both_locks()
+    {
+        var fx = ProfileFake(extra: new()
+        {
+            ["agent-profile claude create work"] = new CommandResult(1, "", "boom", false),
+        });
+        Assert.Equal(1, StartFlow.Start([Repo, "--attach", Attached, "--profile", "work"], fx));
+        Assert.DoesNotContain(fx.Calls, c => c.StartsWith("run:", StringComparison.Ordinal));
+        Assert.DoesNotContain("wait", fx.Calls);
+        Assert.Contains("release", fx.Calls);
+        Assert.Contains("release-folder", fx.Calls);
+        Assert.Contains("clavity: ", fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Attach_with_a_profile_and_no_id_pairs_with_the_waiting_session_under_the_profile()
+    {
+        var fx = ProfileFake(waiting: [W(Attached)]);
+        Assert.Equal(0, StartFlow.Start([Repo, "--attach", "--profile", "work"], fx));
+        Assert.True(fx.Calls.IndexOf("take") < FirstCmd(fx), string.Join(",", fx.Calls));
+        var claude = fx.Ran.Single(c => c.FileName == "claude");
+        Assert.Equal(ProfileDir, claude.Environment["CLAUDE_CONFIG_DIR"]);
+        Assert.Equal(Attached, claude.Environment[AgyEnvironment.SessionIdVar]);
+    }
+
+    [Fact]
+    public void Attach_with_a_profile_notes_an_ambient_CLAUDE_CONFIG_DIR_that_differs()
+    {
+        var fx = ProfileFake(ambient: "/other/");
+        Assert.Equal(0, StartFlow.Start([Repo, "--attach", Attached, "--profile", "work"], fx));
+        var notice = Assert.Single(fx.Err.ToString().Split('\n'), l => l.Contains("CLAUDE_CONFIG_DIR"));
+        Assert.Contains("/other/", notice);
+        Assert.Contains(ProfileDir, notice);
+    }
+
+    [Fact]
+    public void Setup_failure_exits_1_and_leaves_nothing_behind()
+    {
+        var fx = ProfileFake(extra: new()
+        {
+            ["claude plugin list --json"] = new CommandResult(0, "[]", "", false),
+            ["claude plugin marketplace list --json"] = new CommandResult(0, "[]", "", false),
+            ["claude plugin install superpowers@superpowers-marketplace -y --scope user"] = new CommandResult(1, "", "boom", false),
+        });
+        // First plugin enabled, second absent: list answers per call, so script a sequence.
+        var n = 0;
+        fx.Script["claude plugin list --json"] = (Func<CommandResult>)(() =>
+            new CommandResult(0, n++ == 0 ? BothEnabledList.Replace("superpowers@superpowers-marketplace", "other@x") : "[]", "", false));
+        Assert.Equal(1, StartFlow.Start([Repo, "--profile", "work"], fx));
+        foreach (var forbidden in new[] { "mkdir", "prune", "doc", "script", "terminal" })
+            Assert.DoesNotContain(forbidden, fx.Calls);
+        Assert.DoesNotContain(fx.Calls, c => c.StartsWith("run:", StringComparison.Ordinal));
+        Assert.Contains("release-folder", fx.Calls);
+        Assert.Contains("profile-release", fx.Calls);
+        Assert.Contains("clavity: ", fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Ambient_CLAUDE_CONFIG_DIR_that_differs_is_noted_once_and_overridden()
+    {
+        var fx = ProfileFake(ambient: "/other/");
+        Assert.Equal(0, StartFlow.Start([Repo, "--profile", "work"], fx));
+        var notices = fx.Err.ToString().Split('\n').Where(l => l.Contains("CLAUDE_CONFIG_DIR")).ToArray();
+        var notice = Assert.Single(notices);
+        Assert.Contains("/other/", notice);
+        Assert.Contains(ProfileDir, notice);
+        Assert.Equal(ProfileDir, fx.Ran.Single(c => c.FileName == "claude").Environment["CLAUDE_CONFIG_DIR"]);
+    }
+
+    [Fact]
+    public void Ambient_equal_after_normalisation_prints_no_notice()
+    {
+        var fx = ProfileFake(ambient: ProfileDir + "/");
+        Assert.Equal(0, StartFlow.Start([Repo, "--profile", "work"], fx));
+        Assert.DoesNotContain("CLAUDE_CONFIG_DIR", fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Bad_profile_value_is_exit_2_with_the_clavity_prefix()
+    {
+        var fx = new Fake();
+        Assert.Equal(2, StartFlow.Start([Repo, "--profile"], fx));
+        Assert.StartsWith("clavity: ", fx.Err.ToString());
+        Assert.Empty(fx.Calls);
+    }
+
+    [Fact]
+    public void Without_profile_no_setup_command_runs()
+    {
+        var fx = new Fake { AmbientConfigDir = "/other" };
+        Assert.Equal(0, StartFlow.Start([Repo], fx));
+        Assert.DoesNotContain(fx.Calls, c => c.StartsWith("cmd:", StringComparison.Ordinal));
+        Assert.DoesNotContain("CLAUDE_CONFIG_DIR", fx.Ran.Single(c => c.FileName == "claude").Environment.Keys);
+        Assert.DoesNotContain("CLAUDE_CONFIG_DIR", fx.Err.ToString());
     }
 
     [Fact]

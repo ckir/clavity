@@ -86,7 +86,28 @@ or it does not pair.
 
 ### Running Claude under a profile
 
-`start` launches Claude Code with the environment it inherited from your shell (it adds only the three `CLAVITY_*`
+The simplest route is `--profile`, which uses [agent-profile](https://github.com/ckir/aiprofiles) to do the setup
+for you:
+
+```bash
+clavity-ls start ~/path/to/your/project --profile work
+```
+
+`--profile <name>` goes directly after the folder, in either order with `--attach`. `agent-profile` and `claude` must
+both be on PATH. `start` runs `agent-profile claude create <name>`, reads the profile's directory from
+`agent-profile claude doctor <name> --json`, installs `clavity@clavity` and `superpowers@superpowers-marketplace` into it
+(adding the marketplaces `ckir/clavity` and `obra/superpowers-marketplace` first if they are missing), enables either
+plugin if it is disabled, and then launches Claude with `CLAUDE_CONFIG_DIR` set to that directory. Notes:
+
+- If your shell already has a different `CLAUDE_CONFIG_DIR`, `--profile` overrides it and prints a one-line notice on stderr.
+- If any setup step fails, `start` exits 1 with nothing opened.
+- A new profile starts empty: its Claude asks you to sign in (credentials are not copied from another profile).
+- Only the Claude process gets the variable; the agy tab does not.
+- Two `start --profile X` runs in different folders are serialised per profile name, so they do not set the same profile up at once.
+
+#### The manual route
+
+Without `--profile`, `start` launches Claude Code with the environment it inherited from your shell (it adds only the three `CLAVITY_*`
 variables below), so a [Claude Code profile](https://docs.anthropic.com/en/docs/claude-code/settings) is selected the
 same way as for a bare `claude`: set `CLAUDE_CONFIG_DIR` before running `start`. Everything Claude reads from that
 directory - `settings.json`, `CLAUDE.md`, the enabled plugins and their fetched `clavity-ls` binary - comes from the
@@ -111,9 +132,10 @@ CLAUDE_CONFIG_DIR=~/.claude-profiles/test clavity-ls start ~/path/to/your/projec
 
 ## Command reference
 
-- `clavity-ls start <folder> [--attach [<session-id>]] [claude-args...]` — launch a visible agy tab + Claude Code in `<folder>`
+- `clavity-ls start <folder> [--attach [<session-id>]] [--profile <name>] [claude-args...]` — launch a visible agy tab + Claude Code in `<folder>`
   (per-session log; defaults to the current directory). `--attach` starts Claude only, paired with the agy that
-  `clavity-ls agy` started; without an id it picks the one agy waiting in that folder.
+  `clavity-ls agy` started; without an id it picks the one agy waiting in that folder. `--profile` sets up and uses a named
+  [agent-profile](https://github.com/ckir/aiprofiles) Claude profile (see above).
 - `clavity-ls agy [folder]` — Linux/macOS: run a new session's agy in this terminal and print the `start --attach`
   command for another.
 - `clavity-ls --mcp` — run the MCP stdio server (`agy_look` / `agy_status` / `agy_ask`); started

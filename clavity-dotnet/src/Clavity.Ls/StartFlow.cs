@@ -57,7 +57,18 @@ public interface IStartEffects
     /// <summary>Holds this session's `.alive` lock for as long as `clavity-ls agy` runs it (<see cref="SessionLock.TryTake"/>;
     /// the id is fresh, so nobody else can hold it).</summary>
     IDisposable HoldSessionAlive(SessionPaths paths);
+    /// <summary>Runs <paramref name="cmd"/> with its output captured. Throws <see cref="Win32Exception"/> when the program
+    /// cannot be started; on timeout kills the whole process tree and returns <c>TimedOut: true</c>.</summary>
+    CommandResult RunCaptured(LaunchCommand cmd, TimeSpan timeout);
+    /// <summary>The per-profile setup lock: polls until it holds it; null when <paramref name="wait"/> elapses. Throws
+    /// <see cref="IOException"/> or <see cref="UnauthorizedAccessException"/> for a reason of its own (as <see cref="TryTakeFolder"/>).</summary>
+    IDisposable? TakeProfileLock(string profileName, TimeSpan wait);
+    /// <summary>The shell's <c>CLAUDE_CONFIG_DIR</c>; null or empty when unset.</summary>
+    string? AmbientConfigDir { get; }
 }
+
+/// <summary>A captured process result.</summary>
+public sealed record CommandResult(int ExitCode, string StdOut, string StdErr, bool TimedOut);
 
 /// <summary>The `clavity-ls start` and `clavity-ls agy` verbs. Exit codes: 2 for a bad argument or a missing folder, 1 for a
 /// refusal (a program missing, no terminal, agy ended before pairing), otherwise Claude's (or the agy script's) own.</summary>
@@ -135,6 +146,16 @@ public static class StartFlow
         return fx.RunScriptHere(paths.AgyScript);
     }
 
+    /// <summary>The flag wins over an ambient CLAUDE_CONFIG_DIR; say so once when the two really differ.</summary>
+    private static void NoteAmbientConfigDir(IStartEffects fx, string profileDir)
+    {
+        if (string.IsNullOrEmpty(fx.AmbientConfigDir))
+            return;
+        static string Norm(string p) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(p));
+        if (Norm(fx.AmbientConfigDir) != Norm(profileDir))
+            fx.Error.WriteLine($"clavity: CLAUDE_CONFIG_DIR is set to {fx.AmbientConfigDir}; --profile uses {profileDir} instead.");
+    }
+
     /// <summary>`clavity-ls start [folder] [--attach [&lt;session-id&gt;]] [claude-args...]` - open a visible human-owned agy tab
     /// (per-session LS log) + launch Claude. With --attach, launch Claude only, paired with the agy `clavity-ls agy`
     /// started - without an id, the one waiting in the folder. <paramref name="args"/> are the arguments after the verb.</summary>
@@ -198,6 +219,17 @@ public static class StartFlow
         if (!fx.DirectoryExists(Path.Combine(folder, ".git")))
             fx.Error.WriteLine($"clavity: warning — {folder} is not a git repository.");
 
+        // `--profile` (spec Design 2): set the profile up ONCE, before anything is written or opened, so a failed setup leaves
+        // no log, pairing doc, script or agy tab behind. --attach does it later, once the session is really ours.
+        string? profileDir = null;
+        if (!start.Attach && start.Profile is { } profile)
+        {
+            profileDir = ProfileSetup.Run(fx, profile);
+            if (profileDir is null)
+                return 1;
+            NoteAmbientConfigDir(fx, profileDir);
+        }
+
         var agyHome = Path.Combine(fx.UserProfile, ".gemini", "antigravity-cli");
         string sessionId;
         if (!start.Attach)
@@ -226,8 +258,16 @@ public static class StartFlow
                 fx.Error.WriteLine(AlreadyTaken(sessionId));
                 return 1;
             }
+            if (start.Profile is { } attachProfile)
+            {
+                profileDir = ProfileSetup.Run(fx, attachProfile);
+                if (profileDir is null)
+                    return 1;
+                NoteAmbientConfigDir(fx, profileDir);
+            }
             var attached = Launcher.Build(new LaunchOptions
             {
+                ClaudeConfigDir = profileDir,
                 Folder = folder,
                 SessionId = sessionId,
                 ClaudeArgs = start.ClaudeArgs,
@@ -249,6 +289,7 @@ public static class StartFlow
 
         var options = new LaunchOptions
         {
+            ClaudeConfigDir = profileDir,
             Folder = folder,
             SessionId = sessionId,
             ClaudeArgs = start.ClaudeArgs,

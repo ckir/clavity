@@ -102,11 +102,11 @@ if (Clavity.Ls.Install.CliRouter.IsInstallerVerb(args))
 if (args.Length > 0 && args[0] == "agy")
     return StartFlow.Agy(args.Skip(1).ToArray(), new Clavity.Cli.RealStartEffects());
 
-// `clavity start [folder] [--attach <session-id>] [claude-args...]` - open a visible human-owned agy tab (per-session
+// `clavity start [folder] [--attach <session-id>] [--profile <name>] [claude-args...]` - open a visible human-owned agy tab (per-session
 // LS log) + launch Claude. With --attach, launch Claude only, paired with the agy `clavity-ls agy` started. The order and
 // the exit codes live in StartFlow (unit-tested); RealStartEffects is the thin OS side.
 if (args.Length > 0 && args[0] == "start")
     return StartFlow.Start(args.Skip(1).ToArray(), new Clavity.Cli.RealStartEffects());
 
-Console.WriteLine("clavity-ls — usage: clavity-ls start [folder] [--attach <session-id>] [claude-args...]   |   clavity-ls agy [folder]   (Linux/macOS: agy in this terminal)   |   clavity-ls --mcp   (MCP stdio server: agy_look / agy_status / agy_ask)   |   clavity-ls --version");
+Console.WriteLine("clavity-ls — usage: clavity-ls start [folder] [--attach <session-id>] [--profile <name>] [claude-args...]   |   clavity-ls agy [folder]   (Linux/macOS: agy in this terminal)   |   clavity-ls --mcp   (MCP stdio server: agy_look / agy_status / agy_ask)   |   clavity-ls --version");
 return 0;
