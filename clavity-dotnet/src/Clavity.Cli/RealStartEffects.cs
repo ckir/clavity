@@ -114,6 +114,7 @@ internal sealed class RealStartEffects : IStartEffects
         {
             WorkingDirectory = cmd.WorkingDirectory,
             UseShellExecute = false,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
@@ -121,26 +122,35 @@ internal sealed class RealStartEffects : IStartEffects
             psi.ArgumentList.Add(arg);
         foreach (var (key, value) in cmd.Environment)
             psi.Environment[key] = value;
+        var clock = Stopwatch.StartNew();
         using var process = Process.Start(psi)!;   // throws Win32Exception when the program cannot be started
+        process.StandardInput.Close();   // a child that prompts fails at once instead of waiting on an invisible prompt
         // Both pipes drain concurrently, so a full pipe never blocks the child.
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
+        Task[] readers = [stdout, stderr];
+        // The WHOLE call - child exit plus reader drain - is bounded by `timeout`. The readers reach EOF only when every
+        // holder of the pipe ends, so a descendant that outlives the child (a worker left by `plugin install`) would
+        // otherwise keep us blocked, with the folder and profile locks held.
         if (process.WaitForExit(timeout))
         {
-            process.WaitForExit();   // the redirected streams are complete only after this overload
-            return new CommandResult(process.ExitCode, stdout.GetAwaiter().GetResult(), stderr.GetAwaiter().GetResult(), false);
+            var remaining = timeout - clock.Elapsed;
+            if (remaining < TimeSpan.Zero)
+                remaining = TimeSpan.Zero;
+            if (Task.WaitAll(readers, remaining))
+                return new CommandResult(process.ExitCode, stdout.Result, stderr.Result, false);
         }
         try
         {
-            process.Kill(entireProcessTree: true);
+            process.Kill(entireProcessTree: true);   // no-op for an already-ended child; best effort for its descendants
         }
         catch (InvalidOperationException)
         {
             // it ended between the timeout and the kill
         }
         process.WaitForExit(TimeSpan.FromSeconds(5));
-        // A grandchild that escaped the kill may keep the pipes open; do not wait on the readers past a short grace.
-        Task.WaitAll([stdout, stderr], TimeSpan.FromSeconds(2));
+        // A descendant that escaped the kill may keep the pipes open; do not wait on the readers past a short grace.
+        Task.WaitAll(readers, TimeSpan.FromSeconds(2));
         return new CommandResult(-1, stdout.IsCompletedSuccessfully ? stdout.Result : "",
             stderr.IsCompletedSuccessfully ? stderr.Result : "", true);
     }
