@@ -39,7 +39,7 @@ public static class ProfileJson
     }
 
     /// <summary>State of plugin <paramref name="id"/> (exact id, e.g. <c>name@marketplace</c>) at user scope.
-    /// <c>enabled:false</c> is Disabled; true or absent/non-boolean is Enabled.</summary>
+    /// only boolean true or an absent <c>enabled</c> is Enabled; any other present value is Disabled.</summary>
     public static PluginState ReadPluginState(string listStdout, string id)
     {
         return Parse(listStdout, root =>
@@ -48,9 +48,10 @@ public static class ProfileJson
             foreach (var e in root.EnumerateArray())
             {
                 if (e.ValueKind != JsonValueKind.Object || Str(e, "scope") != "user" || Str(e, "id") != id) continue;
-                return e.TryGetProperty("enabled", out var en) && en.ValueKind == JsonValueKind.False
-                    ? PluginState.Disabled
-                    : PluginState.Enabled;
+                // Fail closed: only boolean true or an ABSENT field is Enabled; any other present value is Disabled.
+                return !e.TryGetProperty("enabled", out var en) || en.ValueKind == JsonValueKind.True
+                    ? PluginState.Enabled
+                    : PluginState.Disabled;
             }
             return PluginState.Absent;
         });

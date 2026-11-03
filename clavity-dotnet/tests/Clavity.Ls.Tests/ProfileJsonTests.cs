@@ -105,11 +105,37 @@ public class ProfileJsonTests
 
     [Theory]
     [InlineData("\"false\"")]
+    [InlineData("\"true\"")]
     [InlineData("0")]
+    [InlineData("1")]
     [InlineData("null")]
-    public void ReadPluginState_a_non_boolean_enabled_is_not_Disabled(string enabled) =>
-        Assert.Equal(PluginState.Enabled, ProfileJson.ReadPluginState(
+    [InlineData("{}")]
+    public void ReadPluginState_a_non_boolean_enabled_is_Disabled_fail_closed(string enabled) =>
+        Assert.Equal(PluginState.Disabled, ProfileJson.ReadPluginState(
             "[{\"id\":\"a@b\",\"scope\":\"user\",\"enabled\":" + enabled + "}]", "a@b"));
+
+    [Fact]
+    public void ReadPluginState_first_duplicate_user_entry_decides_true_then_false() =>
+        Assert.Equal(PluginState.Enabled, ProfileJson.ReadPluginState(
+            "[{\"id\":\"a@b\",\"scope\":\"user\",\"enabled\":true},{\"id\":\"a@b\",\"scope\":\"user\",\"enabled\":false}]", "a@b"));
+
+    [Fact]
+    public void ReadPluginState_first_duplicate_user_entry_decides_false_then_true() =>
+        Assert.Equal(PluginState.Disabled, ProfileJson.ReadPluginState(
+            "[{\"id\":\"a@b\",\"scope\":\"user\",\"enabled\":false},{\"id\":\"a@b\",\"scope\":\"user\",\"enabled\":true}]", "a@b"));
+
+    [Theory]
+    [InlineData("\"   \"")]
+    [InlineData("\"\\t\\n\"")]
+    public void ReadConfigDir_is_null_for_a_whitespace_only_value(string value) =>
+        Assert.Null(ProfileJson.ReadConfigDir(Doctor(value: value)));
+
+    [Theory]
+    [InlineData("{\"name\":\"CLAUDE_CONFIG_DIR\",\"value\":\"/x\"}")]
+    [InlineData("{\"kind\":\"other\",\"name\":\"CLAUDE_CONFIG_DIR\",\"value\":\"/x\"}")]
+    public void ReadConfigDir_does_not_require_data_kind_env(string data) =>
+        Assert.Equal("/x", ProfileJson.ReadConfigDir(
+            "{\"schema\":\"agent-profile/doctor/1\",\"checks\":[{\"id\":\"launch_environment\",\"data\":" + data + "}]}"));
 
     [Fact]
     public void ReadPluginState_null_input_is_Absent() =>
