@@ -11,6 +11,76 @@ namespace Clavity.Ls;
 /// <summary>Testable bodies for the non-host CLI verbs (kept out of Program.cs top-level for unit testing).</summary>
 public static class CliVerbs
 {
+    private static readonly HashSet<string> Verbs = new(StringComparer.Ordinal)
+        { "start", "agy", "install", "uninstall", "is-installed", "curate-commit" };
+
+    /// <summary>True when the command line asks for help: no arguments, `help`, `-h`/`--help`, or a verb followed by `-h`/`--help`.
+    /// `start` and `agy` forward their remaining arguments to Claude, so for those a help flag counts only as the sole argument;
+    /// the other verbs take no pass-through, so a help flag anywhere after them counts. Without this, `install --help` ran the
+    /// install.</summary>
+    public static bool IsHelpRequest(string[] args)
+    {
+        static bool Flag(string a) => a is "-h" or "--help";
+        if (args.Length == 0)
+            return true;
+        if (args[0] is "help" || Flag(args[0]))
+            return true;
+        if (!Verbs.Contains(args[0]))
+            return false;
+        return args[0] is "start" or "agy" ? args.Length == 2 && Flag(args[1]) : args.Skip(1).Any(Flag);
+    }
+
+    /// <summary>`clavity-ls --help`: what it is, how to install it, every verb, the exit codes. Plain ASCII on purpose (a Windows
+    /// console decodes by code page) and written so a reader with no other documentation can install and drive it.</summary>
+    public static string HelpText() => string.Join('\n',
+        $"{VersionLine()} - the host that pairs Claude Code with a live agy (Antigravity) peer.",
+        "",
+        "INSTALL",
+        "  Normal install (Claude Code), two commands, then restart Claude Code:",
+        "      claude plugin marketplace add ckir/clavity",
+        "      claude plugin install clavity@clavity",
+        "  You do not install this binary separately: the plugin's SessionStart hook fetches the clavity-ls build for your platform",
+        "  from the matching clavity-v<N> GitHub release and verifies its .sha256.",
+        "  To run `clavity-ls start` from a terminal, clavity-ls must be on PATH. Download clavity-ls-<rid>-<version>.tar.gz and its",
+        "  .sha256 from https://github.com/ckir/clavity/releases (rid: win-x64, linux-x64, osx-arm64, osx-x64), verify the checksum,",
+        "  extract it, and put the binary on PATH (Linux/macOS: chmod +x).",
+        "  Needed on PATH: `claude` (Claude Code) and/or `agy`; `start --profile` also needs `agent-profile`",
+        "  (https://github.com/ckir/aiprofiles).",
+        "",
+        "COMMANDS",
+        "  start [folder] [--attach [<session-id>]] [--profile <name>] [claude-args...]",
+        "      Open a visible agy tab for the folder (default: current directory) and launch Claude Code paired with it (a warning is",
+        "      printed if the folder is not a git repository). --attach launches Claude only, paired with the agy that `clavity-ls agy` started; without an",
+        "      id it picks the one waiting in that folder. --profile <name> first sets up the agent-profile Claude profile <name>",
+        "      (created if absent, with clavity@clavity and superpowers@superpowers-marketplace installed and enabled at user scope)",
+        "      and launches Claude under it; any setup failure exits 1 with nothing opened. Anything else is passed to Claude.",
+        "  agy [folder]",
+        "      Linux/macOS: run a new session's agy in this terminal and print the `start --attach` command for a second terminal.",
+        "  --mcp",
+        "      Run the MCP stdio server (agy_look / agy_status / agy_ask). The plugin starts it; not normally run by hand.",
+        "  install [--plugin <name>]",
+        "      Advanced: register the plugin (default: clavity) with every detected agent. Refuses while Claude Code is running.",
+        "  uninstall [--purge-data]",
+        "      Deregister the plugin; --purge-data also deletes the per-session logs and the golden-header data directory.",
+        "  is-installed <plugin-name>",
+        "      Exit 0 if the plugin is registered with a detected agent, 1 if not.",
+        "  curate-commit [--cheatsheet]",
+        "      Internal (agy-curate): read a compiled header from stdin and commit it atomically.",
+        "  --version, -V      Print the installed build.",
+        "  --help, -h, help   Print this text. `<command> --help` prints it too and runs nothing.",
+        "",
+        "EXIT CODES",
+        "  start / agy: 0 or Claude's own exit code on a normal run; 1 setup or pre-check failure; 2 invalid arguments or missing folder.",
+        "  install / uninstall: 0 ok; 1 registration failed; 2 usage; 3 no Claude Code or agy found; 5 Claude Code is running (close it, re-run).",
+        "  is-installed: 0 installed, 1 not installed.",
+        "",
+        "ENVIRONMENT (optional)",
+        "  CLAVITY_TERMINAL           Linux: the terminal command `start` opens agy with, e.g. \"gnome-terminal --tab --\".",
+        "  CLAVITY_GOLDEN_HEADER      Directory holding the golden-header files (default: ~/.clavity).",
+        "  CLAVITY_AGY_IDLE_MAX_SECONDS  How long agy_ask waits for agy to go idle (default 600).",
+        "",
+        "More: https://github.com/ckir/clavity/tree/main/clavity-dotnet");
+
     /// <summary>`clavity-ls --version` — the running build, the same stamp a transport error names (<see cref="ClientStamp"/>).</summary>
     public static string VersionLine() => $"clavity-ls {ClientStamp.Value}";
 
