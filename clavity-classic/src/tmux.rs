@@ -391,7 +391,7 @@ fn private_state_dir() -> Option<PathBuf> {
     };
     match std::fs::DirBuilder::new().mode(0o700).create(&dir) {
         Ok(()) => {}
-        Err(e) if lock_contended(e.kind()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(_) => return None,
     }
     // Must be a real directory (not a symlink), owned by us, and closed to group/other.
@@ -522,7 +522,7 @@ impl RingLock {
                 .open(&lock)
             {
                 Ok(_) => return Ok(Self(lock)),
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                Err(e) if lock_contended(e.kind()) => {
                     let stale = std::fs::symlink_metadata(&lock)
                         .and_then(|m| m.modified())
                         .ok()
