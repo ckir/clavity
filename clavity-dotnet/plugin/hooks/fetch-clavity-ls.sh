@@ -95,9 +95,26 @@ for _t in curl tar; do command -v "$_t" >/dev/null 2>&1 || { _note "'$_t' not fo
 
 ASSET="clavity-ls-$_rid-$VER.tar.gz"        # produced by build-dotnet.yml for every RID
 
+# Negative stamp: a failed lookup/download is not retried for FAIL_TTL seconds, so every startup/resume/clear/compact event in
+# the window returns at once instead of paying the network timeouts again. The stamp holds epoch seconds (date +%s: portable).
+FAIL_STAMP="$STAMP.fail"
+FAIL_TTL=600
+_now=$(date +%s 2>/dev/null)
+_ft=''
+IFS= read -r _ft 2>/dev/null < "$FAIL_STAMP"
+case "$_ft" in ''|*[!0-9]*) _ft='' ;; esac
+case "$_now" in ''|*[!0-9]*) _now='' ;; esac
+if [ -n "$_ft" ] && [ -n "$_now" ] && [ "$_now" -ge "$_ft" ] && [ $((_now - _ft)) -lt "$FAIL_TTL" ]; then exit 0; fi
+_fail_stamp() {
+  [ -d "$DATA" ] || return 0     # never conjure a plugin data dir (a relative/odd path would litter the cwd)
+  mkdir -p "$BIN_DIR" 2>/dev/null
+  date +%s 2>/dev/null > "$FAIL_STAMP"
+  return 0
+}
+
 # Locate the asset on whatever release carries it (deterministic by exact name; no 'latest' guess).
-_json=$(curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/releases?per_page=100" 2>/dev/null) \
-  || { _note "release lookup failed (offline?)"; exit 0; }
+_json=$(curl -fsSL --connect-timeout 5 --max-time 30 -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/releases?per_page=100" 2>/dev/null) \
+  || { _fail_stamp; _note "release lookup failed (offline?)"; exit 0; }
 if command -v jq >/dev/null 2>&1; then
   _url=$(printf '%s' "$_json"    | jq -r --arg a "$ASSET"        '[.[].assets[]?|select(.name==$a)|.browser_download_url]|first // empty')
   _shaurl=$(printf '%s' "$_json" | jq -r --arg a "$ASSET.sha256" '[.[].assets[]?|select(.name==$a)|.browser_download_url]|first // empty')
@@ -114,15 +131,33 @@ else
 fi
 [ -n "$_url" ] || { _note "no release asset named $ASSET on $REPO"; exit 0; }
 
+# Pick the sha256 tool: sha256sum, else shasum -a 256 (macOS ships only the latter), else none. A release that PUBLISHES a checksum
+# but a machine that cannot compute one is refused outright (installing an unverifiable binary defeats the checksum); no stamp is
+# written, so a later session retries once a hasher exists.
+_hash=''
+if command -v sha256sum >/dev/null 2>&1; then _hash=sha256sum
+elif command -v shasum >/dev/null 2>&1; then _hash=shasum
+fi
+if [ -n "$_shaurl" ] && [ -z "$_hash" ]; then
+  _note "release publishes a sha256 for $ASSET but neither sha256sum nor shasum is available to verify it; refusing to install"; exit 0
+fi
+_sha() { if [ "$_hash" = sha256sum ]; then sha256sum "$1"; else shasum -a 256 "$1"; fi; }
+
 mkdir -p "$BIN_DIR" || { _note "cannot create $BIN_DIR"; exit 0; }
 _tmp=$(mktemp -d 2>/dev/null) || { _note "mktemp failed"; exit 0; }
 trap 'rm -rf "$_tmp"' EXIT
-curl -fsSL "$_url" -o "$_tmp/$ASSET" 2>/dev/null || { _note "download failed: $_url"; exit 0; }
+curl -fsSL --connect-timeout 5 --max-time 90 "$_url" -o "$_tmp/$ASSET" 2>/dev/null || { _fail_stamp; _note "download failed: $_url"; exit 0; }
 
-# Verify sha256 when the companion asset + tool are both available (skip-with-note otherwise, never block).
-if [ -n "$_shaurl" ] && command -v sha256sum >/dev/null 2>&1 && curl -fsSL "$_shaurl" -o "$_tmp/$ASSET.sha256" 2>/dev/null; then
-  _want=$(awk '{print $1}' "$_tmp/$ASSET.sha256"); _got=$(sha256sum "$_tmp/$ASSET" | awk '{print $1}')
+# Verify sha256. A published checksum that cannot be fetched or does not match REFUSES the install (nothing placed, no version
+# stamp, so a later session retries). Only a release with NO checksum asset installs unverified, and says so.
+_unverified=0
+if [ -n "$_shaurl" ]; then
+  curl -fsSL --connect-timeout 5 --max-time 30 "$_shaurl" -o "$_tmp/$ASSET.sha256" 2>/dev/null \
+    || { _fail_stamp; _note "could not download the sha256 for $ASSET ($_shaurl); refusing to install an unverified binary"; exit 0; }
+  _want=$(awk '{print $1}' "$_tmp/$ASSET.sha256"); _got=$(_sha "$_tmp/$ASSET" | awk '{print $1}')
   [ "$_want" = "$_got" ] || { _note "sha256 mismatch for $ASSET (want $_want got $_got); refusing"; exit 0; }
+else
+  _unverified=1
 fi
 
 tar -C "$_tmp" -xzf "$_tmp/$ASSET" 2>/dev/null || { _note "extract failed for $ASSET"; exit 0; }
@@ -137,6 +172,8 @@ chmod +x "$_bin" 2>/dev/null
 cp -f "$_bin" "$TARGET" 2>/dev/null || { _note "could not place binary at $TARGET"; exit 0; }
 chmod +x "$TARGET" 2>/dev/null
 printf '%s' "$VER" > "$STAMP"
+rm -f "$FAIL_STAMP" 2>/dev/null
 msg_ok="[clavity-ls] fetched $ASSET -> $TARGET. If the clavity-ls MCP server failed to start in this session, run /mcp and reconnect it."
-_say "$msg_ok"
+msg_unverified="[clavity-ls] fetched $ASSET -> $TARGET, installed UNVERIFIED: the release publishes no .sha256 asset to check it against. If the clavity-ls MCP server failed to start in this session, run /mcp and reconnect it."
+if [ "$_unverified" -eq 1 ]; then _say "$msg_unverified"; else _say "$msg_ok"; fi
 exit 0

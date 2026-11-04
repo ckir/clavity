@@ -379,7 +379,13 @@ agy_guard_ignored() {
 # $1 = session_id (caller-sanitized)  $2 = slot ('sync'|'async')
 agy_guard_state_file() {
   local base="${TMPDIR:-/tmp}/claude-agy-consult-guard"
-  mkdir -p "$base" 2>/dev/null || return 1
+  # The directory holds baselines the Post trusts, so it must be PRIVATE: created 0700, and refused (return 1 -> every caller fails
+  # open) when it is a symlink or belongs to someone else - on a shared /tmp another user could pre-create it. The per-user name
+  # ($XDG_RUNTIME_DIR/...-$(id -u)) is not used: agy-consult-guard.Tests.ps1 pins $TMPDIR/claude-agy-consult-guard, and the checks
+  # below are builtins (no extra process on this per-Bash-call path; hook-spawn-budget.Rows.ps1 pins the consult-path counts).
+  # shellcheck disable=SC2174  # -m on the deepest component is exactly the intent: $TMPDIR itself already exists
+  mkdir -p -m 700 "$base" 2>/dev/null || return 1
+  [ -d "$base" ] && [ ! -L "$base" ] && [ -O "$base" ] || return 1
   printf '%s/%s.%s' "$base" "$1" "$2"
 }
 

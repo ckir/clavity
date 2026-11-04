@@ -64,13 +64,28 @@ _stamped=""
 [ -f "$_agy_stamp" ] && { IFS= read -r _stamped < "$_agy_stamp" || true; } 2>/dev/null
 _registered=0
 if [ -f "$_agy_stamp" ] && { [ -z "$_ver" ] || [ "$_stamped" = "$_ver" ]; }; then _registered=1; fi
-if command -v agy >/dev/null 2>&1 && [ -n "$ROOT" ] && [ "$_registered" -eq 0 ]; then
+# A FAILED install writes a separate failure stamp "<epoch> <version>" and is not retried for 10 minutes (same version): without
+# it every SessionStart event (startup/resume/clear/compact) repeated the uninstall+install pair. The uninstall-then-install
+# order is kept: scripts/tests/clavity-dotnet-setup.Tests.ps1 pins Calls[0]=uninstall, Calls[1]=install.
+_agy_fail="$DATA/.agy-register-failed"
+_backoff=0
+if [ -f "$_agy_fail" ]; then
+  _fe=''; _fv=''
+  read -r _fe _fv 2>/dev/null < "$_agy_fail"
+  _now=$(date +%s 2>/dev/null)
+  case "$_fe" in ''|*[!0-9]*) _fe='' ;; esac
+  case "$_now" in ''|*[!0-9]*) _now='' ;; esac
+  if [ -n "$_fe" ] && [ -n "$_now" ] && [ "$_fv" = "$_ver" ] && [ "$_now" -ge "$_fe" ] && [ $((_now - _fe)) -lt 600 ]; then _backoff=1; fi
+fi
+if command -v agy >/dev/null 2>&1 && [ -n "$ROOT" ] && [ "$_registered" -eq 0 ] && [ "$_backoff" -eq 0 ]; then
   agy plugin uninstall clavity >/dev/null 2>&1
   if agy plugin install "$ROOT" >/dev/null 2>&1; then
     printf '%s' "$_ver" > "$_agy_stamp"
+    rm -f "$_agy_fail" 2>/dev/null
     echo "[clavity] registered the plugin with agy (agy plugin install)" >&2
   else
-    # Do not stamp on failure so a later session retries. Never block.
+    # Do not write the success stamp on failure; the failure stamp only backs off for 10 minutes. Never block.
+    printf '%s %s\n' "$(date +%s 2>/dev/null)" "$_ver" 2>/dev/null > "$_agy_fail"
     echo "[clavity] could not auto-register with agy - to pair, run once: agy plugin install \"$ROOT\"" >&2
   fi
 fi

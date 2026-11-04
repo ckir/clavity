@@ -94,6 +94,7 @@ if [ "$slot" = sync ] && [ -f "$usf" ]; then
 fi
 
 quad=$(agy_guard_quad "$cwd")
-tmp="$sf.tmp.$$"
+tmp="$sf.tmp.$$"                  # inside the private (0700, owner-checked, non-symlink) state dir agy_guard_state_file just vetted
+[ -L "$tmp" ] && exit 0
 printf '%s\n' "$quad" 2>/dev/null > "$tmp" && mv -f "$tmp" "$sf" 2>/dev/null
 exit 0

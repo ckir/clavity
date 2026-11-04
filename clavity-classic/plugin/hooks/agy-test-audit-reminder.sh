@@ -228,6 +228,7 @@ gate() {
 # once more - the safe direction. A failed write (read-only/missing $TMPDIR) is swallowed: still reminds.
 _remember() {
   [ -n "$_state" ] && [ -n "$_head" ] || return 0
+  [ -L "$_state" ] && return 0     # predictable name in a shared temp dir: never write THROUGH a planted symlink
   { printf '%s\n' "$_head" > "$_state"; } 2>/dev/null
   return 0
 }
