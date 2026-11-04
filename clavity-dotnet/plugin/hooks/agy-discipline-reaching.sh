@@ -56,6 +56,16 @@ cwd=''; sid=''; src=''; model=''; tx=''
 [[ $input =~ \"model\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]           && model=${BASH_REMATCH[1]}
 [[ $input =~ \"transcript_path\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && tx=${BASH_REMATCH[1]}
 
+# A value that held an escaped quote (\") is cut by [^"]* at the quote and ends in the escape's lone backslash; emitted raw it
+# would swallow the closing quote and corrupt the row. An ODD trailing run of backslashes therefore means "truncated": drop the
+# value (empty string, which the report reads as not named). Builtins only - the spawn budget for this hook is 2 processes, and a
+# jq-built row would also re-escape the already-escaped passthrough (see WHY RAW PASSTHROUGH IS SAFE).
+_run=''
+for _v in sid src model tx; do
+  _run=${!_v}; _run=${_run##*[!\\]}
+  if (( ${#_run} % 2 )); then printf -v "$_v" '%s' ''; fi
+done
+
 # cwd is the only value used as a PATH here, so it is the only one that must be unescaped. The rest pass
 # through still-escaped and are never touched.
 cwd_path=${cwd//\\\\//}

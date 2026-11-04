@@ -37,9 +37,10 @@ BeforeAll {
         [IO.File]::WriteAllText((Join-Path $fx.Shim 'uname'), "#!/usr/bin/env bash`ncase `"`$1`" in -s) echo `"`${FAKE_UNAME_S:-Linux}`";; -m) echo x86_64;; esac`n")
         $curl = @'
 #!/usr/bin/env bash
-out=""; url=""
+out=""; url=""; all="$*"
 while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2;; -H) shift 2;; -*) shift;; *) url="$1"; shift;; esac; done
 [ -n "${FAKE_LOG:-}" ] && [ -n "$url" ] && printf '%s\n' "$url" >> "$FAKE_LOG"
+[ -n "${FAKE_ARGS:-}" ] && printf '%s\n' "$all" >> "$FAKE_ARGS"
 case "${FAKE_CURL:-ok}" in fail) exit 22;; esac
 if [ -n "$out" ]; then cp "$FAKE_SRV/${url##*/}" "$out" || exit 22; exit 0; fi
 case "${FAKE_CURL:-ok}" in
@@ -339,6 +340,80 @@ Describe 'fetch-clavity-ls.sh tells the user what happened' {
             $odd = 'C:\a' + [char]1 + 'b' + [char]27 + 'c' + [char]31 + 'd e' + [char]127 + 'f\data'
             $msg = Get-Message (Invoke-Fetch $fx 'fail' -Data $odd)
             $msg | Should -Match ([regex]::Escape('C:\abcd e' + [char]127 + 'f\data/bin/clavity-ls.exe')) -Because 'C0 (0x01-0x1f) is deleted, 0x20 and 0x7f are not'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+Describe 'fetch-clavity-ls.sh bounds the network and refuses what it cannot verify' {
+    It 'passes connect and total timeouts to the lookup, the download and the checksum fetch' {
+        $fx = New-Fx
+        try {
+            $argsLog = Join-Path $fx.Root 'args.log'
+            $null = Invoke-Fetch $fx 'ok' -Extra @{ FAKE_ARGS = ($argsLog -replace '\\', '/') }
+            $calls = @(Get-Content -LiteralPath $argsLog)
+            $calls | Should -HaveCount 3
+            $lookup = @($calls | Where-Object { $_ -match 'api\.github\.com' })
+            $asset = @($calls | Where-Object { $_ -match 'tar\.gz(\s|$)' -and $_ -notmatch 'sha256' })
+            $sum = @($calls | Where-Object { $_ -match '\.sha256' })
+            $lookup | Should -HaveCount 1; $asset | Should -HaveCount 1; $sum | Should -HaveCount 1
+            $lookup[0] | Should -Match '--connect-timeout 5 --max-time 30'
+            $asset[0] | Should -Match '--connect-timeout 5 --max-time 90'
+            $sum[0] | Should -Match '--connect-timeout 5 --max-time 30'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'a failed lookup writes a negative stamp, and the next event inside 10 minutes makes NO network call' {
+        $fx = New-Fx
+        try {
+            $log = Join-Path $fx.Root 'urls.log'; $extra = @{ FAKE_LOG = ($log -replace '\\', '/') }
+            $null = Invoke-Fetch $fx 'fail' -Extra $extra
+            $stamp = Join-Path $fx.Data 'bin/.clavity-ls.version.fail'
+            Test-Path -LiteralPath $stamp | Should -BeTrue
+            (Get-Content -Raw -LiteralPath $stamp).Trim() | Should -Match '^[0-9]+$'
+            Remove-Item -LiteralPath $log -ErrorAction SilentlyContinue
+            $res = Invoke-Fetch $fx 'ok' -Extra $extra
+            $res.ExitCode | Should -Be 0
+            $res.StdOut | Should -BeNullOrEmpty
+            Test-Path -LiteralPath $log | Should -BeFalse -Because 'inside the backoff window the hook must not touch the network'
+            Test-Path -LiteralPath (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -BeFalse
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'retries once the negative stamp is older than 10 minutes, and a success clears it' {
+        $fx = New-Fx
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $fx.Data 'bin') -Force | Out-Null
+            $stamp = Join-Path $fx.Data 'bin/.clavity-ls.version.fail'
+            [IO.File]::WriteAllText($stamp, ([string]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - 3600)))
+            $msg = Get-Message (Invoke-Fetch $fx 'ok')
+            $msg | Should -Match 'fetched'
+            Test-Path -LiteralPath $stamp | Should -BeFalse
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'refuses to install when a checksum asset exists but no sha256 tool does, writing no version stamp' {
+        $fx = New-Fx
+        try {
+            # CLAVITY_SHA_TOOLS lists the tools the hook may try; 'none' matches neither sha256sum nor shasum. A restricted-PATH fixture
+            # was tried first and broke under Git Bash on Windows (copied binaries cannot find their runtime), so the hook takes the list.
+            $r = Invoke-Fetch $fx 'ok' -Extra @{ CLAVITY_SHA_TOOLS = 'none' }
+            $r.ExitCode | Should -Be 0 -Because $r.StdErr
+            ($r.StdOut | ConvertFrom-Json).systemMessage | Should -Match 'neither sha256sum nor shasum'
+            Test-Path -LiteralPath (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -BeFalse
+            Test-Path -LiteralPath (Join-Path $fx.Data 'bin/.clavity-ls.version') | Should -BeFalse
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'installs and says UNVERIFIED when the release publishes no checksum asset' {
+        $fx = New-Fx
+        try {
+            # a curl mode that lists the archive but no .sha256
+            $c = Get-Content -Raw -LiteralPath (Join-Path $fx.Shim 'curl')
+            $c = $c.Replace("  ok) printf", "  nosum) printf '[{`"assets`":[{`"name`":`"%s`",`"browser_download_url`":`"https://x/d/%s`"}]}]' `"`$FAKE_ASSET`" `"`$FAKE_ASSET`";;`n  ok) printf")
+            [IO.File]::WriteAllText((Join-Path $fx.Shim 'curl'), $c)
+            $msg = Get-Message (Invoke-Fetch $fx 'nosum')
+            $msg | Should -Match 'UNVERIFIED'
+            Get-Content -Raw -LiteralPath (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -BeExactly 'BIN'
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }

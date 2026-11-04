@@ -45,7 +45,7 @@ if ! command -v jq >/dev/null 2>&1; then
     # undebounced warning is the high-frequency spam this discipline exists to remove, rebuilt one layer
     # down. One warning per session is enough to tell the operator the guard is inactive.
     [[ $input =~ \"session_id\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && dsid=${BASH_REMATCH[1]}
-    dsid=${dsid//[^A-Za-z0-9_-]/}
+    dsid=${dsid//[^A-Za-z0-9_-]/_}   # replace, not strip: same form as the other session-id sanitisers
     if [ -z "$dsid" ]; then
       # printf %(...)T needs bash >= 4.2; the stock macOS bash 3.2 prints nothing for it and leaves dsid EMPTY.
       # CLAVITY_HOOK_BASH3 forces the fallback so the suite can exercise it on any bash.
@@ -58,6 +58,7 @@ if ! command -v jq >/dev/null 2>&1; then
     for _dc in "${TMPDIR:-/tmp}" "$HOME/.clavity-tmp"; do
       [ -d "$_dc" ] || mkdir -p "$_dc" 2>/dev/null
       _dw="$_dc/.clavity-assert-nojq-$dsid"
+      [ -L "$_dw" ] && continue      # never write THROUGH a planted symlink
       [ -f "$_dw" ] && exit 0
       if : 2>/dev/null > "$_dw"; then
         printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[ASSERTION-STRENGTH] guard inactive: missing jq - the assertion-strength reminder will not fire on test-file writes this session"}}'
@@ -123,7 +124,7 @@ esac
 # admits "/" and "..", and an unchecked concatenation would let a payload choose where a file lands
 # (agy-anomaly-capture-reminder.sh:82-87). ---
 [[ $input =~ \"session_id\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && sid=${BASH_REMATCH[1]}
-sid=${sid//[^A-Za-z0-9_-]/}
+sid=${sid//[^A-Za-z0-9_-]/_}     # replace, not strip: same form as the other session-id sanitisers
 if [ -z "$sid" ]; then
   # NO-SESSION-ID BRANCH. Owner ruling 2026-08-08 accepted this fallback outright rather than probe for
   # the field. Degrade to per-day, NOT to per-edit: firing on every edit is the spam this discipline
@@ -139,6 +140,7 @@ seen=""
 for _cand in "${TMPDIR:-/tmp}" "$HOME/.clavity-tmp"; do
   [ -d "$_cand" ] || mkdir -p "$_cand" 2>/dev/null
   _s="$_cand/.clavity-assert-seen-$sid"
+  [ -L "$_s" ] && continue         # never write THROUGH a planted symlink
   # THE EXISTS AND CREATE CASES MUST STAY SEPARATE, and the prune belongs ONLY to create.
   # agy-anomaly-capture-reminder.sh:96 breaks on an EXISTING marker without pruning; only :97-108, the
   # create path, prunes, and :99-100 states why: "It runs at most once per session and only on the path

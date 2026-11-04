@@ -148,6 +148,35 @@ Describe 'clavity-dotnet-setup.sh keeps agy registered at the CURRENT plugin ver
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'backs off for 10 minutes after a failed install: the next event makes NO agy call' {
+        $fx = New-Fx
+        try {
+            $first = Invoke-Setup $fx -Fake fail
+            $first.Calls | Should -HaveCount 2
+            Test-Path -LiteralPath (Join-Path $fx.Data '.agy-register-failed') | Should -BeTrue
+            $second = Invoke-Setup $fx
+            $second.ExitCode | Should -Be 0
+            # the fake agy appends to ONE log across both runs, so 'no new call' is the first run's 2 and nothing more
+            @($second.Calls).Count | Should -Be 2 -Because 'inside the window a failed install must not repeat the uninstall+install pair (cumulative log: only the first run calls)'
+            Test-Path -LiteralPath (Join-Path $fx.Data '.agy-registered') | Should -BeFalse
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'retries when the failure stamp is older than 10 minutes or names another plugin version, and success clears it' -TestCases @(
+        @{ Name = 'expired'; Age = 3600; Ver = '9.9.9' }
+        @{ Name = 'other version'; Age = 5; Ver = '9.9.8' }
+    ) {
+        $fx = New-Fx
+        try {
+            $t = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - $Age
+            [IO.File]::WriteAllText((Join-Path $fx.Data '.agy-register-failed'), "$t $Ver`n")
+            $res = Invoke-Setup $fx
+            $res.Calls | Should -HaveCount 2
+            Get-Stamp $fx | Should -BeExactly '9.9.9'
+            Test-Path -LiteralPath (Join-Path $fx.Data '.agy-register-failed') | Should -BeFalse
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'leaves a registered agy alone when the plugin version cannot be read, and registers once when nothing is stamped' {
         $fx = New-Fx '{ "name": "clavity" }'
         try {

@@ -119,7 +119,9 @@ if [ "$event" = "UserPromptSubmit" ]; then
   # is not a quote, which includes "/" and "..". Concatenated into a path unchecked, a payload would get
   # to decide where a file lands. Strip to a safe set; if nothing survives, there is no usable key, so
   # exit rather than fall back to a shared name that would suppress every session on the machine.
-  sid=${sid//[^A-Za-z0-9_-]/}
+  # REPLACE with `_` (not strip): the same form agy-test-audit-reminder.sh _set_state and the PreCompact re-arm above use, so every
+  # session-id-derived marker name agrees. Empty still means no usable key.
+  sid=${sid//[^A-Za-z0-9_-]/_}
   [ -z "$sid" ] && exit 0
 
   # THE GLOBAL KILL SWITCH IS HONOURED BEFORE ANY OF THIS, and it was not until 2026-08-26. The header of
@@ -139,6 +141,7 @@ if [ "$event" = "UserPromptSubmit" ]; then
   for _cand in "${TMPDIR:-/tmp}" "$HOME/.clavity-tmp"; do
     [ -d "$_cand" ] || mkdir -p "$_cand" 2>/dev/null
     _s="$_cand/.clavity-anomaly-seen-$sid"
+    [ -L "$_s" ] && continue         # predictable name in a shared temp dir: never write THROUGH a planted symlink
     if [ -f "$_s" ]; then seen=$_s; sent="$_cand/.clavity-anomaly-sent-$sid"; break; fi
     if : 2>/dev/null > "$_s"; then
       # (a) FIRST PROMPT of this session: marker now recorded, emit nothing this turn.
@@ -162,7 +165,7 @@ if [ "$event" = "UserPromptSubmit" ]; then
 
   # (b) SUBSEQUENT PROMPTS: emit once, then never again.
   [ -f "$sent" ] && exit 0
-  : 2>/dev/null > "$sent"
+  [ -L "$sent" ] || : 2>/dev/null > "$sent"
 fi
 
 # jq is needed only to read cwd out of the payload. Without it, STILL DELIVER: emit the same message in a
