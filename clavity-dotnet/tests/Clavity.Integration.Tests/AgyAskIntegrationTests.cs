@@ -1672,6 +1672,43 @@ public class AgyAskIntegrationTests
         finally { Directory.Delete(dir, true); }
     }
 
+    [Fact]
+    public async Task StatusAsync_keeps_reporting_working_until_the_LAST_overlapping_ask_ends()
+    {
+        // The in-flight marker is a per-conversation REFERENCE COUNT. With a plain set, the first ask to end cleared the
+        // marker while the second still ran, and status said "idle" in the middle of a turn.
+        // Same discriminating shape as the row above: calls 0 and 1 block (the two asks), call 2 - the probe, if the local
+        // marker did not answer first - goes idle, so only the marker can produce "working" once ask A is gone.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false),
+                           new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false),
+                           new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "x", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            using var ctsA = new CancellationTokenSource();
+            using var ctsB = new CancellationTokenSource();
+            var askA = view.AskAsync("first", timeout: TimeSpan.FromSeconds(60), cancellationToken: ctsA.Token);
+            await fake.WaitBlockedSignal;   // A is parked inside the RPC
+            var askB = view.AskAsync("second", timeout: TimeSpan.FromSeconds(60), cancellationToken: ctsB.Token);
+            var give = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+            while (fake.WaitCalls < 2 && DateTime.UtcNow < give) await Task.Delay(20);
+            Assert.True(fake.WaitCalls >= 2, "the second ask never reached the wait");
+
+            ctsA.Cancel();
+            try { await askA; } catch { /* torn down deliberately */ }
+
+            var st = await view.StatusAsync();
+            Assert.Equal("working", st.State);   // B is still in flight
+
+            ctsB.Cancel();
+            try { await askB; } catch { /* torn down deliberately */ }
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     private sealed class ThrowingWriter : StringWriter
     {
         public override void WriteLine(string? value) => throw new IOException("diagnostics sink is full");

@@ -114,55 +114,31 @@ internal sealed class RealStartEffects : IStartEffects
         {
             WorkingDirectory = cmd.WorkingDirectory,
             UseShellExecute = false,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
         };
         foreach (var arg in cmd.Arguments)
             psi.ArgumentList.Add(arg);
         foreach (var (key, value) in cmd.Environment)
             psi.Environment[key] = value;
-        var clock = Stopwatch.StartNew();
-        using var process = Process.Start(psi)!;   // throws Win32Exception when the program cannot be started
-        process.StandardInput.Close();   // a child that prompts fails at once instead of waiting on an invisible prompt
-        // Both pipes drain concurrently, so a full pipe never blocks the child.
-        var stdout = process.StandardOutput.ReadToEndAsync();
-        var stderr = process.StandardError.ReadToEndAsync();
-        Task[] readers = [stdout, stderr];
-        // The WHOLE call - child exit plus reader drain - is bounded by `timeout`. The readers reach EOF only when every
-        // holder of the pipe ends, so a descendant that outlives the child (a worker left by `plugin install`) would
-        // otherwise keep us blocked, with the folder and profile locks held.
-        if (process.WaitForExit(timeout))
-        {
-            var remaining = timeout - clock.Elapsed;
-            if (remaining < TimeSpan.Zero)
-                remaining = TimeSpan.Zero;
-            if (Task.WaitAll(readers, remaining))
-                return new CommandResult(process.ExitCode, stdout.Result, stderr.Result, false);
-        }
-        try
-        {
-            process.Kill(entireProcessTree: true);   // no-op for an already-ended child; best effort for its descendants
-        }
-        catch (InvalidOperationException)
-        {
-            // it ended between the timeout and the kill
-        }
-        process.WaitForExit(TimeSpan.FromSeconds(5));
-        // A descendant that escaped the kill may keep the pipes open; do not wait on the readers past a short grace.
-        Task.WaitAll(readers, TimeSpan.FromSeconds(2));
-        return new CommandResult(-1, stdout.IsCompletedSuccessfully ? stdout.Result : "",
-            stderr.IsCompletedSuccessfully ? stderr.Result : "", true);
+        // Whole-call bound, stdin closed, tree kill and the post-exit reader grace all live in the shared helper.
+        return BoundedProcess.Run(psi, timeout);
     }
 
     public IDisposable? TakeProfileLock(string profileName, TimeSpan wait)
     {
-        var path = Path.Combine(UserProfile, ".clavity", $"agy-profile.{profileName}.lock");
         var clock = Stopwatch.StartNew();
         while (true)
         {
-            if (SessionLock.TryTakeChecked(path) is { } held)
-                return held;
+            try
+            {
+                var path = Path.Combine(UserProfile, ".clavity", $"agy-profile.{profileName}.lock");
+                if (SessionLock.TryTakeChecked(path) is { } held)
+                    return held;
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+            {
+                // a name that cannot be part of a path is reported as the lock failing, as every other lock failure is
+                throw new IOException($"the profile name '{profileName}' cannot be used in a lock file path: {ex.Message}", ex);
+            }
             if (clock.Elapsed >= wait)
                 return null;
             Thread.Sleep(250);

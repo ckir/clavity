@@ -170,9 +170,10 @@ public static class CliRouter
     }
 
     /// <summary>Whole-token match of a plugin name in `plugin list` output, so 'commonmemory' does NOT match
-    /// 'uncommonmemory' (agy review req-djljg6vwdpkk). Word boundaries bracket the (regex-escaped) name.</summary>
+    /// 'uncommonmemory' (agy review req-djljg6vwdpkk). Word characters and '-' are not allowed on either side of the (regex-escaped) name,
+    /// so 'clavity' does NOT match 'clavity-classic' or 'my-clavity' either.</summary>
     private static bool ContainsPluginName(string output, string name) =>
-        Regex.IsMatch(output, $@"\b{Regex.Escape(name)}\b", RegexOptions.IgnoreCase);
+        Regex.IsMatch(output, $@"(?<![\w-]){Regex.Escape(name)}(?![\w-])", RegexOptions.IgnoreCase);
 
     private static ProcessOutcome RealRunner(string fileName, IReadOnlyList<string> args)
     {
@@ -180,28 +181,14 @@ public static class CliRouter
         {
             var psi = new ProcessStartInfo(fileName)
             {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
                 UseShellExecute = false,
             };
             foreach (var a in args) psi.ArgumentList.Add(a);
-            using var p = Process.Start(psi);
-            if (p is null) return new ProcessOutcome(127, $"could not start {fileName}");
-            // Drain BOTH pipes concurrently to avoid the classic synchronous double-read deadlock: a verbose
-            // stderr from a Node-based agent CLI can fill the OS pipe buffer while we block reading stdout
-            // (agy review req-djljg6vwdpkk). The reads run while we wait, so the child never blocks on a full pipe.
-            var stdoutTask = p.StandardOutput.ReadToEndAsync();
-            var stderrTask = p.StandardError.ReadToEndAsync();
-            // Bounded wait: a Node agent CLI that blocks on auth / an interactive prompt must NOT freeze the
-            // installer forever — kill it and report a timeout (capstone review).
-            if (!p.WaitForExit(60_000))
-            {
-                try { p.Kill(entireProcessTree: true); } catch { /* best-effort */ }
-                return new ProcessOutcome(124, $"{fileName} timed out after 60s");
-            }
-            var stdout = stdoutTask.GetAwaiter().GetResult();
-            var stderr = stderrTask.GetAwaiter().GetResult();
-            return new ProcessOutcome(p.ExitCode, stdout + stderr);
+            // Bounded as a whole: a Node agent CLI that blocks on auth / an interactive prompt must NOT freeze the
+            // installer forever, and a descendant holding the pipes must not either (shared helper).
+            var r = BoundedProcess.Run(psi, TimeSpan.FromSeconds(60));
+            if (r.TimedOut) return new ProcessOutcome(124, $"{fileName} timed out after 60s");
+            return new ProcessOutcome(r.ExitCode, r.StdOut + r.StdErr);
         }
         catch (Exception e)
         {

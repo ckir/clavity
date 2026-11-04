@@ -58,9 +58,9 @@ public static class SessionLock
         {
             return false;   // removed between the check and the open
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return true;
+            return true;   // cannot be opened exclusively, so it cannot be shown to be free
         }
     }
 }

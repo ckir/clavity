@@ -46,8 +46,17 @@ public static class SessionRegistry
             {
                 continue;
             }
-            if (recorded.Length == 0 || (folder is not null && !SameFolder(recorded, folder)))
+            if (recorded.Length == 0)
                 continue;
+            try
+            {
+                if (folder is not null && !SameFolder(recorded, folder))
+                    continue;
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+            {
+                continue;   // the record's content is not a path (a NUL, say): a malformed record, like an unreadable one
+            }
             var paths = SessionPaths.For(userProfileDir, id);
             if (!isHeld(paths.Alive))
                 continue;   // its `clavity-ls agy` is gone - killed, or the machine rebooted - even if no .exited exists

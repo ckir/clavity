@@ -218,7 +218,7 @@ public static class GoldenHeader
     /// <summary>
     /// Combined SEED-then-GROWTH content to inject, or null when nothing usable. Legacy fallback: if BOTH split
     /// files are absent but a flat golden-header.md exists, treat it as GROWTH (one-directional migration). The
-    /// 16 KB cap applies to the COMBINED result.
+    /// 32 KiB cap (<see cref="MaxBytes"/>) applies to the COMBINED result.
     /// </summary>
     public static string? TryReadCombined(string dir, Action<string>? warn = null)
     {
@@ -317,11 +317,11 @@ public static class GoldenHeader
                 var liveSidecar = path + ".sha256";
                 if (File.Exists(liveSidecar)) File.Copy(liveSidecar, bak + ".sha256", overwrite: true);
 
-                // Reuse `dir` from above rather than re-deriving with `!`. Line 231 already treats an
+                // Reuse `dir` from above rather than re-deriving with `!`. The `!string.IsNullOrEmpty(dir)` guard in this method already treats an
                 // empty directory as a real case; Directory.GetFiles("") throws ArgumentException, so
                 // the null-forgiving re-derivation quietly removed a defence its own neighbour keeps.
                 // Not reachable through CommitGrowth today (ResolveDir is guarded non-blank), but
-                // Commit is public and a bare filename is exactly what line 231 anticipates.
+                // Commit is public and a bare filename is exactly what that guard anticipates.
                 // The slot just written is held OUT of the pool: it is the one snapshot this commit exists
                 // to keep, and a clock stepped backwards (or slots stamped ahead of it) would otherwise sort
                 // it below a full ring and delete it. The ring then sheds the lowest of the others.
@@ -357,17 +357,26 @@ public static class GoldenHeader
 
     private static void AtomicMoveWithRetry(string source, string destination)
     {
-        for (var attempt = 1; ; attempt++)
+        try
         {
-            try
+            for (var attempt = 1; ; attempt++)
             {
-                File.Move(source, destination, overwrite: true);
-                return;
+                try
+                {
+                    File.Move(source, destination, overwrite: true);
+                    return;
+                }
+                catch (Exception ex) when (attempt <= 10 && ex is IOException or UnauthorizedAccessException)
+                {
+                    Thread.Sleep(5 * attempt);
+                }
             }
-            catch (Exception ex) when (attempt <= 10 && ex is IOException or UnauthorizedAccessException)
-            {
-                Thread.Sleep(5 * attempt);
-            }
+        }
+        catch
+        {
+            // Giving up: do not leave the temp file behind (best effort - the original failure is what matters).
+            try { File.Delete(source); } catch { /* best-effort */ }
+            throw;
         }
     }
 

@@ -43,7 +43,14 @@ internal sealed class Fake : IStartEffects
     public bool DirectoryExists(string path) =>
         !MissingDirs.Contains(path) &&
         (path.EndsWith(".git", StringComparison.Ordinal) ? FolderExists && GitExists : FolderExists);
-    public void CreateDirectory(string path) => Calls.Add("mkdir");
+    /// <summary>Thrown by <see cref="CreateDirectory"/> (a log directory that cannot be created on a real disk).</summary>
+    public Exception? MkdirFails { get; init; }
+    public void CreateDirectory(string path)
+    {
+        Calls.Add("mkdir");
+        if (MkdirFails is not null)
+            throw MkdirFails;
+    }
     public void PruneLogs(string logsDir) => Calls.Add("prune");
     public string? ReadProjectId(string agyHome) => null;
     public bool OnPath(string exe)

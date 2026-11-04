@@ -11,7 +11,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-if (args.Contains("--mcp"))
+// `--mcp` is the sole argument the plugin's .mcp.json passes; testing only the first keeps a `start ... --mcp` (a Claude
+// pass-through argument) from turning the CLI into the MCP host.
+if (args.Length > 0 && args[0] == "--mcp")
 {
     // Hold a named mutex for the host's lifetime so the installer's PrepareToInstall can detect a live
     // pairing session (Component B/D) without WMI. Local\ scopes it to this logon session (D1).

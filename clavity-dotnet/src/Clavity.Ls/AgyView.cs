@@ -67,18 +67,39 @@ public sealed class AgyView
 
     // CascadeId-keyed in-flight tracker: an ask in flight for conversation A must NOT make a status check on idle
     // conversation B report "working" (multi-session contamination). Keyed by conversation id, not view-global.
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _inFlight = new();
+    // A REFERENCE COUNT, not a set: two overlapping asks on one conversation must keep it "working" until the LAST ends -
+    // with a set, the first ask's finally cleared the marker while the second still ran. Guarded by its own lock.
+    private readonly Dictionary<string, int> _inFlight = new();
+    private readonly object _inFlightGate = new();
+
+    private void EnterInFlight(string conversationId)
+    {
+        lock (_inFlightGate)
+            _inFlight[conversationId] = _inFlight.GetValueOrDefault(conversationId) + 1;
+    }
+
+    private void ExitInFlight(string conversationId)
+    {
+        lock (_inFlightGate)
+        {
+            var left = _inFlight.GetValueOrDefault(conversationId) - 1;
+            if (left > 0)
+                _inFlight[conversationId] = left;
+            else
+                _inFlight.Remove(conversationId);
+        }
+    }
+
+    private bool IsInFlight(string conversationId)
+    {
+        lock (_inFlightGate)
+            return _inFlight.ContainsKey(conversationId);
+    }
 
     // Once-per-process guidance delivery (spec §5.C-C): the [driver_guidance] block is appended to the FIRST
     // agy_ask of this server session only. AgyView is a process-lifetime singleton, so this flag IS session-scoped.
     private int _guidanceDelivered; // 0 = not yet delivered
 
-    /// <summary>Return the labelled driver-guidance block on the FIRST call per process; null thereafter, or when
-    /// there is nothing to deliver (no golden-header dir AND no escalation index — F1: the two are independent).
-    /// T4b: this block is the SOLE destination for the driver cheatsheet, the golden header (SEED+GROWTH), and the
-    /// escalation index — none of which reach the peer any more (see AskAsync). If the cheatsheet degraded to the
-    /// baseline floor anomalously (over-cap/unreadable/empty), the block leads with a warning so the degrade is
-    /// OBSERVABLE, not silent.</summary>
     /// <summary>True the FIRST time an unchecked consult is seen on this view, false ever after.
     ///
     /// The UNCHECKED notice tells a caller its completeness checks did not run - vital for a discipline
@@ -92,6 +113,12 @@ public sealed class AgyView
     /// loss. (Capstone R6, Release Engineer.)</summary>
     public bool TryTakeUncheckedNotice() => Interlocked.Exchange(ref _uncheckedNoticeDelivered, 1) == 0;
 
+    /// <summary>Return the labelled driver-guidance block on the FIRST call per process; null thereafter, or when
+    /// there is nothing to deliver (no golden-header dir AND no escalation index — F1: the two are independent).
+    /// T4b: this block is the SOLE destination for the driver cheatsheet, the golden header (SEED+GROWTH), and the
+    /// escalation index — none of which reach the peer any more (see AskAsync). If the cheatsheet degraded to the
+    /// baseline floor anomalously (over-cap/unreadable/empty), the block leads with a warning so the degrade is
+    /// OBSERVABLE, not silent.</summary>
     public string? TryTakeGuidanceBlock()
     {
         // F1 (independent toggles): the block has SOMETHING to deliver when a golden-header dir is configured
@@ -166,7 +193,7 @@ public sealed class AgyView
                 // CascadeId and AskAsync fills its CascadeId from the same trajectory, so status.CascadeId now
                 // string-equals ask.CascadeId and a consumer can correlate a pre-fire status with its ask.
 
-                if (_inFlight.ContainsKey(conversationId))
+                if (IsInFlight(conversationId))
                     return new AgyStatus(traj.CascadeId, traj.Steps.Count, "working", lastKind);
 
                 var state = await client.ProbeIdleAsync(
@@ -233,7 +260,7 @@ public sealed class AgyView
                 if (peerFile is not null) outgoing = message + PeerReplyFile.RequestBlock(peerFile, peerNonce!);
             }
 
-            _inFlight[conversationId] = 1;
+            EnterInFlight(conversationId);
             try
             {
                 try
@@ -272,7 +299,7 @@ public sealed class AgyView
             }
             finally
             {
-                _inFlight.TryRemove(conversationId, out _);
+                ExitInFlight(conversationId);
                 // D-prune, its own event: WHENEVER a peer file was requested - also when the wait timed out, was
                 // cancelled or threw, so a run of failed asks cannot let peer files grow without bound (plan panel R1, SF1).
                 if (peerFile is not null) ReplyCapture.Prune(Path.GetDirectoryName(peerFile)!, ReplyCapture.Keep);
@@ -720,7 +747,7 @@ public sealed class AgyView
                 .ThenBy(c => c.ConversationId, StringComparer.Ordinal)
                 .First().ConversationId;
 
-    // Catalog cache: AgyView is a process-lifetime singleton (Program.cs:29) while LsClient is per-ask, so the
+    // Catalog cache: AgyView is a process-lifetime singleton (registered in Clavity.Cli/Program.cs) while LsClient is per-ask, so the
     // per-LS-session model catalog is memoized HERE. Fetched once; self-heals via InvalidateCatalog() on a model
     // rejection (Spec: "refresh on a miss / send rejection"). Failures are NOT cached (only a successful catalog).
     private FetchAvailableModelsResponse? _catalogCache;

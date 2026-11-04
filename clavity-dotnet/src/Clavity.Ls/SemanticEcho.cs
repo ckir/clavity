@@ -67,6 +67,14 @@ public static class SemanticEcho
             //    ways - default throws, FileShare.ReadWrite reads it fine.
             if (!File.Exists(artifactPath)) return null;
 
+            // POSIX: File.Exists is true for a FIFO, and opening one for reading BLOCKS until a writer appears - a hang
+            // that never reaches the catch below (measured on Linux: ExpectedFrom stuck on a `mkfifo` file). There is no
+            // managed file-type test, but stat is non-blocking and a FIFO (like a character device or a socket) reports
+            // size 0; an empty regular file has no line to echo either, so "size 0 -> nothing claimed" is right for all of
+            // them and never opens the path. (A path swapped for a FIFO after this check is the same narrow window the
+            // CanSeek check below already covers for everything that is not a pipe.)
+            if (!OperatingSystem.IsWindows() && new FileInfo(artifactPath).Length == 0) return null;
+
             // SINGLE PASS, CONSTANT MEMORY. The obvious spelling - ReadLines(...).Reverse() - materialises
             // the ENTIRE file to walk it backwards, and this path is now supplied by the caller, so
             // "the artifact" could be a multi-gigabyte log. Streaming forward and keeping the last usable

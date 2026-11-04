@@ -498,7 +498,10 @@ public class AgyChannelDownTests
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                // Generous on purpose: the fake answers poll 1 at once and deletes the log, so the REACH must not depend on
+                // how fast the first gRPC call runs on a loaded runner (a 2s budget failed 2 of 3 under load). The verdict
+                // is only issued at the deadline by design, so this costs the test the budget, not the runner's speed.
+                BootRaceTimeout = TimeSpan.FromSeconds(10),
                 BootRacePollInterval = TimeSpan.FromMilliseconds(50),
             });
             var json = await McpTools.AgyStatus(view);

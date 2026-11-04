@@ -11,7 +11,7 @@ namespace Clavity.Ls;
 /// <summary>Testable bodies for the non-host CLI verbs (kept out of Program.cs top-level for unit testing).</summary>
 public static class CliVerbs
 {
-    private static readonly HashSet<string> Verbs = new(StringComparer.Ordinal)
+    private static readonly HashSet<string> Verbs = new(StringComparer.OrdinalIgnoreCase)   // the installer's CliRouter matches verbs the same way
         { "start", "agy", "install", "uninstall", "is-installed", "curate-commit" };
 
     /// <summary>True when the command line asks for help: no arguments, `help`, `-h`/`--help`, or a verb followed by `-h`/`--help`.
@@ -27,7 +27,9 @@ public static class CliVerbs
             return true;
         if (!Verbs.Contains(args[0]))
             return false;
-        return args[0] is "start" or "agy" ? args.Length == 2 && Flag(args[1]) : args.Skip(1).Any(Flag);
+        var passThrough = args[0].Equals("start", StringComparison.OrdinalIgnoreCase)
+            || args[0].Equals("agy", StringComparison.OrdinalIgnoreCase);
+        return passThrough ? args.Length == 2 && Flag(args[1]) : args.Skip(1).Any(Flag);
     }
 
     /// <summary>`clavity-ls --help`: what it is, how to install it, every verb, the exit codes. Plain ASCII on purpose (a Windows

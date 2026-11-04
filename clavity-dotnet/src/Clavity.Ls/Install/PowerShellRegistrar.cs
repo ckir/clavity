@@ -37,8 +37,6 @@ public static class PowerShellRegistrar
         {
             var psi = new ProcessStartInfo(PowerShellExe())
             {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
                 UseShellExecute = false,
             };
             psi.ArgumentList.Add("-NoProfile");
@@ -50,16 +48,9 @@ public static class PowerShellRegistrar
             psi.ArgumentList.Add("-AppDir"); psi.ArgumentList.Add(req.AppDir ?? "");
             psi.ArgumentList.Add("-Agent"); psi.ArgumentList.Add(req.Agent);
 
-            using var p = Process.Start(psi);
-            if (p is null) return new ProcessOutcome(127, "could not start powershell.exe");
-            var outTask = p.StandardOutput.ReadToEndAsync();
-            var errTask = p.StandardError.ReadToEndAsync();
-            if (!p.WaitForExit(90_000))
-            {
-                try { p.Kill(entireProcessTree: true); } catch { /* best-effort */ }
-                return new ProcessOutcome(124, "register-plugin.ps1 timed out after 90s");
-            }
-            return new ProcessOutcome(p.ExitCode, outTask.GetAwaiter().GetResult() + errTask.GetAwaiter().GetResult());
+            var r = BoundedProcess.Run(psi, TimeSpan.FromSeconds(90));
+            if (r.TimedOut) return new ProcessOutcome(124, "register-plugin.ps1 timed out after 90s");
+            return new ProcessOutcome(r.ExitCode, r.StdOut + r.StdErr);
         }
         catch (Exception e)
         {
