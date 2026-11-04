@@ -11,10 +11,20 @@
 # ============================================
 
 param(
-    [switch]$NonInteractive  # skip the y/N prompts and proceed with deletions (lets an agent run it unattended)
+    [switch]$NonInteractive,  # skip the y/N prompts and proceed with deletions (lets an agent run it unattended)
+    # Owner (org) whose Actions usage is reported. Default: the owner of the current repo as `gh` sees it,
+    # falling back to the original literal when `gh repo view` cannot say (not in a repo, not logged in).
+    [string]$Owner
 )
+Set-StrictMode -Version Latest
+$script:Failures = 0
 
 Write-Host "=== GitHub Actions Storage Reset ===" -ForegroundColor Cyan
+
+if (-not $Owner) {
+    $detected = & gh repo view --json owner -q .owner.login 2>$null
+    $Owner = if ($LASTEXITCODE -eq 0 -and $detected) { "$detected".Trim() } else { 'ckir' }
+}
 
 # Check for gh CLI
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
@@ -27,6 +37,10 @@ if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
 # --------------------------------------------
 Write-Host "`nListing caches..." -ForegroundColor Yellow
 $cacheList = gh cache list
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "gh cache list failed (exit $LASTEXITCODE)." -ForegroundColor Red
+    $script:Failures++
+}
 
 if (-not $cacheList) {
     Write-Host "No caches found." -ForegroundColor Green
@@ -48,7 +62,12 @@ if ($NonInteractive) {
 if ("$confirmCaches".ToLower() -eq "y") {
     Write-Host "Deleting caches..." -ForegroundColor Red
     gh cache delete --all
-    Write-Host "All caches deleted." -ForegroundColor Green
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "gh cache delete --all FAILED (exit $LASTEXITCODE); caches were NOT (all) deleted." -ForegroundColor Red
+        $script:Failures++
+    } else {
+        Write-Host "All caches deleted." -ForegroundColor Green
+    }
 } else {
     Write-Host "Skipping cache deletion." -ForegroundColor Yellow
 }
@@ -58,7 +77,14 @@ if ("$confirmCaches".ToLower() -eq "y") {
 # --------------------------------------------
 Write-Host "`nListing workflow runs..." -ForegroundColor Yellow
 # Fetch up to 500 runs (API limit is usually higher but 500 is a safe batch)
-$Runs = gh run list --limit 500 --json databaseId,name,status,createdAt | ConvertFrom-Json
+$runJson = gh run list --limit 500 --json databaseId,name,status,createdAt
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "gh run list failed (exit $LASTEXITCODE); cannot list workflow runs." -ForegroundColor Red
+    $script:Failures++
+    $Runs = $null
+} else {
+    $Runs = $runJson | ConvertFrom-Json
+}
 
 if (-not $Runs) {
     Write-Host "No workflow runs found." -ForegroundColor Green
@@ -83,17 +109,26 @@ if ("$confirmRuns".ToLower() -eq "y") {
     } else {
         Write-Host "Deleting $($Runs.Count) workflow runs with 16-way parallelism..." -ForegroundColor Red
         if ($PSVersionTable.PSVersion.Major -ge 7) {
-            $Runs.databaseId | ForEach-Object -Parallel {
+            # Each parallel block emits its run id ONLY when gh failed, so $failed is the failure list.
+            $failed = @($Runs.databaseId | ForEach-Object -Parallel {
                 # No --yes flag: not supported/needed when deleting by ID (gh 2.85.0)
                 gh run delete $_ > $null
-            } -ThrottleLimit 16
+                if ($LASTEXITCODE -ne 0) { $_ }
+            } -ThrottleLimit 16)
         } else {
             # Fallback for Windows PowerShell 5.1 (no ForEach-Object -Parallel)
+            $failed = @()
             foreach ($run in $Runs) {
                 gh run delete $run.databaseId > $null
+                if ($LASTEXITCODE -ne 0) { $failed += $run.databaseId }
             }
         }
-        Write-Host "Batch deletion complete." -ForegroundColor Green
+        if ($failed.Count -gt 0) {
+            Write-Host "Batch deletion INCOMPLETE: $($failed.Count) of $($Runs.Count) run deletion(s) failed (ids: $($failed -join ', '))." -ForegroundColor Red
+            $script:Failures++
+        } else {
+            Write-Host "Batch deletion complete." -ForegroundColor Green
+        }
         if ($Runs.Count -ge 500) {
             Write-Host "Hit 500-run batch limit - rerun script to clear remainder." -ForegroundColor Yellow
         }
@@ -108,9 +143,11 @@ if ("$confirmRuns".ToLower() -eq "y") {
 Write-Host "`nFetching usage information..." -ForegroundColor Yellow
 
 try {
-    # Attempt to get org usage. Replace 'ckir' with your actual org name if different,
-    # or rely on the script failing gracefully for personal repos.
-    $usage = gh api orgs/ckir/actions/permissions/usage | ConvertFrom-Json
+    # Attempt to get org usage for -Owner (default: the current repo's owner), or rely on the script
+    # failing gracefully for personal repos (the endpoint is org-only).
+    $usageJson = gh api "orgs/$Owner/actions/permissions/usage" 2>$null
+    if ($LASTEXITCODE -ne 0) { throw "gh api exited $LASTEXITCODE" }
+    $usage = $usageJson | ConvertFrom-Json
     Write-Host "`n=== Usage Report ===" -ForegroundColor Cyan
     $usage
 } catch {
@@ -118,4 +155,8 @@ try {
     Write-Host "This is expected for personal accounts. Usage will drop once GitHub recalculates." -ForegroundColor Yellow
 }
 
+if ($script:Failures -gt 0) {
+    Write-Host "`nDone WITH $($script:Failures) FAILURE(S) - see the red lines above." -ForegroundColor Red
+    exit 1
+}
 Write-Host "`nDone." -ForegroundColor Cyan

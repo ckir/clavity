@@ -190,7 +190,9 @@ function Get-BaselineSha([string]$RepoRoot) {
     $serials = @(Get-Serials $RepoRoot)
     if ($serials.Count -gt 0) {
         $maxTag = 'clavity-v' + ($serials | Measure-Object -Maximum).Maximum
-        return (git -C $RepoRoot rev-list -n1 $maxTag).Trim()
+        $tagSha = git -C $RepoRoot rev-list -n1 $maxTag
+        if ($LASTEXITCODE -ne 0 -or -not $tagSha) { throw "Get-BaselineSha: tag '$maxTag' does not resolve to a commit - the release baseline is unresolvable." }
+        return $tagSha.Trim()
     }
     return ''
 }
@@ -355,7 +357,7 @@ function Update-Changelog([string]$repoRoot, [object]$bump, [string]$dateStr) {
     # heading further down on every release).
     if ($existing -match '(?s)^(#[^\n]*\n+)(.*)$') { $out = $Matches[1] + $section + $Matches[2] }
     else                                          { $out = $section + $existing }
-    Set-Content -Path $path -Value $out -NoNewline
+    Set-Content -LiteralPath $path -Value $out -NoNewline
     return $path
 }
 

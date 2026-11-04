@@ -39,7 +39,10 @@ function Get-CommitRecords([string[]]$pathspecs) {
     if (-not $pathspecs -or $pathspecs.Count -eq 0) { return @() }
     # Out-String first: `git log` is captured as a string[] (one element per line), so splitting the array
     # directly shatters multi-line records (plan-review R1). Join to one string, then split on NUL.
-    $out = (git -C $RepoRoot log $range --format="%x00%H%x1f%s" -- @pathspecs 2>$null | Out-String)
+    $out = (git -C $RepoRoot log $range --format="%x00%H%x1f%s" -- @pathspecs | Out-String)
+    # A failed read (unresolvable baseline, bad range) must NOT look like "no commits": that silently
+    # yields "nothing to release".
+    if ($LASTEXITCODE -ne 0) { throw "compute-release: 'git log $range' failed (exit $LASTEXITCODE) - the baseline/range is unresolvable; refusing to report 'nothing to release'." }
     if (-not $out) { return @() }
     $records = @()
     foreach ($rec in ($out -split "`0" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })) {
@@ -84,9 +87,15 @@ foreach ($m in Get-Members) {
 # every path that ever existed and long-deleted ones would bucket as unclassified and fail a first release
 # for nothing. A deleted shared asset is still caught — by Assert-SharedMapHealthy, whose declared entries
 # must exist on disk.
-$touched = @(git -C $RepoRoot log $range --name-only --format='' 2>$null |
+#
+# -c core.quotePath=false is load-bearing: git quotes any path with a non-ASCII byte (octal-escaped, in
+# double quotes), which then fails Test-Path and would let the file escape the unclassified check
+# (see check-knowledge-store.ps1, which documents the same trap). -LiteralPath for the same reason.
+$touchedRaw = @(git -C $RepoRoot -c core.quotePath=false log $range --name-only --format='')
+if ($LASTEXITCODE -ne 0) { throw "compute-release: 'git log $range --name-only' failed (exit $LASTEXITCODE) - the baseline/range is unresolvable; refusing to report an empty change set." }
+$touched = @($touchedRaw |
     ForEach-Object { $_.Trim() } |
-    Where-Object { $_ -ne '' -and (Test-Path (Join-Path $RepoRoot $_)) } | Sort-Object -Unique)
+    Where-Object { $_ -ne '' -and (Test-Path -LiteralPath (Join-Path $RepoRoot $_)) } | Sort-Object -Unique)
 $unclassified = @($touched | Where-Object { (Get-PathBucket $_) -eq 'unclassified' })
 
 [pscustomobject]@{

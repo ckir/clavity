@@ -46,10 +46,8 @@ if (Test-Path $installerDir) {
 $registerTests = Join-Path $RepoRoot 'scripts/tests/register-plugin.Tests.ps1'
 if (Test-Path $registerTests) { $targets += @(Get-Item $registerTests) }
 
-function Fail([string]$msg) {
-    Write-Host "check-installer-ascii: FAIL: $msg" -ForegroundColor Red
-    exit 1
-}
+$script:GateName = 'check-installer-ascii'
+. (Join-Path (Join-Path $PSScriptRoot 'lib') 'gate-lib.ps1')
 
 if ($targets.Count -eq 0) {
     # A silent zero-file pass is a false green: the domain is never legitimately empty.

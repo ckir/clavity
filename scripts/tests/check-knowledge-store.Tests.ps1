@@ -333,6 +333,22 @@ Describe 'check-knowledge-store' {
         $out | Should -Match 'NO INDEX'
     }
 
+    # FAIL CLOSED: a history read that errors must not be read as "empty history" (which would let any
+    # deletion pass). Corrupt the repo by removing the HEAD commit object: the ref still resolves, but
+    # `git log` cannot walk it.
+    It 'FAILS CLOSED when git cannot read the history, instead of certifying an empty baseline' {
+        $d = New-StoreFixture
+        $sha = (& git -C $d rev-parse HEAD).Trim()
+        $obj = Join-Path $d ".git/objects/$($sha.Substring(0,2))/$($sha.Substring(2))"
+        (Test-Path -LiteralPath $obj) | Should -BeTrue -Because 'the fixture must hold the commit as a loose object'
+        Remove-Item -Force -LiteralPath $obj
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'FAIL: git could not read'
+        $out | Should -Not -Match 'OK'
+        Remove-Item -Recurse -Force $d
+    }
+
     It 'SKIPS cleanly when there is no store directory at all' {
         $d = New-TestTempPath 'clavity-nostore'
         New-Item -ItemType Directory -Path $d -Force | Out-Null

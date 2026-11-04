@@ -144,6 +144,38 @@ Describe 'compute emit (sweep + Nothing + non-conventional)' {
     }
 }
 
+Describe 'git failures are loud, not "nothing to release"' {
+    It 'throws, naming the range, when git log fails (unborn HEAD)' {
+        $repo = New-TempRepo
+        try {
+            { & $script:Engine -RepoRoot $repo } | Should -Throw -ExpectedMessage '*git log*HEAD*failed*'
+        } finally { Pop-Location; Remove-Item -Recurse -Force $repo }
+    }
+    It 'throws, naming the tag, when the baseline tag does not resolve to a commit' {
+        $repo = New-TempRepo
+        try {
+            # A baseline tag that points at a blob: `blob..HEAD` is not a valid range, so git log fails.
+            'x' | Set-Content 'a.txt'; git add -A; git commit -q -m 'chore: first'
+            $blob = (git hash-object -w a.txt)
+            git tag clavity-v7 $blob
+            { & $script:Engine -RepoRoot $repo } | Should -Throw -ExpectedMessage '*clavity-v7*unresolvable*'
+        } finally { Pop-Location; Remove-Item -Recurse -Force $repo }
+    }
+    It 'classifies a tracked file whose name is non-ASCII (core.quotePath=false)' {
+        $repo = New-TempRepo
+        try {
+            New-Item -ItemType Directory -Force -Path 'commonmemory/installer' | Out-Null
+            Set-Content 'commonmemory/installer/commonmemory.iss' '#define AppVersion "0.1.0"' -NoNewline
+            git add -A; git commit -q -m 'chore(release): clavity-v7'; git tag clavity-v7
+            New-Item -ItemType Directory -Force -Path 'zz_unmapped' | Out-Null
+            'x' | Set-Content ("zz_unmapped/caf" + [char]0xE9 + ".txt")
+            git add -A; git commit -q -m 'feat(core): a non-ASCII file in an unmapped directory'
+            $r = & $script:Engine -RepoRoot $repo
+            $r.Unclassified | Should -Contain ("zz_unmapped/caf" + [char]0xE9 + ".txt")
+        } finally { Pop-Location; Remove-Item -Recurse -Force $repo }
+    }
+}
+
 Describe 'commit text is decoded as UTF-8, not the console code page' {
     # THE clavity-v20 MOJIBAKE. git stores commit text as UTF-8, but PowerShell decodes a native command's
     # stdout with [Console]::OutputEncoding - MEASURED as ibm437 on the release box. U+00A7 SECTION SIGN

@@ -74,6 +74,22 @@ function Invoke-LoggedCommand([string]$StepName, [scriptblock]$Command, [string]
 # --- Precondition-0 (F6/D2/F17/TO1) ---
 git fetch --tags --quiet; if ($LASTEXITCODE -ne 0) { Die "git fetch failed (offline?) — baseline/serial need true remote state" }
 if ((git rev-parse --abbrev-ref HEAD) -ne 'main') { Die "not on main" }
+# Local HEAD must CONTAIN origin/main: releasing from a main that is behind the remote would push a
+# release commit that cannot fast-forward (or silently omit commits others already landed). Skipped when
+# origin/main does not resolve at all - the dangling/-Resume gates below own that refusal and its message.
+# -Resume runs this check AFTER the drop, not before. A stranded local release commit is AHEAD of the
+# origin/main it was cut from, but once the remote moves on (the fixes landed through a merged PR) local
+# main has DIVERGED and no longer contains origin/main. Checking first would refuse -Resume in exactly
+# the state it exists to clear, and the "pull first" advice could not work either: --ff-only fails while
+# the dead candidate is still on local main. Dropping it first makes the pull a fast-forward.
+function Assert-LocalContainsOriginMain {
+    git rev-parse --verify --quiet origin/main *> $null
+    if ($LASTEXITCODE -eq 0) {
+        git merge-base --is-ancestor origin/main HEAD
+        if ($LASTEXITCODE -ne 0) { Die "local main does not contain origin/main (it is behind or has diverged) - pull first: git pull --ff-only origin main" }
+    }
+}
+if (-not $Resume) { Assert-LocalContainsOriginMain }
 git diff --quiet;        if ($LASTEXITCODE -ne 0) { Die "unstaged tracked changes present (untracked OK)" }
 git diff --cached --quiet;if ($LASTEXITCODE -ne 0) { Die "staged changes present" }
 # Only a dangling un-pushed CHORE(RELEASE) commit blocks (plan-review R1) — un-pushed FEATURE commits are
@@ -116,6 +132,7 @@ if ($Resume) {
         Die "could not drop $short — the rebase was aborted, so the repository is as you left it"
     }
     Write-Host "release: dropped $short; re-preparing from scratch." -ForegroundColor Cyan
+    Assert-LocalContainsOriginMain
 } else {
     # Get-DanglingReleaseCommits throws when it cannot determine the pushed set. Every other refusal in
     # this script arrives through Die as a single `release: ...` line, so an escaping throw would be the
@@ -181,29 +198,33 @@ if ($WhatIf) { Write-Host "release: -WhatIf, stopping before any write." -Foregr
 $answer = Read-Host "Type '$target' to proceed"
 if ($answer -ne $target) { Write-Host "aborted." -ForegroundColor Yellow; exit 0 }
 
-# (bump/commit/pre-flight/push added in Tasks 8-9; stash $r + $target for them)
+# Keep the computed result and the tag name in script scope for the bump, commit, pre-flight and push steps below.
 $script:Computed = $r; $script:Target = $target
 
 $dateStr = (Get-Date -Format 'yyyy-MM-dd')
 foreach ($b in $script:Computed.Bumps) {
-    Invoke-LoggedCommand "just bump $($b.Key) $($b.Next)" { & just bump $b.Key $b.Next } "bump failed for $($b.Key)"
+    Invoke-LoggedCommand "just bump $($b.Key) $($b.Next)" { & just bump $b.Key $b.Next } "bump failed for $($b.Key) - the working tree is now partly bumped. Recover with: git checkout -- .   (then fix the cause and re-run)"
     [void](Update-Changelog $RepoRoot $b $dateStr)
 }
 
 # F13‴: stage tracked bump edits repo-wide (no path enumeration) + explicit changelog adds; never -am/-A.
 git add -u
+if ($LASTEXITCODE -ne 0) { Die "git add -u failed (exit $LASTEXITCODE) - the bump edits were not staged; nothing was committed" }
 foreach ($root in ($script:Computed.Bumps.Root | Select-Object -Unique)) {
     $cl = Join-Path $root 'CHANGELOG.md'
-    if (Test-Path $cl) { git add -- $cl }
+    if (Test-Path $cl) {
+        git add -- $cl
+        if ($LASTEXITCODE -ne 0) { Die "git add -- $cl failed (exit $LASTEXITCODE) - the changelog was not staged; nothing was committed" }
+    }
 }
 
-# Subject = baseline anchor; body = aggregated notes (CC1). Write body to a temp file for -F to avoid
-# quoting hazards, then commit with -m subject -F bodyfile order preserved via two -F/-m? Use file for both.
+# Subject = baseline anchor; body = aggregated notes (CC1). Subject and body go into ONE temp file
+# (subject, blank line, body) committed with `git commit -F`, which avoids shell quoting hazards.
 $members = ($script:Computed.Bumps | ForEach-Object { "$($_.Key) $($_.Next)" }) -join ', '
 $subject = "chore(release): $($script:Target) [$members]"
 $body    = Format-ReleaseNotes $script:Computed.Bumps
 $msgFile = New-TemporaryFile
-Set-Content -Path $msgFile -Value ("$subject`n`n$body") -NoNewline
+Set-Content -LiteralPath $msgFile -Value ("$subject`n`n$body") -NoNewline
 try {
     Invoke-LoggedCommand "git commit ($($script:Target))" { git commit -F $msgFile } "commit failed"
 } finally {

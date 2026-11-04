@@ -13,6 +13,7 @@
 param(
     [string]$Root = (Split-Path -Parent $PSScriptRoot)
 )
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $fail = $false
 function Fail($msg) { Write-Error $msg -ErrorAction Continue; $script:fail = $true }

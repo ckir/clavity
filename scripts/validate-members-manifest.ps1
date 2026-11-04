@@ -13,6 +13,7 @@ name/source/marketplaceName, and that all 5 marketplaceName values are pairwise 
 collision silently steals the namespace and breaks every previously-installed member's plugin
 resolution — Failure mode B). Was 5 until ghidrust's full retirement (2026-09-14), 4 until review-relay joined (2026-09-28).
 #>
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $root = Get-Content "$PSScriptRoot/../build/members.json" -Raw | ConvertFrom-Json
 $members = $root.members

@@ -10,6 +10,7 @@
 # Regenerate installer/_shared/register-plugin-hash.iss with the current SHA-256 of register-plugin.ps1.
 # The hash is baked (as an ISPP #define) into every uninstaller that ships the loose script, which verifies
 # it via Inno's native GetSHA256OfFile before exec — a cert-free tamper check (owner decision 2026-07-19).
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $ps1  = Join-Path (Join-Path (Join-Path $root 'installer') '_shared') 'register-plugin.ps1'

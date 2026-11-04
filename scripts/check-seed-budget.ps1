@@ -29,10 +29,8 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if (-not $SeedPath) { $SeedPath = Join-Path $RepoRoot 'seed/golden-header.md' }
 
-function Fail([string]$msg) {
-    Write-Host "check-seed-budget: FAIL: $msg" -ForegroundColor Red
-    exit 1
-}
+$script:GateName = 'check-seed-budget'
+. (Join-Path (Join-Path $PSScriptRoot 'lib') 'gate-lib.ps1')
 
 # F24: a missing SEED (fresh clone, never drained) is 0 bytes ≤ budget — never a crash.
 $bytes = 0

@@ -58,10 +58,13 @@ jobs:
       - name: Determine which build job ran + its artifact name
         id: which
         shell: bash
+        env:
+          MEMBER: ${{ inputs.member }}
+          CLASSIC_ARTIFACT: ${{ needs.classic.outputs.artifact-name }}
         run: |
-          case "${{ inputs.member }}" in
+          case "$MEMBER" in
             dotnet)        echo "artifact=dotnet-bin-*" >> "$GITHUB_OUTPUT"; echo "pattern=true" >> "$GITHUB_OUTPUT" ;;  # retired Inno -> 4 per-RID binary tarballs
-            classic)       echo "artifact=${{ needs.classic.outputs.artifact-name }}" >> "$GITHUB_OUTPUT" ;;
+            classic)       echo "artifact=$CLASSIC_ARTIFACT" >> "$GITHUB_OUTPUT" ;;
           esac
 
       - name: Download the rebuilt asset (single-name members)

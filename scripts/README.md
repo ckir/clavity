@@ -83,6 +83,8 @@ because the check is worth re-running by hand when that area changes.
 
 - `lib/` — shared PowerShell helpers, dot-sourced by the scripts above:
   - `release-lib.ps1` — the release/versioning machinery (roster, changelog, serials).
+  - `gate-lib.ps1` — the shared `Fail` helper (`<gate>: FAIL: <msg>`, exit 1) for the check-* gates whose copies were identical; set `$script:GateName` before dot-sourcing.
+  - `injected-context-lib.ps1` — the reference-index and ASCII / hook-message functions of `check-injected-context.ps1`, dot-sourced by it (moved verbatim; not usable standalone).
   - `path-lib.ps1` — the one sanctioned way to turn an absolute path into a repo-relative one.
     `New-RootRelativePathResolver -Root $r` normalises the root ONCE (8.3 short form, casing, a PSDrive, a
     provider prefix) and returns a resolver whose `.Resolve($path)` is pure string math — and **throws if

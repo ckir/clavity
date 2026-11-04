@@ -38,10 +38,8 @@ if (-not $Files) {
     $Files = Get-DrainProtectedPaths
 }
 
-function Fail([string]$msg) {
-    Write-Host "check-core-integrity: FAIL: $msg" -ForegroundColor Red
-    exit 1
-}
+$script:GateName = 'check-core-integrity'
+. (Join-Path (Join-Path $PSScriptRoot 'lib') 'gate-lib.ps1')
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Fail "required tool 'git' not found on PATH" }
 
 # Fail CLOSED if $RepoRoot is not a git work tree. The per-file `cat-file -e HEAD:<rel>` below returns the SAME
