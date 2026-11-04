@@ -379,17 +379,21 @@ agy_guard_ignored() {
 # $1 = session_id (caller-sanitized)  $2 = slot ('sync'|'async')
 agy_guard_state_file() {
   local base="${TMPDIR:-/tmp}/claude-agy-consult-guard"
-  # The directory holds baselines the Post trusts, so it must be PRIVATE: created 0700, and refused (return 1 -> every caller fails
-  # open) when it is a symlink or belongs to someone else - on a shared /tmp another user could pre-create it. The per-user name
+  # POSIX: the directory holds baselines the Post trusts, so it must be PRIVATE: created 0700, and refused (return 1 -> every caller
+  # fails open) when it is a symlink or belongs to someone else - on a shared /tmp another user could pre-create it. The per-user name
   # ($XDG_RUNTIME_DIR/...-$(id -u)) is not used: agy-consult-guard.Tests.ps1 pins $TMPDIR/claude-agy-consult-guard, and the checks
   # below are builtins (no extra process on this per-Bash-call path; hook-spawn-budget.Rows.ps1 pins the consult-path counts).
-  # shellcheck disable=SC2174  # -m on the deepest component is exactly the intent: $TMPDIR itself already exists
-  mkdir -p -m 700 "$base" 2>/dev/null || return 1
-  [ -d "$base" ] && [ ! -L "$base" ] || return 1
-  # Ownership is a POSIX notion: under Git Bash (MSYS/Cygwin) a directory the current user just created reports a SID-mapped group
-  # owner, so [ -O ] is false for our own directory and the guard would never initialise (seen on windows-latest). $OSTYPE is a
-  # builtin, so the platform test costs no process.
-  case "$OSTYPE" in msys*|cygwin*|win32*) ;; *) [ -O "$base" ] || return 1 ;; esac
+  # Git Bash (MSYS/Cygwin): keep the plain mkdir this hook always used. TMPDIR is already a per-user NTFS directory, the shared-/tmp
+  # attack does not exist there, and the POSIX hardening broke initialisation on windows-latest (first [ -O ], which reports a
+  # SID-mapped group owner for the current user's own directory; then it still failed with those skipped, so nothing else of it
+  # runs there). $OSTYPE is a builtin: the platform test costs no process.
+  case "$OSTYPE" in
+    msys*|cygwin*|win32*) mkdir -p "$base" 2>/dev/null || return 1 ;;
+    *)
+      # shellcheck disable=SC2174  # -m on the deepest component is exactly the intent: $TMPDIR itself already exists
+      mkdir -p -m 700 "$base" 2>/dev/null || return 1
+      [ -d "$base" ] && [ ! -L "$base" ] && [ -O "$base" ] || return 1 ;;
+  esac
   printf '%s/%s.%s' "$base" "$1" "$2"
 }
 

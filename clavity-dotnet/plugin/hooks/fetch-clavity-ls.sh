@@ -112,7 +112,7 @@ _fail_stamp() {
   [ -d "$DATA" ] || return 0     # never conjure a plugin data dir (a relative/odd path would litter the cwd)
   [ -d "$BIN_DIR" ] || mkdir -p "$BIN_DIR" 2>/dev/null
   _E=''; _epoch
-  printf '%s\n' "$_E" > "$FAIL_STAMP" 2>/dev/null
+  printf '%s\n' "$_E" 2>/dev/null > "$FAIL_STAMP"
   return 0
 }
 
