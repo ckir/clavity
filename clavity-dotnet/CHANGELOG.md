@@ -1,4 +1,23 @@
 # dotnet changelog
+## 0.15.0 - 2026-11-04
+
+### Features
+- feat(clavity-ls): start --profile launches Claude under an agent-profile profile
+- feat(clavity-ls): ProfileSetup - agent-profile create/doctor, clavity and superpowers plugins
+- feat(clavity-ls): readers for agent-profile doctor and claude plugin JSON
+- feat(clavity-ls): parse start --profile
+
+### Fixes
+- fix(hooks): keep the original state-dir code on Git Bash; redirect stderr before the stamp target
+- fix(hooks): make the new guards work under Git Bash on Windows and inside the pinned spawn budgets
+- fix(clavity-ls): bounded process capture, exact plugin matching, validated profiles, safer start
+- fix(hooks): verify the clavity-ls download, back off failed fetches, refuse unsafe temp paths
+- fix(release): harden the release gate, workflow inputs and script gates
+- fix(clavity-ls): --help documents install, every command and the exit codes; <verb> --help no longer runs the verb
+- fix(clavity-ls): final review - correct agent-profile link, command output in setup failures, enable --scope user, pin setup-once
+- fix(clavity-ls): RunCaptured bounds the whole call by its timeout, closes stdin
+- fix(clavity-ls): ProfileJson reads a non-boolean enabled as disabled (fail closed)
+
 ## 0.14.0 - 2026-10-31
 
 ### Features

@@ -1,4 +1,14 @@
 # classic changelog
+## 0.12.1 - 2026-11-04
+
+### Fixes
+- fix(hooks): keep the original state-dir code on Git Bash; redirect stderr before the stamp target
+- fix(hooks): make the new guards work under Git Bash on Windows and inside the pinned spawn budgets
+- fix(clavity-classic): apply the lock-contention check to RingLock::acquire, not the dir guard
+- fix(clavity-classic): retry ring lock and state rename on Windows sharing errors
+- fix(clavity-classic): safer relaunch, atomic ring debounce, no cleartext secret; Rust 1.99.1
+- fix(hooks): verify the clavity-ls download, back off failed fetches, refuse unsafe temp paths
+
 ## 0.12.0 - 2026-10-31
 
 ### Features
