@@ -114,13 +114,30 @@ pub fn pane_command(session: &str) -> Option<String> {
     }
 }
 
-/// True iff `agy` is the session's running foreground process. A session can outlive agy (when
-/// agy exits, the pane falls back to its shell), so `has_session` alone isn't enough to know agy
-/// is up.
-pub fn agy_running(session: &str) -> bool {
-    pane_command(session)
-        .map(|c| c.to_ascii_lowercase().contains("agy"))
-        .unwrap_or(false)
+/// Tri-state result of probing whether agy is the pane's foreground process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgyProbe {
+    /// The pane command was read and is agy.
+    Running,
+    /// The pane command was read successfully and is not agy (agy exited; the shell is back).
+    NotAgy,
+    /// The pane command could not be read (display-message failed or printed nothing). Callers
+    /// must NOT assume agy is gone: agy may be alive under a wrapper name.
+    Unknown,
+}
+
+/// Pure classifier for [`agy_probe`]: `None` / blank = could not read the pane command.
+pub fn classify_agy(cmd: Option<&str>) -> AgyProbe {
+    match cmd.map(str::trim) {
+        None | Some("") => AgyProbe::Unknown,
+        Some(c) if c.to_ascii_lowercase().contains("agy") => AgyProbe::Running,
+        Some(_) => AgyProbe::NotAgy,
+    }
+}
+
+/// Probe the session's foreground command, distinguishing "not agy" from "could not tell".
+pub fn agy_probe(session: &str) -> AgyProbe {
+    classify_agy(pane_command(session).as_deref())
 }
 
 /// True iff the session has at least one attached client (i.e. a visible terminal/tab is showing it).
@@ -209,15 +226,21 @@ pub fn busy_by_activity(session: &str, samples: usize, interval: Duration) -> Op
 /// Return Idle / Busy / Dead. Fast path: footer markers. If absent, fall back to
 /// marker-free activity detection so state stays usable across TUI restyles.
 pub fn pane_state(session: &str) -> PaneState {
-    if !has_session(session) {
-        return PaneState::Dead;
-    }
+    pane_state_until(session, None)
+}
+
+/// [`pane_state`] with an optional deadline: when the footer markers are absent and the deadline
+/// has already passed, skip the (multi-second) activity-sampling fallback and report `Busy`
+/// ("not provably idle") so a waiter can time out on schedule. A failed capture means the session
+/// is gone, so no separate `has-session` spawn is needed.
+fn pane_state_until(session: &str, deadline: Option<Instant>) -> PaneState {
     let text = match capture(session) {
         Ok(t) => t,
         Err(_) => return PaneState::Dead,
     };
     match classify_pane(&text, &idle_marker(), &busy_marker()) {
         Some(s) => s,
+        None if deadline.is_some_and(|d| Instant::now() >= d) => PaneState::Busy,
         None => match busy_by_activity(session, 3, Duration::from_secs(1)) {
             Some(true) => PaneState::Busy,
             Some(false) => PaneState::Idle,
@@ -299,7 +322,7 @@ pub fn new_session_detached(session: &str, dir: &str) -> Result<(), String> {
 pub fn wait_idle(session: &str, timeout: Duration, poll: Duration) -> Result<bool, String> {
     let deadline = Instant::now() + timeout;
     loop {
-        match pane_state(session) {
+        match pane_state_until(session, Some(deadline)) {
             PaneState::Idle => return Ok(true),
             PaneState::Dead => {
                 return Err(format!(
@@ -327,10 +350,67 @@ fn ring_min_interval() -> Duration {
         .unwrap_or_else(|| Duration::from_millis(2000))
 }
 
-/// Path to the per-session `last_ring` timestamp file (unix millis). It lives in the temp dir
-/// so the debounce is shared across *independent* `clavity ring` processes — that is the whole
-/// point: one rate limit no single caller can bypass by re-invoking. Override the location with
-/// `AGY_RING_STATE_FILE` (used by tests for isolation).
+/// Directory holding the ring state file. On Unix it is private to the current user (`0700`):
+/// `$XDG_RUNTIME_DIR/clavity` when set, else `<temp>/clavity-<uid>`; never a bare file in the
+/// shared temp dir, where another local user could pre-plant a symlink. Elsewhere (Windows, whose
+/// temp dir is already per-user) it is the temp dir.
+fn ring_state_dir() -> PathBuf {
+    #[cfg(unix)]
+    {
+        if let Some(d) = private_state_dir() {
+            return d;
+        }
+        warn!("could not set up a private ring state dir; falling back to the shared temp dir");
+    }
+    std::env::temp_dir()
+}
+
+#[cfg(unix)]
+fn current_uid() -> Option<u32> {
+    use std::os::unix::fs::MetadataExt;
+    // `/proc/self` is owned by the process's effective uid on Linux; absent elsewhere.
+    std::fs::metadata("/proc/self").ok().map(|m| m.uid())
+}
+
+#[cfg(unix)]
+fn private_state_dir() -> Option<PathBuf> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+    let dir = match std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()) {
+        Some(x) => PathBuf::from(x).join("clavity"),
+        None => {
+            let who = current_uid()
+                .map(|u| u.to_string())
+                .or_else(|| std::env::var("USER").ok().filter(|u| !u.is_empty()))
+                .unwrap_or_else(|| "unknown".to_string());
+            let who: String = who
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect();
+            std::env::temp_dir().join(format!("clavity-{who}"))
+        }
+    };
+    match std::fs::DirBuilder::new().mode(0o700).create(&dir) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(_) => return None,
+    }
+    // Must be a real directory (not a symlink), owned by us, and closed to group/other.
+    let md = std::fs::symlink_metadata(&dir).ok()?;
+    if !md.is_dir() || md.permissions().mode() & 0o077 != 0 {
+        return None;
+    }
+    if let Some(uid) = current_uid() {
+        if md.uid() != uid {
+            return None;
+        }
+    }
+    Some(dir)
+}
+
+/// Path to the per-session `last_ring` timestamp file (unix millis). It lives in a per-user
+/// state dir (see [`ring_state_dir`]) so the debounce is shared across *independent*
+/// `clavity ring` processes — that is the whole point: one rate limit no single caller can bypass
+/// by re-invoking. Override the location with `AGY_RING_STATE_FILE` (used by tests for isolation).
 ///
 /// The filename includes a hash of the session name to avoid collisions where different sessions
 /// sanitize to the same string (e.g. "foo" and "foo_" both become "foo_").
@@ -346,7 +426,7 @@ fn ring_state_path(session: &str) -> PathBuf {
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect();
-    std::env::temp_dir().join(format!("clavity-ring-{safe}-{hash:x}.ts"))
+    ring_state_dir().join(format!("clavity-ring-{safe}-{hash:x}.ts"))
 }
 
 /// The time of the last recorded ring, if any (None = never rung / file absent or unreadable).
@@ -355,11 +435,148 @@ fn last_ring(path: &Path) -> Option<SystemTime> {
     Some(UNIX_EPOCH + Duration::from_millis(millis))
 }
 
-/// Record `now` as the last ring time (best-effort; a persistence failure never blocks a ring).
-fn record_ring(path: &Path, now: SystemTime) {
-    if let Ok(d) = now.duration_since(UNIX_EPOCH) {
-        let _ = std::fs::write(path, (d.as_millis() as u64).to_string());
+fn millis_of(t: SystemTime) -> u64 {
+    t.duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn sidecar(path: &Path, suffix: &str) -> PathBuf {
+    let mut o = path.as_os_str().to_owned();
+    o.push(suffix);
+    PathBuf::from(o)
+}
+
+/// Write `content` to `path` atomically (temp file in the same dir, then rename), refusing to
+/// write through a symlink at `path`.
+fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Ok(md) = std::fs::symlink_metadata(path) {
+        if md.file_type().is_symlink() {
+            return Err(std::io::Error::other(format!(
+                "refusing to write through symlink {}",
+                path.display()
+            )));
+        }
     }
+    let tmp = sidecar(path, &format!(".tmp{}", std::process::id()));
+    let _ = std::fs::remove_file(&tmp);
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)?;
+    let res = f.write_all(content.as_bytes()).and_then(|_| f.flush());
+    drop(f);
+    match res.and_then(|_| std::fs::rename(&tmp, path)) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp);
+            Err(e)
+        }
+    }
+}
+
+/// Cross-process lock around the read-compare-write of the state file (`O_EXCL` sidecar file; a
+/// lock older than `RING_LOCK_STALE` is considered abandoned). The lock guards one read-compare-write, so it is
+/// held for milliseconds; the stale age MUST stay below the 5s the waiter is willing to wait (250 x 20ms),
+/// or a lock orphaned by a killed process makes every ring in that window time out and ring undebounced.
+const RING_LOCK_STALE: Duration = Duration::from_secs(2);
+
+struct RingLock(PathBuf);
+
+impl RingLock {
+    fn acquire(state: &Path) -> std::io::Result<Self> {
+        let lock = sidecar(state, ".lock");
+        for _ in 0..250 {
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock)
+            {
+                Ok(_) => return Ok(Self(lock)),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let stale = std::fs::symlink_metadata(&lock)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| SystemTime::now().duration_since(t).ok())
+                        .is_some_and(|age| age > RING_LOCK_STALE);
+                    if stale {
+                        let _ = std::fs::remove_file(&lock);
+                    } else {
+                        sleep(Duration::from_millis(20));
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Err(std::io::Error::other("timed out waiting for the ring lock"))
+    }
+}
+
+impl Drop for RingLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// Outcome of trying to claim the ring slot.
+#[derive(Debug, PartialEq, Eq)]
+enum Reservation {
+    /// Too soon after the previous ring (elapsed millis).
+    Debounced(u128),
+    /// Slot claimed: `ours` is the timestamp written, `prev` what it replaced (for rollback).
+    Reserved { prev: Option<u64>, ours: u64 },
+}
+
+/// Atomically (under [`RingLock`]) check the debounce window and, if clear, record `now` BEFORE the
+/// doorbell is sent, so two concurrent rings cannot both pass the check.
+fn reserve_ring(
+    path: &Path,
+    now: SystemTime,
+    min_interval: Duration,
+) -> std::io::Result<Reservation> {
+    let _lock = RingLock::acquire(path)?;
+    let prev = last_ring(path);
+    if !min_interval.is_zero() {
+        if let Some(last) = prev {
+            if let Ok(elapsed) = now.duration_since(last) {
+                if elapsed < min_interval {
+                    return Ok(Reservation::Debounced(elapsed.as_millis()));
+                }
+            }
+        }
+    }
+    let ours = millis_of(now);
+    write_atomic(path, &ours.to_string())?;
+    Ok(Reservation::Reserved {
+        prev: prev.map(millis_of),
+        ours,
+    })
+}
+
+/// Undo a reservation after a failed send, so the failure does not suppress the next attempt.
+/// Only restores if the file still holds our timestamp (a later ring's record is left alone).
+fn rollback_ring(path: &Path, prev: Option<u64>, ours: u64) {
+    let Ok(_lock) = RingLock::acquire(path) else {
+        warn!("could not roll back ring timestamp (lock unavailable)");
+        return;
+    };
+    if last_ring(path).map(millis_of) != Some(ours) {
+        return;
+    }
+    let r = match prev {
+        Some(p) => write_atomic(path, &p.to_string()),
+        None => std::fs::remove_file(path),
+    };
+    if let Err(e) = r {
+        warn!("could not roll back ring timestamp: {e}");
+    }
+}
+
+/// Test helper: record `now` unconditionally.
+#[cfg(test)]
+fn record_ring(path: &Path, now: SystemTime) {
+    write_atomic(path, &millis_of(now).to_string()).expect("record ring");
 }
 
 /// Wake agy: debounce-gate, optionally wait for idle (clean ordering), then send the doorbell.
@@ -371,26 +588,34 @@ pub fn ring(
     idle_gate: bool,
     idle_timeout: Duration,
 ) -> Result<bool, String> {
-    // Debounce FIRST — before the idle wait. A doorbell sent moments ago has already woken
-    // agy; re-ringing only spends another model turn. This is the guard that stops a runaway
-    // caller from hammering agy and exhausting its quota.
+    // Debounce FIRST — before the idle wait — and RESERVE the slot atomically before sending: a
+    // doorbell sent moments ago has already woken agy; re-ringing only spends another model turn.
+    // This is the guard that stops a runaway caller from hammering agy and exhausting its quota.
     let state_path = ring_state_path(session);
     let min_interval = ring_min_interval();
-    if !min_interval.is_zero() {
-        if let Some(last) = last_ring(&state_path) {
-            if let Ok(elapsed) = SystemTime::now().duration_since(last) {
-                if elapsed < min_interval {
-                    warn!(
-                        "ring debounced: last doorbell {}ms ago < min {}ms \
-                         (set AGY_RING_MIN_INTERVAL_MS=0 to disable)",
-                        elapsed.as_millis(),
-                        min_interval.as_millis()
-                    );
-                    return Ok(false);
-                }
-            }
+    let reservation = match reserve_ring(&state_path, SystemTime::now(), min_interval) {
+        Ok(Reservation::Debounced(ms)) => {
+            warn!(
+                "ring debounced: last doorbell {ms}ms ago < min {}ms \
+                 (set AGY_RING_MIN_INTERVAL_MS=0 to disable)",
+                min_interval.as_millis()
+            );
+            return Ok(false);
         }
-    }
+        Ok(Reservation::Reserved { prev, ours }) => Some((prev, ours)),
+        Err(e) => {
+            warn!(
+                "ring debounce state unavailable ({}): {e}; ringing without debounce",
+                state_path.display()
+            );
+            None
+        }
+    };
+    let rollback = |r: &Option<(Option<u64>, u64)>| {
+        if let Some((prev, ours)) = r {
+            rollback_ring(&state_path, *prev, *ours);
+        }
+    };
 
     if idle_gate {
         match wait_idle(session, idle_timeout, Duration::from_secs(1)) {
@@ -398,14 +623,19 @@ pub fn ring(
             Ok(false) => {
                 warn!("idle gate timed out; ringing anyway (doorbell-while-busy is queued)")
             }
-            Err(e) => return Err(e),
+            Err(e) => {
+                rollback(&reservation);
+                return Err(e);
+            }
         }
     }
     // Clear any leftover/partial input on the prompt line first, so the doorbell lands clean and
     // isn't appended to stray text or swallowed by a prompt. Best-effort.
     let _ = send_key(session, "C-u");
-    send_keys(session, doorbell, true)?;
-    record_ring(&state_path, SystemTime::now());
+    if let Err(e) = send_keys(session, doorbell, true) {
+        rollback(&reservation);
+        return Err(e);
+    }
     Ok(true)
 }
 
@@ -489,5 +719,103 @@ esc to cancel                                                          Gemini 3.
         );
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn orphaned_ring_lock_is_reclaimed_within_the_wait_window() {
+        let state =
+            std::env::temp_dir().join(format!("clavity-ring-orphan-{}.ts", std::process::id()));
+        let lock = sidecar(&state, ".lock");
+        let _ = std::fs::remove_file(&lock);
+        // A lock left behind by a killed process, 3s old: older than RING_LOCK_STALE, far younger than the old 10s.
+        let f = std::fs::File::create(&lock).expect("create orphan lock");
+        f.set_modified(SystemTime::now() - Duration::from_secs(3))
+            .expect("age the lock");
+        drop(f);
+        let started = std::time::Instant::now();
+        let got = RingLock::acquire(&state);
+        assert!(
+            got.is_ok(),
+            "an orphaned lock must be reclaimed, not time out: {:?}",
+            got.err()
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "reclaiming an already-stale lock must not wait out the 5s window: {:?}",
+            started.elapsed()
+        );
+        drop(got);
+        let _ = std::fs::remove_file(&lock);
+    }
+
+    #[test]
+    fn classify_agy_tri_state() {
+        assert_eq!(classify_agy(Some("agy")), AgyProbe::Running);
+        assert_eq!(classify_agy(Some("  AGY.exe\n")), AgyProbe::Running);
+        assert_eq!(classify_agy(Some("pwsh")), AgyProbe::NotAgy);
+        assert_eq!(classify_agy(Some("bash")), AgyProbe::NotAgy);
+        assert_eq!(classify_agy(None), AgyProbe::Unknown);
+        assert_eq!(classify_agy(Some("")), AgyProbe::Unknown);
+        assert_eq!(classify_agy(Some("  \n")), AgyProbe::Unknown);
+    }
+
+    #[test]
+    fn concurrent_reservations_admit_exactly_one() {
+        let path =
+            std::env::temp_dir().join(format!("clavity-ring-conc-{}.ts", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let now = SystemTime::now();
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let p = path.clone();
+                std::thread::spawn(move || {
+                    reserve_ring(&p, now, Duration::from_secs(60)).expect("reserve")
+                })
+            })
+            .collect();
+        let reserved = handles
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .filter(|r| matches!(r, Reservation::Reserved { .. }))
+            .count();
+        assert_eq!(reserved, 1, "exactly one concurrent ring may send");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn rollback_restores_previous_state() {
+        let path = std::env::temp_dir().join(format!("clavity-ring-rb-{}.ts", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let now = SystemTime::now();
+        let Reservation::Reserved { prev, ours } =
+            reserve_ring(&path, now, Duration::from_secs(60)).unwrap()
+        else {
+            panic!("first reservation must succeed")
+        };
+        assert!(matches!(
+            reserve_ring(&path, now, Duration::from_secs(60)).unwrap(),
+            Reservation::Debounced(_)
+        ));
+        rollback_ring(&path, prev, ours);
+        assert!(matches!(
+            reserve_ring(&path, now, Duration::from_secs(60)).unwrap(),
+            Reservation::Reserved { .. }
+        ));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reservation_refuses_symlink_state_file() {
+        let dir = std::env::temp_dir().join(format!("clavity-ring-sym-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("victim");
+        std::fs::write(&target, "keep").unwrap();
+        let link = dir.join("state.ts");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(reserve_ring(&link, SystemTime::now(), Duration::from_secs(1)).is_err());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "keep");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

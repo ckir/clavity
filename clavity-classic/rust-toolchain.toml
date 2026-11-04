@@ -5,8 +5,8 @@
 # https://polyformproject.org/licenses/noncommercial/1.0.0/
 
 # Pin the toolchain so the local ISCC gate and the release CI build the SAME binary, and a historic tag stays
-# rebuildable. Bump deliberately, never float. (Verified local rustc at authoring: 1.96.0.)
+# rebuildable. Bump deliberately, never float. (Verified local rustc at authoring: 1.99.1.)
 [toolchain]
-channel = "1.96.0"
+channel = "1.99.1"
 components = ["clippy", "rustfmt"]
 profile = "minimal"

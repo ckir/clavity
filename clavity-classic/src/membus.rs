@@ -65,6 +65,9 @@ pub struct MemBus {
     base: String,
     secret: Option<String>,
     agent: ureq::Agent,
+    /// Configuration error detected in `from_env` (which cannot return one without a signature
+    /// change); surfaced by the first request instead of sending anything.
+    config_error: Option<String>,
 }
 
 impl MemBus {
@@ -78,9 +81,13 @@ impl MemBus {
             .unwrap_or_else(|| DEFAULT_URL.to_string())
             .trim_end_matches('/')
             .to_string();
-        let secret = std::env::var("AGENTMEMORY_SECRET")
+        let mut secret = std::env::var("AGENTMEMORY_SECRET")
             .ok()
             .filter(|s| !s.is_empty());
+        let config_error = check_endpoint(&base, secret.is_some()).err();
+        if config_error.is_some() {
+            secret = None; // never put the secret on the wire for a refused endpoint
+        }
         // ureq 3 replaced the single `timeout_read` with per-phase timeouts, so the old 15s read cap
         // maps to BOTH recv_response and recv_body — capping only the first would leave a daemon that
         // sends headers and then stalls mid-body hanging forever, which is exactly what the 2.x setting
@@ -95,6 +102,14 @@ impl MemBus {
             base,
             secret,
             agent,
+            config_error,
+        }
+    }
+
+    fn ensure_configured(&self) -> Result<(), String> {
+        match &self.config_error {
+            Some(e) => Err(e.clone()),
+            None => Ok(()),
         }
     }
 
@@ -111,6 +126,7 @@ impl MemBus {
     /// clear message if the daemon is unreachable, so a misconfigured `$AGENTMEMORY_URL` doesn't
     /// look like a timeout.
     pub fn health(&self) -> Result<(), String> {
+        self.ensure_configured()?;
         let url = format!("{}/agentmemory/health", self.base);
         self.auth(self.agent.get(&url))
             .call()
@@ -128,6 +144,7 @@ impl MemBus {
         content: &str,
         reply_to: Option<&str>,
     ) -> Result<Signal, String> {
+        self.ensure_configured()?;
         let url = format!("{}/agentmemory/signals/send", self.base);
         let mut body = serde_json::json!({
             "from": from,
@@ -149,11 +166,11 @@ impl MemBus {
             .into_body()
             .read_to_string()
             .map_err(|e| format!("read send response: {e}"))?;
-        let parsed: SendResp =
-            serde_json::from_str(&text).map_err(|e| format!("parse send response: {e}: {text}"))?;
+        let parsed: SendResp = serde_json::from_str(&text)
+            .map_err(|e| format!("parse send response: {e}: {}", snippet(&text)))?;
         parsed
             .signal
-            .ok_or_else(|| format!("daemon returned no signal: {text}"))
+            .ok_or_else(|| format!("daemon returned no signal: {}", snippet(&text)))
     }
 
     /// Read signals for `agent_id`. **Consuming:** the daemon marks any unread signal whose `to`
@@ -165,6 +182,7 @@ impl MemBus {
         unread_only: bool,
         limit: usize,
     ) -> Result<Vec<Signal>, String> {
+        self.ensure_configured()?;
         let mut url = format!(
             "{}/agentmemory/signals?agentId={}&limit={limit}",
             self.base,
@@ -184,8 +202,8 @@ impl MemBus {
             .into_body()
             .read_to_string()
             .map_err(|e| format!("read signals response: {e}"))?;
-        let parsed: ReadResp =
-            serde_json::from_str(&text).map_err(|e| format!("parse read response: {e}: {text}"))?;
+        let parsed: ReadResp = serde_json::from_str(&text)
+            .map_err(|e| format!("parse read response: {e}: {}", snippet(&text)))?;
         Ok(parsed.signals)
     }
 
@@ -244,6 +262,56 @@ impl MemBus {
     }
 }
 
+/// Truncate a response body for embedding in an error: at most 200 chars (on a char boundary),
+/// with an ellipsis when cut.
+fn snippet(body: &str) -> String {
+    match body.char_indices().nth(200) {
+        Some((i, _)) => format!("{}...", &body[..i]),
+        None => body.to_string(),
+    }
+}
+
+/// Host part of an `http(s)://` URL (userinfo and port stripped; IPv6 brackets removed).
+fn url_host(url: &str) -> Option<String> {
+    let rest = url.split_once("://")?.1;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let hostport = authority.rsplit('@').next()?;
+    let host = if let Some(r) = hostport.strip_prefix('[') {
+        r.split(']').next()?
+    } else {
+        hostport.split(':').next()?
+    };
+    if host.is_empty() {
+        None
+    } else {
+        Some(host.to_ascii_lowercase())
+    }
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    host == "localhost"
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+}
+
+/// Validate the daemon URL against the secret policy. TLS is not compiled in, so `https` can never
+/// work, and a Bearer secret must not travel in cleartext to a non-loopback host.
+fn check_endpoint(base: &str, has_secret: bool) -> Result<(), String> {
+    if base.len() >= 8 && base[..8].eq_ignore_ascii_case("https://") {
+        return Err(format!(
+            "https unsupported (TLS is not compiled in): AGENTMEMORY_URL={base}"
+        ));
+    }
+    if has_secret {
+        let loopback = url_host(base).is_some_and(|h| is_loopback_host(&h));
+        if !loopback {
+            return Err("refusing to send AGENTMEMORY_SECRET over cleartext http to a non-loopback host; https is not supported in this build".to_string());
+        }
+    }
+    Ok(())
+}
+
 /// Minimal percent-encoder for query values (agentId / threadId are simple tokens; this just keeps
 /// any stray non-token byte from breaking the URL). Encodes everything outside an unreserved set.
 fn urlencode(s: &str) -> String {
@@ -289,5 +357,43 @@ mod tests {
         let min: Signal = serde_json::from_str(r#"{"id":"i","from":"f","content":"c"}"#).unwrap();
         assert_eq!(min.id, "i");
         assert!(min.to.is_none());
+    }
+
+    #[test]
+    fn snippet_truncates_on_char_boundary() {
+        assert_eq!(snippet("short"), "short");
+        let long = "é".repeat(300);
+        let s = snippet(&long);
+        assert_eq!(s.chars().count(), 203);
+        assert!(s.ends_with("..."));
+        assert_eq!(snippet(&"a".repeat(200)), "a".repeat(200));
+    }
+
+    #[test]
+    fn endpoint_policy() {
+        for ok in [
+            "http://127.0.0.1:3111",
+            "http://localhost:3111",
+            "http://[::1]:3111",
+            "http://127.5.5.5",
+            "http://user@LOCALHOST/x",
+        ] {
+            assert!(check_endpoint(ok, true).is_ok(), "{ok}");
+        }
+        for bad in [
+            "http://example.com:3111",
+            "http://10.0.0.5",
+            "http://localhost.evil.com",
+            "http://127.0.0.1@evil.com",
+        ] {
+            let e = check_endpoint(bad, true).unwrap_err();
+            assert!(
+                e.contains("refusing to send AGENTMEMORY_SECRET"),
+                "{bad}: {e}"
+            );
+            assert!(check_endpoint(bad, false).is_ok(), "no secret: {bad}");
+        }
+        let e = check_endpoint("https://localhost:3111", false).unwrap_err();
+        assert!(e.contains("https unsupported (TLS is not compiled in)"));
     }
 }

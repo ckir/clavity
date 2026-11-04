@@ -34,6 +34,7 @@ $bridgeDst  = Join-Path $publishDir 'agy-mcp-bridge'
 # 1) Build the Rust binary (locked = no silent dep bump; reproducible local<->CI).
 Write-Host '==> cargo build --release --locked'
 & cargo build --release --locked
+if ($LASTEXITCODE -ne 0) { throw "cargo build failed with exit code $LASTEXITCODE" }
 $exe = Join-Path $repoRoot 'target\release\clavity.exe'
 if (-not (Test-Path $exe)) { throw "build produced no clavity.exe at $exe" }
 
