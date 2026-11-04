@@ -385,7 +385,11 @@ agy_guard_state_file() {
   # below are builtins (no extra process on this per-Bash-call path; hook-spawn-budget.Rows.ps1 pins the consult-path counts).
   # shellcheck disable=SC2174  # -m on the deepest component is exactly the intent: $TMPDIR itself already exists
   mkdir -p -m 700 "$base" 2>/dev/null || return 1
-  [ -d "$base" ] && [ ! -L "$base" ] && [ -O "$base" ] || return 1
+  [ -d "$base" ] && [ ! -L "$base" ] || return 1
+  # Ownership is a POSIX notion: under Git Bash (MSYS/Cygwin) a directory the current user just created reports a SID-mapped group
+  # owner, so [ -O ] is false for our own directory and the guard would never initialise (seen on windows-latest). $OSTYPE is a
+  # builtin, so the platform test costs no process.
+  case "$OSTYPE" in msys*|cygwin*|win32*) ;; *) [ -O "$base" ] || return 1 ;; esac
   printf '%s/%s.%s' "$base" "$1" "$2"
 }
 

@@ -96,10 +96,13 @@ for _t in curl tar; do command -v "$_t" >/dev/null 2>&1 || { _note "'$_t' not fo
 ASSET="clavity-ls-$_rid-$VER.tar.gz"        # produced by build-dotnet.yml for every RID
 
 # Negative stamp: a failed lookup/download is not retried for FAIL_TTL seconds, so every startup/resume/clear/compact event in
-# the window returns at once instead of paying the network timeouts again. The stamp holds epoch seconds (date +%s: portable).
+# the window returns at once instead of paying the network timeouts again. The stamp holds epoch seconds.
+# _epoch sets _E with the bash builtin (no process: hook-spawn-budget.Rows.ps1 pins this hook's process counts, and a process is
+# costly under Git Bash on Windows); bash 3.2 (macOS) has no %(...)T, so it falls back to date +%s.
+_epoch() { printf -v _E '%(%s)T' -1 2>/dev/null || _E=$(date +%s 2>/dev/null); }
 FAIL_STAMP="$STAMP.fail"
 FAIL_TTL=600
-_now=$(date +%s 2>/dev/null)
+_E=''; _epoch; _now=$_E
 _ft=''
 IFS= read -r _ft 2>/dev/null < "$FAIL_STAMP"
 case "$_ft" in ''|*[!0-9]*) _ft='' ;; esac
@@ -107,8 +110,9 @@ case "$_now" in ''|*[!0-9]*) _now='' ;; esac
 if [ -n "$_ft" ] && [ -n "$_now" ] && [ "$_now" -ge "$_ft" ] && [ $((_now - _ft)) -lt "$FAIL_TTL" ]; then exit 0; fi
 _fail_stamp() {
   [ -d "$DATA" ] || return 0     # never conjure a plugin data dir (a relative/odd path would litter the cwd)
-  mkdir -p "$BIN_DIR" 2>/dev/null
-  date +%s 2>/dev/null > "$FAIL_STAMP"
+  [ -d "$BIN_DIR" ] || mkdir -p "$BIN_DIR" 2>/dev/null
+  _E=''; _epoch
+  printf '%s\n' "$_E" > "$FAIL_STAMP" 2>/dev/null
   return 0
 }
 
@@ -134,10 +138,12 @@ fi
 # Pick the sha256 tool: sha256sum, else shasum -a 256 (macOS ships only the latter), else none. A release that PUBLISHES a checksum
 # but a machine that cannot compute one is refused outright (installing an unverifiable binary defeats the checksum); no stamp is
 # written, so a later session retries once a hasher exists.
+# CLAVITY_SHA_TOOLS (default "sha256sum shasum") lists the tools to try, in order. Setting it can only REMOVE tools, which makes
+# the hook refuse a checksummed release; it can never skip a verification. The tests use it to stand in for a machine with neither.
 _hash=''
-if command -v sha256sum >/dev/null 2>&1; then _hash=sha256sum
-elif command -v shasum >/dev/null 2>&1; then _hash=shasum
-fi
+for _t in ${CLAVITY_SHA_TOOLS-sha256sum shasum}; do
+  case "$_t" in sha256sum|shasum) command -v "$_t" >/dev/null 2>&1 && { _hash=$_t; break; } ;; esac
+done
 if [ -n "$_shaurl" ] && [ -z "$_hash" ]; then
   _note "release publishes a sha256 for $ASSET but neither sha256sum nor shasum is available to verify it; refusing to install"; exit 0
 fi

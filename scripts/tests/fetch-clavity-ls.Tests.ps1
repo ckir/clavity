@@ -394,20 +394,11 @@ Describe 'fetch-clavity-ls.sh bounds the network and refuses what it cannot veri
     It 'refuses to install when a checksum asset exists but no sha256 tool does, writing no version stamp' {
         $fx = New-Fx
         try {
-            $tools = Join-Path $fx.Root 'tools'
-            $cmd = (Get-BashCygpathPrelude) + '; mkdir -p "$4"; for t in bash env mkdir mktemp rm tar find head cp chmod awk date jq cat sed uname; do
-                  src=$(PATH="$p:$PATH" type -P "$t") && [ -n "$src" ] && ln -sf "$src" "$4/$t"; done
-                 PATH="$p:$4"; command -v sha256sum >/dev/null && { echo "fixture: sha256sum still on PATH" >&2; exit 99; }
-                 command -v shasum >/dev/null && { echo "fixture: shasum still on PATH" >&2; exit 99; }
-                 bash "$2" </dev/null'
-            $env:FAKE_CURL = 'ok'; $env:FAKE_SRV = ($fx.Srv -replace '\\', '/'); $env:FAKE_ASSET = $script:Asset
-            $env:CLAUDE_PLUGIN_ROOT = $fx.PluginRoot; $env:CLAUDE_PLUGIN_DATA = $fx.Data; $env:OSTYPE = 'linux-gnu'; $env:HOSTTYPE = 'x86_64'
-            try {
-                $out = & $script:Bash -c $cmd _ $fx.Shim ($script:Hook -replace '\\', '/') '' ($tools -replace '\\', '/') 2>$null | Out-String
-                $code = $LASTEXITCODE
-            } finally { foreach ($k in 'FAKE_CURL','FAKE_SRV','FAKE_ASSET','CLAUDE_PLUGIN_ROOT','CLAUDE_PLUGIN_DATA','OSTYPE','HOSTTYPE') { Remove-Item "Env:$k" -ErrorAction SilentlyContinue } }
-            $code | Should -Be 0
-            ($out.Trim() | ConvertFrom-Json).systemMessage | Should -Match 'neither sha256sum nor shasum'
+            # CLAVITY_SHA_TOOLS lists the tools the hook may try; 'none' matches neither sha256sum nor shasum. A restricted-PATH fixture
+            # was tried first and broke under Git Bash on Windows (copied binaries cannot find their runtime), so the hook takes the list.
+            $r = Invoke-Fetch $fx 'ok' -Extra @{ CLAVITY_SHA_TOOLS = 'none' }
+            $r.ExitCode | Should -Be 0 -Because $r.StdErr
+            ($r.StdOut | ConvertFrom-Json).systemMessage | Should -Match 'neither sha256sum nor shasum'
             Test-Path -LiteralPath (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -BeFalse
             Test-Path -LiteralPath (Join-Path $fx.Data 'bin/.clavity-ls.version') | Should -BeFalse
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
