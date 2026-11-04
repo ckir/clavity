@@ -391,7 +391,7 @@ fn private_state_dir() -> Option<PathBuf> {
     };
     match std::fs::DirBuilder::new().mode(0o700).create(&dir) {
         Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) if lock_contended(e.kind()) => {}
         Err(_) => return None,
     }
     // Must be a real directory (not a symlink), owned by us, and closed to group/other.
@@ -447,6 +447,25 @@ fn sidecar(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(o)
 }
 
+/// `rename` that survives the transient sharing violations Windows reports when the target is momentarily open
+/// (a reader, an indexer, antivirus). Elsewhere it is a plain rename.
+fn rename_over(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut attempt = 0u32;
+    loop {
+        match std::fs::rename(from, to) {
+            Err(e)
+                if cfg!(windows)
+                    && e.kind() == std::io::ErrorKind::PermissionDenied
+                    && attempt < 8 =>
+            {
+                attempt += 1;
+                sleep(Duration::from_millis(10 * u64::from(attempt)));
+            }
+            other => return other,
+        }
+    }
+}
+
 /// Write `content` to `path` atomically (temp file in the same dir, then rename), refusing to
 /// write through a symlink at `path`.
 fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
@@ -467,7 +486,7 @@ fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
         .open(&tmp)?;
     let res = f.write_all(content.as_bytes()).and_then(|_| f.flush());
     drop(f);
-    match res.and_then(|_| std::fs::rename(&tmp, path)) {
+    match res.and_then(|_| rename_over(&tmp, path)) {
         Ok(()) => Ok(()),
         Err(e) => {
             let _ = std::fs::remove_file(&tmp);
@@ -481,6 +500,15 @@ fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
 /// held for milliseconds; the stale age MUST stay below the 5s the waiter is willing to wait (250 x 20ms),
 /// or a lock orphaned by a killed process makes every ring in that window time out and ring undebounced.
 const RING_LOCK_STALE: Duration = Duration::from_secs(2);
+
+/// True when a failed `create_new` on the lock file means "someone else holds it, try again".
+/// `AlreadyExists` everywhere; on Windows also `PermissionDenied`, which is what CreateFile returns while
+/// another thread's `remove_file` of the same name is still delete-pending (observed in CI: the concurrent
+/// reservation test failed with "Access is denied" on windows-latest).
+fn lock_contended(kind: std::io::ErrorKind) -> bool {
+    kind == std::io::ErrorKind::AlreadyExists
+        || (cfg!(windows) && kind == std::io::ErrorKind::PermissionDenied)
+}
 
 struct RingLock(PathBuf);
 
@@ -746,6 +774,15 @@ esc to cancel                                                          Gemini 3.
         );
         drop(got);
         let _ = std::fs::remove_file(&lock);
+    }
+
+    #[test]
+    fn lock_contention_classification() {
+        use std::io::ErrorKind::{AlreadyExists, NotFound, PermissionDenied};
+        assert!(lock_contended(AlreadyExists));
+        assert!(!lock_contended(NotFound));
+        // A genuine permission problem must not spin on non-Windows; on Windows it is the delete-pending signal.
+        assert_eq!(lock_contended(PermissionDenied), cfg!(windows));
     }
 
     #[test]
