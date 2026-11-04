@@ -45,4 +45,31 @@ public class LogRetentionTests
         LogRetention.Prune(
             Path.Combine(Path.GetTempPath(), "clavity-no-such-" + Guid.NewGuid().ToString("N")),
             TimeSpan.FromDays(7), DateTime.UtcNow);
+
+    [Fact]
+    public void Prune_skips_a_file_it_cannot_delete_and_still_prunes_what_it_can()
+    {
+        // A directory without write permission makes File.Delete throw UnauthorizedAccessException; the swallowed branch must
+        // neither throw nor stop the sweep. (POSIX only: Windows ACLs are not set up from here; root ignores the mode.)
+        if (OperatingSystem.IsWindows() || Environment.UserName == "root")
+            return;
+        var dir = Path.Combine(Path.GetTempPath(), "clavity-logret-ro-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var now = new DateTime(2026, 6, 28, 12, 0, 0, DateTimeKind.Utc);
+        var old = Path.Combine(dir, "clavity-old.log");
+        File.WriteAllText(old, "");
+        File.SetLastWriteTimeUtc(old, now.AddDays(-8));
+        var original = File.GetUnixFileMode(dir);
+        File.SetUnixFileMode(dir, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            LogRetention.Prune(dir, TimeSpan.FromDays(7), now);   // must not throw
+            Assert.True(File.Exists(old), "a file that cannot be deleted stays");
+        }
+        finally
+        {
+            File.SetUnixFileMode(dir, original);
+            Directory.Delete(dir, true);
+        }
+    }
 }

@@ -11,15 +11,12 @@ namespace Clavity.Live.Acceptance;
 // (`dotnet test --filter "Category!=LiveAgy"`) and skipped unless CLAVITY_LIVE_AGY=1.
 public class LiveAcceptanceTests
 {
-    private static bool LiveAgyEnabled =>
-        Environment.GetEnvironmentVariable("CLAVITY_LIVE_AGY") == "1";
-
     [Fact(Skip = "Live acceptance runbook — set CLAVITY_LIVE_AGY=1 and run with --filter Category=LiveAgy")]
     [Trait("Category", "LiveAgy")]
-    public void Placeholder_ContractReVerification()
+    public void Live_contract_reverification_round_trip_against_a_real_agy_is_not_written_yet()
     {
-        // Filled in at plan task T10: discover LS port on a live session -> GetConversationMetadata
-        // -> benign SendUserCascadeMessage round-trip -> WaitForConversationFullyIdle -> read reply.
-        Assert.True(LiveAgyEnabled);
+        // NOT IMPLEMENTED. Will verify, on a live logged-in agy session: discover the LS port from its log ->
+        // GetConversationMetadata -> a benign SendUserCascadeMessage round-trip -> WaitForConversationFullyIdle ->
+        // read the reply. Until it exists the test is skipped rather than asserting anything vacuous.
     }
 }

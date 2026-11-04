@@ -4606,6 +4606,21 @@ Spec: `docs/superpowers/specs/2026-11-03-start-profile-design.md`. Panel history
 
 **Not done:** a Windows run is unmeasured (this box is Linux). **Measured 2026-11-03 on Linux with the real `agent-profile` 0.1.1 and `claude`, scratch profile:** first `start --profile` ran create, doctor, then for each plugin list, marketplace list, `marketplace add`, `install <id> -y --scope user`, list, and both plugins were installed (`clavity` 0.14.0, `superpowers` 7.0.1) with `-y` and stdin not a TTY; a second run issued only create, doctor and two lists (no add, no install); six concurrent `agent-profile claude create` pairs were all safe (exit 0, one "created", one "already exists"). Not measured: the Claude launch itself (the scratch run stopped at the agy pairing wait), the install timeout path, and `install --marketplace` as a one-command replacement; plugin versions are not pinned (the latest is installed); the `agent-profile` repo-mapping fallback is an owner non-goal.
 
+### §106 — `AgyView` reads the wall clock directly, so deadline tests wait real time and flake under load
+
+**Status:** OPEN 2026-11-04 - nothing built; found by the 2026-11-04 repo review. `AgyView` computes its boot-race deadline, idle-wait budget and progress timings from `DateTime.UtcNow` (in `ConnectAndResolveAsync` and `WaitForConversationFullyIdleAsync`), so the integration tests that exercise a deadline must let real seconds pass. `Boot_race_reached_empty_then_cli_log_unreadable_keeps_waiting_for_human` failed 2 of 3 runs under heavy machine load with a 2s budget and passed 3 of 3 alone; it now uses 10s, which fixes the flake by spending 10s of every run. Next step: inject a `TimeProvider` into `AgyViewOptions`, drive the deadline from a fake in the boot-race tests (the siblings in `AgyChannelDownTests.cs` still use a real 2s budget), then drop the budgets back to something near zero.
+
+### §107 — Findings from the 2026-11-04 repo review that were deliberately not fixed
+
+**Status:** OPEN 2026-11-04 - each item below was reviewed, verified where stated, and left out of the fix commits on purpose. Pick them up individually.
+
+- `ProfileSetup` takes the per-profile lock AFTER `agent-profile claude create` and waits `NetworkTimeout` for it, although a holder can run about four network steps. Measurement on file (§105) shows concurrent creates are safe, and ten tests pin create-before-lock, so only the wait length is open.
+- `McpTools.AgyAsk` carries about 170 lines of notice-assembly policy in the transport layer, and `AgyView` (about 820 lines) mixes the connect race, model resolution, judgement and wait logic. `clavity-classic/src/main.rs` and `src/golden_header.rs` are each over 1000 lines. Split along those seams.
+- `send-keys -l` text that begins with `-` can parse as an option. `--` works on tmux 3.6 but psmux support is unverified, so the call is unchanged.
+- The hook marker files for test-audit, anomaly-capture and assertion-strength still live in `$TMPDIR` (now refused through a symlink) because Pester suites and spawn budgets pin the path; `agy-discipline-reaching` drops suspect values instead of building rows with `jq`, pinned at two processes. Moving both needs the pins re-measured.
+- `umbrella-release.yml` still passes `needs.publish.outputs.tag` straight into the release-channel `run:` line, and `build-dotnet.yml` the validated version, because `marketplace-manifest.Tests.ps1` and `release-workflow-refs.Tests.ps1` pin the text verbatim. `republish-member.yml` builds the dispatch ref but attaches assets to the input tag with no check that the built version matches.
+- The real terminal launch path in `RealStartEffects` (starting the terminal, shell and launch commands) has no behavioural test beyond `RunCaptured`.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the

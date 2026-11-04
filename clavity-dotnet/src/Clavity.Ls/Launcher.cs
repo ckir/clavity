@@ -102,7 +102,7 @@ public static class Launcher
             FileName: "wt",
             Arguments: new[]
             {
-                "new-tab", "--startingDirectory", options.Folder,
+                "new-tab", "--startingDirectory", WtEscapeSemicolons(options.Folder),
                 options.WindowsShell, "-NoExit", "-EncodedCommand", encodedScript,
             },
             WorkingDirectory: options.Folder,
@@ -211,6 +211,21 @@ public static class Launcher
     /// <summary>Single-quote a value for a POSIX shell: close the quote, emit an escaped quote, reopen.</summary>
     public static string ShQuote(string value) => "'" + value.Replace("'", "'\\''") + "'";
 
-    /// <summary>Single-quote a value for pwsh, escaping embedded single quotes by doubling them.</summary>
-    private static string PwshSingleQuote(string value) => "'" + value.Replace("'", "''") + "'";
+    /// <summary>Single-quote a value for pwsh, escaping embedded single quotes by doubling them. PowerShell treats the
+    /// typographic quotes U+2018, U+2019, U+201A and U+201B as single quotes too, so each of those is doubled as well.</summary>
+    private static string PwshSingleQuote(string value)
+    {
+        var sb = new StringBuilder(value.Length + 2).Append('\'');
+        foreach (var c in value)
+        {
+            sb.Append(c);
+            if (c is '\'' or '\u2018' or '\u2019' or '\u201A' or '\u201B')
+                sb.Append(c);
+        }
+        return sb.Append('\'').ToString();
+    }
+
+    /// <summary>wt re-splits its raw argv on ';' (a tab/pane separator); `\;` is its escape for a literal one. Only the
+    /// folder is passed to wt unencoded (the script travels base64), so only it needs this; a folder without ';' is unchanged.</summary>
+    internal static string WtEscapeSemicolons(string value) => value.Replace(";", "\\;");
 }

@@ -46,8 +46,15 @@ public static class AgyEnvironment
         var path = Path.Combine(agyHomeDir, "cache", "default_project_id.txt");
         if (!File.Exists(path))
             return null;
-        var id = File.ReadAllText(path).Trim();
-        return id.Length > 0 ? id : null;
+        try
+        {
+            var id = File.ReadAllText(path).Trim();
+            return id.Length > 0 ? id : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;   // unreadable is as good as absent: the project id is an optional hint
+        }
     }
 
     /// <summary>Parse a positive-seconds env value to a TimeSpan. Unset/blank/non-numeric/negative -> <paramref

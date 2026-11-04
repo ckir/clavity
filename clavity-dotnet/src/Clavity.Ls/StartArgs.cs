@@ -68,6 +68,12 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
                     throw new ArgumentException($"{ProfileFlag} needs a profile name (a non-blank value not starting with '-').");
                 }
 
+                if (!ValidProfileName(rest[i]))
+                {
+                    throw new ArgumentException(
+                        $"{ProfileFlag} '{rest[i]}' is not a valid profile name - use only letters, digits, '.', '_' and '-' (not '.' or '..').");
+                }
+
                 profile = rest[i];
                 i++;
             }
@@ -79,6 +85,11 @@ public sealed record StartArgs(string Folder, bool Attach, string? AttachSession
 
         return new StartArgs(folder, attach, id, profile, rest[i..]);
     }
+
+    // A profile name becomes a file name (the setup lock) and a directory name (agent-profile), so only a plain token is allowed:
+    // no path separators, drive colons, spaces or other characters a path or a shell would treat specially.
+    private static bool ValidProfileName(string s) =>
+        s is not ("." or "..") && s.Length > 0 && s.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
 
     // Hex digits and dashes only, 8 or more: what a mistyped or truncated session id looks like.
     private static bool LooksLikeAnId(string s) => s.Length >= 8 && s.All(c => c == '-' || char.IsAsciiHexDigit(c));

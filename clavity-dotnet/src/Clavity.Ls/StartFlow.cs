@@ -97,7 +97,25 @@ public static class StartFlow
     /// <summary>`clavity-ls agy [folder]` (Linux/macOS) - run a new session's agy in THIS terminal, for when `start` cannot
     /// open one (no display, or no terminal it knows). It prints the `start --attach` command for a second terminal.
     /// <paramref name="args"/> are the arguments after the verb.</summary>
-    public static int Agy(string[] args, IStartEffects fx)
+    public static int Agy(string[] args, IStartEffects fx) => Guarded(fx, () => AgyCore(args, fx));
+
+    /// <summary>The documented exit codes are 0/1/2: an unexpected file-system failure (a log directory that cannot be
+    /// created, a script that cannot be written, a lock file that cannot be opened) is a refusal (1) with its reason, not an
+    /// unhandled crash.</summary>
+    private static int Guarded(IStartEffects fx, Func<int> body)
+    {
+        try
+        {
+            return body();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            fx.Error.WriteLine($"clavity: {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int AgyCore(string[] args, IStartEffects fx)
     {
         if (fx.IsWindows)
         {
@@ -152,14 +170,24 @@ public static class StartFlow
         if (string.IsNullOrEmpty(fx.AmbientConfigDir))
             return;
         static string Norm(string p) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(p));
-        if (Norm(fx.AmbientConfigDir) != Norm(profileDir))
-            fx.Error.WriteLine($"clavity: CLAUDE_CONFIG_DIR is set to {fx.AmbientConfigDir}; --profile uses {profileDir} instead.");
+        try
+        {
+            if (Norm(fx.AmbientConfigDir) == Norm(profileDir))
+                return;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+        {
+            // an ambient value that is not even a path certainly differs from the profile directory: say so below
+        }
+        fx.Error.WriteLine($"clavity: CLAUDE_CONFIG_DIR is set to {fx.AmbientConfigDir}; --profile uses {profileDir} instead.");
     }
 
     /// <summary>`clavity-ls start [folder] [--attach [&lt;session-id&gt;]] [claude-args...]` - open a visible human-owned agy tab
     /// (per-session LS log) + launch Claude. With --attach, launch Claude only, paired with the agy `clavity-ls agy`
     /// started - without an id, the one waiting in the folder. <paramref name="args"/> are the arguments after the verb.</summary>
-    public static int Start(string[] args, IStartEffects fx)
+    public static int Start(string[] args, IStartEffects fx) => Guarded(fx, () => StartCore(args, fx));
+
+    private static int StartCore(string[] args, IStartEffects fx)
     {
         StartArgs start;
         try
@@ -219,6 +247,22 @@ public static class StartFlow
         if (!fx.DirectoryExists(Path.Combine(folder, ".git")))
             fx.Error.WriteLine($"clavity: warning — {folder} is not a git repository.");
 
+        // Cheap presence checks BEFORE `--profile` setup: that setup installs plugins over the network, which must not run
+        // for a start that cannot launch anyway. Both programs are checked before anything is opened, so a missing `claude`
+        // found only after agy's tab is up cannot leave an orphaned agy behind.
+        var presenceChecked = false;
+        if (!start.Attach && start.Profile is not null)
+        {
+            presenceChecked = true;
+            if (!fx.IsWindows && !fx.OnPath("agy"))
+            {
+                fx.Error.WriteLine(AgyNotOnPath);
+                return 1;
+            }
+            if (!ClaudeIsStartable(fx))
+                return 1;
+        }
+
         // `--profile` (spec Design 2): set the profile up ONCE, before anything is written or opened, so a failed setup leaves
         // no log, pairing doc, script or agy tab behind. --attach does it later, once the session is really ours.
         string? profileDir = null;
@@ -258,8 +302,12 @@ public static class StartFlow
                 fx.Error.WriteLine(AlreadyTaken(sessionId));
                 return 1;
             }
+            var attachChecked = false;
             if (start.Profile is { } attachProfile)
             {
+                if (!ClaudeIsStartable(fx))    // refuse before the network installs of the profile setup
+                    return 1;
+                attachChecked = true;
                 profileDir = ProfileSetup.Run(fx, attachProfile);
                 if (profileDir is null)
                     return 1;
@@ -274,7 +322,7 @@ public static class StartFlow
                 AgyLogFilePath = paths.AgyLog,
                 AgyEndpointFilePath = paths.Endpoint,
             });
-            if (!ClaudeIsStartable(fx))    // refuse before a wait that would end in a failed start anyway
+            if (!attachChecked && !ClaudeIsStartable(fx))    // refuse before a wait that would end in a failed start anyway
                 return 1;
             if (!fx.WaitForPairing(paths))
                 return 1;
@@ -307,7 +355,7 @@ public static class StartFlow
 
         if (fx.IsWindows)
         {
-            if (!ClaudeIsStartable(fx))            // before the tab: a missing claude must not leave an agy behind
+            if (!presenceChecked && !ClaudeIsStartable(fx))            // before the tab: a missing claude must not leave an agy behind
                 return 1;
             if (Spawn(fx, plan.AgyTab, wait: false) is null)  // agy tab boots asynchronously; human owns it.
                 return 1;
@@ -320,14 +368,17 @@ public static class StartFlow
         // the user can see, and start Claude only once a terminal really ran it - otherwise Claude's full-screen interface
         // would hide the reason pairing never happens.
         // Check BOTH programs before opening anything: a missing `claude` found only after agy's tab is up would leave
-        // an orphaned agy behind.
-        if (!fx.OnPath("agy"))
+        // an orphaned agy behind. (With --profile they were already checked, before the profile setup.)
+        if (!presenceChecked)
         {
-            fx.Error.WriteLine(AgyNotOnPath);
-            return 1;
+            if (!fx.OnPath("agy"))
+            {
+                fx.Error.WriteLine(AgyNotOnPath);
+                return 1;
+            }
+            if (!ClaudeIsStartable(fx))
+                return 1;
         }
-        if (!ClaudeIsStartable(fx))
-            return 1;
         fx.WriteScript(paths.AgyScript, Launcher.BuildPosixScript(options, paths.Claim, paths.Exited));
         if (!fx.OpenPosixTerminal(paths, folder))
         {

@@ -299,4 +299,26 @@ public class SemanticEchoTests : IDisposable
     [Fact]
     public void A_one_word_change_still_fails_even_escaped() =>
         Assert.False(SemanticEcho.IsSatisfied("x\nC-doc. \\`SemanticEcho.cs\\` footer comment corrected\n[VERDICT: ALIGNED]", Backticked));
+
+    [Fact]
+    public void A_named_pipe_as_the_artifact_degrades_to_null_instead_of_blocking_the_ask()
+    {
+        // POSIX: File.Exists is true for a FIFO and opening one for read blocks until a writer appears.
+        if (OperatingSystem.IsWindows()) return;
+        var fifo = Path.Combine(_dir, "artifact.fifo");
+        using (var mk = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("mkfifo") { ArgumentList = { fifo }, UseShellExecute = false }))
+        {
+            mk!.WaitForExit();
+            if (mk.ExitCode != 0) return;   // no mkfifo on this box: nothing to measure
+        }
+        var call = System.Threading.Tasks.Task.Run(() => SemanticEcho.ExpectedFrom(fifo));
+        var finished = call.Wait(TimeSpan.FromSeconds(5));
+        if (!finished)
+        {
+            // Unblock the stuck open so the test process can end, then fail.
+            using var w = new FileStream(fifo, FileMode.Open, FileAccess.Write);
+        }
+        Assert.True(finished, "ExpectedFrom blocked on a FIFO");
+        Assert.Null(call.Result);
+    }
 }

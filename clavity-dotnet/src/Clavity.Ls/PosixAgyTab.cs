@@ -44,7 +44,7 @@ public sealed class PosixAgyTabDeps
 /// <summary>
 /// Opens this session's agy in a terminal the user can SEE on Linux (ROADMAP section 62). Windows keeps its Windows
 /// Terminal tab (<see cref="Launcher.Build"/>); this class is never used there. Order (owner-adopted after AGY-FIRST
-/// R1-R3, notes in .clavity/scratch/linux-agy-tab/r1-summary.md): CLAVITY_TERMINAL, then the terminal the user is
+/// R1-R3): CLAVITY_TERMINAL, then the terminal the user is
 /// running in as a TAB, then xdg-terminal-exec, x-terminal-emulator, then the other known tab terminals.
 /// </summary>
 public static class PosixAgyTab

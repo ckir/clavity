@@ -71,7 +71,7 @@ public class McpTools
         var expectEcho = SemanticEcho.ExpectedFrom(artifactPath);
 
         // CAPTURED PER CALL, never on the view. An earlier draft parked the evaluated reply on
-        // AgyView.LastReply - but Program.cs:44 registers AgyView as a SINGLETON, so concurrent asks
+        // AgyView.LastReply - but Clavity.Cli/Program.cs registers AgyView as a SINGLETON, so concurrent asks
         // would read each other's verdicts. Worse, it was wrong SINGLE-THREADED too: RunAsync converts a
         // failed ask into an error payload, leaving the previous ask's flags in place to be reported
         // against a reply that does not exist. A local stays null on that path, which is the correct
