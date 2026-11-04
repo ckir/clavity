@@ -17,7 +17,7 @@ lint:
 # repeating the file list" sentence, and `just --list` advertised that fragment as what `test` does.
 # Keep a real one-line summary immediately above every recipe, and RUN `just --list` to check it.
 #
-# Rust tests + the 24 Python bridge tests (mirrors ci-classic's two Test steps).
+# Rust tests + the Python bridge tests (mirrors ci-classic's two Test steps).
 test: && pytest
     cargo test --all --features test-fakes
 
@@ -78,7 +78,7 @@ test: && pytest
 # and moving CWD would relocate the side effect rather than remove it. Recorded so the next reader is not
 # told this recipe touches nothing.
 #
-# agy-mcp-bridge Python tests (24) - also run by `test:` and by ci-classic.
+# agy-mcp-bridge Python tests - also run by `test:` and by ci-classic.
 pytest:
     uv run --project agy-mcp-bridge --frozen pytest \
         agy-mcp-bridge/test_agy_bus.py \

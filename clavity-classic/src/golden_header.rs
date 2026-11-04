@@ -495,7 +495,7 @@ pub fn commit_growth(dir: &Path, content: &str) -> Result<(), CommitError> {
 /// the classic side is done by the installer via PowerShell, not the binary, so this is exercised
 /// only by tests today — kept for cross-variant symmetry and the file-ownership guarantee it pins.
 /// @produces "golden-header.seed.md"
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn commit_seed(dir: &Path, content: &str) -> Result<(), CommitError> {
     commit(&seed_path(dir), content)
 }

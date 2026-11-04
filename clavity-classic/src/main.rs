@@ -392,16 +392,30 @@ fn start(session: &str, args: Vec<String>) -> i32 {
     // 1) agy in a detached psmux session. Reuse only if agy is *actually running*: a session can
     //    outlive agy (when agy exits, the pane falls back to its shell), and reusing such a stale
     //    session would leave you with no agy.
-    if tmux::has_session(session) && tmux::agy_running(session) {
-        info!("agy already running in psmux '{session}' - reusing it");
+    let session_exists = tmux::has_session(session);
+    let probe = if session_exists {
+        tmux::agy_probe(session)
+    } else {
+        tmux::AgyProbe::NotAgy
+    };
+    if session_exists && probe != tmux::AgyProbe::NotAgy {
+        if probe == tmux::AgyProbe::Unknown {
+            warn!(
+                "could not read the pane command of psmux '{session}' - assuming agy is running \
+                 and reusing the session (not relaunching)"
+            );
+        } else {
+            info!("agy already running in psmux '{session}' - reusing it");
+        }
         // Re-attach a visible watch tab if none is currently attached (so you can see/auth agy).
         if !tmux::is_attached(session) {
             info!("no watch tab attached - opening one");
             open_watch_tab(session);
         }
-    } else if tmux::has_session(session) {
-        // Stale session: agy exited, the pane fell back to a shell. Relaunch agy in place (cd to the
-        // requested folder first, as the pane may be elsewhere) and reopen the watch tab.
+    } else if session_exists {
+        // Stale session: the pane command was READ and is not agy (agy exited, the pane fell back
+        // to a shell). Relaunch agy in place (cd to the requested folder first, as the pane may be
+        // elsewhere) and reopen the watch tab.
         warn!("session '{session}' exists but agy isn't running - relaunching agy");
         let relaunch = platform::current().relaunch_command(&folder, &agy_args);
         if let Err(e) = tmux::send_keys(session, &relaunch, true) {
