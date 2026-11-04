@@ -17,6 +17,7 @@
 # shape (Test-HasVoiceEntry): the check confirms voicing directly rather than inferring it from "not
 # excluded", because docs-spec.md's in-table-XOR-excluded convention (its lines 94-95) admits a "neither"
 # spec-gap case and so is not a guarantee.
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -128,7 +129,7 @@ function Invoke-UserFacingDocsCheck([string]$repoRoot, [string[]]$TrackedDocs = 
         return [PSCustomObject]@{ ExitCode = 1; Failures = $failed.ToArray(); Warnings = @() }
     }
 
-    $listed = Read-DocList $listPath
+    $listed = @(Read-DocList $listPath)
     if ($listed.Count -eq 0) {
         [void]$failed.Add('docs/user-facing-docs.txt is empty (all comments/blank) - refusing to pass vacuously.')
         return [PSCustomObject]@{ ExitCode = 1; Failures = $failed.ToArray(); Warnings = @() }

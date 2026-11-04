@@ -912,7 +912,7 @@ note there). 13c arrived in a later triage the same day, captured by a different
 
 #### 13a. The gate tells operators it reports unused exemptions — no code path can · ✅ **SHIPPED 2026-08-16** (`39f9545`). VERIFIED 2026-08-17: the false sentence is GONE - `grep -c 'reports unused exemptions' scripts/check-injected-context.ps1` = **0**, and the replacement names the suite that actually catches a stale exemption.
 
-`scripts/check-injected-context.ps1:701` prints:
+`scripts/check-injected-context.ps1:685` prints:
 
 > `an exemption whose file stops failing its invariant is reported as unused and must be deleted.`
 

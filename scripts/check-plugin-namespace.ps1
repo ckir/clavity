@@ -19,6 +19,7 @@ marketplaceName, scope paths); folder paths (clavity-dotnet/ , clavity-classic/)
 agy-side `agy_skills/claudavity-responder` twin (Option A, deliberately excluded from (b)).
 #>
 param([string]$Root = "$PSScriptRoot/..")
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 # ripgrep exits 1 when it finds NO matches (the CLEAN case). Under PowerShell 7.4+ with EAP='Stop',
 # $PSNativeCommandUseErrorActionPreference defaults to $true, turning that non-zero native exit into a
@@ -141,7 +142,9 @@ foreach ($manifest in @(
             # plugin_ group catches both. The legitimate PATTERN form is unaffected because a regex
             # matcher starts with '.' or another metacharacter after mcp__, which [A-Za-z0-9-] rejects
             # (MEASURED: 'mcp__.*agy_ask' does not match).
-            if ($group.matcher -match 'mcp__(plugin_)?[A-Za-z0-9-]+_[A-Za-z0-9_]+') {
+            # A hook group may legitimately carry NO `matcher` key (e.g. SessionStart): under strict mode
+            # reading the missing property throws, so test for it first.
+            if ($group.PSObject.Properties['matcher'] -and $group.matcher -match 'mcp__(plugin_)?[A-Za-z0-9-]+_[A-Za-z0-9_]+') {
                 $literalMatchers += "${manifest}: $($group.matcher)"
             }
         }

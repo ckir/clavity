@@ -13,6 +13,7 @@
 # still calls it text, so ONLY A BYTE SCAN sees it. Two live instances were repaired on 2026-09-29 (3a1d0bec).
 [CmdletBinding()]
 param([string]$RepoRoot)
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
 

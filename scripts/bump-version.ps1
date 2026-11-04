@@ -46,7 +46,7 @@ function Set-IssVersion([string]$relPath) {
     # exactly when the replace would no-op — closing the silent-no-op + false-success-line gap.
     if ($c -cnotmatch '#define AppVersion "[^"]+"') { Die "no '#define AppVersion' line in $relPath" }
     $new = [regex]::Replace($c, '(#define AppVersion ")[^"]+(")', "`${1}$Version`${2}")
-    if ($new -ne $c) { Set-Content -Path $p -Value $new -NoNewline }
+    if ($new -ne $c) { Set-Content -LiteralPath $p -Value $new -NoNewline }
     Write-Host "  iss  $relPath -> $Version"
 }
 
@@ -59,7 +59,7 @@ function Set-JsonVersion([string]$relPath) {
     $rx = [regex]'(?m)^(\s*"version"\s*:\s*")[^"]+(")'
     if (-not $rx.IsMatch($c)) { Die "no top-level 'version' line in $relPath" }
     $new = $rx.Replace($c, "`${1}$Version`${2}", 1)
-    if ($new -ne $c) { Set-Content -Path $p -Value $new -NoNewline }
+    if ($new -ne $c) { Set-Content -LiteralPath $p -Value $new -NoNewline }
     Write-Host "  json $relPath -> $Version"
 }
 
@@ -72,7 +72,7 @@ function Set-PyprojectVersion([string]$relPath) {
     $rx = [regex]'(?m)^(version\s*=\s*")[^"]+(")'
     if (-not $rx.IsMatch($c)) { Die "no [project] version line in $relPath" }
     $new = $rx.Replace($c, "`${1}$Version`${2}", 1)
-    if ($new -ne $c) { Set-Content -Path $p -Value $new -NoNewline }
+    if ($new -ne $c) { Set-Content -LiteralPath $p -Value $new -NoNewline }
     Write-Host "  toml $relPath [project] -> $Version"
 }
 

@@ -169,6 +169,51 @@ Describe 'release.ps1 -Resume (orchestrator end-to-end)' {
         } finally { Pop-Location; Remove-Item -Recurse -Force $s.Dir; Remove-Item -Recurse -Force $s.Bare }
     }
 
+    # Precondition: local HEAD must CONTAIN origin/main. A local main that is BEHIND the remote would push a
+    # release commit that cannot fast-forward, or silently release without commits others already landed.
+    It '7b. local main behind origin/main: refuses early with a pull-first message, HEAD unchanged' {
+        $s = New-ReleaseScenario {
+            # f.txt only: `git add -A` here would commit the scratch copy of scripts/ and the reset would delete it.
+            'y' | Set-Content f.txt; git add f.txt; git commit -q -m 'feat: y'
+            git push -q origin main
+            git reset -q --hard HEAD~1
+        }
+        try {
+            $before = (git rev-parse HEAD).Trim()
+            $r = Invoke-ReleaseScript -Dir $s.Dir -ArgList @()
+            $r.ExitCode | Should -Be 1 -Because $r.Output
+            $r.Output | Should -Match 'release:.*does not contain origin/main'
+            $r.Output | Should -Match 'pull first'
+            (git rev-parse HEAD).Trim() | Should -Be $before
+        } finally { Pop-Location; Remove-Item -Recurse -Force $s.Dir; Remove-Item -Recurse -Force $s.Bare }
+    }
+
+    # The state -Resume exists to clear, reached the way it really happens: a release commit is stranded
+    # locally, then the remote moves on, so local main has DIVERGED from origin/main. The ancestor check must
+    # not refuse this before the drop (the dead candidate is what blocks the fast-forward the message
+    # advises); it runs after the drop, which turns the pull into a plain fast-forward.
+    It '7c. -Resume when origin/main moved past a stranded candidate: drops the candidate, THEN says pull first' {
+        $s = New-ReleaseScenario {
+            'v2' | Set-Content version.txt; git add version.txt; git commit -q -m 'chore(release): clavity-v2'
+            git switch -q -c landed HEAD~1
+            'z' | Set-Content z.txt; git add z.txt; git commit -q -m 'feat: landed remotely'
+            git push -q origin landed:main
+            git switch -q main
+        }
+        try {
+            git merge-base --is-ancestor origin/main HEAD 2>$null
+            $LASTEXITCODE | Should -Not -Be 0 -Because 'the fixture must actually be diverged from the remote, or this test pins nothing'
+            $r = Invoke-ReleaseScript -Dir $s.Dir -ArgList @('-Resume')
+            $r.ExitCode | Should -Be 1 -Because $r.Output
+            $r.Output | Should -Match 'dropped'
+            $r.Output | Should -Match 'release:.*does not contain origin/main'
+            $r.Output | Should -Not -Match '-Resume refused'
+            (git log main --format=%s) | Should -Not -Contain 'chore(release): clavity-v2' -Because 'the dead candidate must be gone'
+            git pull --ff-only -q origin main 2>&1 | Out-Null
+            $LASTEXITCODE | Should -Be 0 -Because 'after the drop the advised pull must be a fast-forward'
+        } finally { Pop-Location; Remove-Item -Recurse -Force $s.Dir; Remove-Item -Recurse -Force $s.Bare }
+    }
+
     # AGY-CAPSTONE round 9 (Mechanism Gamer, DEBT). The LIBRARY's catch filter is pinned in
     # release-lib.Tests.ps1, but the ORCHESTRATOR's gate had no equivalent row - reverting `catch
     # [ReleaseRefusalException]` here to a bare `catch` passed every row while silently re-opening the

@@ -21,6 +21,7 @@ param(
     [Parameter(Mandatory)][string]$BaseRef,
     [string]$Root = (Split-Path -Parent $PSScriptRoot)
 )
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # Rule B round-trips a path read FROM git (via `git diff --name-only -z`) back INTO git (via
@@ -299,8 +300,10 @@ try {
     # though the comment always claimed it did, so a first-time-added package-lock.json fired
     # `new-file`. Kept even with the FIX 4 extension allow-list below because '*.min.js' would
     # otherwise pass the '.js' allow-list.
-    $nameStatus = (& git diff --name-status -z "$BaseRef..HEAD" -- . `
-        ':(exclude)*.lock' ':(exclude)*.min.js' ':(exclude)package-lock.json') -split "`0" | Where-Object { $_ -ne '' }
+    # @(): when every changed path is excluded the pipeline yields NOTHING ($null), and `.Count` on $null throws
+    # under strict mode (found when strict mode was added: a lone package-lock.json change crashed the gate).
+    $nameStatus = @((& git diff --name-status -z "$BaseRef..HEAD" -- . `
+        ':(exclude)*.lock' ':(exclude)*.min.js' ':(exclude)package-lock.json') -split "`0" | Where-Object { $_ -ne '' })
 
     # A RENAME and a COPY create a file too. `git diff --name-status` emits R### / C### with TWO paths
     # (old then new), so anchoring on '^A' alone - as this rule first did - misses every new file that
@@ -434,8 +437,8 @@ try {
     $ruleBSkipped = [System.Collections.Generic.List[string]]::new()
     # Files Rule B DID examine but can only partly understand - see the RULE-B-PARTIAL block below.
     $ruleBPartial = [System.Collections.Generic.List[string]]::new()
-    $changedForRuleB = (& git diff --name-only -z "$BaseRef..HEAD" -- . `
-        ':(exclude)*.lock' ':(exclude)*.min.js' ':(exclude)package-lock.json') -split "`0" | Where-Object { $_ -ne '' }
+    $changedForRuleB = @((& git diff --name-only -z "$BaseRef..HEAD" -- . `
+        ':(exclude)*.lock' ':(exclude)*.min.js' ':(exclude)package-lock.json') -split "`0" | Where-Object { $_ -ne '' })
 
     foreach ($path in $changedForRuleB) {
         if (Test-IsTestPath $path) { continue }

@@ -8,6 +8,7 @@
 
 #requires -Version 5.1
 # Fail (exit 1) if register-plugin-hash.iss is stale vs the current register-plugin.ps1 (drift guard).
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $ps1  = Join-Path (Join-Path (Join-Path $root 'installer') '_shared') 'register-plugin.ps1'

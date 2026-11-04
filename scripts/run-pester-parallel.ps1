@@ -61,6 +61,7 @@ param(
     [switch]$WriteSkipInventory
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -71,7 +72,12 @@ if ($Child) {
     $ErrorActionPreference = 'Continue'
     Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $r = Invoke-Pester -Path $Child -Output None -PassThru
+    # Same principle for strict mode: the suites run in THIS scope and would inherit Latest, which makes the code
+    # under test (and the scripts it dot-sources) throw on reads that a plain Invoke-Pester never flags (measured
+    # 2026-11-04: 'The property Count cannot be found' in check-agy-discipline-skills rows). The runner's OWN logic
+    # stays strict; only the hosted run is switched off, then back on.
+    Set-StrictMode -Off
+    try { $r = Invoke-Pester -Path $Child -Output None -PassThru } finally { Set-StrictMode -Version Latest }
     # A test's own -Tag plus every enclosing block's (Context/Describe), walking Block then Parent.
     function Get-EffectiveTags($t) { $tags = @($t.Tag); $b = $t.Block; while ($b) { $tags += @($b.Tag); $b = $b.Parent }; @($tags | Where-Object { $_ } | Select-Object -Unique) }
     $summary = [ordered]@{
@@ -145,7 +151,7 @@ if ($ListOnly) { $suites; exit 0 }
 
 if ($suites.Count -eq 0) { Write-Host "run-pester-parallel: no suite files resolved (recipe '$Recipe'); an empty gate is not a green gate."; exit 1 }
 
-$resolved = foreach ($s in $suites) { if ([IO.Path]::IsPathRooted($s)) { $s } else { Join-Path $root $s } }
+$resolved = @(foreach ($s in $suites) { if ([IO.Path]::IsPathRooted($s)) { $s } else { Join-Path $root $s } })
 $missing = @($resolved | Where-Object { -not (Test-Path -LiteralPath $_) })
 if ($missing.Count -gt 0) { Write-Host ("run-pester-parallel: MISSING suite file(s): " + ($missing -join ', ')); exit 1 }
 
@@ -243,11 +249,11 @@ function Test-SkipGate {
             Write-Host 'SKIP-INVENTORY: refusing to write: the run had failing tests, bad containers or missing results (a partial run would drop rows)'; return $true
         }
         if ($failed) { Write-Host 'SKIP-INVENTORY not written: fix the skip-approval / OS-tag failures above first'; return $true }
-        $lines = if (Test-Path -LiteralPath $invPath) { @([IO.File]::ReadAllLines($invPath)) } else { @() }
+        $lines = @(if (Test-Path -LiteralPath $invPath) { [IO.File]::ReadAllLines($invPath) })   # @(): an empty if-result is $null, and .Count on $null throws under strict mode
         $sec = Read-InvSection $lines $script:Os
         $oldS = if ($sec) { @($sec.static) } else { @() }; $oldC = if ($sec) { @($sec.conditional) } else { @() }
-        $newS = Sort-InvRows (@($oldS | Where-Object { -not (& $inCovered $_) }) + $obsStatic | Select-Object -Unique)
-        $newC = Sort-InvRows (@($oldC) + $obsCond | Select-Object -Unique)
+        $newS = @(Sort-InvRows (@($oldS | Where-Object { -not (& $inCovered $_) }) + $obsStatic | Select-Object -Unique))
+        $newC = @(Sort-InvRows (@($oldC) + $obsCond | Select-Object -Unique))
         $gen = @("## $($script:Os)", '', '### static', '') + $script:TableHead + $newS + @('', '### conditional', '') + $script:TableHead + $newC
         if ($sec) {
             $e = $sec.end; while ($e -gt $sec.start + 1 -and [string]::IsNullOrWhiteSpace($lines[$e - 1])) { $e-- }

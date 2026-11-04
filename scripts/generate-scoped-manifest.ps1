@@ -36,6 +36,7 @@ param(
     [Parameter(Mandatory = $true)][string]$OutFile
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $root = Get-Content $MembersJsonPath -Raw | ConvertFrom-Json

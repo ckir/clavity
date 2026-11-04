@@ -22,6 +22,7 @@
 # on scripts/** , but a re-fattened stub changes docs/ - so it would never trigger on the case this
 # guards. Widening its paths: to docs/** would run the whole Pester suite on every doc edit. Pre-push
 # blocks the regression before it can reach origin, which is the enforcement point that matters here.
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 

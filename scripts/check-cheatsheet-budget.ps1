@@ -74,10 +74,8 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if (-not $Path) { $Path = Join-Path $RepoRoot 'agy-autotrain/knowledge/driver-cheatsheet.core.md' }
 
-function Fail([string]$msg) {
-    Write-Host "check-cheatsheet-budget: FAIL: $msg" -ForegroundColor Red
-    exit 1
-}
+$script:GateName = 'check-cheatsheet-budget'
+. (Join-Path (Join-Path $PSScriptRoot 'lib') 'gate-lib.ps1')
 
 # A missing cheatsheet (fresh clone, never drained) is 0 bytes <= budget - never a crash. This mirrors
 # check-seed-budget.ps1 deliberately.

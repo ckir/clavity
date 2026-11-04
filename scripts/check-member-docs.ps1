@@ -18,6 +18,7 @@
 # NOT gated: CLAUDE.md, CONTRIBUTING.md, ROADMAP.md, docs/, and per-member section ORDER. Those are
 # conventions in docs/hosting-a-tool.md. Gating a shape-varying property across two member shapes is
 # exactly the false-positive surface this design rejected.
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 

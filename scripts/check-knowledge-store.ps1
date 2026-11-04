@@ -71,6 +71,15 @@ $repo = $RepoRoot
 $abs = Join-Path $repo $StoreDir
 $problems = @()
 function Problem([string]$m) { $script:problems += $m }
+# FAIL CLOSED on a failed git history read. A bare `2>$null` turns "git could not read the history" into
+# "the history is empty", and an empty baseline means no deletion can ever be seen: the gate would then
+# certify a store it could not inspect. Call right after the git read, before anything else runs.
+function Assert-GitRead([string]$What) {
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "check-knowledge-store: FAIL: git could not read $What (exit $LASTEXITCODE). Refusing to certify the store on an unreadable history baseline." -ForegroundColor Red
+        exit 1
+    }
+}
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     Write-Host "check-knowledge-store: FAIL: required tool 'git' not found on PATH" -ForegroundColor Red
@@ -123,10 +132,18 @@ if ($isShallow -eq 'true') {
 # correct regardless, because a name already in history predates any policy forbidding it.
 $everExisted = @(& git -C $repo -c core.quotePath=false log --pretty=format: --name-only --diff-filter=A $BaselineRef -- $StoreDir 2>$null |
     Where-Object { $_ -and $_.Trim() })
+Assert-GitRead "the history of '$StoreDir' at '$BaselineRef' (git log --diff-filter=A)"
 # Union with the ref's current tree: a store added in the very first commit of a shallow clone can be in
 # the tree without an ADD record reachable here.
-$currentTree = @(& git -C $repo -c core.quotePath=false ls-tree --name-only "${BaselineRef}:$StoreDir" 2>$null |
-    ForEach-Object { "$StoreDir/$_" })
+# A store that is not (yet) in the ref's tree - added since, uncommitted - legitimately has no tree to read;
+# a store that IS there must be readable.
+& git -C $repo cat-file -e "${BaselineRef}:$StoreDir" 2>$null
+$currentTree = @()
+if ($LASTEXITCODE -eq 0) {
+    $currentTree = @(& git -C $repo -c core.quotePath=false ls-tree --name-only "${BaselineRef}:$StoreDir" 2>$null |
+        ForEach-Object { "$StoreDir/$_" })
+    Assert-GitRead "the tree of '$StoreDir' at '$BaselineRef' (git ls-tree)"
+}
 $prefix = "$StoreDir/"
 $baseline = @($everExisted + $currentTree |
     Where-Object { $_ -like "$prefix*" -and $_ -like '*.md' } |
@@ -180,6 +197,7 @@ if (-not (Test-Path -LiteralPath $indexPath)) {
 # replacing the $O(rules x commits) log + ls-tree loop that previously ran on pre-push.
 $histMaxBytes = @{}
 $rawLog = @(& git -C $repo -c core.quotePath=false log --raw --no-abbrev --format='' $BaselineRef -- $StoreDir 2>$null | Where-Object { $_ -match '^:\d+' })
+Assert-GitRead "the raw history of '$StoreDir' at '$BaselineRef' (git log --raw)"
 if ($rawLog.Count -gt 0) {
     $blobMap = @{}
     $allBlobs = [System.Collections.Generic.HashSet[string]]::new()
