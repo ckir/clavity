@@ -24,7 +24,8 @@
 #
 # EXIT CODES: 0 = clean * 1 = any of DRIFTED, MISSING, EXTRA or UNREADABLE * 2 = CANNOT CHECK, which
 # is: a bad sha, an installed root that is absent or not a directory, a payload path matching nothing,
-# LOCALAPPDATA unset with no -InstalledRoot, or git not on PATH. Keep this list COMPLETE - rounds 8 and
+# no installed tree can be located (no -InstalledRoot, no CLAVITY_INSTALLED_ROOT, no LOCALAPPDATA and no unambiguous clavity@clavity
+# entry in the Claude plugin manifest), or git not on PATH. Keep this list COMPLETE - rounds 8 and
 # 9 each added a cause and left the enumeration behind, which is how a contract stops being one.
 # The 1-clause used to read "drift OR an unreadable payload file", which was wrong twice over: UNREADABLE
 # is the INSTALLED file, not the payload, and $bad sums FOUR buckets while the prose named two.
@@ -51,17 +52,83 @@ $ErrorActionPreference = 'Stop'
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath }
 function Fail2([string]$m) { Write-Host "check-plugin-drift: $m" -ForegroundColor Yellow; exit 2 }
 
-if (-not $InstalledRoot) {
-    # $env:LOCALAPPDATA IS NOT GUARANTEED. It is absent in a Windows service or scheduled-task context,
-    # in some SSH sessions, and on every non-Windows host. MEASURED at AGY-CAPSTONE round 9: Join-Path
-    # then failed to bind and the run died with "Cannot bind argument to parameter 'Path'" instead of the
-    # contracted exit 2 - so an UNCONFIGURABLE ENVIRONMENT was indistinguishable from a DRIFTED INSTALL,
-    # the exact mislabelling this file has now been bitten by four times.
-    if (-not $env:LOCALAPPDATA) {
-        Fail2 "no -InstalledRoot was given and `$env:LOCALAPPDATA is not set, so the default install path cannot be built - nothing was checked"
-    }
-    $InstalledRoot = Join-Path $env:LOCALAPPDATA 'Programs\clavity-dotnet\plugins\clavity'
+# WHERE THE INSTALLED TREE IS, in this order (AGY-FIRST 2026-11-06, two rounds, owner-ruled):
+#   1. -InstalledRoot
+#   2. $env:CLAVITY_INSTALLED_ROOT
+#   3. $env:LOCALAPPDATA\Programs\clavity-dotnet\plugins\clavity  - the Inno installer's copy. UNCHANGED, and it still wins whenever
+#      LOCALAPPDATA is set, so a Windows machine behaves exactly as before.
+#   4. the Claude plugin manifest <CLAUDE_CONFIG_DIR or ~/.claude>/plugins/installed_plugins.json - the only place a machine with no
+#      installer (Linux, macOS) records where the plugin Claude loads actually lives. See Resolve-ManifestInstallRoot.
+# Anything else is exit 2. There is deliberately NO guessing from the plugin cache directory: it keeps every version side by side
+# (0.12.0 .. 0.15.0 on the measuring machine), so "highest version" after a rollback would verify a tree Claude is not running and
+# report it CLEAN.
+function ConvertTo-CanonicalPath([string]$Path) {
+    # Both sides of the projectPath comparison go through this one function, because prefix and equality arithmetic on paths is
+    # unforgiving (see the Get-Item note further down). A path that does not exist is compared as written, minus trailing separators.
+    $p = if (Test-Path -LiteralPath $Path) { (Get-Item -LiteralPath $Path).FullName } else { $Path }
+    $p.TrimEnd('/', '\')
 }
+
+function Resolve-ManifestInstallRoot([string]$Repo) {
+    $cfg = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } elseif ($HOME) { Join-Path $HOME '.claude' } else { $null }
+    if (-not $cfg) { Fail2 "no -InstalledRoot or CLAVITY_INSTALLED_ROOT was given, LOCALAPPDATA is not set, and neither CLAUDE_CONFIG_DIR nor HOME is, so the Claude plugin manifest cannot be located - nothing was checked" }
+    $manifestPath = Join-Path $cfg 'plugins' 'installed_plugins.json'
+    $hint = 'pass -InstalledRoot <the installed plugin directory> or set CLAVITY_INSTALLED_ROOT'
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        Fail2 "no -InstalledRoot was given and the Claude plugin manifest '$manifestPath' does not exist, so the install cannot be located - $hint. Nothing was checked"
+    }
+    try { $m = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -ErrorAction Stop }
+    catch { Fail2 "the Claude plugin manifest '$manifestPath' is not valid JSON ($($_.Exception.Message)) - $hint. Nothing was checked" }
+    # Claude Code 2.1.318 writes schema version 2 and refuses other shapes; a different version is a layout this script has not seen.
+    if (-not $m -or -not $m.PSObject.Properties['version'] -or $m.version -ne 2) {
+        Fail2 "the Claude plugin manifest '$manifestPath' is not schema version 2 - $hint. Nothing was checked"
+    }
+    if (-not $m.PSObject.Properties['plugins'] -or $null -eq $m.plugins) { Fail2 "the Claude plugin manifest '$manifestPath' has no 'plugins' key - $hint. Nothing was checked" }
+    $prop = $m.plugins.PSObject.Properties['clavity@clavity']
+    # @( ) AROUND the if-expression: an empty array returned from `if` unrolls to $null, and `$null.Count` THROWS under Set-StrictMode.
+    $all = @(if ($prop) { $prop.Value })
+    if ($all.Count -eq 0) { Fail2 "the Claude plugin manifest '$manifestPath' has no 'clavity@clavity' entry, so the plugin is not installed through Claude - $hint. Nothing was checked" }
+
+    $repoCanon = ConvertTo-CanonicalPath $Repo
+    $cmp = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
+    $applicable = @()
+    foreach ($e in $all) {
+        # Every entry is validated, applicable or not: a manifest this script cannot read reliably is not one to pick from.
+        $hasStr = { param($o, $k) $o -and $o.PSObject.Properties[$k] -and $o.$k -is [string] -and $o.$k.Trim() }
+        if (-not (& $hasStr $e 'scope') -or -not (& $hasStr $e 'installPath')) { Fail2 "an entry for 'clavity@clavity' in '$manifestPath' lacks a string 'scope' or 'installPath' - $hint. Nothing was checked" }
+        if ($e.scope -notin 'managed', 'user', 'project', 'local') { Fail2 "an entry for 'clavity@clavity' in '$manifestPath' has the unknown scope '$($e.scope)' - $hint. Nothing was checked" }
+        $needsProject = $e.scope -in 'project', 'local'
+        if ($needsProject -and -not (& $hasStr $e 'projectPath')) { Fail2 "a '$($e.scope)' entry for 'clavity@clavity' in '$manifestPath' has no 'projectPath' - $hint. Nothing was checked" }
+        # The same filter Claude Code applies when it loads a plugin (strings of 2.1.318, function CL): user and managed entries apply
+        # everywhere; local and project entries apply only to the checkout they name.
+        if (-not $needsProject -or [string]::Equals((ConvertTo-CanonicalPath $e.projectPath), $repoCanon, $cmp)) { $applicable += $e }
+    }
+    $describe = { param($list) ($list | ForEach-Object { "scope=$($_.scope)" + $(if ($_.PSObject.Properties['projectPath']) { " projectPath=$($_.projectPath)" } else { '' }) + " version=$($_.version) installPath=$($_.installPath)" }) -join '; ' }
+    if ($applicable.Count -eq 0) {
+        Fail2 "'$manifestPath' lists 'clavity@clavity' only for other checkouts ($(& $describe $all)), none applies to '$Repo' - $hint. Nothing was checked"
+    }
+    # Claude Code takes the FIRST applicable entry in array order (strings of 2.1.318, function Nle and the loop after it). That is an
+    # undocumented internal and it can change between versions, so more than one applicable entry is exit 2, never a guess.
+    if ($applicable.Count -gt 1) {
+        Fail2 "'$manifestPath' has $($applicable.Count) applicable 'clavity@clavity' entries ($(& $describe $applicable)) and this script will not guess which one Claude loads - $hint. Nothing was checked"
+    }
+    $chosen = $applicable[0]
+    # installPath comes from a file this script does not control: it must be absolute, so a relative value can never be resolved against
+    # whatever directory the operator happens to be in, and the directory test below (Test-Path -PathType Container) still applies.
+    if (-not [IO.Path]::IsPathRooted($chosen.installPath)) {
+        Fail2 "the installPath '$($chosen.installPath)' in '$manifestPath' is not an absolute path - $hint. Nothing was checked"
+    }
+    Write-Host "check-plugin-drift: install located through '$manifestPath' (clavity@clavity scope=$($chosen.scope) version=$($chosen.version)): $($chosen.installPath)"
+    $chosen.installPath
+}
+
+if (-not $InstalledRoot -and $env:CLAVITY_INSTALLED_ROOT) { $InstalledRoot = $env:CLAVITY_INSTALLED_ROOT }
+# $env:LOCALAPPDATA IS NOT GUARANTEED. It is absent in a Windows service or scheduled-task context, in some SSH sessions, and on
+# every non-Windows host. MEASURED at AGY-CAPSTONE round 9: Join-Path then failed to bind and the run died with "Cannot bind
+# argument to parameter 'Path'" instead of the contracted exit 2 - so an UNCONFIGURABLE ENVIRONMENT was indistinguishable from a
+# DRIFTED INSTALL. It is therefore tested for presence and never joined unset; absent, resolution falls through to the manifest.
+if (-not $InstalledRoot -and $env:LOCALAPPDATA) { $InstalledRoot = Join-Path $env:LOCALAPPDATA 'Programs\clavity-dotnet\plugins\clavity' }
+if (-not $InstalledRoot) { $InstalledRoot = Resolve-ManifestInstallRoot $RepoRoot }
 
 
 # GIT ITSELF MUST BE PRESENT. Under `$ErrorActionPreference = 'Stop'` a missing `git` raises a
@@ -144,6 +211,13 @@ $enumErrors = @()
 $pathResolver = if (Test-Path -LiteralPath $InstalledRoot) { New-RootRelativePathResolver -Root $InstalledRoot } else { $null }
 $installed = @(Get-ChildItem -LiteralPath $InstalledRoot -Recurse -File -Force -ErrorAction SilentlyContinue -ErrorVariable +enumErrors |
     ForEach-Object { $pathResolver.Resolve($_.FullName) -replace '\\', '/' })
+
+# Claude Code keeps live-session markers in the plugin's own cache directory (.in_use/<pid>, MEASURED 2026-11-06: one such file made the
+# otherwise identical install report EXTRA, exit 1, on a machine where Claude was running). It is runtime state, never payload, so a
+# ROOT-LEVEL `.in_use/` directory is exempt from the EXTRA set (owner ruling). Narrow on purpose: only that exact directory, matched
+# case-sensitively, and never a path the repo payload itself carries; a stray file beside it, or in a lookalike such as `.in_use-x/`,
+# still reports EXTRA.
+$installed = @($installed | Where-Object { -not $_.StartsWith('.in_use/', [StringComparison]::Ordinal) -or ($repoFiles -ccontains $_) })
 
 function Get-BlobBytes {
     param([string]$RepoRoot, [string]$Rev, [string]$Path)

@@ -60,6 +60,45 @@ BeforeAll {
         [pscustomobject]@{ Out = $out; Code = $LASTEXITCODE }
     }
 
+    # Runs the script WITHOUT -InstalledRoot, in a child pwsh whose environment is set explicitly, so the ambient machine (a developer's real
+    # ~/.claude, a CI runner's LOCALAPPDATA) can never decide a row. An empty value removes the variable.
+    function Invoke-DriftDefault {
+        param($Repo, $Sha, [hashtable]$Env, [string]$PluginPath = 'plugin')
+        # The environment is set on THIS process around a plain `pwsh -File` call, exactly like Invoke-Drift, so a crash inside the script keeps
+        # its real exit code. (A `pwsh -c '& script; exit $LASTEXITCODE'` wrapper turned a terminating error into exit 0: MEASURED while writing
+        # these rows - the script threw "property 'Count' cannot be found" and the row saw 0.)
+        $saved = @{}
+        foreach ($k in $Env.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k) }
+        try {
+            foreach ($k in $Env.Keys) { [Environment]::SetEnvironmentVariable($k, $(if ($Env[$k]) { [string]$Env[$k] } else { $null })) }
+            $out = & pwsh -NoProfile -File $script:Script -RepoRoot $Repo -Sha $Sha -PluginPath $PluginPath 2>&1 | Out-String
+            $code = $LASTEXITCODE
+        } finally {
+            foreach ($k in $Env.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) }
+        }
+        [pscustomobject]@{ Out = $out; Code = $code }
+    }
+
+    # A Claude config dir holding plugins/installed_plugins.json. -Raw writes the text as given (for the invalid-JSON row).
+    function New-ConfigDir {
+        param($Entries, $Version = 2, [string]$Key = 'clavity@clavity', [string]$Raw)
+        $cfg = Join-Path $TestDrive ("cfg-" + [Guid]::NewGuid().ToString('N'))
+        $null = New-Item -ItemType Directory -Path (Join-Path $cfg 'plugins') -Force
+        $file = Join-Path $cfg 'plugins' 'installed_plugins.json'
+        if ($PSBoundParameters.ContainsKey('Raw')) { [IO.File]::WriteAllText($file, $Raw) }
+        elseif ($null -ne $Entries) {
+            $doc = [ordered]@{ version = $Version; plugins = [ordered]@{ $Key = @($Entries) } }
+            [IO.File]::WriteAllText($file, ($doc | ConvertTo-Json -Depth 8))
+        }
+        $cfg
+    }
+
+    function New-CleanInstall { New-FixtureInstall @{
+        'skills/a/SKILL.md' = "line one`nline two`n"
+        'hooks/h.sh'        = "#!/usr/bin/env bash`necho hi`n"
+        'plugin.json'       = "{`n  `"version`": `"0.7.0`"`n}`n"
+    } }
+
     $script:Payload = @{
         'plugin/skills/a/SKILL.md' = "line one`nline two`n"
         'plugin/hooks/h.sh'        = "#!/usr/bin/env bash`necho hi`n"
@@ -324,17 +363,6 @@ Describe 'check-plugin-drift.ps1' {
         } finally { Remove-Item $i -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'exits 2 when no -InstalledRoot is given and LOCALAPPDATA is unset' {
-        # AGY-CAPSTONE round 9. $env:LOCALAPPDATA is absent in a Windows service or scheduled-task
-        # context, in some SSH sessions, and on every non-Windows host. MEASURED: Join-Path then failed
-        # to bind and the run died with "Cannot bind argument to parameter 'Path'" instead of the
-        # contracted 2 - an UNCONFIGURABLE ENVIRONMENT reading as a DRIFTED INSTALL.
-        $out = & pwsh -NoProfile -c "`$env:LOCALAPPDATA=''; & '$script:Script' *>&1 | Out-String; exit `$LASTEXITCODE" 2>&1 | Out-String
-        $LASTEXITCODE | Should -Be 2 -Because "an unbuildable default path is 'cannot check', not drift; output was:`n$out"
-        $out | Should -Match 'LOCALAPPDATA'
-        $out | Should -Not -Match 'Cannot bind argument'
-    }
-
     It 'resolves its own repository root under a path containing [ or ]' {
         # AGY-CAPSTONE round 10. `Resolve-Path <path>` binds the WILDCARD parameter set, and [ and ] are
         # legal Windows filename characters - so a clone under `repo[wip]` was treated as a GLOB.
@@ -406,5 +434,168 @@ Describe 'check-plugin-drift.ps1' {
         # containing "drifted". MEASURED - a mutant printing "0 drifted" on the clean path passed 1/0.
         # A negative assertion wants the WIDEST possible matcher.
         $res.Out | Should -Not -Match 'DRIFTED|MISSING|EXTRA|UNREADABLE'
+    }
+}
+
+Describe 'check-plugin-drift.ps1 - locating the install without -InstalledRoot' {
+    # AGY-FIRST 2026-11-06 (two rounds). On Linux/macOS there is no Inno install under LOCALAPPDATA; the installed copy is the directory the
+    # Claude plugin manifest names. Resolution order: -InstalledRoot, CLAVITY_INSTALLED_ROOT, LOCALAPPDATA (Windows, unchanged), the manifest.
+    # Every row isolates the environment: CLAUDE_CONFIG_DIR points at a fixture, LOCALAPPDATA and CLAVITY_INSTALLED_ROOT are removed unless
+    # the row is about them, so these rows pass the same way on a Windows runner and on a developer's Linux box.
+
+    BeforeEach {
+        $script:Repo = New-FixtureRepo $script:Payload
+        $script:Good = New-CleanInstall
+        function script:Env([string]$Cfg, [hashtable]$More = @{}) { $h = @{ CLAUDE_CONFIG_DIR = $Cfg; LOCALAPPDATA = ''; CLAVITY_INSTALLED_ROOT = '' }; foreach ($k in $More.Keys) { $h[$k] = $More[$k] }; $h }
+        function script:Run([string]$Cfg, [hashtable]$More = @{}) { Invoke-DriftDefault $script:Repo.Root $script:Repo.Sha (script:Env $Cfg $More) }
+        function script:Entry([string]$Scope, [string]$Install, [string]$Project) {
+            $e = [ordered]@{ scope = $Scope; installPath = $Install; version = '0.15.0' }
+            if ($Project) { $e['projectPath'] = $Project }
+            $e
+        }
+    }
+
+    It 'uses the single user entry and reports which manifest and path it chose' {
+        $r = script:Run (New-ConfigDir @(script:Entry 'user' $script:Good))
+        $r.Code | Should -Be 0 -Because $r.Out
+        $r.Out  | Should -Match 'install located through' -Because 'the operator must be able to see which install was checked'
+        $r.Out  | Should -Match ([regex]::Escape($script:Good))
+    }
+
+    It 'exits 2, naming the manifest, when the manifest does not exist (the case the old LOCALAPPDATA row pinned)' {
+        $r = script:Run (Join-Path $TestDrive 'no-such-config')
+        $r.Code | Should -Be 2 -Because $r.Out
+        $r.Out  | Should -Match 'installed_plugins\.json'
+        $r.Out  | Should -Match 'does not exist'
+        $r.Out  | Should -Not -Match 'Cannot bind argument' -Because 'an unconfigurable environment must be the contracted 2, never a binder crash (AGY-CAPSTONE round 9)'
+    }
+
+    It 'exits 2 on a manifest that is not valid JSON' {
+        $r = script:Run (New-ConfigDir -Raw '{ not json')
+        $r.Code | Should -Be 2 -Because $r.Out
+        $r.Out  | Should -Match 'not valid JSON'
+    }
+
+    It 'exits 2 on a manifest that is not schema version 2' {
+        $r = script:Run (New-ConfigDir @(script:Entry 'user' $script:Good) -Version 1)
+        $r.Code | Should -Be 2 -Because $r.Out
+        $r.Out  | Should -Match 'schema version 2'
+    }
+
+    It 'exits 2 when the manifest has no clavity@clavity entry (another plugin must not be mistaken for it)' {
+        $r = script:Run (New-ConfigDir @(script:Entry 'user' $script:Good) -Key 'other@market')
+        $r.Code | Should -Be 2 -Because $r.Out
+        $r.Out  | Should -Match "no 'clavity@clavity' entry"
+    }
+
+    It 'discards an entry for ANOTHER checkout and uses the user entry (the foreign local install must not break this repo)' {
+        $other = Join-Path $TestDrive 'some-other-checkout'
+        $r = script:Run (New-ConfigDir @((script:Entry 'local' $script:Good $other), (script:Entry 'user' $script:Good)))
+        $r.Code | Should -Be 0 -Because $r.Out
+    }
+
+    It 'exits 2 when the only entry belongs to another checkout' {
+        $other = Join-Path $TestDrive 'some-other-checkout'
+        $r = script:Run (New-ConfigDir @(script:Entry 'local' $script:Good $other))
+        $r.Code | Should -Be 2 -Because $r.Out
+        $r.Out  | Should -Match 'only for other checkouts'
+    }
+
+    It 'uses a local entry whose projectPath is THIS checkout, with or without a trailing separator' {
+        foreach ($proj in $script:Repo.Root, ($script:Repo.Root + [IO.Path]::DirectorySeparatorChar)) {
+            $r = script:Run (New-ConfigDir @(script:Entry 'local' $script:Good $proj))
+            $r.Code | Should -Be 0 -Because "projectPath '$proj'; output was:`n$($r.Out)"
+        }
+    }
+
+    It 'exits 2 and lists BOTH entries when a user entry and a local entry for this checkout both apply (it will not guess which one Claude loads)' {
+        $localInstall = New-CleanInstall
+        $r = script:Run (New-ConfigDir @((script:Entry 'user' $script:Good), (script:Entry 'local' $localInstall $script:Repo.Root)))
+        $r.Code | Should -Be 2 -Because $r.Out
+        $r.Out  | Should -Match 'will not guess'
+        $r.Out  | Should -Match 'scope=user'
+        $r.Out  | Should -Match 'scope=local'
+    }
+
+    It 'exits 2 on two user entries' {
+        $r = script:Run (New-ConfigDir @((script:Entry 'user' $script:Good), (script:Entry 'user' (New-CleanInstall))))
+        $r.Code | Should -Be 2 -Because $r.Out
+        $r.Out  | Should -Match 'will not guess'
+    }
+
+    It 'exits 2 on a RELATIVE installPath (it would resolve against whatever directory the operator is in)' {
+        $r = script:Run (New-ConfigDir @(script:Entry 'user' 'plugins/cache/clavity'))
+        $r.Code | Should -Be 2 -Because $r.Out
+        $r.Out  | Should -Match 'not an absolute path'
+    }
+
+    It 'exits 2 when the chosen installPath is not a directory' {
+        $r = script:Run (New-ConfigDir @(script:Entry 'user' (Join-Path $TestDrive 'gone')))
+        $r.Code | Should -Be 2 -Because $r.Out
+        $r.Out  | Should -Match 'is not a directory'
+    }
+
+    It 'exits 2 on an unknown scope and on a local entry with no projectPath' {
+        $r = script:Run (New-ConfigDir @(script:Entry 'galaxy' $script:Good))
+        $r.Code | Should -Be 2 -Because $r.Out
+        $r.Out  | Should -Match "unknown scope 'galaxy'"
+        $r = script:Run (New-ConfigDir @(script:Entry 'local' $script:Good))
+        $r.Code | Should -Be 2 -Because $r.Out
+        $r.Out  | Should -Match "no 'projectPath'"
+    }
+
+    It 'prefers CLAVITY_INSTALLED_ROOT over the manifest' {
+        $drifted = New-FixtureInstall @{ 'skills/a/SKILL.md' = "CHANGED`n"; 'hooks/h.sh' = "x`n"; 'plugin.json' = "{}`n" }
+        $r = script:Run (New-ConfigDir @(script:Entry 'user' $drifted)) @{ CLAVITY_INSTALLED_ROOT = $script:Good }
+        $r.Code | Should -Be 0 -Because "the env override must win; output was:`n$($r.Out)"
+    }
+
+    It 'keeps the Windows path first: LOCALAPPDATA wins over the manifest, byte for byte as before' {
+        $lad = Join-Path $TestDrive ('lad-' + [Guid]::NewGuid().ToString('N'))
+        $target = Join-Path $lad 'Programs' 'clavity-dotnet' 'plugins' 'clavity'
+        $null = New-Item -ItemType Directory -Path (Split-Path $target -Parent) -Force
+        Copy-Item -LiteralPath $script:Good -Destination $target -Recurse
+        $drifted = New-FixtureInstall @{ 'skills/a/SKILL.md' = "CHANGED`n"; 'hooks/h.sh' = "x`n"; 'plugin.json' = "{}`n" }
+        $r = script:Run (New-ConfigDir @(script:Entry 'user' $drifted)) @{ LOCALAPPDATA = $lad }
+        $r.Code | Should -Be 0 -Because "LOCALAPPDATA must still select the installer's copy; output was:`n$($r.Out)"
+        $r.Out  | Should -Not -Match 'install located through' -Because 'the manifest must not even be read when LOCALAPPDATA is set'
+    }
+}
+
+Describe 'check-plugin-drift.ps1 - the .in_use runtime directory' {
+    # MEASURED 2026-11-06 on a Linux box with Claude running: the real install was byte-identical to the repo payload except for
+    # .in_use/<pid>, a live-session marker, which made the check exit 1 (EXTRA). Owner ruling: a ROOT-LEVEL .in_use/ is exempt, and only that.
+
+    It 'is not reported as EXTRA, so an otherwise clean install exits 0' {
+        $r = New-FixtureRepo $script:Payload
+        $i = New-CleanInstall
+        $null = New-Item -ItemType Directory -Path (Join-Path $i '.in_use') -Force
+        [IO.File]::WriteAllText((Join-Path $i '.in_use' '282068'), '')
+        $res = Invoke-Drift $r.Root $r.Sha $i
+        $res.Code | Should -Be 0 -Because "a live-session marker is runtime state, not payload; output was:`n$($res.Out)"
+    }
+
+    It 'does not hide a stray file BESIDE it, nor one inside a lookalike directory' {
+        $r = New-FixtureRepo $script:Payload
+        $i = New-CleanInstall
+        $null = New-Item -ItemType Directory -Path (Join-Path $i '.in_use') -Force
+        [IO.File]::WriteAllText((Join-Path $i '.in_use' '282068'), '')
+        [IO.File]::WriteAllText((Join-Path $i 'stray.md'), "x`n")
+        $null = New-Item -ItemType Directory -Path (Join-Path $i '.in_use-x') -Force
+        [IO.File]::WriteAllText((Join-Path $i '.in_use-x' '1'), "x`n")
+        $res = Invoke-Drift $r.Root $r.Sha $i
+        $res.Code | Should -Be 1 -Because $res.Out
+        $res.Out  | Should -MatchExactly 'EXTRA\s+stray\.md'
+        $res.Out  | Should -MatchExactly 'EXTRA\s+\.in_use-x/1'
+        $res.Out  | Should -Not -MatchExactly 'EXTRA\s+\.in_use/'
+    }
+
+    It 'is not exempt when the repo payload itself carries a file there (the exemption never hides payload)' {
+        $files = $script:Payload.Clone(); $files['plugin/.in_use/keep'] = "payload`n"
+        $r = New-FixtureRepo $files
+        $i = New-CleanInstall   # lacks .in_use/keep
+        $res = Invoke-Drift $r.Root $r.Sha $i
+        $res.Code | Should -Be 1 -Because "a payload file under .in_use/ that is missing must still be MISSING; output was:`n$($res.Out)"
+        $res.Out  | Should -MatchExactly 'MISSING\s+\.in_use/keep'
     }
 }

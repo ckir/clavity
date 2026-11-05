@@ -12,7 +12,8 @@
   Install or update the bundled AiSaveDev capture extension into a fixed folder for "Load unpacked".
 .DESCRIPTION
   Spec: docs/superpowers/specs/2026-09-29-aisavedev-shipping-design.md, section 4.
-  Mirrors ../extension/aisavedev into -Destination (default %LOCALAPPDATA%\review-relay\aisavedev),
+  Mirrors ../extension/aisavedev into -Destination (default %LOCALAPPDATA%\review-relay\aisavedev; on Linux and macOS
+  $XDG_DATA_HOME/review-relay/aisavedev, else ~/.local/share/review-relay/aisavedev),
   staged in <Destination>.new and swapped into place, so the folder Chrome points at never moves and
   never keeps stale files. It only ever writes into folders that are absent, empty, or carry its marker.
   Exit codes: 0 success, 1 refused or failed (the previous install is left in place).
@@ -28,8 +29,12 @@ $MarkerName = '.review-relay-extension'
 function Stop-Install([string]$Message) { Write-Host "install-extension: $Message" -ForegroundColor Red; exit 1 }
 
 if (-not $Destination) {
-    if (-not $env:LOCALAPPDATA) { Stop-Install 'LOCALAPPDATA is not set; pass -Destination <folder>' }
-    $Destination = Join-Path $env:LOCALAPPDATA 'review-relay' 'aisavedev'
+    # Windows keeps %LOCALAPPDATA% (unchanged). Elsewhere LOCALAPPDATA does not exist, so use the XDG data dir, then ~/.local/share.
+    $base = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA }
+            elseif ($env:XDG_DATA_HOME) { $env:XDG_DATA_HOME }
+            elseif ($HOME) { Join-Path $HOME '.local' 'share' }
+    if (-not $base) { Stop-Install 'none of LOCALAPPDATA, XDG_DATA_HOME or HOME is set; pass -Destination <folder>' }
+    $Destination = Join-Path $base 'review-relay' 'aisavedev'
 }
 $Destination = [IO.Path]::GetFullPath($Destination).TrimEnd([char]'\', [char]'/')
 # A drive root trims to "C:" (drive-RELATIVE) or "" - refuse it explicitly, never by accident.

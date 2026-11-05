@@ -33,6 +33,19 @@ BeforeAll {
         [pscustomobject]@{ Exit = $LASTEXITCODE; Out = ($out | Out-String) }
     }
     $script:Version = (Get-Content -Raw (Join-Path $script:RepoRR 'plugin.json') | ConvertFrom-Json).version
+    # Runs the installer with NO -Destination under an explicit environment (an empty value removes the variable), so the ambient machine never
+    # decides the default folder. HOME and USERPROFILE are always set together so the row means the same on Windows and POSIX.
+    function Invoke-InstallEnv([string]$Script, [hashtable]$Env) {
+        $saved = @{}
+        foreach ($k in $Env.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k) }
+        try {
+            foreach ($k in $Env.Keys) { [Environment]::SetEnvironmentVariable($k, $(if ($Env[$k]) { [string]$Env[$k] } else { $null })) }
+            $out = & pwsh -NoProfile -File $Script 2>&1
+            [pscustomobject]@{ Exit = $LASTEXITCODE; Out = ($out | Out-String) }
+        } finally {
+            foreach ($k in $Env.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) }
+        }
+    }
 }
 
 Describe 'install-extension.ps1' {
@@ -162,5 +175,29 @@ Describe 'install-extension.ps1' {
         $r.Out | Should -Match 'could not clear the leftover'
         (Get-FileHash (Join-Path $f.Dest 'content.js')).Hash | Should -Be $before
         Test-Path (Join-Path $old (Split-Path $f.Dest -Leaf)) | Should -BeFalse
+    }
+}
+
+Describe 'install-extension.ps1 - the default destination with no -Destination' {
+    # Linux and macOS have no LOCALAPPDATA. MEASURED 2026-11-06: the script exited 1 'LOCALAPPDATA is not set' there. The default is now
+    # LOCALAPPDATA (Windows, unchanged), else $XDG_DATA_HOME, else ~/.local/share, always below review-relay/aisavedev.
+    It 'uses LOCALAPPDATA when it is set, ahead of XDG_DATA_HOME' {
+        $f = New-FakePlugin 'def-lad'; $lad = Join-Path $TestDrive 'lad1'; $xdg = Join-Path $TestDrive 'xdg1'
+        $r = Invoke-InstallEnv $f.Script @{ LOCALAPPDATA = $lad; XDG_DATA_HOME = $xdg; HOME = (Join-Path $TestDrive 'h1'); USERPROFILE = (Join-Path $TestDrive 'h1') }
+        $r.Exit | Should -Be 0 -Because $r.Out
+        Test-Path (Join-Path $lad 'review-relay' 'aisavedev' '.review-relay-extension') | Should -BeTrue
+        Test-Path (Join-Path $xdg 'review-relay') | Should -BeFalse -Because 'LOCALAPPDATA must win where it exists'
+    }
+    It 'uses XDG_DATA_HOME when LOCALAPPDATA is not set' {
+        $f = New-FakePlugin 'def-xdg'; $xdg = Join-Path $TestDrive 'xdg2'
+        $r = Invoke-InstallEnv $f.Script @{ LOCALAPPDATA = ''; XDG_DATA_HOME = $xdg; HOME = (Join-Path $TestDrive 'h2'); USERPROFILE = (Join-Path $TestDrive 'h2') }
+        $r.Exit | Should -Be 0 -Because $r.Out
+        Test-Path (Join-Path $xdg 'review-relay' 'aisavedev' '.review-relay-extension') | Should -BeTrue
+    }
+    It 'falls back to ~/.local/share when neither LOCALAPPDATA nor XDG_DATA_HOME is set' {
+        $f = New-FakePlugin 'def-home'; $h = Join-Path $TestDrive 'h3'
+        $r = Invoke-InstallEnv $f.Script @{ LOCALAPPDATA = ''; XDG_DATA_HOME = ''; HOME = $h; USERPROFILE = $h }
+        $r.Exit | Should -Be 0 -Because $r.Out
+        Test-Path (Join-Path $h '.local' 'share' 'review-relay' 'aisavedev' '.review-relay-extension') | Should -BeTrue
     }
 }
