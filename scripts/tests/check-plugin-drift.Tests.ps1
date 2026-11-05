@@ -63,7 +63,7 @@ BeforeAll {
     # Runs the script WITHOUT -InstalledRoot, in a child pwsh whose environment is set explicitly, so the ambient machine (a developer's real
     # ~/.claude, a CI runner's LOCALAPPDATA) can never decide a row. An empty value removes the variable.
     function Invoke-DriftDefault {
-        param($Repo, $Sha, [hashtable]$Env, [string]$PluginPath = 'plugin')
+        param($Repo, $Sha, [hashtable]$Env, [string]$PluginPath = 'plugin', [string]$InstalledRoot)
         # The environment is set on THIS process around a plain `pwsh -File` call, exactly like Invoke-Drift, so a crash inside the script keeps
         # its real exit code. (A `pwsh -c '& script; exit $LASTEXITCODE'` wrapper turned a terminating error into exit 0: MEASURED while writing
         # these rows - the script threw "property 'Count' cannot be found" and the row saw 0.)
@@ -71,7 +71,8 @@ BeforeAll {
         foreach ($k in $Env.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k) }
         try {
             foreach ($k in $Env.Keys) { [Environment]::SetEnvironmentVariable($k, $(if ($Env[$k]) { [string]$Env[$k] } else { $null })) }
-            $out = & pwsh -NoProfile -File $script:Script -RepoRoot $Repo -Sha $Sha -PluginPath $PluginPath 2>&1 | Out-String
+            $extra = if ($InstalledRoot) { @('-InstalledRoot', $InstalledRoot) } else { @() }
+            $out = & pwsh -NoProfile -File $script:Script -RepoRoot $Repo -Sha $Sha -PluginPath $PluginPath @extra 2>&1 | Out-String
             $code = $LASTEXITCODE
         } finally {
             foreach ($k in $Env.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) }
@@ -575,6 +576,74 @@ Describe 'check-plugin-drift.ps1 - locating the install without -InstalledRoot' 
         $r = script:Run (New-ConfigDir @(script:Entry 'user' $drifted)) @{ LOCALAPPDATA = $lad }
         $r.Code | Should -Be 0 -Because "LOCALAPPDATA must still select the installer's copy; output was:`n$($r.Out)"
         $r.Out  | Should -Not -Match 'install located through' -Because 'the manifest must not even be read when LOCALAPPDATA is set'
+    }
+}
+
+Describe 'check-plugin-drift.ps1 - locating the install: precedence, config dir and scopes (AGY-TEST-AUDIT)' {
+    # Each row below was shown GREEN against a mutant of the script before it was written (the audit's four gaps, measured), then RED against
+    # that same mutant afterwards.
+    BeforeEach {
+        $script:Repo = New-FixtureRepo $script:Payload
+        $script:Good = New-CleanInstall
+        $script:Bad  = New-FixtureInstall @{ 'skills/a/SKILL.md' = "CHANGED`n"; 'hooks/h.sh' = "x`n"; 'plugin.json' = "{}`n" }
+        function script:Envr([string]$Cfg, [hashtable]$More = @{}) { $h = @{ CLAUDE_CONFIG_DIR = $Cfg; LOCALAPPDATA = ''; CLAVITY_INSTALLED_ROOT = '' }; foreach ($k in $More.Keys) { $h[$k] = $More[$k] }; $h }
+        function script:Ent([string]$Scope, [string]$Install, [string]$Project) {
+            $e = [ordered]@{ scope = $Scope; installPath = $Install; version = '0.15.0' }
+            if ($Project) { $e['projectPath'] = $Project }
+            $e
+        }
+        function script:LadWith([string]$Install) {
+            $lad = Join-Path $TestDrive ('lad-' + [Guid]::NewGuid().ToString('N'))
+            $target = Join-Path $lad 'Programs' 'clavity-dotnet' 'plugins' 'clavity'
+            $null = New-Item -ItemType Directory -Path (Split-Path $target -Parent) -Force
+            Copy-Item -LiteralPath $Install -Destination $target -Recurse
+            $lad
+        }
+    }
+
+    It 'prefers an explicit -InstalledRoot over CLAVITY_INSTALLED_ROOT, LOCALAPPDATA and the manifest (all pointing at a DRIFTED tree)' {
+        $cfg = New-ConfigDir @(script:Ent 'user' $script:Bad)
+        $r = Invoke-DriftDefault $script:Repo.Root $script:Repo.Sha (script:Envr $cfg @{ CLAVITY_INSTALLED_ROOT = $script:Bad; LOCALAPPDATA = (script:LadWith $script:Bad) }) -InstalledRoot $script:Good
+        $r.Code | Should -Be 0 -Because "the explicit parameter must win over every ambient source; output was:`n$($r.Out)"
+    }
+
+    It 'prefers CLAVITY_INSTALLED_ROOT over LOCALAPPDATA when both are set (on Windows LOCALAPPDATA is always set, so a swap would silently check the installer copy)' {
+        $cfg = New-ConfigDir @(script:Ent 'user' $script:Bad)
+        $r = Invoke-DriftDefault $script:Repo.Root $script:Repo.Sha (script:Envr $cfg @{ CLAVITY_INSTALLED_ROOT = $script:Good; LOCALAPPDATA = (script:LadWith $script:Bad) })
+        $r.Code | Should -Be 0 -Because "the override must be checked, not the Inno copy under LOCALAPPDATA; output was:`n$($r.Out)"
+    }
+
+    It 'falls back to ~/.claude under HOME when CLAUDE_CONFIG_DIR is unset' {
+        $home1 = Join-Path $TestDrive ('home-' + [Guid]::NewGuid().ToString('N'))
+        $null = New-Item -ItemType Directory -Path $home1 -Force
+        Copy-Item -LiteralPath (New-ConfigDir @(script:Ent 'user' $script:Good)) -Destination (Join-Path $home1 '.claude') -Recurse
+        # HOME and USERPROFILE together so $HOME means the same thing on Windows and POSIX.
+        $r = Invoke-DriftDefault $script:Repo.Root $script:Repo.Sha (script:Envr '' @{ HOME = $home1; USERPROFILE = $home1 })
+        $r.Code | Should -Be 0 -Because "the default config dir is ~/.claude; output was:`n$($r.Out)"
+        $r.Out  | Should -Match ([regex]::Escape((Join-Path $home1 '.claude'))) -Because 'the manifest that was read must be the one under HOME'
+    }
+
+    It 'accepts a managed entry (applies everywhere, no projectPath)' {
+        $r = Invoke-DriftDefault $script:Repo.Root $script:Repo.Sha (script:Envr (New-ConfigDir @(script:Ent 'managed' $script:Good)))
+        $r.Code | Should -Be 0 -Because $r.Out
+        $r.Out  | Should -Match 'scope=managed'
+    }
+
+    It 'accepts a project entry for THIS checkout and refuses one for another checkout (project is project-scoped, like local)' {
+        $r = Invoke-DriftDefault $script:Repo.Root $script:Repo.Sha (script:Envr (New-ConfigDir @(script:Ent 'project' $script:Good $script:Repo.Root)))
+        $r.Code | Should -Be 0 -Because $r.Out
+        $r.Out  | Should -Match 'scope=project'
+        $r = Invoke-DriftDefault $script:Repo.Root $script:Repo.Sha (script:Envr (New-ConfigDir @(script:Ent 'project' $script:Good (Join-Path $TestDrive 'some-other-checkout'))))
+        $r.Code | Should -Be 2 -Because "a project entry for another checkout must not be used; output was:`n$($r.Out)"
+        $r.Out  | Should -Match 'only for other checkouts'
+    }
+
+    It 'exits 2, not a crash, when scope or installPath is not a string' {
+        $r = Invoke-DriftDefault $script:Repo.Root $script:Repo.Sha (script:Envr (New-ConfigDir -Raw ('{"version":2,"plugins":{"clavity@clavity":[{"scope":5,"installPath":' + (ConvertTo-Json $script:Good) + '}]}}')))
+        $r.Code | Should -Be 2 -Because $r.Out
+        $r.Out  | Should -Match "lacks a string 'scope' or 'installPath'"
+        $r = Invoke-DriftDefault $script:Repo.Root $script:Repo.Sha (script:Envr (New-ConfigDir -Raw '{"version":2,"plugins":{"clavity@clavity":[{"scope":"user","installPath":null}]}}'))
+        $r.Code | Should -Be 2 -Because $r.Out
     }
 }
 
