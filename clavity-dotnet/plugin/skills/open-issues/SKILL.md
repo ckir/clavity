@@ -200,16 +200,33 @@ your summary. The summary is where these die. Capturing after summarizing is cap
 A SessionStart hook names the count and the oldest entry until the file is empty. To clear it, take each
 entry and do exactly one of:
 
-1. **PROMOTE** it to a tracked item with an owner and a slot - a `ROADMAP.md` entry, or a plan, or an
-   immediate fix if it is cheap enough to just do. Then delete the line. **Which `ROADMAP.md`:** this is a
-   monorepo and several exist. Promote into the ROADMAP of the product that OWNS the defective file. For
-   shared or root-level code (`scripts/`, root `docs/`, CI workflows), use `clavity-dotnet/ROADMAP.md`,
-   which already carries the cross-cutting sections.
+1. **PROMOTE** it to a tracked item with an owner and a slot - an entry in THIS repository's own tracker
+   file, or a plan, or an immediate fix if it is cheap enough to just do. The destination must be a file in
+   the repository: this skill has no way to write to an external issue system, so if the repository tracks
+   work only in one, record the item in the repository file or plan and say so to the owner.
+   - **Find the tracker.** Read the README, CONTRIBUTING and roadmap files and any file they point at for
+     housekeeping or open items (a roadmap may say "open items are tracked in X"), and list the repository
+     root for a to-do or backlog file (TODO.md, BACKLOG.md and the like), because a README often does not link them. Prefer a file
+     that names itself the list of open or housekeeping items. A product roadmap is NOT that unless it says
+     so, even if it already mentions similar topics.
+   - **Conform to it.** Use the target file's existing entry syntax; do not impose a format. If the
+     repository defines tracker-format rules (the paragraph below applies only then), follow them instead.
+   - **Order and record.** Write the tracker entry FIRST, then delete the line from
+     `.clavity/local-anomalies.md`: a session that dies between the two leaves a duplicate, not a lost
+     anomaly. State the destination and why in the commit message or to the owner, as DELETE does.
+   - **Nobody to ask, no tracker found, or two places fit equally.** Do not guess and do not park it. Append
+     `- [ ] <fact>` to an existing root to-do or backlog file; if there is none, create TODO.md at
+     the repository root. Say "unattended fallback" in the commit message. This can trip a repository's own
+     checks (a license-header gate, say), so run them.
+   - **If `clavity-dotnet/ROADMAP.md` exists** (the clavity monorepo, where several ROADMAPs exist): promote
+     into the ROADMAP of the product that OWNS the defective file. For shared or root-level code
+     (`scripts/`, root `docs/`, CI workflows), use `clavity-dotnet/ROADMAP.md`, which already carries the
+     cross-cutting sections.
 2. **DELETE** it with a recorded reason - it was wrong, it was already fixed, it does not meet the bar,
    or it is a duplicate. Say which, in the commit message or to the owner.
 
 <!-- tracker-format:begin -->
-**Writing a tracker entry** (full rules: `docs/tracker-format.md`): the heading is the TITLE ONLY; the next non-blank line is `**Status:** <TOKEN> <YYYY-MM-DD> - <one line>`. TOKEN is one of OPEN, SCHEDULED, IMPLEMENTED (open) or SHIPPED (cite a commit sha), CLOSED-BY-RULING (a ROADMAP entry needs a Non-goals bullet; a stub needs a `**Reopen if:**` line), KILLED (state why). Never put a status in the heading; an open sub-item gets its own entry. `just check-tracker-status` enforces this.
+**Writing a tracker entry.** Only if this repository has `docs/tracker-format.md` (the full rules are there); otherwise conform to the target file's existing entry syntax (for example `- [ ] <fact>`) and ignore the rest of this paragraph. The format: the heading is the TITLE ONLY; the next non-blank line is `**Status:** <TOKEN> <YYYY-MM-DD> - <one line>`. TOKEN is one of OPEN, SCHEDULED, IMPLEMENTED (open) or SHIPPED (cite a commit sha), CLOSED-BY-RULING (a ROADMAP entry needs a Non-goals bullet; a stub needs a `**Reopen if:**` line), KILLED (state why). Never put a status in the heading; an open sub-item gets its own entry. Where the repository defines `just check-tracker-status`, it enforces this.
 <!-- tracker-format:end -->
 
 **There is no third outcome. Nothing may sit "acknowledged" or "noted".** A parked state is how a list of

@@ -323,7 +323,7 @@ the token citing it. A token pointing at an entry that was never written is the 
 peer never writes to that file: a subagent REPORTS, the driver VERIFIES, the driver WRITES.
 
 <!-- tracker-format:begin -->
-**Writing a tracker entry** (full rules: `docs/tracker-format.md`): the heading is the TITLE ONLY; the next non-blank line is `**Status:** <TOKEN> <YYYY-MM-DD> - <one line>`. TOKEN is one of OPEN, SCHEDULED, IMPLEMENTED (open) or SHIPPED (cite a commit sha), CLOSED-BY-RULING (a ROADMAP entry needs a Non-goals bullet; a stub needs a `**Reopen if:**` line), KILLED (state why). Never put a status in the heading; an open sub-item gets its own entry. `just check-tracker-status` enforces this.
+**Writing a tracker entry.** Only if this repository has `docs/tracker-format.md` (the full rules are there); otherwise conform to the target file's existing entry syntax (for example `- [ ] <fact>`) and ignore the rest of this paragraph. The format: the heading is the TITLE ONLY; the next non-blank line is `**Status:** <TOKEN> <YYYY-MM-DD> - <one line>`. TOKEN is one of OPEN, SCHEDULED, IMPLEMENTED (open) or SHIPPED (cite a commit sha), CLOSED-BY-RULING (a ROADMAP entry needs a Non-goals bullet; a stub needs a `**Reopen if:**` line), KILLED (state why). Never put a status in the heading; an open sub-item gets its own entry. Where the repository defines `just check-tracker-status`, it enforces this.
 <!-- tracker-format:end -->
 
 **Completeness gate.** You may NOT propose a verdict that COMPLETES this run while any raised finding
