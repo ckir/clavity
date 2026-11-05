@@ -210,9 +210,9 @@ entry and do exactly one of:
      that names itself the list of open or housekeeping items. A product roadmap is NOT that unless it says
      so, even if it already mentions similar topics.
    - **Conform to it.** Use the target file's existing entry syntax; do not impose a format. If the
-     repository defines tracker-format rules (the paragraph below applies only then), follow them instead.
-   - **Order and record.** Write the tracker entry FIRST, then delete the line from
-     `.clavity/local-anomalies.md`: a session that dies between the two leaves a duplicate, not a lost
+     repository defines tracker-format rules (the tracker-format paragraph below applies only then), follow them instead.
+   - **Order and record.** Write the tracker entry FIRST (for an immediate fix, commit the fix FIRST),
+     then delete the line from `.clavity/local-anomalies.md`: a session that dies between the two leaves a duplicate, not a lost
      anomaly. State the destination and why in the commit message or to the owner, as DELETE does.
    - **Nobody to ask, no tracker found, or two places fit equally.** Do not guess and do not park it. Append
      `- [ ] <fact>` to an existing root to-do or backlog file; if there is none, create TODO.md at
