@@ -925,7 +925,7 @@ check-dangling-consumers.Tests.ps1                58,4s  18 tests   <- SLOW. Eac
                                                                       tests and the agent, as this file
                                                                       already warns above.
 check-member-docs.Tests.ps1                       7,3s   35 tests   <- FAST, re-measured 2026-08-05
-check-plugin-drift.Tests.ps1                    56-80s   35 tests   <- SLOW, NEW 2026-08-31. Two runs, [18 -> 35 2026-11-06: the Linux/macOS install lookup rows + the .in_use rows; time not re-measured]
+check-plugin-drift.Tests.ps1                    56-80s   37 tests   <- SLOW, NEW 2026-08-31. Two runs, [18 -> 35 2026-11-06: the Linux/macOS install lookup rows + the .in_use rows; time not re-measured; 35 -> 37 2026-11-06: the optional-version rows]
                                                                       backgrounded on an idle box: 45,3s
                                                                       cold / 39,2s warm at 8 rows. RE-
                                                                       MEASURED 2026-09-01 at 11 rows,

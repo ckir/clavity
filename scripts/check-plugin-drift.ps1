@@ -69,6 +69,10 @@ function ConvertTo-CanonicalPath([string]$Path) {
     $p.TrimEnd('/', '\')
 }
 
+# `version` and `projectPath` are OPTIONAL in the manifest schema, and reading a missing property THROWS under Set-StrictMode - which made a
+# perfectly valid entry without a `version` exit 1 (the DRIFT code) instead of being used (measured at the AGY-CAPSTONE of the Linux lookup).
+function Get-OptionalProp($Obj, [string]$Name) { if ($Obj -and $Obj.PSObject.Properties[$Name]) { $Obj.$Name } }
+
 function Resolve-ManifestInstallRoot([string]$Repo) {
     $cfg = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } elseif ($HOME) { Join-Path $HOME '.claude' } else { $null }
     if (-not $cfg) { Fail2 "no -InstalledRoot or CLAVITY_INSTALLED_ROOT was given, LOCALAPPDATA is not set, and neither CLAUDE_CONFIG_DIR nor HOME is, so the Claude plugin manifest cannot be located - nothing was checked" }
@@ -103,7 +107,7 @@ function Resolve-ManifestInstallRoot([string]$Repo) {
         # everywhere; local and project entries apply only to the checkout they name.
         if (-not $needsProject -or [string]::Equals((ConvertTo-CanonicalPath $e.projectPath), $repoCanon, $cmp)) { $applicable += $e }
     }
-    $describe = { param($list) ($list | ForEach-Object { "scope=$($_.scope)" + $(if ($_.PSObject.Properties['projectPath']) { " projectPath=$($_.projectPath)" } else { '' }) + " version=$($_.version) installPath=$($_.installPath)" }) -join '; ' }
+    $describe = { param($list) ($list | ForEach-Object { "scope=$($_.scope)" + $(if (Get-OptionalProp $_ 'projectPath') { " projectPath=$(Get-OptionalProp $_ 'projectPath')" } else { '' }) + " version=$(Get-OptionalProp $_ 'version') installPath=$($_.installPath)" }) -join '; ' }
     if ($applicable.Count -eq 0) {
         Fail2 "'$manifestPath' lists 'clavity@clavity' only for other checkouts ($(& $describe $all)), none applies to '$Repo' - $hint. Nothing was checked"
     }
@@ -118,7 +122,7 @@ function Resolve-ManifestInstallRoot([string]$Repo) {
     if (-not [IO.Path]::IsPathRooted($chosen.installPath)) {
         Fail2 "the installPath '$($chosen.installPath)' in '$manifestPath' is not an absolute path - $hint. Nothing was checked"
     }
-    Write-Host "check-plugin-drift: install located through '$manifestPath' (clavity@clavity scope=$($chosen.scope) version=$($chosen.version)): $($chosen.installPath)"
+    Write-Host "check-plugin-drift: install located through '$manifestPath' (clavity@clavity scope=$($chosen.scope) version=$(Get-OptionalProp $chosen 'version')): $($chosen.installPath)"
     $chosen.installPath
 }
 

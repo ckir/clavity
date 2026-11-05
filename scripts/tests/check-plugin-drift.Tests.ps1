@@ -462,6 +462,22 @@ Describe 'check-plugin-drift.ps1 - locating the install without -InstalledRoot' 
         $r.Out  | Should -Match ([regex]::Escape($script:Good))
     }
 
+    It 'accepts an entry with NO version (it is optional in the schema; reading it must not throw under StrictMode)' {
+        $e = [ordered]@{ scope = 'user'; installPath = $script:Good }
+        $r = script:Run (New-ConfigDir @($e))
+        $r.Code | Should -Be 0 -Because "a valid entry without a version must be used, not crash with the DRIFT code; output was:`n$($r.Out)"
+        $r.Out  | Should -Not -Match 'cannot be found on this object'
+    }
+
+    It 'still lists two version-less entries when refusing to guess (the listing reads the optional fields too)' {
+        $a = [ordered]@{ scope = 'user'; installPath = $script:Good }
+        $b = [ordered]@{ scope = 'user'; installPath = (New-CleanInstall) }
+        $r = script:Run (New-ConfigDir @($a, $b))
+        $r.Code | Should -Be 2 -Because $r.Out
+        $r.Out  | Should -Match 'will not guess'
+        $r.Out  | Should -Not -Match 'cannot be found on this object'
+    }
+
     It 'exits 2, naming the manifest, when the manifest does not exist (the case the old LOCALAPPDATA row pinned)' {
         $r = script:Run (Join-Path $TestDrive 'no-such-config')
         $r.Code | Should -Be 2 -Because $r.Out
