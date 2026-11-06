@@ -419,6 +419,18 @@ $skillRules = @(
            }
        } }
 
+    # 21.2 the REPLY-CAP clause (ROADMAP section 108). MEASURED: a 17.5 KB peer reply was generated as ONE agent step, so the
+    # driver's stall window elapsed with no new step and the ask returned possible_modal before the peer finished; the same brief
+    # capped at 6000 characters returned normally. Same '> ' payload-marker reasoning as 21.1: unmarked, it reads as a rule about the
+    # driver's own output. The needle pins the marker and the number, so a clause weakened to "keep it short" is rejected.
+    @{ Name = 'reply-cap clause'
+       AppliesTo = { param($ctx, $rule) $true }
+       Check = { param($ctx, $rule)
+           if ($ctx.Raw -notmatch '(?m)^ {0,3}> Keep your chat reply to at most 6000 characters\.') {
+               $ctx.Report("$($ctx.Rel) : missing the reply-cap clause as PAYLOAD text ('> Keep your chat reply to at most 6000 characters.') - without it a peer can generate one very long step, the driver's stall window elapses, and the ask returns possible_modal before the reply is finished (ROADMAP section 108)")
+           }
+       } }
+
     # The adversarial-panel-review skill DEFINES its terminal token. Its pasteable payload clause says "the terminal token" and the driver requires a
     # closing line that starts with PANEL VERDICT; when the skill never said what the token is, driving models filled in the [VERDICT: ...]
     # vocabulary of the other three disciplines and the driver flagged 56 complete flux replies as truncated (2026-10-27). Pinned by its two needles.

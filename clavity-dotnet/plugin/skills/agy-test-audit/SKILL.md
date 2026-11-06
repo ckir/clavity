@@ -97,6 +97,18 @@ same mismatch and burns a budget.
 > BEFORE it, in this order: your report, then any `[VERIFIED: ...]` block, then any closing
 > disclosures, then the token.
 
+**Cap the chat reply, and move the long analysis into a reply file.** Demand this in your payload too, and name the file
+(a `.clavity/scratch/<topic>/` path) so the peer writes it somewhere legal:
+
+> Keep your chat reply to at most 6000 characters. Write the complete analysis (every seat's prose, every
+> finding in full) to the reply file named in this brief, and let the chat reply carry only a one-line
+> summary per seat, then the report blocks this contract requires, then the echo, then the terminal token.
+
+MEASURED (ROADMAP section 108): an uncapped reply of 17.5 KB was generated as ONE agent step, so no new step appeared for a whole
+stall window and the driver's wait returned `possible_modal` (stall) before the peer finished; the same brief capped at 6000
+characters returned normally. The cap also spends fewer tokens per consult. It does not make a stall impossible - a peer that
+ignores it still stalls - so it is a mitigation, not the fix.
+
 MEASURED: several rounds had their ENTIRE report displaced by a closing pleasantry, because what the
 driver collects is the peer's FINAL message - and a terminal token alone does NOT fix it, since every one
 of those rounds already demanded one. The ordering half is not a style note either: where a discipline

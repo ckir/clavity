@@ -1358,6 +1358,46 @@ SCHEMAS = {
             }
         }
 
+        It 'REJECTS <skill> when its closer omits the reply-cap clause' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # ROADMAP section 108. Perturb exactly one skill (the scratch root holds all four, so the failure is on
+            # the PERTURBED one) and require exit 1 naming it. The mutant strips the marked payload line itself.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $body = $real -replace '(?m)^> Keep your chat reply to at most 6000 characters\..*$', ''
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS <skill> when the reply cap is weakened to a different number' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # DISTRACTOR: a near-miss ("60000") must be rejected, not only the absent clause.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $body = $real.Replace('at most 6000 characters.', 'at most 60000 characters.')
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            Remove-Item -Recurse -Force $scratch
+        }
+
         It 'ACCEPTS valid input a strict anchor used to reject - <case>' -ForEach @(
             @{ case = 'a QUOTED frontmatter name';   find = 'name: agy-first';                          repl = 'name: "agy-first"' },
             @{ case = 'an INDENTED anti-wrap clause'; find = "`n> Put nothing after the terminal token."; repl = "`n  > Put nothing after the terminal token." }
