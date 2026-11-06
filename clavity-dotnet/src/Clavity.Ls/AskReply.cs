@@ -52,7 +52,8 @@ public sealed record ActivityItem(int Kind, string Label, string? Summary);
 /// <summary>On agy_ask timeout: where agy was. NewAgySteps discounts the injected user step; LastStepClass splits
 /// a slow tool (don't abandon) from a true hang.</summary>
 public sealed record TimeoutDiagnostic(
-    int TotalSteps, int NewAgySteps, int LastStepKind, string LastStepClass, string? LastStepSummary);
+    int TotalSteps, int NewAgySteps, int LastStepKind, string LastStepClass, string? LastStepSummary,
+    int? LastStepStatus = null, int? LastStepTextLength = null);
 
 /// <summary>On a dead/failed clavity-ls -> agy channel: the underlying gRPC failure. StatusCode = the gRPC
 /// StatusCode name (e.g. "Unavailable"), or the concrete exception type name ("ObjectDisposed"/"LsDiscovery")

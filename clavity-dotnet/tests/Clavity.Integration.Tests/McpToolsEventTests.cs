@@ -51,6 +51,45 @@ public class McpToolsEventTests
     }
 
     [Fact]
+    public void A_modal_hang_reply_for_a_discipline_ask_names_the_peer_file_and_says_to_treat_it_as_untrusted()
+    {
+        // ROADMAP section 108: the peer may finish AFTER the stall report; the reply file is where it will appear.
+        var report = new ModalGuardReport("WaitFor", TimeSpan.FromSeconds(120), "agy may be stuck", IdleLimit.Stall);
+        var (root, _) = RunFault(new AgyModalHangException(report) { PeerFile = "/ws/.clavity/scratch/agy-replies/c-0.md" });
+
+        Assert.Equal("possible_modal", root.GetProperty("status").GetString());
+        Assert.Equal("/ws/.clavity/scratch/agy-replies/c-0.md", root.GetProperty("peerFile").GetString());
+        var note = root.GetProperty("peerFileNote").GetString()!;
+        Assert.Contains("UNTRUSTED", note);
+        Assert.Contains("idle", note);   // do not re-send until agy_status shows idle
+        Assert.True(root.TryGetProperty("recentEvents", out _));   // the fault ring still rides along
+    }
+
+    [Fact]
+    public void A_modal_hang_reply_for_an_ordinary_ask_has_no_peer_file_properties_at_all()
+    {
+        // The shape of the report for an ordinary ask is byte-for-byte what it was before section 108: the properties
+        // are ABSENT, not null.
+        var report = new ModalGuardReport("WaitFor", TimeSpan.FromSeconds(120), "agy may be stuck", IdleLimit.Stall);
+        var (root, _) = RunFault(new AgyModalHangException(report));
+
+        Assert.False(root.TryGetProperty("peerFile", out _));
+        Assert.False(root.TryGetProperty("peerFileNote", out _));
+    }
+
+    [Fact]
+    public void A_modal_hang_reply_carries_the_last_step_status_and_text_length_in_its_diagnostic()
+    {
+        var report = new ModalGuardReport("WaitFor", TimeSpan.FromSeconds(120), "agy may be stuck", IdleLimit.Stall);
+        var diag = new TimeoutDiagnostic(5, 3, 15, "assistant", "partial", LastStepStatus: 2, LastStepTextLength: 17500);
+        var (root, _) = RunFault(new AgyModalHangException(report, diag));
+
+        var d = root.GetProperty("diagnostic");
+        Assert.Equal(2, d.GetProperty("LastStepStatus").GetInt32());
+        Assert.Equal(17500, d.GetProperty("LastStepTextLength").GetInt32());
+    }
+
+    [Fact]
     public void A_modal_hang_reply_carries_the_ring_and_records_the_limit_in_its_outcome()
     {
         var report = new ModalGuardReport("WaitFor", TimeSpan.FromSeconds(120), "agy may be stuck", IdleLimit.Stall);

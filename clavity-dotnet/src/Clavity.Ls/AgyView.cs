@@ -285,7 +285,16 @@ public sealed class AgyView
                     throw;                 // a caller-cancel (Cancelled) is not a stale-catalog signal -> don't drop the cache; let it propagate (capstone F3).
                 }
 
-                var peerStillBusy = await WaitForIdleWithProgressAsync(client, conversationId, before, timeout, progress, cancellationToken);
+                bool peerStillBusy;
+                try
+                {
+                    peerStillBusy = await WaitForIdleWithProgressAsync(client, conversationId, before, timeout, progress, cancellationToken);
+                }
+                catch (AgyModalHangException ex) when (peerFile is not null)
+                {
+                    ex.PeerFile = peerFile;   // ROADMAP section 108: tell the driver where the finished reply will be.
+                    throw;
+                }
 
                 var full = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
                 var delta = full.Steps.Skip(before).ToList();
@@ -599,7 +608,12 @@ public sealed class AgyView
             : (last.UserInput is { } u && u.Text.Length > 0 ? u.Text
                : last.AssistantOutput is { } a && a.Text.Length > 0 ? a.Text : null);
         if (summary is not null) summary = TextCut.Prefix(summary, 500);
-        return new TimeoutDiagnostic(total, newAgy, lastKind, StepKind.Class(lastKind), summary);
+        // ROADMAP section 108 Phase 1: what a step that is still being generated looks like on the wire is UNVERIFIED
+        // (only status 3 = DONE and 6 are recorded in clavity.proto), so report the RAW status and the length of the last
+        // step's assistant text. The next real stall then settles whether a generating step is visible at all.
+        int? lastStatus = last?.Status;
+        int? lastTextLength = last?.AssistantOutput is { } ao ? ao.Text.Length : null;
+        return new TimeoutDiagnostic(total, newAgy, lastKind, StepKind.Class(lastKind), summary, lastStatus, lastTextLength);
     }
 
     /// <summary>

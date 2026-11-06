@@ -1208,6 +1208,97 @@ public class AgyAskIntegrationTests
         finally { Directory.Delete(dir, true); }
     }
 
+    // ---- ROADMAP section 108 Phase 1: what the stall report says about the last step, and where the reply will be ----
+
+    private static async Task<AgyModalHangException> StallAsync(
+        CascadeStep? last, string? expectTerminal = null, Action<FakeAskLs>? arrange = null, string? dirOverride = null)
+    {
+        var plan = last is null
+            ? new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false) }
+            : EndsTurnThenNeverIdles(last);
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        arrange?.Invoke(fake);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            return await Assert.ThrowsAsync<AgyModalHangException>(
+                () => view.AskAsync("review it", expectTerminal: expectTerminal));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_stall_on_a_not_done_assistant_step_reports_its_raw_status_and_text_length()
+    {
+        // The step the peer is generating when the window expires: status 2 (the fake's non-DONE value) and 16 characters.
+        var ex = await StallAsync(TurnEndNotDone("still generating"));
+        Assert.NotNull(ex.Diagnostic);
+        Assert.Equal(2, ex.Diagnostic!.LastStepStatus);
+        Assert.Equal("still generating".Length, ex.Diagnostic.LastStepTextLength);
+    }
+
+    [Fact]
+    public async Task A_stall_reports_the_status_of_whatever_the_last_step_is_not_a_constant()
+    {
+        // Control with DIFFERENT values: a DONE tool-kind step (status 3) holding 1 character of assistant output. A
+        // diagnostic that hard-coded the not-done case above would fail here.
+        var last = new CascadeStep { Kind = 21, Status = DoneStatus, AssistantOutput = new CascadeAssistantOutput { Text = "x" } };
+        var ex = await StallAsync(last);
+        Assert.Equal(DoneStatus, ex.Diagnostic!.LastStepStatus);
+        Assert.Equal(1, ex.Diagnostic.LastStepTextLength);
+    }
+
+    [Fact]
+    public async Task A_stall_whose_last_step_is_our_own_user_step_has_no_assistant_text_length()
+    {
+        // The dead-agy case: nothing after our injected user step. The text length is ASSISTANT text only.
+        var ex = await StallAsync(last: null);
+        Assert.Equal("user", ex.Diagnostic!.LastStepClass);
+        Assert.Null(ex.Diagnostic.LastStepTextLength);
+    }
+
+    [Fact]
+    public async Task A_stalled_discipline_ask_names_the_peer_reply_file()
+    {
+        var dir = TempDir();
+        try
+        {
+            var ws = ShieldedWorkspace(dir);
+            var ex = await StallAsync(TurnEndNotDone("still generating"), expectTerminal: "VERDICT:",
+                f => f.WorkspaceUris = new[] { new Uri(ws).AbsoluteUri });
+            Assert.Equal(Path.Combine(ws, ".clavity", "scratch", "agy-replies", "conv-1-0.md"), ex.PeerFile);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_stalled_ordinary_ask_names_no_peer_file_even_when_a_workspace_is_known()
+    {
+        var dir = TempDir();
+        try
+        {
+            var ws = ShieldedWorkspace(dir);
+            var ex = await StallAsync(TurnEndNotDone("still generating"), expectTerminal: null,
+                f => f.WorkspaceUris = new[] { new Uri(ws).AbsoluteUri });
+            Assert.Null(ex.PeerFile);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_stalled_discipline_ask_with_no_known_workspace_names_no_peer_file()
+    {
+        var ex = await StallAsync(TurnEndNotDone("still generating"), expectTerminal: "VERDICT:");
+        Assert.Null(ex.PeerFile);
+    }
+
     [Fact]
     public async Task A_turn_end_from_BEFORE_our_send_does_not_count_as_the_reply()
     {
