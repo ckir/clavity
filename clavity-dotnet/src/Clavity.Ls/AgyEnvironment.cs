@@ -25,6 +25,10 @@ public static class AgyEnvironment
     /// <summary>Env var: max seconds with NO agy step progress before agy_ask reports possible_modal(stall).</summary>
     public const string IdleStallSecondsVar = "CLAVITY_AGY_IDLE_STALL_SECONDS";
 
+    /// <summary>Env var: how long (seconds) a visibly still-generating assistant step may keep an ask alive past the stall
+    /// window before it is reported as possible_modal(generation_cap); 0 = never extend (the pre-section-108 behaviour).</summary>
+    public const string GenerationCapSecondsVar = "CLAVITY_AGY_GENERATION_CAP_SECONDS";
+
     /// <summary>Env var: absolute max total idle-wait (seconds) regardless of progress; 0 = unbounded.</summary>
     public const string IdleMaxSecondsVar = "CLAVITY_AGY_IDLE_MAX_SECONDS";
 

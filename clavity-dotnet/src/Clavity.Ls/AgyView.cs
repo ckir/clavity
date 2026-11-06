@@ -46,6 +46,13 @@ public sealed class AgyViewOptions
     /// 600s; <see cref="TimeSpan.Zero"/> = unbounded (rely purely on progress + the server idle signal).</summary>
     public TimeSpan IdleAbsoluteMax { get; init; } = TimeSpan.FromSeconds(600);
 
+    /// <summary>ROADMAP section 108: how long an assistant step that is visibly still being generated (kind 15, status 8) may
+    /// count as progress past the stall window, measured from the moment the wait first saw it generating. Env:
+    /// CLAVITY_AGY_GENERATION_CAP_SECONDS. Default 600s is a PLACEHOLDER (one measured generation took 140 s; the original
+    /// incident's reply file was written about 459 s after the send). <see cref="TimeSpan.Zero"/> disables the extension. It
+    /// never overrides <see cref="IdleAbsoluteMax"/>.</summary>
+    public TimeSpan GenerationCap { get; init; } = TimeSpan.FromSeconds(600);
+
     /// <summary>Where the server captures every ask's reply (ROADMAP section 74, C-capture) - the user-profile
     /// <c>.clavity/agy-replies</c> in production. Null disables the capture (tests / classic).</summary>
     public string? ReplyCaptureDir { get; init; }
@@ -429,6 +436,9 @@ public sealed class AgyView
         var lastProgress = before + 1;                // F5: +1 discounts our own injected Kind-14 user step.
         CascadeTrajectory? lastProbe = null;          // R5 F10: last successfully-fetched trajectory, reused for the diagnostic.
         var window = 0;                               // report counter: the ONLY monotonic value we can offer a progress sink.
+        // ROADMAP section 108: when the wait first saw the CURRENT last step generating, and at which step count. A new step
+        // (a different total) restarts the clock; a step that is no longer generating clears it.
+        (int Total, DateTime Since)? generating = null;
 
         while (true)
         {
@@ -536,8 +546,23 @@ public sealed class AgyView
                 }
             }
 
+            // ROADMAP section 108: is the last step an assistant step that is still being GENERATED (status 8)? Its text streams
+            // while the step COUNT stays flat, so the count-based progress test below cannot see it and a long single reply was
+            // reported as a stall. Measured from the first window that saw it, and bounded by GenerationCap (and, via the loop
+            // top and the clamp branch below, by IdleAbsoluteMax - this never overrides the budget).
+            var isGenerating = IsGeneratingAssistantStep(probe, before);
+            if (!isGenerating) generating = null;
+            else if (generating is not { } g || g.Total != total) generating = (total, DateTime.UtcNow);
+            var generationCap = _options.GenerationCap;
+            var generationAlive = isGenerating && generationCap > TimeSpan.Zero
+                && DateTime.UtcNow - generating!.Value.Since < generationCap;
+
             if (total > lastProgress)
                 lastProgress = total; // agy advanced -> reset the stall window and keep waiting.
+            else if (generationAlive)
+            {
+                // agy is visibly mid-reply: keep waiting a further window. The step count did not move, the step did.
+            }
             // agy produced nothing for a whole window AND its last step ended the turn: the reply is complete, and what
             // is keeping the conversation from going fully idle is not the turn - typically background shell tasks
             // that never exited (live 2026-09-17: four path-less `rg` commands blocked on stdin held a finished review
@@ -566,9 +591,23 @@ public sealed class AgyView
                 // TOTAL budget ran out — NOT a stall. Reporting Stall would send the operator to the wrong knob
                 // (CLAVITY_AGY_IDLE_STALL_SECONDS) when CLAVITY_AGY_IDLE_MAX_SECONDS is the binding cap.
                 throw BuildModalHang(probe, before, start, IdleLimit.AbsoluteMax);
+            // The extension was on (cap > 0), the step was generating, and the cap is spent: say so, with its own knob.
+            else if (isGenerating && generationCap > TimeSpan.Zero)
+                throw BuildModalHang(probe, before, start, IdleLimit.GenerationCap);
             else
                 throw BuildModalHang(probe, before, start, IdleLimit.Stall);
         }
+    }
+
+    /// <summary>The trajectory has grown past our own injected user step (index <paramref name="before"/>) and its LAST step is
+    /// a kind-15 assistant step with <see cref="StepKind.GeneratingStatus"/>: agy is mid-reply. Exact match on the one verified
+    /// value, never "any status other than done": a tool step, a killed task (status 6) or an unknown status must not extend
+    /// the wait.</summary>
+    public static bool IsGeneratingAssistantStep(CascadeTrajectory trajectory, int before)
+    {
+        if (trajectory.Steps.Count <= before + 1) return false;
+        var last = trajectory.Steps[^1];
+        return last.Kind == StepKind.AssistantKind && last.Status == StepKind.GeneratingStatus;
     }
 
     /// <summary>agy's turn is over: the trajectory has grown past our own injected user step (index

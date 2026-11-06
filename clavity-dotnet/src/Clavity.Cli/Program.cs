@@ -42,6 +42,9 @@ if (args.Length > 0 && args[0] == "--mcp")
         IdleStallWindow = AgyEnvironment.ResolveSeconds(
             Environment.GetEnvironmentVariable(AgyEnvironment.IdleStallSecondsVar),
             AgyView.DefaultIdleWaitTimeout),
+        GenerationCap = AgyEnvironment.ResolveSeconds(
+            Environment.GetEnvironmentVariable(AgyEnvironment.GenerationCapSecondsVar),
+            TimeSpan.FromSeconds(600), allowZero: true),
         IdleAbsoluteMax = AgyEnvironment.ResolveSeconds(
             Environment.GetEnvironmentVariable(AgyEnvironment.IdleMaxSecondsVar),
             TimeSpan.FromSeconds(600), allowZero: true),
