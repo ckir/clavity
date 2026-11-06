@@ -1400,6 +1400,43 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
+    public async Task The_generation_cap_is_measured_from_the_first_window_that_saw_the_step_generating_not_from_the_send()
+    {
+        // AGY-CAPSTONE r2 MG-1. Twelve progress-only windows (>= 1200 ms at a 100 ms stall window) pass BEFORE the generating
+        // step first appears; the cap is 1000 ms. Measured from the SEND the cap would already be spent at first sight and the
+        // ask would end in generation_cap; measured from first sight (correct) two flat windows follow and the reply is delivered.
+        var plan = Enumerable.Range(0, 12).Select(_ => new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false))
+            .Concat(new[]
+            {
+                new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, AppendAfter: Generating("partial")),
+                new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false),
+                new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),
+            }).ToArray();
+        var (fake, reply, hang) = await AskGeneratingAsync(plan, TimeSpan.FromMilliseconds(1000), TimeSpan.Zero, stallMs: 100);
+        Assert.Null(hang);
+        Assert.EndsWith("the reply", reply!.Answer);
+        Assert.Equal(15, fake.WaitCalls);
+    }
+
+    [Fact]
+    public async Task The_generation_clock_restarts_when_a_different_step_starts_generating()
+    {
+        // AGY-CAPSTONE r2 MG-1 / the case ROADMAP section 108 declared untested. Step A appears at window 0; step B (a DIFFERENT
+        // step count) appears at window 10 (>= 2000 ms at a 200 ms window); then 14 flat windows follow. The cap is 4000 ms:
+        // from A the whole wait is >= 4800 ms (spent), from B it is about 3000 ms (alive). Only a clock that RESTARTS on a
+        // new generating step delivers the reply.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, AppendAfter: Generating("step A")) }
+            .Concat(Enumerable.Range(0, 9).Select(_ => new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false)))
+            .Concat(new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, AppendAfter: Generating("step B")) })
+            .Concat(Enumerable.Range(0, 13).Select(_ => new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false)))
+            .Concat(new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) }).ToArray();
+        var (fake, reply, hang) = await AskGeneratingAsync(plan, TimeSpan.FromMilliseconds(4000), TimeSpan.Zero, stallMs: 200);
+        Assert.Null(hang);
+        Assert.EndsWith("the reply", reply!.Answer);
+        Assert.Equal(1 + 9 + 1 + 13 + 1, fake.WaitCalls);
+    }
+
+    [Fact]
     public async Task A_quota_stop_in_agys_log_since_the_send_vetoes_the_extension_and_the_ask_stalls_at_the_ordinary_window()
     {
         // An exhausted peer may leave its step marked generating; the extension must not delay that report by the whole cap.

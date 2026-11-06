@@ -428,7 +428,7 @@ public sealed class AgyView
     /// window, so a planner step that is followed by more work is never mistaken for the answer.</para></summary>
     private async Task<bool> WaitForIdleWithProgressAsync(
         LsClient client, string conversationId, int before, TimeSpan? stallOverride,
-        IProgress<AgyWaitProgress>? progress, CancellationToken cancellationToken, long? quotaLogMark = null)
+        IProgress<AgyWaitProgress>? progress, CancellationToken cancellationToken, long? quotaLogMark)
     {
         var stallWindow = stallOverride ?? _options.IdleStallWindow;
         var absoluteMax = _options.IdleAbsoluteMax;   // TimeSpan.Zero => unbounded
