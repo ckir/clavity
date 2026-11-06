@@ -1,4 +1,18 @@
 # dotnet changelog
+## 0.16.0 - 2026-11-06
+
+### Features
+- feat(clavity-ls): a long single reply no longer reads as a stall (ROADMAP §108 phases 1 and 2) (#108)
+- feat(clavity-ls): event log - fault-reply ring, stderr echo, opt-in CLAVITY_LS_LOG file (#105)
+
+### Fixes
+- fix(golden-header): tolerate sharing violations on snapshot read and copy under concurrent commits (#112)
+- fix(golden-header): a lost race on the snapshot-ring prune no longer fails the commit (#111)
+- fix(skills): cap the peer's chat reply in every discipline brief (ROADMAP §108 candidate d) (#106)
+- fix(skills): fold capstone r2 - test-audit deferral destination is the repo's own tracker
+- fix(skills): fold capstone r1 - tracker-paragraph pointer, immediate-fix order, hook wording
+- fix(skills): make open-issues triage portable to host repositories
+
 ## 0.15.0 - 2026-11-04
 
 ### Features

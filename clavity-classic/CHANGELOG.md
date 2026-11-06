@@ -1,4 +1,12 @@
 # classic changelog
+## 0.12.2 - 2026-11-06
+
+### Fixes
+- fix(skills): cap the peer's chat reply in every discipline brief (ROADMAP §108 candidate d) (#106)
+- fix(skills): fold capstone r2 - test-audit deferral destination is the repo's own tracker
+- fix(skills): fold capstone r1 - tracker-paragraph pointer, immediate-fix order, hook wording
+- fix(skills): make open-issues triage portable to host repositories
+
 ## 0.12.1 - 2026-11-04
 
 ### Fixes
