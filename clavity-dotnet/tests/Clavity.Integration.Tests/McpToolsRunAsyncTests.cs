@@ -18,7 +18,7 @@ public class McpToolsRunAsyncTests
 {
     private static JsonElement Run(Exception toThrow)
     {
-        var json = McpTools.RunAsync<object>(() => throw toThrow).GetAwaiter().GetResult();
+        var json = McpTools.RunAsync<object>("agy_ask", new LsEventLog(), () => throw toThrow).GetAwaiter().GetResult();
         return JsonDocument.Parse(json).RootElement.Clone();
     }
 

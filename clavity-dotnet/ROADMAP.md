@@ -4621,6 +4621,16 @@ Spec: `docs/superpowers/specs/2026-11-03-start-profile-design.md`. Panel history
 - `umbrella-release.yml` still passes `needs.publish.outputs.tag` straight into the release-channel `run:` line, and `build-dotnet.yml` the validated version, because `marketplace-manifest.Tests.ps1` and `release-workflow-refs.Tests.ps1` pin the text verbatim. `republish-member.yml` builds the dispatch ref but attaches assets to the input tag with no check that the built version matches.
 - The real terminal launch path in `RealStartEffects` (starting the terminal, shell and launch commands) has no behavioural test beyond `RunCaptured`.
 
+### §108 — `agy_ask` reports `possible_modal` (stall) while agy is generating one long reply step, and the finished reply is then orphaned
+
+**Status:** OPEN 2026-11-06 - nothing built; found while running the AGY-CAPSTONE of the event-log branch (`feat/clavity-ls-event-log`). The ask was sent about 05:39 and returned `possible_modal` (`limit: stall`, `elapsedSeconds` 480.2) with agy at 66 steps, the last an assistant step that was not yet done. agy was producing one very long report (17.5 KB) as a single step, so no new step appeared for a whole stall window. It then finished: its reply file was written at 05:46:39, after the ask had already returned, and the chat reply followed (70 steps, idle).
+
+Why the existing rescue did not fire: `WaitForIdleWithProgressAsync` delivers a reply on a no-progress window only when `TurnEnded` holds (the last step is a DONE planner response requesting no tools). A step that is still being generated is not done, so the wait ends in `BuildModalHang(... IdleLimit.Stall)`. The stall window is the default 120 s: the plugin's `.mcp.json` sets `CLAVITY_AGY_IDLE_MAX_SECONDS` (1800) but not `CLAVITY_AGY_IDLE_STALL_SECONDS`. The hint text already names this case ("a single long step"), but nothing recovers the reply: the server's reply capture only runs on a returned reply, so the file agy wrote sat in `.clavity/scratch/agy-replies/` until the driver looked there by hand.
+
+Candidate fixes, none chosen: (a) set `CLAVITY_AGY_IDLE_STALL_SECONDS` in the plugin's `.mcp.json` (read only at server start); (b) treat a last assistant step that is still generating as progress for the stall window; (c) when a discipline ask stalls, say in the `possible_modal` reply where the peer's reply file will appear; (d) tell the peer in the driver guidance to cap its chat reply and put the long analysis in the reply file. Pick after measuring how long the longest real consult reply takes to generate.
+
+**Next:** run the full ceremony on this item (AGY-FIRST on the fork, then implement, capstone, test-audit).
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the

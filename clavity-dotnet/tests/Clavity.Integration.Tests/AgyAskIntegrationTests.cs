@@ -2844,4 +2844,87 @@ public class AgyAskIntegrationTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    // AGY-FIRST clavity-ls-logging: the server's event log, driven end to end through a real view against the fake LS.
+    [Fact]
+    public async Task A_healthy_status_poll_records_its_events_but_carries_no_ring_in_its_reply()
+    {
+        var fake = new FakeAskLs("conv-1", "x", TimeSpan.Zero, Array.Empty<CascadeStep>());
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var log = new LsEventLog();
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Events = log });
+            var json = await McpTools.AgyStatus(view);
+
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            // OMITTED, not null: a routine pre-fire poll is byte-for-byte what it was before the event log existed.
+            Assert.False(doc.RootElement.TryGetProperty("RecentEvents", out _));
+            var events = log.Snapshot().Select(l => System.Text.Json.JsonDocument.Parse(l).RootElement.Clone()).ToArray();
+            Assert.Equal(new[] { "start", "connect", "end" }, events.Select(e => e.GetProperty("phase").GetString()).ToArray());
+            Assert.Equal("cli.log", events[1].GetProperty("endpoint_src").GetString());
+            Assert.Equal("success", events[2].GetProperty("outcome").GetString());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task An_ask_records_the_model_it_drives_with_and_where_that_came_from()
+    {
+        var initial = new[] { new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = "original" } } };
+        var fake = new FakeAskLs("conv-1", "agy reply here", TimeSpan.FromMilliseconds(50), initial);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var log = new LsEventLog();
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Events = log });
+            await McpTools.AgyAsk(view, "please do X", new CollectingProgress<ProgressNotificationValue>());
+
+            var events = log.Snapshot().Select(l => System.Text.Json.JsonDocument.Parse(l).RootElement.Clone()).ToArray();
+            var model = Assert.Single(events, e => e.GetProperty("phase").GetString() == "model");
+            Assert.Equal("agy_ask", model.GetProperty("tool").GetString());
+            Assert.True(model.GetProperty("model").GetInt32() > 0);
+            Assert.False(string.IsNullOrEmpty(model.GetProperty("model_src").GetString()));
+            Assert.Equal("start", events[0].GetProperty("phase").GetString());
+            Assert.Equal("success", events[^1].GetProperty("outcome").GetString());
+            // No payload: neither the prompt nor the reply text may appear anywhere in the ring.
+            Assert.DoesNotContain(log.Snapshot(), l => l.Contains("please do X") || l.Contains("agy reply here"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_long_ask_records_one_progress_event_per_elapsed_window_with_the_elapsed_time()
+    {
+        // The silent gap of a long wait is the thing the log exists to explain: each elapsed window leaves a line.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false),
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),
+        };
+        var fake = new FakeAskLs("conv-1", "final answer", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var log = new LsEventLog();
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog, Events = log,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150), IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            await McpTools.AgyAsk(view, "do a long thing", new CollectingProgress<ProgressNotificationValue>());
+
+            var progress = log.Snapshot().Select(l => System.Text.Json.JsonDocument.Parse(l).RootElement.Clone())
+                .Where(e => e.GetProperty("phase").GetString() == "progress").ToArray();
+            Assert.Equal(2, progress.Length);   // two ELAPSED windows; the window that went idle reports nothing
+            Assert.All(progress, e => Assert.Equal("agy_ask", e.GetProperty("tool").GetString()));
+            Assert.True(progress[0].GetProperty("dur_ms").GetInt64() >= 100);   // the stall window is 150 ms
+            Assert.True(progress[1].GetProperty("dur_ms").GetInt64() >= progress[0].GetProperty("dur_ms").GetInt64());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

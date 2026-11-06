@@ -75,4 +75,30 @@ public class EndpointConnectTests
             File.Delete(epFile);
         }
     }
+
+    [Fact]
+    public async Task Connecting_through_the_endpoint_file_is_recorded_as_such_and_never_logs_the_token()
+    {
+        var fake = new TokenAndConvLs();
+        await using var app = await FakeLsHost.StartAsync(fake);
+        var port = FakeLsHost.PortOf(app);
+
+        var epFile = Path.Combine(Path.GetTempPath(), $"agy-endpoint-{Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(epFile, $$"""{"csrf":"tok-secret-123","addr":"localhost:{{port}}","published":"x"}""");
+        try
+        {
+            var log = new Clavity.Ls.LsEventLog();
+            var view = new AgyView(new AgyViewOptions { CliLogPath = @"C:\nonexistent\cli.log", EndpointPath = epFile, Events = log });
+            await view.LookAsync();
+
+            var connect = Assert.Single(log.Snapshot(), l => l.Contains("\"connect\""));
+            Assert.Contains("\"endpoint_src\":\"file\"", connect);
+            // The endpoint file carries a live CSRF token; no line may ever hold it, nor the file's path or port.
+            Assert.DoesNotContain(log.Snapshot(), l => l.Contains("tok-secret-123") || l.Contains(epFile));
+        }
+        finally
+        {
+            File.Delete(epFile);
+        }
+    }
 }

@@ -671,4 +671,59 @@ public class AgyChannelDownTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    // AGY-FIRST clavity-ls-logging: a FAULT reply carries the ring, so the failing reply itself says what the server did.
+    [Fact]
+    public async Task Dead_channel_agy_status_carries_the_ring_ending_in_its_own_fault()
+    {
+        var fake = new FakeChannelDownLs("conv-1", StatusCode.Unavailable);
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var log = new LsEventLog();
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Events = log });
+            var json = await McpTools.AgyStatus(view);
+
+            using var doc = JsonDocument.Parse(json);
+            var ring = doc.RootElement.GetProperty("RecentEvents").EnumerateArray()
+                .Select(e => JsonDocument.Parse(e.GetString()!).RootElement.Clone()).ToArray();
+            Assert.Equal("start", ring[0].GetProperty("phase").GetString());
+            Assert.Equal("agy_status", ring[0].GetProperty("tool").GetString());
+            // The reply is built inside StatusAsync's catch, before the tool wrapper records its end event, so the view
+            // records a `fault` event first: the ring in the reply ends AT the fault, not one step short of it.
+            Assert.Equal("fault", ring[^1].GetProperty("phase").GetString());
+            Assert.Equal("channel_down", ring[^1].GetProperty("outcome").GetString());
+            // ...and the log goes on to close the call with the same outcome.
+            var last = JsonDocument.Parse(log.Snapshot()[^1]).RootElement;
+            Assert.Equal("end", last.GetProperty("phase").GetString());
+            Assert.Equal("channel_down", last.GetProperty("outcome").GetString());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task Dead_channel_agy_ask_envelope_carries_the_ring_including_its_end_event()
+    {
+        var fake = new FakeChannelDownLs("conv-1", StatusCode.Unavailable);
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Events = new LsEventLog() });
+            var result = await McpTools.AgyAsk(view, "hi", new CollectingProgress<ProgressNotificationValue>());
+
+            using var doc = JsonDocument.Parse(((TextContentBlock)result.Content[0]).Text);
+            var ring = doc.RootElement.GetProperty("recentEvents").EnumerateArray()
+                .Select(e => JsonDocument.Parse(e.GetString()!).RootElement.Clone()).ToArray();
+            // AGY-TEST-AUDIT GAP-PP1: the ring starts at the call's own start event, so nothing before the last is lost.
+            Assert.Equal("start", ring[0].GetProperty("phase").GetString());
+            Assert.Equal("agy_ask", ring[0].GetProperty("tool").GetString());
+            var last = ring[^1];
+            Assert.Equal("end", last.GetProperty("phase").GetString());
+            Assert.Equal("agy_ask", last.GetProperty("tool").GetString());
+            Assert.Equal("channel_down", last.GetProperty("outcome").GetString());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

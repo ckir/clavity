@@ -24,8 +24,15 @@ if (args.Length > 0 && args[0] == "--mcp")
     var installRoot = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
     var manualsDir = EscalationIndex.ResolveManualsDir(
         Environment.GetEnvironmentVariable(EscalationIndex.PluginRootVar), installRoot);
+    var events = new LsEventLog(
+        Console.Error,
+        LsEventLog.ResolveFilePath(
+            Environment.GetEnvironmentVariable(LsEventLog.LogVar),
+            Environment.GetEnvironmentVariable(AgyEnvironment.SessionIdVar),
+            Environment.ProcessId));
     var options = new AgyViewOptions
     {
+        Events = events,
         CliLogPath = AgyEnvironment.ResolveCliLogPath(
             Environment.GetEnvironmentVariable(AgyEnvironment.LogPathVar), agyDir),
         GoldenHeaderDir = GoldenHeader.ResolveDir(

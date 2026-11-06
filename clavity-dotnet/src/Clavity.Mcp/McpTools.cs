@@ -35,11 +35,11 @@ public class McpTools
 
     [McpServerTool(Name = "agy_look"), Description("Look at the active agy conversation's cascade trajectory as a size-bounded JSON summary (no verbose ids).")]
     public async Task<string> AgyLook(CancellationToken cancellationToken = default)
-        => await RunAsync(() => _view.LookAsync(cancellationToken: cancellationToken));
+        => await RunAsync("agy_look", _view.Events, () => _view.LookAsync(cancellationToken: cancellationToken));
 
     [McpServerTool(Name = "agy_status"), Description("Report whether the active agy conversation is idle, working, or unknown (pre-fire check), plus cascade id and step count.")]
     public async Task<string> AgyStatus(CancellationToken cancellationToken = default)
-        => await RunAsync(() => _view.StatusAsync(cancellationToken));
+        => await RunAsync("agy_status", _view.Events, () => _view.StatusAsync(cancellationToken), StatusOutcome);
 
     [McpServerTool(Name = "agy_ask"), Description("Send a message to the active agy conversation and return agy's reply (size-bounded JSON) once the conversation goes idle. WRITE: consumes quota and posts a visible message in the user's agy.")]
     public async Task<CallToolResult> AgyAsk(
@@ -55,11 +55,15 @@ public class McpTools
         // Progress carries `window`, NOT a step count: the MCP contract requires the reported value to increase with
         // every notification, and a window that elapses while agy produced nothing leaves the step count unchanged.
         // The step counts go in the message, where they are informative without having to be monotonic.
-        var relay = new RelayProgress(p => progress.Report(new ProgressNotificationValue
+        var relay = new RelayProgress(p =>
         {
-            Progress = p.Window,
-            Message = $"agy working — {p.NewSteps} new step(s), {p.TotalSteps} total, {p.Elapsed.TotalSeconds:F0}s elapsed",
-        }));
+            _view.Events.Record("agy_ask", "progress", durMs: (long)p.Elapsed.TotalMilliseconds);
+            progress.Report(new ProgressNotificationValue
+            {
+                Progress = p.Window,
+                Message = $"agy working — {p.NewSteps} new step(s), {p.TotalSteps} total, {p.Elapsed.TotalSeconds:F0}s elapsed",
+            });
+        });
         // THE INJECTION POINT. The caller names its discipline; the driver supplies the token. A caller
         // cannot mistype "[VERDICT:" into a silent opt-out, because it never types it.
         var expectTerminal = DisciplineContract.TerminalTokenFor(discipline);
@@ -77,12 +81,12 @@ public class McpTools
         // against a reply that does not exist. A local stays null on that path, which is the correct
         // answer - no reply, no verdict. (Capstone R1, State Corruptor.)
         AskReply? reply13b = null;
-        var json = await RunAsync(async () =>
+        var json = await RunAsync("agy_ask", _view.Events, async () =>
         {
             var r = await _view.AskAsync(message, progress: relay, expectTerminal: expectTerminal, expectEcho: expectEcho, cancellationToken: cancellationToken);
             reply13b = r;
             return r;
-        });
+        }, AskOutcome);
         var blocks = new List<ContentBlock> { new TextContentBlock { Text = json } };
         var guidance = _view.TryTakeGuidanceBlock();
         if (guidance is not null) blocks.Add(new TextContentBlock { Text = guidance });
@@ -221,16 +225,28 @@ public class McpTools
         public void Report(AgyWaitProgress value) => onReport(value);
     }
 
-    // Serialize the result, or — when agy has no conversation yet — a typed "waiting" object that tells Claude to
+    // Serialize the result, or - when agy has no conversation yet - a typed "waiting" object that tells Claude to
     // wait for the human and NOT auto-retry (spec §6).
-    internal static async Task<string> RunAsync<T>(Func<Task<T>> action)
+    //
+    // Every call is bracketed by a start and an end event in `events` (see LsEventLog). A FAULT envelope additionally carries
+    // `recentEvents`, the ring at that moment INCLUDING this call's end event, so the failing reply itself says what the
+    // server did - the case where nothing was configured in advance and nothing else was captured.
+    internal static async Task<string> RunAsync<T>(
+        string tool, LsEventLog events, Func<Task<T>> action, Func<T, string>? classify = null)
     {
+        events.Record(tool, "start");
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        void End(string outcome) => events.Record(
+            tool, "end", durMs: (long)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds, outcome: outcome);
         try
         {
-            return JsonSerializer.Serialize(await action());
+            var result = await action();
+            End(classify?.Invoke(result) ?? "success");
+            return JsonSerializer.Serialize(result);
         }
         catch (AgyModalHangException ex)
         {
+            End("possible_modal_" + ex.Report.Limit);
             return JsonSerializer.Serialize(new
             {
                 status = "possible_modal",
@@ -239,20 +255,24 @@ public class McpTools
                 limit = ex.Report.Limit,
                 hint = ex.Report.Hint,
                 diagnostic = ex.Diagnostic,   // where agy stopped: slow tool vs hang (null if not computed).
+                recentEvents = events.Snapshot(),
             });
         }
         catch (AgyConversationPendingException ex)
         {
+            End("waiting_for_human");
             return JsonSerializer.Serialize(new { status = "waiting_for_human", message = ex.Message });
         }
         catch (Exception ex) when (ChannelDown.IsChannelDown(ex))
         {
             var diag = ChannelDown.Diagnose(ex);
+            End(ChannelDown.StatusFor(diag));
             return JsonSerializer.Serialize(new
             {
                 status = ChannelDown.StatusFor(diag),
                 diagnostic = diag,
                 hint = ChannelDown.Hint(diag),
+                recentEvents = events.Snapshot(),
             });
         }
         catch (AgyModelUnavailableException ex)
@@ -260,29 +280,47 @@ public class McpTools
             // ROADMAP section 71. Thrown by AgyView when the conversation's model is deprecated or unavailable; its
             // message says how to escape. It reaches here only when ChannelDown.IsChannelDown declined it (a wrapped
             // channel-down cause is diagnosed above), so this is the pure model case.
-            return JsonSerializer.Serialize(new { status = "model_unavailable", message = ex.Message });
+            End("model_unavailable");
+            return JsonSerializer.Serialize(new { status = "model_unavailable", message = ex.Message, recentEvents = events.Snapshot() });
         }
-        catch (Exception ex) when (ex is not OperationCanceledException
-                                   && ex is not Grpc.Core.RpcException { StatusCode: Grpc.Core.StatusCode.Cancelled })
+        catch (Exception ex) when (ex is OperationCanceledException
+                                   || ex is Grpc.Core.RpcException { StatusCode: Grpc.Core.StatusCode.Cancelled })
+        {
+            // A caller-cancel is left alone (the SDK rethrows it as a cancellation); it is only RECORDED.
+            End("cancelled");
+            throw;
+        }
+        catch (Exception ex)
         {
             // ROADMAP section 71. Anything else used to escape to the SDK, which reports only
-            // "An error occurred invoking 'agy_ask'." and keeps the cause for its log. A caller-cancel is left alone:
-            // the SDK rethrows it as a cancellation, which is the right answer for a cancelled ask. A gRPC call cancelled by the
-            // caller's token is an RpcException{Cancelled}, NOT an OperationCanceledException; ChannelDown.IsChannelDown excludes
-            // it on purpose, and the existing AgyChannelDownTests.A_grpc_cancelled_status_is_not_reported_as_channel_down requires
-            // it to propagate - a bare `is not OperationCanceledException` filter would turn it into a typed "error" (found by the
+            // "An error occurred invoking 'agy_ask'." and keeps the cause for its log. A caller-cancel is handled
+            // above: a gRPC call cancelled by the caller's token is an RpcException{Cancelled}, NOT an
+            // OperationCanceledException; ChannelDown.IsChannelDown excludes it on purpose, and the existing
+            // AgyChannelDownTests.A_grpc_cancelled_status_is_not_reported_as_channel_down requires it to propagate - a
+            // bare `is not OperationCanceledException` filter would turn it into a typed "error" (found by the
             // 2026-10-08 dry run).
-            return JsonSerializer.Serialize(new { status = "error", exception = ex.GetType().Name, message = ex.Message });
+            End("error");
+            return JsonSerializer.Serialize(new { status = "error", exception = ex.GetType().Name, message = ex.Message, recentEvents = events.Snapshot() });
         }
     }
+
+    /// <summary>The outcome token an ask that RETURNED a reply is recorded under: the strongest incompleteness first,
+    /// the same precedence the notices below use.</summary>
+    internal static string AskOutcome(AskReply r) =>
+        r.QuotaStop is not null ? "quota_stop"
+        : r.TerminalTokenMissing || r.EchoMissing ? "truncated"
+        : r.PeerStillBusy ? "peer_still_busy"
+        : "success";
+
+    internal static string StatusOutcome(AgyStatus s) => s.Diagnostic is null ? "success" : s.State;
 
     // Static wrappers for backward compatibility with tests that call McpTools.Method(view, ...) directly.
     // These are NOT marked with [McpServerTool] so they don't affect schema generation.
     public static async Task<string> AgyLook(AgyView view, CancellationToken cancellationToken = default)
-        => await RunAsync(() => view.LookAsync(cancellationToken: cancellationToken));
+        => await RunAsync("agy_look", view.Events, () => view.LookAsync(cancellationToken: cancellationToken));
 
     public static async Task<string> AgyStatus(AgyView view, CancellationToken cancellationToken = default)
-        => await RunAsync(() => view.StatusAsync(cancellationToken));
+        => await RunAsync("agy_status", view.Events, () => view.StatusAsync(cancellationToken), StatusOutcome);
 
     public static async Task<CallToolResult> AgyAsk(
         AgyView view, string message, IProgress<ProgressNotificationValue> progress,
