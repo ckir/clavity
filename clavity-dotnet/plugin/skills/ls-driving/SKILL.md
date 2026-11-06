@@ -81,6 +81,20 @@ human to open a NEW chat in agy and send it any first message. The server cannot
 ask lands in the old chat. The fresh chat has none of the earlier context, so the brief must stand alone
 (the seam file does). Small asks and follow-ups stay in the current thread.
 
+The driver's own bill has the same shape, MEASURED 2026-11-06 on one long session (a lead, not a law). The session had 1,253
+turns and 4 compactions; its context was about 248K tokens at the median (483K at most), and every turn re-reads all of it:
+about 317M cache-read tokens against 1.25M output tokens. `rtk cc-economics` (ccusage, so Claude Code only, all projects and all
+history on that machine) priced it at $3,836.69, an API-priced estimate that may not be what a plan charges; with the
+ratios that tool prints (output 5x, cache writes 1.25x, cache reads 0.1x, not checked against the price list) cache reads are
+about 60% of the spend, uncached input 16%, cache writes 12% and output 12%. So a returned result costs not its size once but its
+size times every later turn until the next compaction, and the levers are fewer turns (batch related commands into one
+call; each call is a turn that re-reads the whole context) and a smaller context (compact earlier, or start a fresh session
+for heavy work). Shrinking what the tools return buys little: in that session the `agy_ask` Activity lists were 1.2% of the
+re-read volume and the Answer text 3.6%, Bash output (already condensed by rtk) 10.5%. Moving content into a file does not
+make it free either: reading it is another turn. Two scope traps when you repeat this: `rtk gain` is global and mixes every
+agent and project that uses rtk (agy runs shell commands through its own `rtk_run`), and `cc-economics` sets Claude-only
+spend against that global saving, so its "0.2%" is an upper bound for the Claude side.
+
 ## Task-assignment protocol - what stops agy misfiring
 
 <!-- KEEP IN SYNC WITH driving (clavity-classic/plugin/skills/driving/SKILL.md) -->
