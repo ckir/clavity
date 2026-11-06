@@ -101,8 +101,10 @@ same mismatch and burns a budget.
 (a `.clavity/scratch/<topic>/` path) so the peer writes it somewhere legal:
 
 > Keep your chat reply to at most 6000 characters. Write the complete analysis (every seat's prose, every
-> finding in full) to the reply file named in this brief, and let the chat reply carry only a one-line
-> summary per seat, then the report blocks this contract requires, then the echo, then the terminal token.
+> finding in full) to the reply file named in this brief - writing that one file is the only exception to
+> "do not create any file" - and let the chat reply carry only a one-line summary per seat, then the report
+> blocks this contract requires, then the echo, then the terminal token. In the ordering above, "your report"
+> means that compact chat summary, not the full analysis.
 
 MEASURED (ROADMAP section 108): an uncapped reply of 17.5 KB was generated as ONE agent step, so no new step appeared for a whole
 stall window and the driver's wait returned `possible_modal` (stall) before the peer finished; the same brief capped at 6000

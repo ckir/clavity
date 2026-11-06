@@ -1398,6 +1398,45 @@ SCHEMAS = {
             Remove-Item -Recurse -Force $scratch
         }
 
+        It 'REJECTS <skill> when the reply-cap clause is truncated after the number' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # AGY-CAPSTONE (reply-cap) CAP-MG1: the opening sentence alone must not satisfy the rule. Drop the
+            # destination (and with it the review-only exception) but keep the first sentence intact.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $body = $real.Replace('to the reply file named in this brief', 'somewhere')
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS <skill> when the reply-cap clause loses its review-only exception' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $body = $real.Replace('is the only exception to', 'is unrelated to')
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            Remove-Item -Recurse -Force $scratch
+        }
+
         It 'ACCEPTS valid input a strict anchor used to reject - <case>' -ForEach @(
             @{ case = 'a QUOTED frontmatter name';   find = 'name: agy-first';                          repl = 'name: "agy-first"' },
             @{ case = 'an INDENTED anti-wrap clause'; find = "`n> Put nothing after the terminal token."; repl = "`n  > Put nothing after the terminal token." }
