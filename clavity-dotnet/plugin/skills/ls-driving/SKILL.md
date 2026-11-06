@@ -69,7 +69,8 @@ every step it takes. MEASURED 2026-11-06 on one fixed read-only brief, two runs 
 runs. The TOTAL did not follow: a long chat cost 1.96M over 10 calls once and 1.02M over 5 calls the second
 time (the peer answered from its memory of the earlier identical question and never re-ran the diff), against
 0.20M and 0.28M over 11 and 14 calls in fresh chats. A long chat idle for a while also pays one cold re-read of
-its whole context on its next message (203K uncached tokens, seen twice). Output tokens were higher in the
+its whole context on its next message (three such cold reads of the same chat, at 140K, 190K and 203K uncached
+tokens as it grew). Output tokens were higher in the
 fresh chats (about 11K against 2-7K), and the price of cached against uncached tokens is unmeasured. Treat it
 as: per-call context is reliably smaller, the total depends on how many calls the peer makes.
 
