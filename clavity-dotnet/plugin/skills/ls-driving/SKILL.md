@@ -60,6 +60,22 @@ You (Claude) drive a paired agy over its Language Server via three MCP tools exp
   intact. Do **not** treat null `Answer` as "no reply" and do **not** blindly re-ask; only re-ask if `Activity`
   has no assistant step, or `ActivityTruncated` is true and the tail you need was dropped.
 
+## Spend - open a fresh agy chat before a heavy consult
+
+Every `agy_ask` lands in agy's most-recently-active conversation, and agy re-reads that whole conversation on
+every step it takes. MEASURED 2026-11-06 on one fixed read-only brief, one run each: in a conversation that had
+grown to about 190K tokens the ask processed 1.96M context tokens over 10 calls; in a fresh chat it processed
+0.20M over 11 calls (about 9.6x less), and both gave the same answer. The saving is in re-read context only:
+output was higher in the fresh chat (11.2K against 6.7K) and its uncached input was not clearly lower, and the
+price of cached against uncached tokens is unmeasured. Treat it as a strong lead, not a proven ratio.
+
+So before a heavy, many-step consult (a capstone, a test audit, a panel round) in a long conversation, ask the
+human to open a NEW chat in agy and send it any first message. The server cannot start a conversation itself
+(it only reads and writes the most recent one), and a chat with no message does not exist for it yet: confirm
+`agy_status` now shows a different `CascadeId` with a few `TotalSteps`, and do not send before it does, or the
+ask lands in the old chat. The fresh chat has none of the earlier context, so the brief must stand alone
+(the seam file does). Small asks and follow-ups stay in the current thread.
+
 ## Task-assignment protocol - what stops agy misfiring
 
 <!-- KEEP IN SYNC WITH driving (clavity-classic/plugin/skills/driving/SKILL.md) -->
