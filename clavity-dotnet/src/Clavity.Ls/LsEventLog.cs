@@ -157,6 +157,7 @@ public sealed class LsEventLog : IDisposable
         {
             try { _file?.Dispose(); } catch (Exception) { /* closing a failed sink */ }
             _file = null;
+            _filePath = null;   // a disposed log must not quietly reopen its file on the next Record
         }
     }
 }

@@ -21,6 +21,24 @@ public class AgyStatusShapeTests
     }
 
     [Fact]
+    public void A_healthy_AgyStatus_serializes_byte_for_byte_as_it_did_before_the_event_log()
+    {
+        // RecentEvents is OMITTED when null (a routine pre-fire poll must not grow); Diagnostic and Hint stay as they were.
+        Assert.Equal(
+            "{\"CascadeId\":\"c\",\"TotalSteps\":3,\"State\":\"idle\",\"LastStepKind\":15,\"Diagnostic\":null,\"Hint\":null}",
+            JsonSerializer.Serialize(new AgyStatus("c", 3, "idle", 15)));
+    }
+
+    [Fact]
+    public void A_fault_AgyStatus_carries_the_ring_as_RecentEvents()
+    {
+        var json = JsonSerializer.Serialize(new AgyStatus("", 0, "channel_down", 0,
+            new ChannelDiagnostic("Unavailable", "x"), "h", new[] { "e1", "e2" }));
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal(new[] { "e1", "e2" }, doc.RootElement.GetProperty("RecentEvents").EnumerateArray().Select(e => e.GetString()).ToArray());
+    }
+
+    [Fact]
     public void Channel_down_AgyStatus_carries_the_diagnostic_and_hint()
     {
         var st = new AgyStatus("", 0, "channel_down", 0,

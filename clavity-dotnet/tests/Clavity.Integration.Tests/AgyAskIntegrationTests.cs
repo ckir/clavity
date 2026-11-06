@@ -2859,7 +2859,8 @@ public class AgyAskIntegrationTests
             var json = await McpTools.AgyStatus(view);
 
             using var doc = System.Text.Json.JsonDocument.Parse(json);
-            Assert.Equal(System.Text.Json.JsonValueKind.Null, doc.RootElement.GetProperty("RecentEvents").ValueKind);
+            // OMITTED, not null: a routine pre-fire poll is byte-for-byte what it was before the event log existed.
+            Assert.False(doc.RootElement.TryGetProperty("RecentEvents", out _));
             var events = log.Snapshot().Select(l => System.Text.Json.JsonDocument.Parse(l).RootElement.Clone()).ToArray();
             Assert.Equal(new[] { "start", "connect", "end" }, events.Select(e => e.GetProperty("phase").GetString()).ToArray());
             Assert.Equal("cli.log", events[1].GetProperty("endpoint_src").GetString());

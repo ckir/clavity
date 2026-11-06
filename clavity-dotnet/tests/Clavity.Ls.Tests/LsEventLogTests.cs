@@ -138,13 +138,14 @@ public sealed class LsEventLogTests : IDisposable
     }
 
     [Fact]
-    public void A_file_that_fails_mid_run_is_dropped_and_the_ring_keeps_recording()
+    public void A_disposed_log_keeps_recording_in_memory_but_never_reopens_its_file()
     {
         var path = Path.Combine(_dir, "events.log");
         var log = new LsEventLog(filePath: path);
         log.Record("agy_ask", "start");
-        log.Dispose();   // closes the stream under the writer; the next write must not throw into the caller
-        log.Record("agy_ask", "end", outcome: "success");
+        log.Dispose();
+        log.Record("agy_ask", "end", outcome: "success");   // must not throw, must not write the file again
+        Assert.Single(File.ReadAllLines(path));
         Assert.Equal(2, log.Snapshot().Count);
     }
 
