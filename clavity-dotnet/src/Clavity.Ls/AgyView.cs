@@ -49,6 +49,11 @@ public sealed class AgyViewOptions
     /// <summary>Where the server captures every ask's reply (ROADMAP section 74, C-capture) - the user-profile
     /// <c>.clavity/agy-replies</c> in production. Null disables the capture (tests / classic).</summary>
     public string? ReplyCaptureDir { get; init; }
+
+    /// <summary>The server's event log: an in-memory ring (always on) plus, in production, stderr and the opt-in
+    /// <see cref="LsEventLog.LogVar"/> file. The default records to memory only, so a test that injects
+    /// <see cref="Diagnostics"/> sees no extra lines.</summary>
+    public LsEventLog Events { get; init; } = new();
 }
 
 /// <summary>
@@ -60,6 +65,9 @@ public sealed class AgyView
 {
     private readonly AgyViewOptions _options;
     private int _uncheckedNoticeDelivered;
+
+    /// <summary>The event log the MCP tools record to and fault replies read from.</summary>
+    public LsEventLog Events => _options.Events;
 
     private readonly IListeningPorts _listening;
     private readonly IModalGuard _modalGuard;
@@ -211,7 +219,11 @@ public sealed class AgyView
             // propagates (F6); AgyConversationPendingException is NOT matched -> it flows to RunAsync's
             // waiting_for_human catch, unchanged.
             var diag = ChannelDown.Diagnose(ex);
-            return new AgyStatus("", 0, ChannelDown.StatusFor(diag), 0, diag, ChannelDown.Hint(diag));
+            // The fault reply carries the recent events: this is the moment an operator needs them, and a healthy
+            // poll stays as small as it was (RecentEvents is null there).
+            var faultState = ChannelDown.StatusFor(diag);
+            Events.Record("agy_status", "fault", outcome: faultState);   // so the ring below ends at the fault itself
+            return new AgyStatus("", 0, faultState, 0, diag, ChannelDown.Hint(diag), Events.Snapshot());
         }
     }
 
@@ -718,13 +730,19 @@ public sealed class AgyView
         string? staleNote = null;
         if (_options.EndpointPath is { Length: > 0 } epPath && AgyEndpoint.TryRead(epPath) is { } ep)
         {
-            if (_listening.IsListening(ep.Port)) return LsClient.ConnectToEndpoint(ep);
+            if (_listening.IsListening(ep.Port))
+            {
+                Events.Record(null, "connect", endpointSrc: "file");
+                return LsClient.ConnectToEndpoint(ep);
+            }
             staleNote = $"The published endpoint file {epPath} points at port {ep.Port}, which is not listening " +
                 "(stale: agy restarted, or it published the wrong address).";
         }
         try
         {
-            return LsClient.Connect(LsDiscovery.ReadCliLogText(_options.CliLogPath), _listening);
+            var viaLog = LsClient.Connect(LsDiscovery.ReadCliLogText(_options.CliLogPath), _listening);
+            Events.Record(null, "connect", endpointSrc: "cli.log");
+            return viaLog;
         }
         catch (LsDiscoveryException ex) when (staleNote is not null)
         {
@@ -833,8 +851,11 @@ public sealed class AgyView
         "The conversation's model is no longer available. In agy, pick a new model AND send a message so the " +
         "conversation records it, then retry.";
 
-    private void Surface(int model, ModelSource source) => Diag(
-        $"clavity: driving with model {model} (source: {source.ToString().ToLowerInvariant()})");
+    private void Surface(int model, ModelSource source)
+    {
+        Diag($"clavity: driving with model {model} (source: {source.ToString().ToLowerInvariant()})");
+        Events.Record("agy_ask", "model", model: model, modelSrc: source.ToString().ToLowerInvariant());
+    }
 
     /// <summary>Write one advisory line to the operator Diagnostics sink. A diagnostics write describes an
     /// operation and must never be able to kill it, so the failures a sink can produce - an I/O error (full disk),
