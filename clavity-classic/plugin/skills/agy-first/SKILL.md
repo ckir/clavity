@@ -75,7 +75,10 @@ same mismatch and burns a budget.
 > finding in full) to the reply file named in this brief - writing that one file is the only exception to
 > "do not create any file" - and let the chat reply carry only a one-line summary per seat, then the report
 > blocks this contract requires, then the echo, then the terminal token. In the ordering above, "your report"
-> means that compact chat summary, not the full analysis.
+> means that compact chat summary, not the full analysis. If the required blocks cannot fit in 6000 characters,
+> shorten each `detail` and drop the seat lines first: the cap never displaces a required block, the echo or the
+> terminal token. If the driver also asks you to copy your reply verbatim into its own reply file, that file holds
+> this compact chat reply; the analysis file is a separate one.
 
 MEASURED (ROADMAP section 108): an uncapped reply of 17.5 KB was generated as ONE agent step, so no new step appeared for a whole
 stall window and the driver's wait returned `possible_modal` (stall) before the peer finished; the same brief capped at 6000

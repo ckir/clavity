@@ -1437,6 +1437,31 @@ SCHEMAS = {
             Remove-Item -Recurse -Force $scratch
         }
 
+        It 'REJECTS <skill> when the reply-cap clause loses <what>' -ForEach @(
+            @{ skill = 'agy-first';                 what = 'its required-blocks precedence'; find = 'the cap never displaces a required block' },
+            @{ skill = 'agy-capstone';              what = 'its required-blocks precedence'; find = 'the cap never displaces a required block' },
+            @{ skill = 'agy-test-audit';            what = 'its required-blocks precedence'; find = 'the cap never displaces a required block' },
+            @{ skill = 'adversarial-panel-review';  what = 'its required-blocks precedence'; find = 'the cap never displaces a required block' },
+            @{ skill = 'agy-first';                 what = 'its driver-file note'; find = 'that file holds' },
+            @{ skill = 'agy-capstone';              what = 'its driver-file note'; find = 'that file holds' },
+            @{ skill = 'agy-test-audit';            what = 'its driver-file note'; find = 'that file holds' },
+            @{ skill = 'adversarial-panel-review';  what = 'its driver-file note'; find = 'that file holds' }
+        ) {
+            # AGY-CAPSTONE (reply-cap) r2: CAP-BS1 (the cap must not displace a required block) and CAP-PP3 (the driver's own
+            # reply-file request is a second file). Each phrase carries one of those two rules; dropping it must go red.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $body = $real.Replace($find, 'unrelated words')
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
+
         It 'ACCEPTS valid input a strict anchor used to reject - <case>' -ForEach @(
             @{ case = 'a QUOTED frontmatter name';   find = 'name: agy-first';                          repl = 'name: "agy-first"' },
             @{ case = 'an INDENTED anti-wrap clause'; find = "`n> Put nothing after the terminal token."; repl = "`n  > Put nothing after the terminal token." }

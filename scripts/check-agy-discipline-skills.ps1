@@ -430,9 +430,11 @@ $skillRules = @(
            # destination and the waiver. Pin the two phrases that carry them (each on one line, as shipped).
            $capOk = ($ctx.Raw -match '(?m)^ {0,3}> Keep your chat reply to at most 6000 characters\.') -and
                     $ctx.Raw.Contains('to the reply file named in this brief') -and
-                    $ctx.Raw.Contains('is the only exception to')
+                    $ctx.Raw.Contains('is the only exception to') -and
+                    $ctx.Raw.Contains('the cap never displaces a required block') -and
+                    $ctx.Raw.Contains('that file holds')
            if (-not $capOk) {
-               $ctx.Report("$($ctx.Rel) : missing or truncated reply-cap clause as PAYLOAD text ('> Keep your chat reply to at most 6000 characters.' plus the reply-file destination and the review-only exception) - without it a peer can generate one very long step, the driver's stall window elapses, and the ask returns possible_modal before the reply is finished (ROADMAP section 108)")
+               $ctx.Report("$($ctx.Rel) : missing or truncated reply-cap clause as PAYLOAD text ('> Keep your chat reply to at most 6000 characters.' plus the reply-file destination, the review-only exception, the required-blocks precedence and the driver-file note) - without it a peer can generate one very long step, the driver's stall window elapses, and the ask returns possible_modal before the reply is finished (ROADMAP section 108)")
            }
        } }
 
