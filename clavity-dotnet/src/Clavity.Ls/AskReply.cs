@@ -52,7 +52,8 @@ public sealed record ActivityItem(int Kind, string Label, string? Summary);
 /// <summary>On agy_ask timeout: where agy was. NewAgySteps discounts the injected user step; LastStepClass splits
 /// a slow tool (don't abandon) from a true hang.</summary>
 public sealed record TimeoutDiagnostic(
-    int TotalSteps, int NewAgySteps, int LastStepKind, string LastStepClass, string? LastStepSummary);
+    int TotalSteps, int NewAgySteps, int LastStepKind, string LastStepClass, string? LastStepSummary,
+    int? LastStepStatus = null, int? LastStepTextLength = null);
 
 /// <summary>On a dead/failed clavity-ls -> agy channel: the underlying gRPC failure. StatusCode = the gRPC
 /// StatusCode name (e.g. "Unavailable"), or the concrete exception type name ("ObjectDisposed"/"LsDiscovery")
@@ -82,6 +83,12 @@ public static class StepKind
 
     /// <summary>CascadeStep.status value of a finished step (clavity.proto field 4, wire-verified 2026-09-17).</summary>
     public const int DoneStatus = 3;
+
+    /// <summary>CascadeStep.status value of a kind-15 assistant step that is still being GENERATED. Measured by a read-only
+    /// probe on 2026-11-06 (ROADMAP section 108): 8 from the step's first appearance (with EMPTY text for about 60 s while
+    /// the model thinks), the text then streaming while the step COUNT stays flat, flipping to 3 when done. It is the one
+    /// verified non-done value for an assistant step, so it is matched exactly, never as "any non-3".</summary>
+    public const int GeneratingStatus = 8;
 
     public static string Class(int kind) => kind switch
     {

@@ -46,6 +46,13 @@ public sealed class AgyViewOptions
     /// 600s; <see cref="TimeSpan.Zero"/> = unbounded (rely purely on progress + the server idle signal).</summary>
     public TimeSpan IdleAbsoluteMax { get; init; } = TimeSpan.FromSeconds(600);
 
+    /// <summary>ROADMAP section 108: how long an assistant step that is visibly still being generated (kind 15, status 8) may
+    /// count as progress past the stall window, measured from the moment the wait first saw it generating. Env:
+    /// CLAVITY_AGY_GENERATION_CAP_SECONDS. Default 600s is a PLACEHOLDER (one measured generation took 140 s; the original
+    /// incident's reply file was written about 459 s after the send). <see cref="TimeSpan.Zero"/> disables the extension. It
+    /// never overrides <see cref="IdleAbsoluteMax"/>.</summary>
+    public TimeSpan GenerationCap { get; init; } = TimeSpan.FromSeconds(600);
+
     /// <summary>Where the server captures every ask's reply (ROADMAP section 74, C-capture) - the user-profile
     /// <c>.clavity/agy-replies</c> in production. Null disables the capture (tests / classic).</summary>
     public string? ReplyCaptureDir { get; init; }
@@ -285,7 +292,16 @@ public sealed class AgyView
                     throw;                 // a caller-cancel (Cancelled) is not a stale-catalog signal -> don't drop the cache; let it propagate (capstone F3).
                 }
 
-                var peerStillBusy = await WaitForIdleWithProgressAsync(client, conversationId, before, timeout, progress, cancellationToken);
+                bool peerStillBusy;
+                try
+                {
+                    peerStillBusy = await WaitForIdleWithProgressAsync(client, conversationId, before, timeout, progress, cancellationToken, logMark);
+                }
+                catch (AgyModalHangException ex) when (peerFile is not null)
+                {
+                    ex.PeerFile = peerFile;   // ROADMAP section 108: tell the driver where the finished reply will be.
+                    throw;
+                }
 
                 var full = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
                 var delta = full.Steps.Skip(before).ToList();
@@ -412,7 +428,7 @@ public sealed class AgyView
     /// window, so a planner step that is followed by more work is never mistaken for the answer.</para></summary>
     private async Task<bool> WaitForIdleWithProgressAsync(
         LsClient client, string conversationId, int before, TimeSpan? stallOverride,
-        IProgress<AgyWaitProgress>? progress, CancellationToken cancellationToken)
+        IProgress<AgyWaitProgress>? progress, CancellationToken cancellationToken, long? quotaLogMark)
     {
         var stallWindow = stallOverride ?? _options.IdleStallWindow;
         var absoluteMax = _options.IdleAbsoluteMax;   // TimeSpan.Zero => unbounded
@@ -420,6 +436,9 @@ public sealed class AgyView
         var lastProgress = before + 1;                // F5: +1 discounts our own injected Kind-14 user step.
         CascadeTrajectory? lastProbe = null;          // R5 F10: last successfully-fetched trajectory, reused for the diagnostic.
         var window = 0;                               // report counter: the ONLY monotonic value we can offer a progress sink.
+        // ROADMAP section 108: when the wait first saw the CURRENT last step generating, and at which step count. A new step
+        // (a different total) restarts the clock; a step that is no longer generating clears it.
+        (int Total, DateTime Since)? generating = null;
 
         while (true)
         {
@@ -527,8 +546,29 @@ public sealed class AgyView
                 }
             }
 
+            // ROADMAP section 108: is the last step an assistant step that is still being GENERATED (status 8)? Its text streams
+            // while the step COUNT stays flat, so the count-based progress test below cannot see it and a long single reply was
+            // reported as a stall. Measured from the first window that saw it, and bounded by GenerationCap (and, via the loop
+            // top and the clamp branch below, by IdleAbsoluteMax - this never overrides the budget).
+            var isGenerating = IsGeneratingAssistantStep(probe, before);
+            if (!isGenerating) generating = null;
+            else if (generating is not { } g || g.Total != total) generating = (total, DateTime.UtcNow);
+            var generationCap = _options.GenerationCap;
+            // A quota stop in agy's log since the send VETOES the extension: an exhausted peer can leave a step marked
+            // generating forever (the status after a stop is unmeasured), and waiting the whole cap would delay by minutes the
+            // report of a failure the operator can act on (and for which each blind retry pushes the reset further out).
+            // The ask then ends exactly as it did before section 108: a stall at the ordinary window.
+            var generationCapSpent = isGenerating && generationCap > TimeSpan.Zero
+                && DateTime.UtcNow - generating!.Value.Since >= generationCap;
+            var generationAlive = isGenerating && generationCap > TimeSpan.Zero && !generationCapSpent
+                && !(quotaLogMark is { } qm && QuotaStopLog.FindSince(_options.CliLogPath, qm) is not null);
+
             if (total > lastProgress)
                 lastProgress = total; // agy advanced -> reset the stall window and keep waiting.
+            else if (generationAlive)
+            {
+                // agy is visibly mid-reply: keep waiting a further window. The step count did not move, the step did.
+            }
             // agy produced nothing for a whole window AND its last step ended the turn: the reply is complete, and what
             // is keeping the conversation from going fully idle is not the turn - typically background shell tasks
             // that never exited (live 2026-09-17: four path-less `rg` commands blocked on stdin held a finished review
@@ -557,9 +597,23 @@ public sealed class AgyView
                 // TOTAL budget ran out — NOT a stall. Reporting Stall would send the operator to the wrong knob
                 // (CLAVITY_AGY_IDLE_STALL_SECONDS) when CLAVITY_AGY_IDLE_MAX_SECONDS is the binding cap.
                 throw BuildModalHang(probe, before, start, IdleLimit.AbsoluteMax);
+            // The cap itself is spent (NOT merely vetoed by a quota stop, which is an ordinary stall): its own label and knob.
+            else if (generationCapSpent)
+                throw BuildModalHang(probe, before, start, IdleLimit.GenerationCap);
             else
                 throw BuildModalHang(probe, before, start, IdleLimit.Stall);
         }
+    }
+
+    /// <summary>The trajectory has grown past our own injected user step (index <paramref name="before"/>) and its LAST step is
+    /// a kind-15 assistant step with <see cref="StepKind.GeneratingStatus"/>: agy is mid-reply. Exact match on the one verified
+    /// value, never "any status other than done": a tool step, a killed task (status 6) or an unknown status must not extend
+    /// the wait.</summary>
+    public static bool IsGeneratingAssistantStep(CascadeTrajectory trajectory, int before)
+    {
+        if (trajectory.Steps.Count <= before + 1) return false;
+        var last = trajectory.Steps[^1];
+        return last.Kind == StepKind.AssistantKind && last.Status == StepKind.GeneratingStatus;
     }
 
     /// <summary>agy's turn is over: the trajectory has grown past our own injected user step (index
@@ -599,7 +653,12 @@ public sealed class AgyView
             : (last.UserInput is { } u && u.Text.Length > 0 ? u.Text
                : last.AssistantOutput is { } a && a.Text.Length > 0 ? a.Text : null);
         if (summary is not null) summary = TextCut.Prefix(summary, 500);
-        return new TimeoutDiagnostic(total, newAgy, lastKind, StepKind.Class(lastKind), summary);
+        // ROADMAP section 108 Phase 1: what a step that is still being generated looks like on the wire is UNVERIFIED
+        // (only status 3 = DONE and 6 are recorded in clavity.proto), so report the RAW status and the length of the last
+        // step's assistant text. The next real stall then settles whether a generating step is visible at all.
+        int? lastStatus = last?.Status;
+        int? lastTextLength = last?.AssistantOutput is { } ao ? ao.Text.Length : null;
+        return new TimeoutDiagnostic(total, newAgy, lastKind, StepKind.Class(lastKind), summary, lastStatus, lastTextLength);
     }
 
     /// <summary>

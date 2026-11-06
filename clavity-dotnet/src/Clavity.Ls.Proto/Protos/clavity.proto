@@ -94,7 +94,9 @@ message CascadeTrajectory {                     // partial of gemini_coder.Traje
 message CascadeStep {                           // partial
   int32 kind = 1;                               // step-kind enum (verified: 14=user input, 15=assistant output).
   // Step status enum. Wire-verified 2026-09-17 on agy 1.0.11 (TestData golden) AND a live 1.2.x trajectory: a
-  // varint on EVERY step; 3 = DONE (all finished steps), 6 = seen on background shell tasks that were killed.
+  // varint on EVERY step; 3 = DONE (all finished steps), 6 = seen on background shell tasks that were killed. 8 = a kind-15 assistant step that is
+  // still being GENERATED (probe, 2026-11-06: status 8 from the step's first appearance with empty text, the text
+  // streaming while the step count stays flat, flipping to 3 when done; ROADMAP section 108).
   int32 status = 4;
   CortexStepMetadata metadata = 5;              // ids/timestamps/run-status AND the per-step model (11/13).
   CascadeUserInput user_input = 19;             // present only on user-message steps (kind 14).

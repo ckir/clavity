@@ -161,6 +161,7 @@ CLAUDE_CONFIG_DIR=~/.claude-profiles/test clavity-ls start ~/path/to/your/projec
 - `CLAVITY_AGY_ENDPOINT` — set automatically by `clavity-ls start`; the per-session file agy publishes its endpoint to (the pairing rendezvous). Not normally set by hand.
 - `CLAVITY_AGY_IDLE_MAX_SECONDS` — ceiling on how long `agy_ask` waits for agy to go idle (default 600; the plugin's `.mcp.json` raises it to 1800). Read only when the MCP server starts.
 - `CLAVITY_AGY_IDLE_STALL_SECONDS` — how long agy may show no step progress before `agy_ask` reports `possible_modal` (stall). Default 120; raise it if your work has long single steps.
+- `CLAVITY_AGY_GENERATION_CAP_SECONDS` — how long agy may keep writing ONE long reply (an assistant step visibly still being generated) before `agy_ask` stops extending the wait and reports `possible_modal` (limit `generation_cap`). Default 600; `0` turns the extension off. It never exceeds `CLAVITY_AGY_IDLE_MAX_SECONDS`.
 - `CLAVITY_LS_LOG` — also write the server's event log to a file (unset = no file). A directory (existing, or
   ending in a path separator) gets one file per server, `clavity-ls-<CLAVITY_SESSION_ID>.log`, or
   `clavity-ls-pid<pid>.log` when no session id is set; any other value is the file itself, appended to. One JSON

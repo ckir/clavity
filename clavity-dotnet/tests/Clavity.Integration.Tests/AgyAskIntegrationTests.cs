@@ -1208,6 +1208,325 @@ public class AgyAskIntegrationTests
         finally { Directory.Delete(dir, true); }
     }
 
+    // ---- ROADMAP section 108 Phase 1: what the stall report says about the last step, and where the reply will be ----
+
+    private static async Task<AgyModalHangException> StallAsync(
+        CascadeStep? last, string? expectTerminal = null, Action<FakeAskLs>? arrange = null, string? dirOverride = null)
+    {
+        var plan = last is null
+            ? new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false) }
+            : EndsTurnThenNeverIdles(last);
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        arrange?.Invoke(fake);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            return await Assert.ThrowsAsync<AgyModalHangException>(
+                () => view.AskAsync("review it", expectTerminal: expectTerminal));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_stall_on_a_not_done_assistant_step_reports_its_raw_status_and_text_length()
+    {
+        // The step the peer is generating when the window expires: status 2 (the fake's non-DONE value) and 16 characters.
+        var ex = await StallAsync(TurnEndNotDone("still generating"));
+        Assert.NotNull(ex.Diagnostic);
+        Assert.Equal(2, ex.Diagnostic!.LastStepStatus);
+        Assert.Equal("still generating".Length, ex.Diagnostic.LastStepTextLength);
+    }
+
+    [Fact]
+    public async Task A_stall_reports_the_status_of_whatever_the_last_step_is_not_a_constant()
+    {
+        // Control with DIFFERENT values: a DONE tool-kind step (status 3) holding 1 character of assistant output. A
+        // diagnostic that hard-coded the not-done case above would fail here.
+        var last = new CascadeStep { Kind = 21, Status = DoneStatus, AssistantOutput = new CascadeAssistantOutput { Text = "x" } };
+        var ex = await StallAsync(last);
+        Assert.Equal(DoneStatus, ex.Diagnostic!.LastStepStatus);
+        Assert.Equal(1, ex.Diagnostic.LastStepTextLength);
+    }
+
+    [Fact]
+    public async Task A_stall_whose_last_step_is_our_own_user_step_has_no_assistant_text_length()
+    {
+        // The dead-agy case: nothing after our injected user step. The text length is ASSISTANT text only.
+        var ex = await StallAsync(last: null);
+        Assert.Equal("user", ex.Diagnostic!.LastStepClass);
+        Assert.Null(ex.Diagnostic.LastStepTextLength);
+    }
+
+    [Fact]
+    public async Task A_stalled_discipline_ask_names_the_peer_reply_file()
+    {
+        var dir = TempDir();
+        try
+        {
+            var ws = ShieldedWorkspace(dir);
+            var ex = await StallAsync(TurnEndNotDone("still generating"), expectTerminal: "VERDICT:",
+                f => f.WorkspaceUris = new[] { new Uri(ws).AbsoluteUri });
+            Assert.Equal(Path.Combine(ws, ".clavity", "scratch", "agy-replies", "conv-1-0.md"), ex.PeerFile);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_stalled_ordinary_ask_names_no_peer_file_even_when_a_workspace_is_known()
+    {
+        var dir = TempDir();
+        try
+        {
+            var ws = ShieldedWorkspace(dir);
+            var ex = await StallAsync(TurnEndNotDone("still generating"), expectTerminal: null,
+                f => f.WorkspaceUris = new[] { new Uri(ws).AbsoluteUri });
+            Assert.Null(ex.PeerFile);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_stalled_discipline_ask_with_no_known_workspace_names_no_peer_file()
+    {
+        var ex = await StallAsync(TurnEndNotDone("still generating"), expectTerminal: "VERDICT:");
+        Assert.Null(ex.PeerFile);
+    }
+
+    // ---- ROADMAP section 108 Phase 2 (b): a visibly generating assistant step keeps the wait alive, bounded by the cap ----
+
+    private const int GeneratingStatus = 8;   // measured by the 2026-11-06 probe; the ONE verified non-done value of an assistant step
+
+    private static CascadeStep Generating(string text, int kind = 15, int status = GeneratingStatus) => new()
+    {
+        Kind = kind, Status = status, AssistantOutput = new CascadeAssistantOutput { Text = text },
+    };
+
+    /// <summary>Window 0 appends the step and does not go idle; window 1 changes nothing (the step count is FLAT, which is what
+    /// the count-based stall test cannot see); the optional last window goes idle with the reply.</summary>
+    private static FakeAskLs.WaitStep[] GeneratingThen(CascadeStep step, bool finishes) => finishes
+        ? new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, AppendAfter: step),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),
+        }
+        : new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, AppendAfter: step),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false),
+        };
+
+    private static async Task<(FakeAskLs Fake, AskReply? Reply, AgyModalHangException? Hang)> AskGeneratingAsync(
+        FakeAskLs.WaitStep[] plan, TimeSpan generationCap, TimeSpan absoluteMax, int stallMs = 150,
+        bool quotaLineBeforeAsk = false, bool quotaLineDuringAsk = false)
+    {
+        var fake = new FakeAskLs("conv-1", "the reply", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            if (quotaLineBeforeAsk) File.AppendAllText(cliLog, QuotaLine);                       // before the mark: must NOT veto
+            if (quotaLineDuringAsk) fake.OnSend = _ => File.AppendAllText(cliLog, QuotaLine);    // after the mark: MUST veto
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(stallMs),
+                IdleAbsoluteMax = absoluteMax,
+                GenerationCap = generationCap,
+            });
+            try { return (fake, await view.AskAsync("write a long essay"), null); }
+            catch (AgyModalHangException ex) { return (fake, null, ex); }
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_visibly_generating_assistant_step_keeps_the_wait_alive_past_the_stall_window()
+    {
+        // Window 0: the step appears (count grows = progress). Window 1: NOTHING changes in the count, but the last step is
+        // status 8. Without the extension that is a stall at window 1; with it the wait goes on and window 2 delivers.
+        var (fake, reply, hang) = await AskGeneratingAsync(
+            GeneratingThen(Generating("partial"), finishes: true), TimeSpan.FromSeconds(30), TimeSpan.Zero);
+        Assert.Null(hang);
+        Assert.EndsWith("the reply", reply!.Answer);   // the ask waited for window 2 and delivered the final reply
+        Assert.Equal(3, fake.WaitCalls);
+    }
+
+    [Fact]
+    public async Task With_the_generation_cap_disabled_the_same_flat_count_is_a_stall_at_the_second_window()
+    {
+        // The CONTROL for the test above: the identical plan with the extension off. This is what proves the test above
+        // exercises the extension and not some other path that happens to deliver.
+        var (fake, reply, hang) = await AskGeneratingAsync(
+            GeneratingThen(Generating("partial"), finishes: true), TimeSpan.Zero, TimeSpan.Zero);
+        Assert.Null(reply);
+        Assert.Equal(IdleLimit.Stall, hang!.Report.Limit);
+        Assert.Equal(2, fake.WaitCalls);
+    }
+
+    [Fact]
+    public async Task A_generating_step_that_outlives_the_cap_is_reported_with_its_own_limit_label()
+    {
+        var (fake, reply, hang) = await AskGeneratingAsync(
+            GeneratingThen(Generating("partial"), finishes: false), TimeSpan.FromMilliseconds(400), TimeSpan.Zero, stallMs: 100);
+        Assert.Null(reply);
+        Assert.Equal(IdleLimit.GenerationCap, hang!.Report.Limit);
+        Assert.Equal("generation_cap", hang.Report.Limit);                 // the wire value
+        Assert.Contains("CLAVITY_AGY_GENERATION_CAP_SECONDS", hang.Report.Hint);
+        Assert.Equal(GeneratingStatus, hang.Diagnostic!.LastStepStatus);   // the report says what it saw
+        // AGY-TEST-AUDIT MG-2: with a 400 ms cap and 100 ms windows the extension survives the probes after windows 0 to 2 and is
+        // spent after window 3 or 4 (window 3 only if a window costs 33 ms more than its stall time): 4 or 5 calls. The lower
+        // bound 4 is therefore robust, and 3 would let a cap that is half as long pass.
+        Assert.InRange(fake.WaitCalls, 4, 12);                              // it kept waiting, and it is BOUNDED
+    }
+
+    [Theory]
+    [InlineData(15, 2)]    // the invented value the earlier fakes used: not a verified generating status
+    [InlineData(15, 6)]    // killed background tasks: must not extend the wait
+    [InlineData(15, 0)]    // no status at all
+    [InlineData(21, 8)]    // status 8 on a TOOL step is not "the reply is being written"
+    [InlineData(14, 8)]    // nor on a user step
+    public async Task Only_a_kind_15_step_with_status_8_extends_the_wait(int kind, int status)
+    {
+        var (fake, reply, hang) = await AskGeneratingAsync(
+            GeneratingThen(Generating("x", kind, status), finishes: true), TimeSpan.FromSeconds(30), TimeSpan.Zero);
+        Assert.Null(reply);
+        Assert.Equal(IdleLimit.Stall, hang!.Report.Limit);
+        Assert.Equal(2, fake.WaitCalls);
+    }
+
+    [Fact]
+    public async Task The_generation_cap_is_measured_from_the_first_window_that_saw_the_step_generating_not_from_the_send()
+    {
+        // AGY-CAPSTONE r2 MG-1. Twelve progress-only windows (>= 1200 ms at a 100 ms stall window) pass BEFORE the generating
+        // step first appears; the cap is 1000 ms. Measured from the SEND the cap would already be spent at first sight and the
+        // ask would end in generation_cap; measured from first sight (correct) two flat windows follow and the reply is delivered.
+        var plan = Enumerable.Range(0, 12).Select(_ => new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false))
+            .Concat(new[]
+            {
+                new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, AppendAfter: Generating("partial")),
+                new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false),
+                new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),
+            }).ToArray();
+        var (fake, reply, hang) = await AskGeneratingAsync(plan, TimeSpan.FromMilliseconds(1000), TimeSpan.Zero, stallMs: 100);
+        Assert.Null(hang);
+        Assert.EndsWith("the reply", reply!.Answer);
+        Assert.Equal(15, fake.WaitCalls);
+    }
+
+    [Fact]
+    public async Task The_generation_clock_restarts_when_a_different_step_starts_generating()
+    {
+        // AGY-CAPSTONE r2 MG-1 / the case ROADMAP section 108 declared untested. Step A appears at window 0; step B (a DIFFERENT
+        // step count) appears at window 10 (>= 2000 ms at a 200 ms window); then 14 flat windows follow. The cap is 4000 ms:
+        // from A the whole wait is >= 4800 ms (spent), from B it is about 3000 ms (alive). Only a clock that RESTARTS on a
+        // new generating step delivers the reply.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, AppendAfter: Generating("step A")) }
+            .Concat(Enumerable.Range(0, 9).Select(_ => new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false)))
+            .Concat(new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, AppendAfter: Generating("step B")) })
+            .Concat(Enumerable.Range(0, 13).Select(_ => new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false)))
+            .Concat(new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) }).ToArray();
+        // AGY-TEST-AUDIT MG-1: the cap is 4400 ms. Mutant side: the final probe is >= 23 windows x 200 ms = 4600 ms after A first
+        // appeared (a window never ends before its stall time, so jitter only ADDS elapsed time): spent by at least 200 ms. Correct
+        // side: 13 flat windows after B take 2600 ms + 13 x the per-window overhead, alive while that stays under 4400 ms, so the
+        // test tolerates up to about 138 ms of overhead per window (two RPCs) before it could flake.
+        var (fake, reply, hang) = await AskGeneratingAsync(plan, TimeSpan.FromMilliseconds(4400), TimeSpan.Zero, stallMs: 200);
+        Assert.Null(hang);
+        Assert.EndsWith("the reply", reply!.Answer);
+        Assert.Equal(1 + 9 + 1 + 13 + 1, fake.WaitCalls);
+    }
+
+    [Fact]
+    public async Task A_quota_stop_in_agys_log_since_the_send_vetoes_the_extension_and_the_ask_stalls_at_the_ordinary_window()
+    {
+        // An exhausted peer may leave its step marked generating; the extension must not delay that report by the whole cap.
+        var (fake, reply, hang) = await AskGeneratingAsync(
+            GeneratingThen(Generating("partial"), finishes: true), TimeSpan.FromSeconds(30), TimeSpan.Zero, quotaLineDuringAsk: true);
+        Assert.Null(reply);
+        Assert.Equal(IdleLimit.Stall, hang!.Report.Limit);
+        Assert.Equal(2, fake.WaitCalls);
+    }
+
+    [Fact]
+    public async Task A_quota_stop_from_BEFORE_the_send_does_not_veto_the_extension()
+    {
+        // The mark is taken at the send, so an old stop in the same log is not this ask's.
+        var (fake, reply, hang) = await AskGeneratingAsync(
+            GeneratingThen(Generating("partial"), finishes: true), TimeSpan.FromSeconds(30), TimeSpan.Zero, quotaLineBeforeAsk: true);
+        Assert.Null(hang);
+        Assert.EndsWith("the reply", reply!.Answer);
+        Assert.Equal(3, fake.WaitCalls);
+    }
+
+    [Fact]
+    public async Task The_generation_cap_hint_does_not_claim_it_is_not_a_hang()
+    {
+        // A step stuck in the generating state (a blocked prompt, a dropped stream) is indistinguishable from a long reply.
+        var (_, _, hang) = await AskGeneratingAsync(
+            GeneratingThen(Generating("partial"), finishes: false), TimeSpan.FromMilliseconds(300), TimeSpan.Zero, stallMs: 100);
+        Assert.DoesNotContain("NOT a hang", hang!.Report.Hint);
+        Assert.Contains("stuck", hang.Report.Hint);
+        Assert.Contains("agy_look", hang.Report.Hint);
+    }
+
+    [Fact]
+    public async Task A_generating_step_from_BEFORE_our_send_does_not_extend_the_wait()
+    {
+        // The PREVIOUS turn's last step is still generating and our own user step has not appeared yet, so the last step is
+        // not ours to wait on. A check that looked at the last step without the past-our-own-step guard would treat it as
+        // our reply being written and wait on it; the correct answer is the ordinary stall at the first window.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),
+        };
+        var fake = new FakeAskLs("conv-1", "the reply", TimeSpan.Zero, new[] { Generating("old turn") }, waitPlan: plan)
+        {
+            SendAppendsNoStep = true,
+        };
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+                GenerationCap = TimeSpan.FromSeconds(30),
+            });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("new ask"));
+            Assert.Equal(IdleLimit.Stall, ex.Report.Limit);
+            Assert.Equal(1, fake.WaitCalls);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task The_generation_cap_never_overrides_the_absolute_max()
+    {
+        // The black hole the peer warned about: a generating step must not buy more than the total budget.
+        var (_, reply, hang) = await AskGeneratingAsync(
+            GeneratingThen(Generating("partial"), finishes: false), TimeSpan.FromSeconds(60), TimeSpan.FromMilliseconds(500), stallMs: 100);
+        Assert.Null(reply);
+        Assert.Equal(IdleLimit.AbsoluteMax, hang!.Report.Limit);
+    }
+
+    [Fact]
+    public void The_default_generation_cap_is_600_seconds_and_names_its_env_var()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(600), new AgyViewOptions { CliLogPath = "x" }.GenerationCap);
+        Assert.Equal("CLAVITY_AGY_GENERATION_CAP_SECONDS", AgyEnvironment.GenerationCapSecondsVar);
+    }
+
     [Fact]
     public async Task A_turn_end_from_BEFORE_our_send_does_not_count_as_the_reply()
     {

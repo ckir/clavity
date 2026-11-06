@@ -13,6 +13,10 @@ public static class IdleLimit
 {
     public const string Stall = "stall";
     public const string AbsoluteMax = "absolute_max";
+
+    /// <summary>The peer's assistant step was visibly still being generated (so the wait kept going past the stall window)
+    /// but it outlived the dedicated generation cap. Its own label so the operator is sent to the right knob.</summary>
+    public const string GenerationCap = "generation_cap";
 }
 
 /// <summary>What a bounded LS wait timing out tells Claude. The shipped guard does NO inspection — clavity does
@@ -35,7 +39,13 @@ public sealed class SurfacingModalGuard : IModalGuard
 {
     public ModalGuardReport OnLsTimeout(string operation, TimeSpan elapsed, string limit)
     {
-        var hint = limit == IdleLimit.AbsoluteMax
+        var hint = limit == IdleLimit.GenerationCap
+            ? $"agy's reply step was still marked as being generated on '{operation}' (status 8, kept alive past the stall window) " +
+              $"but it outlived the generation cap ({elapsed} total). Most likely a very long single reply, but a step stuck in " +
+              "that state (a blocked consent or auth prompt, a dropped stream) looks exactly the same, so do not assume either: " +
+              "check agy_status and agy_look and the agy tab, and for a discipline ask read the peerFile this reply names. Raise " +
+              "CLAVITY_AGY_GENERATION_CAP_SECONDS for legitimately long replies (0 disables the extension)."
+            : limit == IdleLimit.AbsoluteMax
             ? $"agy was still making progress on '{operation}' but exceeded the absolute wait budget ({elapsed} total). " +
               "This is NOT a hang — raise CLAVITY_AGY_IDLE_MAX_SECONDS (or set it to 0 to disable " +
               "the cap) for long reviews, or investigate a runaway if agy never stops producing steps."
