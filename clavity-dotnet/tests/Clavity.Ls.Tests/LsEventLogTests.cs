@@ -137,6 +137,65 @@ public sealed class LsEventLogTests : IDisposable
         Assert.Equal(2, log.Snapshot().Count);   // the ring is unaffected by the dead file sink
     }
 
+    // AGY-TEST-AUDIT GAP-MG1: the test above counts ring lines, which are enqueued BEFORE the file write, so it stays
+    // green even if the dead sink is retried on every call. The only observable difference is a later success.
+    [Fact]
+    public void A_file_sink_that_failed_to_open_is_dropped_and_not_retried_once_the_path_becomes_writable()
+    {
+        var blocker = Path.Combine(_dir, "blocker");
+        File.WriteAllText(blocker, "x");
+        var path = Path.Combine(blocker, "events.log");
+        var log = new LsEventLog(filePath: path);
+        log.Record("agy_ask", "start");   // fails to open, sink dropped
+
+        File.Delete(blocker);             // the path is now creatable: a retrying sink would write here
+        log.Record("agy_ask", "end", outcome: "success");
+
+        Assert.False(Directory.Exists(blocker));
+        Assert.False(File.Exists(path));
+        Assert.Equal(2, log.Snapshot().Count);
+    }
+
+    // AGY-TEST-AUDIT GAP-SC1: every other row is single-threaded, so removing the lock leaves them green. Overlapping
+    // asks and the progress relay do call Record from several threads.
+    [Fact]
+    public void Concurrent_records_keep_the_ring_bounded_and_every_file_line_whole()
+    {
+        var path = Path.Combine(_dir, "events.log");
+        const int threads = 8, perThread = 200;
+        using (var log = new LsEventLog(new StringWriter(), path))
+        {
+            Parallel.For(0, threads, new ParallelOptions { MaxDegreeOfParallelism = threads }, t =>
+            {
+                for (var i = 0; i < perThread; i++)
+                {
+                    log.Record("agy_ask", "progress", durMs: t * 1000 + i);
+                    _ = log.Snapshot();
+                }
+            });
+
+            var ring = log.Snapshot();
+            Assert.Equal(LsEventLog.RingCapacity, ring.Count);
+            foreach (var line in ring) JsonDocument.Parse(line).Dispose();
+        }
+
+        var lines = File.ReadAllLines(path);
+        Assert.Equal(threads * perThread, lines.Length);   // none lost to a dropped sink, none merged
+        foreach (var line in lines) JsonDocument.Parse(line).Dispose();   // none torn
+    }
+
+    // AGY-TEST-AUDIT GAP-CA1: the clock/format guard had no test; describing a call must never break it.
+    [Fact]
+    public void A_throwing_clock_never_throws_into_the_caller_and_leaves_the_log_usable()
+    {
+        var calls = 0;
+        var log = new LsEventLog(clock: () => ++calls == 1 ? throw new InvalidOperationException("clock") : T0);
+        log.Record("agy_ask", "start");   // must not throw
+        Assert.Empty(log.Snapshot());     // nothing half-recorded
+        log.Record("agy_ask", "end", outcome: "success");
+        Assert.Single(log.Snapshot());
+    }
+
     [Fact]
     public void A_disposed_log_keeps_recording_in_memory_but_never_reopens_its_file()
     {

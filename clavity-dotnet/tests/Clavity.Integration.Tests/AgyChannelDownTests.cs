@@ -716,6 +716,9 @@ public class AgyChannelDownTests
             using var doc = JsonDocument.Parse(((TextContentBlock)result.Content[0]).Text);
             var ring = doc.RootElement.GetProperty("recentEvents").EnumerateArray()
                 .Select(e => JsonDocument.Parse(e.GetString()!).RootElement.Clone()).ToArray();
+            // AGY-TEST-AUDIT GAP-PP1: the ring starts at the call's own start event, so nothing before the last is lost.
+            Assert.Equal("start", ring[0].GetProperty("phase").GetString());
+            Assert.Equal("agy_ask", ring[0].GetProperty("tool").GetString());
             var last = ring[^1];
             Assert.Equal("end", last.GetProperty("phase").GetString());
             Assert.Equal("agy_ask", last.GetProperty("tool").GetString());
