@@ -40,9 +40,10 @@ public sealed class SurfacingModalGuard : IModalGuard
     public ModalGuardReport OnLsTimeout(string operation, TimeSpan elapsed, string limit)
     {
         var hint = limit == IdleLimit.GenerationCap
-            ? $"agy's reply step was visibly still being generated on '{operation}' (status 8, kept alive past the stall window) " +
-              $"but it outlived the generation cap ({elapsed} total). It is probably NOT a hang: a very long single reply. " +
-              "Check agy_status, and for a discipline ask read the peerFile this reply names. Raise " +
+            ? $"agy's reply step was still marked as being generated on '{operation}' (status 8, kept alive past the stall window) " +
+              $"but it outlived the generation cap ({elapsed} total). Most likely a very long single reply, but a step stuck in " +
+              "that state (a blocked consent or auth prompt, a dropped stream) looks exactly the same, so do not assume either: " +
+              "check agy_status and agy_look and the agy tab, and for a discipline ask read the peerFile this reply names. Raise " +
               "CLAVITY_AGY_GENERATION_CAP_SECONDS for legitimately long replies (0 disables the extension)."
             : limit == IdleLimit.AbsoluteMax
             ? $"agy was still making progress on '{operation}' but exceeded the absolute wait budget ({elapsed} total). " +

@@ -1324,13 +1324,16 @@ public class AgyAskIntegrationTests
         };
 
     private static async Task<(FakeAskLs Fake, AskReply? Reply, AgyModalHangException? Hang)> AskGeneratingAsync(
-        FakeAskLs.WaitStep[] plan, TimeSpan generationCap, TimeSpan absoluteMax, int stallMs = 150)
+        FakeAskLs.WaitStep[] plan, TimeSpan generationCap, TimeSpan absoluteMax, int stallMs = 150,
+        bool quotaLineBeforeAsk = false, bool quotaLineDuringAsk = false)
     {
         var fake = new FakeAskLs("conv-1", "the reply", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
         await using var app = await StartFakeAsync(fake);
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
+            if (quotaLineBeforeAsk) File.AppendAllText(cliLog, QuotaLine);                       // before the mark: must NOT veto
+            if (quotaLineDuringAsk) fake.OnSend = _ => File.AppendAllText(cliLog, QuotaLine);    // after the mark: MUST veto
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
@@ -1394,6 +1397,39 @@ public class AgyAskIntegrationTests
         Assert.Null(reply);
         Assert.Equal(IdleLimit.Stall, hang!.Report.Limit);
         Assert.Equal(2, fake.WaitCalls);
+    }
+
+    [Fact]
+    public async Task A_quota_stop_in_agys_log_since_the_send_vetoes_the_extension_and_the_ask_stalls_at_the_ordinary_window()
+    {
+        // An exhausted peer may leave its step marked generating; the extension must not delay that report by the whole cap.
+        var (fake, reply, hang) = await AskGeneratingAsync(
+            GeneratingThen(Generating("partial"), finishes: true), TimeSpan.FromSeconds(30), TimeSpan.Zero, quotaLineDuringAsk: true);
+        Assert.Null(reply);
+        Assert.Equal(IdleLimit.Stall, hang!.Report.Limit);
+        Assert.Equal(2, fake.WaitCalls);
+    }
+
+    [Fact]
+    public async Task A_quota_stop_from_BEFORE_the_send_does_not_veto_the_extension()
+    {
+        // The mark is taken at the send, so an old stop in the same log is not this ask's.
+        var (fake, reply, hang) = await AskGeneratingAsync(
+            GeneratingThen(Generating("partial"), finishes: true), TimeSpan.FromSeconds(30), TimeSpan.Zero, quotaLineBeforeAsk: true);
+        Assert.Null(hang);
+        Assert.EndsWith("the reply", reply!.Answer);
+        Assert.Equal(3, fake.WaitCalls);
+    }
+
+    [Fact]
+    public async Task The_generation_cap_hint_does_not_claim_it_is_not_a_hang()
+    {
+        // A step stuck in the generating state (a blocked prompt, a dropped stream) is indistinguishable from a long reply.
+        var (_, _, hang) = await AskGeneratingAsync(
+            GeneratingThen(Generating("partial"), finishes: false), TimeSpan.FromMilliseconds(300), TimeSpan.Zero, stallMs: 100);
+        Assert.DoesNotContain("NOT a hang", hang!.Report.Hint);
+        Assert.Contains("stuck", hang.Report.Hint);
+        Assert.Contains("agy_look", hang.Report.Hint);
     }
 
     [Fact]

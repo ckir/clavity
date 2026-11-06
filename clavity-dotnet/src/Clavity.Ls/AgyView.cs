@@ -295,7 +295,7 @@ public sealed class AgyView
                 bool peerStillBusy;
                 try
                 {
-                    peerStillBusy = await WaitForIdleWithProgressAsync(client, conversationId, before, timeout, progress, cancellationToken);
+                    peerStillBusy = await WaitForIdleWithProgressAsync(client, conversationId, before, timeout, progress, cancellationToken, logMark);
                 }
                 catch (AgyModalHangException ex) when (peerFile is not null)
                 {
@@ -428,7 +428,7 @@ public sealed class AgyView
     /// window, so a planner step that is followed by more work is never mistaken for the answer.</para></summary>
     private async Task<bool> WaitForIdleWithProgressAsync(
         LsClient client, string conversationId, int before, TimeSpan? stallOverride,
-        IProgress<AgyWaitProgress>? progress, CancellationToken cancellationToken)
+        IProgress<AgyWaitProgress>? progress, CancellationToken cancellationToken, long? quotaLogMark = null)
     {
         var stallWindow = stallOverride ?? _options.IdleStallWindow;
         var absoluteMax = _options.IdleAbsoluteMax;   // TimeSpan.Zero => unbounded
@@ -554,8 +554,14 @@ public sealed class AgyView
             if (!isGenerating) generating = null;
             else if (generating is not { } g || g.Total != total) generating = (total, DateTime.UtcNow);
             var generationCap = _options.GenerationCap;
-            var generationAlive = isGenerating && generationCap > TimeSpan.Zero
-                && DateTime.UtcNow - generating!.Value.Since < generationCap;
+            // A quota stop in agy's log since the send VETOES the extension: an exhausted peer can leave a step marked
+            // generating forever (the status after a stop is unmeasured), and waiting the whole cap would delay by minutes the
+            // report of a failure the operator can act on (and for which each blind retry pushes the reset further out).
+            // The ask then ends exactly as it did before section 108: a stall at the ordinary window.
+            var generationCapSpent = isGenerating && generationCap > TimeSpan.Zero
+                && DateTime.UtcNow - generating!.Value.Since >= generationCap;
+            var generationAlive = isGenerating && generationCap > TimeSpan.Zero && !generationCapSpent
+                && !(quotaLogMark is { } qm && QuotaStopLog.FindSince(_options.CliLogPath, qm) is not null);
 
             if (total > lastProgress)
                 lastProgress = total; // agy advanced -> reset the stall window and keep waiting.
@@ -591,8 +597,8 @@ public sealed class AgyView
                 // TOTAL budget ran out — NOT a stall. Reporting Stall would send the operator to the wrong knob
                 // (CLAVITY_AGY_IDLE_STALL_SECONDS) when CLAVITY_AGY_IDLE_MAX_SECONDS is the binding cap.
                 throw BuildModalHang(probe, before, start, IdleLimit.AbsoluteMax);
-            // The extension was on (cap > 0), the step was generating, and the cap is spent: say so, with its own knob.
-            else if (isGenerating && generationCap > TimeSpan.Zero)
+            // The cap itself is spent (NOT merely vetoed by a quota stop, which is an ordinary stall): its own label and knob.
+            else if (generationCapSpent)
                 throw BuildModalHang(probe, before, start, IdleLimit.GenerationCap);
             else
                 throw BuildModalHang(probe, before, start, IdleLimit.Stall);
