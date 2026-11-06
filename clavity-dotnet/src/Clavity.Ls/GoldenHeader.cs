@@ -335,8 +335,11 @@ public static class GoldenHeader
                          .ThenByDescending(f => f, StringComparer.Ordinal)
                          .Skip(SnapshotKeep - 1))
                 {
-                    File.Delete(stale);
-                    if (File.Exists(stale + ".sha256")) File.Delete(stale + ".sha256");
+                    // Concurrent committers can pick the same stale slot; on Windows the loser's delete throws
+                    // (sharing violation / "access denied" on a pending delete). The slot is being evicted
+                    // anyway, so a failed prune delete is benign - the next commit's prune retries it.
+                    TryDeleteQuietly(stale);
+                    TryDeleteQuietly(stale + ".sha256");
                 }
             }
         }
@@ -353,6 +356,12 @@ public static class GoldenHeader
         var sidecarTmp = $"{sidecarPath}.{tmpTag}.tmp";
         File.WriteAllText(sidecarTmp, Sha256Hex(content));
         AtomicMoveWithRetry(sidecarTmp, sidecarPath);
+    }
+
+    private static void TryDeleteQuietly(string file)
+    {
+        try { File.Delete(file); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* best-effort prune */ }
     }
 
     private static void AtomicMoveWithRetry(string source, string destination)
