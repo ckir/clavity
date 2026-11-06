@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Costas Kirgoussios
+//
+// This software is licensed under the PolyForm Noncommercial License 1.0.0.
+// You may obtain a copy of the License at:
+// https://polyformproject.org/licenses/noncommercial/1.0.0/
+
 #:project ../clavity-dotnet/src/Clavity.Ls/Clavity.Ls.csproj
 // READ-ONLY probe (ROADMAP section 108, Phase 2 evidence). It never sends a message and never writes a file.
 //
