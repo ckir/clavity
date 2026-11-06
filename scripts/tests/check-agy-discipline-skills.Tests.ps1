@@ -1358,6 +1358,206 @@ SCHEMAS = {
             }
         }
 
+        It 'REJECTS <skill> when its closer omits the reply-cap clause' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # ROADMAP section 108. Perturb exactly one skill (the scratch root holds all four, so the failure is on
+            # the PERTURBED one) and require exit 1 naming it. The mutant strips the marked payload line itself.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $body = $real -replace '(?m)^> Keep your chat reply to at most 6000 characters\..*$', ''
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS <skill> when the reply cap is weakened to a different number' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # DISTRACTOR: a near-miss ("60000") must be rejected, not only the absent clause.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $body = $real.Replace('at most 6000 characters.', 'at most 60000 characters.')
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS <skill> when the reply-cap clause is truncated after the number' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # AGY-CAPSTONE (reply-cap) CAP-MG1: the opening sentence alone must not satisfy the rule. Drop the
+            # destination (and with it the review-only exception) but keep the first sentence intact.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $body = $real.Replace('to the reply file named in this brief', 'somewhere')
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS <skill> when the reply-cap clause loses its review-only exception' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $body = $real.Replace('is the only exception to', 'is unrelated to')
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS <skill> when the reply-cap clause loses <what>' -ForEach @(
+            @{ skill = 'agy-first';                 what = 'its required-blocks precedence'; find = 'the cap never displaces a required block' },
+            @{ skill = 'agy-capstone';              what = 'its required-blocks precedence'; find = 'the cap never displaces a required block' },
+            @{ skill = 'agy-test-audit';            what = 'its required-blocks precedence'; find = 'the cap never displaces a required block' },
+            @{ skill = 'adversarial-panel-review';  what = 'its required-blocks precedence'; find = 'the cap never displaces a required block' },
+            @{ skill = 'agy-first';                 what = 'its driver-file note'; find = 'that file holds' },
+            @{ skill = 'agy-capstone';              what = 'its driver-file note'; find = 'that file holds' },
+            @{ skill = 'agy-test-audit';            what = 'its driver-file note'; find = 'that file holds' },
+            @{ skill = 'adversarial-panel-review';  what = 'its driver-file note'; find = 'that file holds' }
+        ) {
+            # AGY-CAPSTONE (reply-cap) r2: CAP-BS1 (the cap must not displace a required block) and CAP-PP3 (the driver's own
+            # reply-file request is a second file). Each phrase carries one of those two rules; dropping it must go red.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $body = $real.Replace($find, 'unrelated words')
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS <skill> when the reply-cap clause is unmarked (blockquote marker stripped from the first line only)' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # AGY-TEST-AUDIT (reply-cap) PP1: promised behaviour 2 says an UNMARKED clause is rejected. Every earlier row removed or reworded text; none removed only the marker.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $m = [regex]::Match($real, '(?ms)^> Keep your chat reply to at most 6000 characters\..*?(?=\r?\n\r?\n)')
+            $m.Success | Should -BeTrue -Because 'the shipped clause block must be found, or this row proves nothing'
+            $blk = $m.Value
+            $new = $blk -replace '^> ', ''
+            $body = $real.Replace($blk, $new)
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS <skill> when the blockquote marker is stripped from the reply-cap continuation lines' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # AGY-TEST-AUDIT (reply-cap) BS1: a reflow that drops '>' from wrapped lines leaves every needle in the file but ends the quoted payload after line 1.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $m = [regex]::Match($real, '(?ms)^> Keep your chat reply to at most 6000 characters\..*?(?=\r?\n\r?\n)')
+            $m.Success | Should -BeTrue -Because 'the shipped clause block must be found, or this row proves nothing'
+            $blk = $m.Value
+            $new = (($blk -split "`n") | ForEach-Object -Begin { $k = 0 } -Process { if ($k++ -eq 0) { $_ } else { $_ -replace '^> ', '' } }) -join "`n"
+            $body = $real.Replace($blk, $new)
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS <skill> when the reply-cap clause is wrapped in a fenced code block' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # AGY-TEST-AUDIT (reply-cap) BS2: inside a code fence the clause is an example, not payload text, yet '(?m)^' still matched its line starts.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $m = [regex]::Match($real, '(?ms)^> Keep your chat reply to at most 6000 characters\..*?(?=\r?\n\r?\n)')
+            $m.Success | Should -BeTrue -Because 'the shipped clause block must be found, or this row proves nothing'
+            $blk = $m.Value
+            $new = "``````text`n$blk`n``````"
+            $body = $real.Replace($blk, $new)
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'ACCEPTS <skill> with the shipped clause under CRLF line endings' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # The block scan splits on \r?\n; guard that a CRLF checkout (Windows) is not rejected by the new line-wise walk.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $m = [regex]::Match($real, '(?ms)^> Keep your chat reply to at most 6000 characters\..*?(?=\r?\n\r?\n)')
+            $m.Success | Should -BeTrue -Because 'the shipped clause block must be found, or this row proves nothing'
+            $blk = $m.Value
+            $new = $blk
+            $body = $real -replace "`r?`n", "`r`n"
+            $body | Should -Not -Be $real -Because 'the CRLF conversion must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 0
+            Remove-Item -Recurse -Force $scratch
+        }
+
         It 'ACCEPTS valid input a strict anchor used to reject - <case>' -ForEach @(
             @{ case = 'a QUOTED frontmatter name';   find = 'name: agy-first';                          repl = 'name: "agy-first"' },
             @{ case = 'an INDENTED anti-wrap clause'; find = "`n> Put nothing after the terminal token."; repl = "`n  > Put nothing after the terminal token." }

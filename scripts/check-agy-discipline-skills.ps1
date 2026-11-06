@@ -419,6 +419,37 @@ $skillRules = @(
            }
        } }
 
+    # 21.2 the REPLY-CAP clause (ROADMAP section 108). MEASURED: a 17.5 KB peer reply was generated as ONE agent step, so the
+    # driver's stall window elapsed with no new step and the ask returned possible_modal before the peer finished; the same brief
+    # capped at 6000 characters returned normally. Same '> ' payload-marker reasoning as 21.1: unmarked, it reads as a rule about the
+    # driver's own output. The needle pins the marker and the number, so a clause weakened to "keep it short" is rejected.
+    @{ Name = 'reply-cap clause'
+       AppliesTo = { param($ctx, $rule) $true }
+       Check = { param($ctx, $rule)
+           # The opening sentence alone is gameable: a clause truncated after the number keeps the needle and loses the
+           # destination and the waiver. Pin the phrases that carry them (each on one line, as shipped).
+           # AGY-TEST-AUDIT (reply-cap) BS1/BS2: the phrases must sit INSIDE the marked block, and the block must not be in a
+           # fenced code block. File-wide Contains() let a reflow that stripped '> ' from the continuation lines, or a clause
+           # wrapped in a code fence, keep every needle while no longer being verbatim payload text.
+           $capOk = $false
+           $inFence = $false
+           $lines = $ctx.Raw -split '\r?\n'
+           for ($i = 0; $i -lt $lines.Count; $i++) {
+               if ($lines[$i] -match '^ {0,3}(`{3,}|~{3,})') { $inFence = -not $inFence; continue }
+               if ($inFence -or $lines[$i] -notmatch '^ {0,3}> Keep your chat reply to at most 6000 characters\.') { continue }
+               $j = $i
+               while ($j + 1 -lt $lines.Count -and $lines[$j + 1] -match '^ {0,3}>') { $j++ }
+               $block = $lines[$i..$j] -join "`n"
+               if ($block.Contains('to the reply file named in this brief') -and
+                   $block.Contains('is the only exception to') -and
+                   $block.Contains('the cap never displaces a required block') -and
+                   $block.Contains('that file holds')) { $capOk = $true; break }
+           }
+           if (-not $capOk) {
+               $ctx.Report("$($ctx.Rel) : missing or truncated reply-cap clause as PAYLOAD text ('> Keep your chat reply to at most 6000 characters.' plus the reply-file destination, the review-only exception, the required-blocks precedence and the driver-file note) - without it a peer can generate one very long step, the driver's stall window elapses, and the ask returns possible_modal before the reply is finished (ROADMAP section 108)")
+           }
+       } }
+
     # The adversarial-panel-review skill DEFINES its terminal token. Its pasteable payload clause says "the terminal token" and the driver requires a
     # closing line that starts with PANEL VERDICT; when the skill never said what the token is, driving models filled in the [VERDICT: ...]
     # vocabulary of the other three disciplines and the driver flagged 56 complete flux replies as truncated (2026-10-27). Pinned by its two needles.

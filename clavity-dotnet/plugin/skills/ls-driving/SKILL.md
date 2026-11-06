@@ -60,6 +60,27 @@ You (Claude) drive a paired agy over its Language Server via three MCP tools exp
   intact. Do **not** treat null `Answer` as "no reply" and do **not** blindly re-ask; only re-ask if `Activity`
   has no assistant step, or `ActivityTruncated` is true and the tail you need was dropped.
 
+## Spend - open a fresh agy chat before a heavy consult
+
+Every `agy_ask` lands in agy's most-recently-active conversation, and agy re-reads that whole conversation on
+every step it takes. MEASURED 2026-11-06 on one fixed read-only brief, two runs in each kind of conversation
+(the totals are from agy's own per-call counts): a conversation grown to about 190-200K tokens processed about
+196-205K context tokens PER CALL; a fresh chat processed about 18-20K per call, roughly 10x less, in all four
+runs. The TOTAL did not follow: a long chat cost 1.96M over 10 calls once and 1.02M over 5 calls the second
+time (the peer answered from its memory of the earlier identical question and never re-ran the diff), against
+0.20M and 0.28M over 11 and 14 calls in fresh chats. A long chat idle for a while also pays one cold re-read of
+its whole context on its next message (three such cold reads of the same chat, at 140K, 190K and 203K uncached
+tokens as it grew). Output tokens were higher in the
+fresh chats (about 11K against 2-7K), and the price of cached against uncached tokens is unmeasured. Treat it
+as: per-call context is reliably smaller, the total depends on how many calls the peer makes.
+
+So before a heavy, many-step consult (a capstone, a test audit, a panel round) in a long conversation, ask the
+human to open a NEW chat in agy and send it any first message. The server cannot start a conversation itself
+(it only reads and writes the most recent one), and a chat with no message does not exist for it yet: confirm
+`agy_status` now shows a different `CascadeId` with a few `TotalSteps`, and do not send before it does, or the
+ask lands in the old chat. The fresh chat has none of the earlier context, so the brief must stand alone
+(the seam file does). Small asks and follow-ups stay in the current thread.
+
 ## Task-assignment protocol - what stops agy misfiring
 
 <!-- KEEP IN SYNC WITH driving (clavity-classic/plugin/skills/driving/SKILL.md) -->
