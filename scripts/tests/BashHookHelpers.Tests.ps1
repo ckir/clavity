@@ -142,10 +142,21 @@ Describe 'BashHookHelpers (harness validation)' {
             Set-Content -LiteralPath $fakeBash -Value "#!/bin/sh`necho JQ`n"
             [IO.File]::SetUnixFileMode($fakeBash, [IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite -bor [IO.UnixFileMode]::UserExecute)
             Mock Get-GitBashOrThrow { $fakeBash }
-            $before = @(Get-ChildItem -LiteralPath (Get-TestTempRoot) -Directory -Filter 'nojq-*' -ErrorAction SilentlyContinue).Count
-            { New-NoJqPath } | Should -Throw '*jq still reachable*'
-            $after = @(Get-ChildItem -LiteralPath (Get-TestTempRoot) -Directory -Filter 'nojq-*' -ErrorAction SilentlyContinue).Count
-            $after | Should -Be $before
+            # ISOLATION: the shared test temp root is also written by every parallel container that calls New-NoJqPath (nine other
+            # suites do), so counting 'nojq-*' there raced with their create and cleanup ("Expected 1, but got 0" on CI). Point the
+            # root at a directory only THIS test writes to for its duration (the override is per process: the runner starts one
+            # pwsh process per suite file), then the count is exact.
+            $privateRoot = New-TestTempPath 'priv-nojq'
+            $null = New-Item -ItemType Directory -Path $privateRoot -Force
+            $savedRoot = $env:CLAVITY_TEST_TEMP_ROOT
+            try {
+                $env:CLAVITY_TEST_TEMP_ROOT = $privateRoot
+                { New-NoJqPath } | Should -Throw '*jq still reachable*'
+                @(Get-ChildItem -LiteralPath $privateRoot -Directory -Filter 'nojq-*' -ErrorAction SilentlyContinue).Count | Should -Be 0 -Because 'the half-built directory must be removed when the postcondition throws'
+            } finally {
+                if ($null -eq $savedRoot) { Remove-Item Env:CLAVITY_TEST_TEMP_ROOT -ErrorAction SilentlyContinue } else { $env:CLAVITY_TEST_TEMP_ROOT = $savedRoot }
+                Remove-TestPath $privateRoot
+            }
         }
         It 'Set-TestPathUnreadable blocks the BASH process, and Restore-TestPathReadable undoes it' {
             $f = Join-Path $script:xpDir 'secret.txt'; Set-Content -LiteralPath $f -Value 'x'
