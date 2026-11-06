@@ -427,12 +427,24 @@ $skillRules = @(
        AppliesTo = { param($ctx, $rule) $true }
        Check = { param($ctx, $rule)
            # The opening sentence alone is gameable: a clause truncated after the number keeps the needle and loses the
-           # destination and the waiver. Pin the two phrases that carry them (each on one line, as shipped).
-           $capOk = ($ctx.Raw -match '(?m)^ {0,3}> Keep your chat reply to at most 6000 characters\.') -and
-                    $ctx.Raw.Contains('to the reply file named in this brief') -and
-                    $ctx.Raw.Contains('is the only exception to') -and
-                    $ctx.Raw.Contains('the cap never displaces a required block') -and
-                    $ctx.Raw.Contains('that file holds')
+           # destination and the waiver. Pin the phrases that carry them (each on one line, as shipped).
+           # AGY-TEST-AUDIT (reply-cap) BS1/BS2: the phrases must sit INSIDE the marked block, and the block must not be in a
+           # fenced code block. File-wide Contains() let a reflow that stripped '> ' from the continuation lines, or a clause
+           # wrapped in a code fence, keep every needle while no longer being verbatim payload text.
+           $capOk = $false
+           $inFence = $false
+           $lines = $ctx.Raw -split '\r?\n'
+           for ($i = 0; $i -lt $lines.Count; $i++) {
+               if ($lines[$i] -match '^ {0,3}(`{3,}|~{3,})') { $inFence = -not $inFence; continue }
+               if ($inFence -or $lines[$i] -notmatch '^ {0,3}> Keep your chat reply to at most 6000 characters\.') { continue }
+               $j = $i
+               while ($j + 1 -lt $lines.Count -and $lines[$j + 1] -match '^ {0,3}>') { $j++ }
+               $block = $lines[$i..$j] -join "`n"
+               if ($block.Contains('to the reply file named in this brief') -and
+                   $block.Contains('is the only exception to') -and
+                   $block.Contains('the cap never displaces a required block') -and
+                   $block.Contains('that file holds')) { $capOk = $true; break }
+           }
            if (-not $capOk) {
                $ctx.Report("$($ctx.Rel) : missing or truncated reply-cap clause as PAYLOAD text ('> Keep your chat reply to at most 6000 characters.' plus the reply-file destination, the review-only exception, the required-blocks precedence and the driver-file note) - without it a peer can generate one very long step, the driver's stall window elapses, and the ask returns possible_modal before the reply is finished (ROADMAP section 108)")
            }

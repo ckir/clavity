@@ -1395,6 +1395,7 @@ SCHEMAS = {
             $out = & $script:Lint -Root $scratch 2>&1
             $LASTEXITCODE | Should -Be 1
             ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
             Remove-Item -Recurse -Force $scratch
         }
 
@@ -1434,6 +1435,7 @@ SCHEMAS = {
             $out = & $script:Lint -Root $scratch 2>&1
             $LASTEXITCODE | Should -Be 1
             ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
             Remove-Item -Recurse -Force $scratch
         }
 
@@ -1459,6 +1461,100 @@ SCHEMAS = {
             $LASTEXITCODE | Should -Be 1
             ($out -join "`n") | Should -Match 'reply-cap'
             ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS <skill> when the reply-cap clause is unmarked (blockquote marker stripped from the first line only)' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # AGY-TEST-AUDIT (reply-cap) PP1: promised behaviour 2 says an UNMARKED clause is rejected. Every earlier row removed or reworded text; none removed only the marker.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $m = [regex]::Match($real, '(?ms)^> Keep your chat reply to at most 6000 characters\..*?(?=\r?\n\r?\n)')
+            $m.Success | Should -BeTrue -Because 'the shipped clause block must be found, or this row proves nothing'
+            $blk = $m.Value
+            $new = $blk -replace '^> ', ''
+            $body = $real.Replace($blk, $new)
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS <skill> when the blockquote marker is stripped from the reply-cap continuation lines' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # AGY-TEST-AUDIT (reply-cap) BS1: a reflow that drops '>' from wrapped lines leaves every needle in the file but ends the quoted payload after line 1.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $m = [regex]::Match($real, '(?ms)^> Keep your chat reply to at most 6000 characters\..*?(?=\r?\n\r?\n)')
+            $m.Success | Should -BeTrue -Because 'the shipped clause block must be found, or this row proves nothing'
+            $blk = $m.Value
+            $new = (($blk -split "`n") | ForEach-Object -Begin { $k = 0 } -Process { if ($k++ -eq 0) { $_ } else { $_ -replace '^> ', '' } }) -join "`n"
+            $body = $real.Replace($blk, $new)
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS <skill> when the reply-cap clause is wrapped in a fenced code block' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # AGY-TEST-AUDIT (reply-cap) BS2: inside a code fence the clause is an example, not payload text, yet '(?m)^' still matched its line starts.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $m = [regex]::Match($real, '(?ms)^> Keep your chat reply to at most 6000 characters\..*?(?=\r?\n\r?\n)')
+            $m.Success | Should -BeTrue -Because 'the shipped clause block must be found, or this row proves nothing'
+            $blk = $m.Value
+            $new = "``````text`n$blk`n``````"
+            $body = $real.Replace($blk, $new)
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'reply-cap'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'ACCEPTS <skill> with the shipped clause under CRLF line endings' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # The block scan splits on \r?\n; guard that a CRLF checkout (Windows) is not rejected by the new line-wise walk.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $m = [regex]::Match($real, '(?ms)^> Keep your chat reply to at most 6000 characters\..*?(?=\r?\n\r?\n)')
+            $m.Success | Should -BeTrue -Because 'the shipped clause block must be found, or this row proves nothing'
+            $blk = $m.Value
+            $new = $blk
+            $body = $real -replace "`r?`n", "`r`n"
+            $body | Should -Not -Be $real -Because 'the CRLF conversion must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 0
             Remove-Item -Recurse -Force $scratch
         }
 
