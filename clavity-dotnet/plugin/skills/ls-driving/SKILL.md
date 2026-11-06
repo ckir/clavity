@@ -63,11 +63,15 @@ You (Claude) drive a paired agy over its Language Server via three MCP tools exp
 ## Spend - open a fresh agy chat before a heavy consult
 
 Every `agy_ask` lands in agy's most-recently-active conversation, and agy re-reads that whole conversation on
-every step it takes. MEASURED 2026-11-06 on one fixed read-only brief, one run each: in a conversation that had
-grown to about 190K tokens the ask processed 1.96M context tokens over 10 calls; in a fresh chat it processed
-0.20M over 11 calls (about 9.6x less), and both gave the same answer. The saving is in re-read context only:
-output was higher in the fresh chat (11.2K against 6.7K) and its uncached input was not clearly lower, and the
-price of cached against uncached tokens is unmeasured. Treat it as a strong lead, not a proven ratio.
+every step it takes. MEASURED 2026-11-06 on one fixed read-only brief, two runs in each kind of conversation
+(the totals are from agy's own per-call counts): a conversation grown to about 190-200K tokens processed about
+196-205K context tokens PER CALL; a fresh chat processed about 18-20K per call, roughly 10x less, in all four
+runs. The TOTAL did not follow: a long chat cost 1.96M over 10 calls once and 1.02M over 5 calls the second
+time (the peer answered from its memory of the earlier identical question and never re-ran the diff), against
+0.20M and 0.28M over 11 and 14 calls in fresh chats. A long chat idle for a while also pays one cold re-read of
+its whole context on its next message (203K uncached tokens, seen twice). Output tokens were higher in the
+fresh chats (about 11K against 2-7K), and the price of cached against uncached tokens is unmeasured. Treat it
+as: per-call context is reliably smaller, the total depends on how many calls the peer makes.
 
 So before a heavy, many-step consult (a capstone, a test audit, a panel round) in a long conversation, ask the
 human to open a NEW chat in agy and send it any first message. The server cannot start a conversation itself
