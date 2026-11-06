@@ -1381,7 +1381,10 @@ public class AgyAskIntegrationTests
         Assert.Equal("generation_cap", hang.Report.Limit);                 // the wire value
         Assert.Contains("CLAVITY_AGY_GENERATION_CAP_SECONDS", hang.Report.Hint);
         Assert.Equal(GeneratingStatus, hang.Diagnostic!.LastStepStatus);   // the report says what it saw
-        Assert.InRange(fake.WaitCalls, 3, 12);                              // it kept waiting, and it is BOUNDED
+        // AGY-TEST-AUDIT MG-2: with a 400 ms cap and 100 ms windows the extension survives the probes after windows 0 to 2 and is
+        // spent after window 3 or 4 (window 3 only if a window costs 33 ms more than its stall time): 4 or 5 calls. The lower
+        // bound 4 is therefore robust, and 3 would let a cap that is half as long pass.
+        Assert.InRange(fake.WaitCalls, 4, 12);                              // it kept waiting, and it is BOUNDED
     }
 
     [Theory]
@@ -1430,7 +1433,11 @@ public class AgyAskIntegrationTests
             .Concat(new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, AppendAfter: Generating("step B")) })
             .Concat(Enumerable.Range(0, 13).Select(_ => new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false)))
             .Concat(new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) }).ToArray();
-        var (fake, reply, hang) = await AskGeneratingAsync(plan, TimeSpan.FromMilliseconds(4000), TimeSpan.Zero, stallMs: 200);
+        // AGY-TEST-AUDIT MG-1: the cap is 4400 ms. Mutant side: the final probe is >= 23 windows x 200 ms = 4600 ms after A first
+        // appeared (a window never ends before its stall time, so jitter only ADDS elapsed time): spent by at least 200 ms. Correct
+        // side: 13 flat windows after B take 2600 ms + 13 x the per-window overhead, alive while that stays under 4400 ms, so the
+        // test tolerates up to about 138 ms of overhead per window (two RPCs) before it could flake.
+        var (fake, reply, hang) = await AskGeneratingAsync(plan, TimeSpan.FromMilliseconds(4400), TimeSpan.Zero, stallMs: 200);
         Assert.Null(hang);
         Assert.EndsWith("the reply", reply!.Answer);
         Assert.Equal(1 + 9 + 1 + 13 + 1, fake.WaitCalls);

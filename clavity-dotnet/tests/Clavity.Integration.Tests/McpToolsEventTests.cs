@@ -51,6 +51,19 @@ public class McpToolsEventTests
     }
 
     [Fact]
+    public void A_generation_cap_hang_reply_carries_its_own_limit_hint_and_event_outcome()
+    {
+        // AGY-TEST-AUDIT PP-1/PP-2: the wire value, the dedicated hint and the event-log outcome token for the new limit.
+        var report = new SurfacingModalGuard().OnLsTimeout("WaitFor", TimeSpan.FromSeconds(700), IdleLimit.GenerationCap);
+        var (root, log) = RunFault(new AgyModalHangException(report));
+
+        Assert.Equal("possible_modal", root.GetProperty("status").GetString());
+        Assert.Equal("generation_cap", root.GetProperty("limit").GetString());
+        Assert.Contains("CLAVITY_AGY_GENERATION_CAP_SECONDS", root.GetProperty("hint").GetString());
+        Assert.Equal("possible_modal_generation_cap", Parse(log.Snapshot()[^1]).GetProperty("outcome").GetString());
+    }
+
+    [Fact]
     public void A_modal_hang_reply_for_a_discipline_ask_names_the_peer_file_and_says_to_treat_it_as_untrusted()
     {
         // ROADMAP section 108: the peer may finish AFTER the stall report; the reply file is where it will appear.
