@@ -182,7 +182,7 @@ Describe 'agy-ledger-lib.sh' {
 '@
 
         function New-LedgerRepo {
-            param([string]$LedgerBody, [string]$Discipline = 'agy-capstone', [string]$RawBody, [switch]$Crlf)
+            param([string]$LedgerBody, [string]$Discipline = 'agy-capstone', [string]$RawBody, [switch]$Crlf, [string]$Seed = 'seed')
             $d = New-TestTempPath 'aglfx'
             New-Item -ItemType Directory -Force -Path $d | Out-Null
             [void]$script:Fixtures.Add($d)   # FIXTURE HYGIENE
@@ -193,9 +193,9 @@ Describe 'agy-ledger-lib.sh' {
             # line endings under us, and quotepath governs how git hands paths back.
             & git -C $d config core.autocrlf false
             & git -C $d config core.quotepath true
-            [IO.File]::WriteAllText((Join-Path $d 'seed.txt'), "seed`n")
+            [IO.File]::WriteAllText((Join-Path $d 'seed.txt'), "$Seed`n")
             & git -C $d add seed.txt
-            & git -C $d commit -q -m seed
+            & git -C $d commit -q -m $Seed
             $sha = (& git -C $d rev-parse HEAD).Trim()
             New-Item -ItemType Directory -Force -Path (Join-Path $d 'docs') | Out-Null
             # RawBody writes a ledger verbatim - used to plant a COPY of the real shipped ledger, whose
@@ -300,7 +300,7 @@ Describe 'agy-ledger-lib.sh' {
             # hex letter, and ASSERT THE FILE ACTUALLY CHANGED - the retry could fail silently too.
             $r = $null
             foreach ($attempt in 1..8) {
-                $cand = New-LedgerRepo -LedgerBody $script:RangeLedger
+                $cand = New-LedgerRepo -LedgerBody $script:RangeLedger -Seed "seed-$attempt"
                 if ($cand.Sha.Substring(0, 7) -match '[a-f]') { $r = $cand; break }
             }
             $r | Should -Not -BeNullOrEmpty -Because 'eight consecutive all-digit short shas is not chance; the fixture generator changed'

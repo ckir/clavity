@@ -298,51 +298,7 @@ public static class GoldenHeader
         // sidecar still holds the previous hash makes the read side see a mismatch and skip the region,
         // so a header-only backup restores to nothing. Dedup on identical content, otherwise an
         // aborted re-commit burns a slot each time and a few retries evict the whole ring.
-        if (File.Exists(path))
-        {
-            var current = File.ReadAllText(path);
-            if (!string.Equals(current, content, StringComparison.Ordinal))
-            {
-                // The prune below orders slots BY NAME, so the stamp must sort as time does: UTC
-                // yyyyMMdd-HHmmss, fixed width, then a zero-padded per-process counter that keeps rapid
-                // commits within one second distinct. ROADMAP section 99: a hex Stopwatch tick count was
-                // neither fixed-width nor stable across boots, so the prune could evict the slot it had
-                // just written. Two PROCESSES committing in the same second with the same counter would
-                // collapse into one slot - the pre-v26 behaviour; curate-commit is a one-shot CLI.
-                var counter = Interlocked.Increment(ref _snapshotCounter);
-                var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)
-                            + "-" + counter.ToString("D4", CultureInfo.InvariantCulture);
-                var bak = $"{path}.{stamp}.bak";
-                File.Copy(path, bak, overwrite: true);
-                var liveSidecar = path + ".sha256";
-                if (File.Exists(liveSidecar)) File.Copy(liveSidecar, bak + ".sha256", overwrite: true);
-
-                // Reuse `dir` from above rather than re-deriving with `!`. The `!string.IsNullOrEmpty(dir)` guard in this method already treats an
-                // empty directory as a real case; Directory.GetFiles("") throws ArgumentException, so
-                // the null-forgiving re-derivation quietly removed a defence its own neighbour keeps.
-                // Not reachable through CommitGrowth today (ResolveDir is guarded non-blank), but
-                // Commit is public and a bare filename is exactly what that guard anticipates.
-                // The slot just written is held OUT of the pool: it is the one snapshot this commit exists
-                // to keep, and a clock stepped backwards (or slots stamped ahead of it) would otherwise sort
-                // it below a full ring and delete it. The ring then sheds the lowest of the others.
-                var bakName = Path.GetFileName(bak);
-                foreach (var stale in Directory.GetFiles(string.IsNullOrEmpty(dir) ? "." : dir,
-                             Path.GetFileName(path) + ".*.bak")
-                         .Where(f => !string.Equals(Path.GetFileName(f), bakName, StringComparison.Ordinal))
-                         // A clavity-v26 ring holds hex-tick slots (section 99) that may sort ABOVE every dated
-                         // name; they are older than any dated slot by construction, so they are evicted first.
-                         .OrderByDescending(f => DatedSlot.IsMatch(Path.GetFileName(f)) ? 1 : 0)
-                         .ThenByDescending(f => f, StringComparer.Ordinal)
-                         .Skip(SnapshotKeep - 1))
-                {
-                    // Concurrent committers can pick the same stale slot; on Windows the loser's delete throws
-                    // (sharing violation / "access denied" on a pending delete). The slot is being evicted
-                    // anyway, so a failed prune delete is benign - the next commit's prune retries it.
-                    TryDeleteQuietly(stale);
-                    TryDeleteQuietly(stale + ".sha256");
-                }
-            }
-        }
+        TrySnapshot(path, content, dir);
 
         var tmpTag = $"{Environment.ProcessId}-{Interlocked.Increment(ref _tmpCounter)}";
 
@@ -356,6 +312,105 @@ public static class GoldenHeader
         var sidecarTmp = $"{sidecarPath}.{tmpTag}.tmp";
         File.WriteAllText(sidecarTmp, Sha256Hex(content));
         AtomicMoveWithRetry(sidecarTmp, sidecarPath);
+    }
+
+    private static void TrySnapshot(string path, string content, string? dir)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+
+            var current = TryReadAllTextWithRetry(path);
+            if (current == null || string.Equals(current, content, StringComparison.Ordinal))
+                return;
+
+            // The prune below orders slots BY NAME, so the stamp must sort as time does: UTC
+            // yyyyMMdd-HHmmss, fixed width, then a zero-padded per-process counter that keeps rapid
+            // commits within one second distinct. ROADMAP section 99: a hex Stopwatch tick count was
+            // neither fixed-width nor stable across boots, so the prune could evict the slot it had
+            // just written. Two PROCESSES committing in the same second with the same counter would
+            // collapse into one slot - the pre-v26 behaviour; curate-commit is a one-shot CLI.
+            var counter = Interlocked.Increment(ref _snapshotCounter);
+            var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)
+                        + "-" + counter.ToString("D4", CultureInfo.InvariantCulture);
+            var bak = $"{path}.{stamp}.bak";
+            TryCopyFileWithRetry(path, bak);
+
+            var liveSidecar = path + ".sha256";
+            if (File.Exists(liveSidecar))
+            {
+                TryCopyFileWithRetry(liveSidecar, bak + ".sha256");
+            }
+
+            var bakName = Path.GetFileName(bak);
+            var targetDir = string.IsNullOrEmpty(dir) ? "." : dir;
+            if (!Directory.Exists(targetDir)) return;
+
+            foreach (var stale in Directory.GetFiles(targetDir, Path.GetFileName(path) + ".*.bak")
+                         .Where(f => !string.Equals(Path.GetFileName(f), bakName, StringComparison.Ordinal))
+                         // A clavity-v26 ring holds hex-tick slots (section 99) that may sort ABOVE every dated
+                         // name; they are older than any dated slot by construction, so they are evicted first.
+                         .OrderByDescending(f => DatedSlot.IsMatch(Path.GetFileName(f)) ? 1 : 0)
+                         .ThenByDescending(f => f, StringComparer.Ordinal)
+                         .Skip(SnapshotKeep - 1))
+            {
+                // Concurrent committers can pick the same stale slot; on Windows the loser's delete throws
+                // (sharing violation / "access denied" on a pending delete). The slot is being evicted
+                // anyway, so a failed prune delete is benign - the next commit's prune retries it.
+                TryDeleteQuietly(stale);
+                TryDeleteQuietly(stale + ".sha256");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Under rapid concurrent writes on Windows, snapshotting or pruning the fleeting prior state
+            // can lose a sharing race with another committer's File.Move. Best-effort snapshot; the commit
+            // itself still proceeds via AtomicMoveWithRetry.
+        }
+    }
+
+    private static string? TryReadAllTextWithRetry(string path)
+    {
+        for (var attempt = 1; attempt <= 10; attempt++)
+        {
+            try
+            {
+                if (!File.Exists(path)) return null;
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var reader = new StreamReader(stream, Encoding.UTF8);
+                return reader.ReadToEnd();
+            }
+            catch (FileNotFoundException)
+            {
+                return null;
+            }
+            catch (Exception ex) when (attempt < 10 && ex is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(5 * attempt);
+            }
+        }
+        return null;
+    }
+
+    private static void TryCopyFileWithRetry(string source, string destination)
+    {
+        for (var attempt = 1; attempt <= 10; attempt++)
+        {
+            try
+            {
+                if (!File.Exists(source)) return;
+                File.Copy(source, destination, overwrite: true);
+                return;
+            }
+            catch (FileNotFoundException)
+            {
+                return;
+            }
+            catch (Exception ex) when (attempt < 10 && ex is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(5 * attempt);
+            }
+        }
     }
 
     private static void TryDeleteQuietly(string file)
