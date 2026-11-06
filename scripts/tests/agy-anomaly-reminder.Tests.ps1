@@ -408,6 +408,22 @@ Describe 'agy-anomaly-reminder.sh' {
         } finally { Remove-TestPath $w, $h }
     }
 
+    It 'tells a HOST repository to promote to its OWN tracker, never to a ROADMAP' {
+        # Capstone r1 found this message saying "a tracked ROADMAP item" in every repository the plugin is installed into, while
+        # only the clavity monorepo has such a roadmap (a host repo such as rsutils keeps housekeeping in a to-do file and its
+        # ROADMAP is a product roadmap). 'promote' and 'delete' above match BOTH wordings, so a revert to the old text stayed
+        # green (MEASURED by the AGY-TEST-AUDIT: the whole suite passed 39/39 with the hook reverted). Assert the destination.
+        $w = $null; $h = $null
+        try {
+            $w = New-Workspace @('- [defect] a fact * n/a * 2026-08-01 * task=x')
+            $h = New-CleanHome
+            $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match "repository's own tracker" -Because 'the destination is the host repository''s own tracker'
+            $r.StdOut   | Should -Not -Match 'ROADMAP' -Because 'a host repository has no clavity ROADMAP to promote into'
+        } finally { Remove-TestPath $w, $h }
+    }
+
     It 'names the OLDEST entry date, not the newest' {
         $w = $null; $h = $null
         try {

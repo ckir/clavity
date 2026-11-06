@@ -93,4 +93,29 @@ Describe 'check-tracker-format-excerpt.ps1 - the real repository' {
         }
         (@($lacking) -join ',') | Should -BeExactly '' -Because 'a skill that names the conveyor and a ROADMAP must carry the tracker-format excerpt'
     }
+    It 'keeps the CANONICAL excerpt conditional on docs/tracker-format.md existing' {
+        # The parity gate proves the six skill copies EQUAL the canonical block; it cannot tell a conditional canonical block from
+        # the old unconditional one, so reverting docs/tracker-format.md AND the six copies together passed every row above
+        # (MEASURED by the AGY-TEST-AUDIT: 9/9 green with all seven reverted). Assert the canonical text itself.
+        $doc = [IO.File]::ReadAllText((Join-Path $script:RepoRoot 'docs' 'tracker-format.md')) -replace "`r`n", "`n"
+        $b = $doc.IndexOf('<!-- tracker-format:begin -->', [StringComparison]::Ordinal)
+        $e = $doc.IndexOf('<!-- tracker-format:end -->', [StringComparison]::Ordinal)
+        ($b -ge 0 -and $e -gt $b) | Should -BeTrue -Because 'docs/tracker-format.md must carry the excerpt block'
+        $block = $doc.Substring($b, $e - $b)
+        $block | Should -Match 'Only if this repository has `docs/tracker-format\.md`' -Because 'a host repository does not have this file, so the paragraph must be conditional'
+        $block | Should -Match 'Where the repository defines `just check-tracker-status`' -Because 'a host repository has no such recipe, so the enforcement sentence must be conditional'
+        $block | Should -Not -Match '\(full rules: `docs/tracker-format\.md`\)' -Because 'the unconditional citation is the dangling reference this excerpt used to carry'
+    }
+    It 'routes no plugin-shipped skill or hook to "a tracked ROADMAP item" (a host repository has none)' {
+        # The wording that regressed twice: agy-anomaly-reminder.sh and agy-test-audit/SKILL.md told every host repository to
+        # promote to a tracked ROADMAP item. The monorepo-only routing now lives behind "If clavity-dotnet/ROADMAP.md exists" in
+        # open-issues and is phrased differently, so this pattern has zero legitimate hits. It pins the measured phrasing, not
+        # every possible wording (a prose linter for the latter is gameable by adding the word "if").
+        $hits = foreach ($plugin in 'clavity-dotnet', 'clavity-classic') {
+            Get-ChildItem -LiteralPath (Join-Path $script:RepoRoot $plugin 'plugin') -Recurse -File |
+                Where-Object { $_.Extension -in '.md', '.sh' } |
+                Select-String -Pattern 'tracked\s+`?ROADMAP' | ForEach-Object { "$($_.Path):$($_.LineNumber)" }
+        }
+        (@($hits) -join "`n") | Should -BeExactly '' -Because 'these files ship into repositories that have no clavity ROADMAP'
+    }
 }

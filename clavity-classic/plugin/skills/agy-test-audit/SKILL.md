@@ -231,7 +231,7 @@ vocabulary; it is not a code dependency on the panel skill.
 4. **Surface the VERIFIED gaps to the OWNER to scope** - all / high-severity only / defer. The discipline
    **does not auto-write tests**; the owner decides scope (the AGY-FIRST "owner decides" ethos). Any gaps
    the owner **defers must be logged as tracked debt** on the anomalies conveyor
-   (`.clavity/local-anomalies.md`, promoted to a tracked `ROADMAP.md` item) - NOT in the rolling committed
+   (`.clavity/local-anomalies.md`, promoted to a tracked item in the repository's own tracker, see the open-issues skill) - NOT in the rolling committed
    file below, which holds accepted boundaries only. A GAPS-FOUND-but-all-deferred outcome is legitimate
    only if recorded, so a defer-everything habit is visible in one place and the discipline cannot degrade
    into run-then-defer theater.
@@ -262,7 +262,7 @@ vocabulary; it is not a code dependency on the panel skill.
    filename, and the matcher matched that.
 
 <!-- tracker-format:begin -->
-**Writing a tracker entry** (full rules: `docs/tracker-format.md`): the heading is the TITLE ONLY; the next non-blank line is `**Status:** <TOKEN> <YYYY-MM-DD> - <one line>`. TOKEN is one of OPEN, SCHEDULED, IMPLEMENTED (open) or SHIPPED (cite a commit sha), CLOSED-BY-RULING (a ROADMAP entry needs a Non-goals bullet; a stub needs a `**Reopen if:**` line), KILLED (state why). Never put a status in the heading; an open sub-item gets its own entry. `just check-tracker-status` enforces this.
+**Writing a tracker entry.** Only if this repository has `docs/tracker-format.md` (the full rules are there); otherwise conform to the target file's existing entry syntax (for example `- [ ] <fact>`) and ignore the rest of this paragraph. The format: the heading is the TITLE ONLY; the next non-blank line is `**Status:** <TOKEN> <YYYY-MM-DD> - <one line>`. TOKEN is one of OPEN, SCHEDULED, IMPLEMENTED (open) or SHIPPED (cite a commit sha), CLOSED-BY-RULING (a ROADMAP entry needs a Non-goals bullet; a stub needs a `**Reopen if:**` line), KILLED (state why). Never put a status in the heading; an open sub-item gets its own entry. Where the repository defines `just check-tracker-status`, it enforces this.
 <!-- tracker-format:end -->
 
 **Every payload MUST carry THREE to FOUR OPEN QUESTIONS the peer answers in its own words** - never a
@@ -421,7 +421,7 @@ This loop **terminates**: it is owner-gated, the gap set is finite, and a re-cap
   override the path) - holding ONLY the **accepted-boundary ledger**: the do-not-re-raise list, each entry
   with its compensation + anchor, or under the owner-accepted mode for an `UNVERIFIED-ACCEPTED` finding.
   Closed entries are removed. **Owner-deferred gaps do NOT live here** - they are deferred debt and ride
-  `.clavity/local-anomalies.md` to a tracked `ROADMAP.md` item like every other deferral, so this file does
+  `.clavity/local-anomalies.md` to a tracked item in the repository's own tracker like every other deferral, so this file does
   not become a second backlog. Structure it append-only / section-partitioned to minimize merge conflicts
   (a single file touched every branch-finish is a conflict hotspot where a careless `--ours`/`--theirs`
   silently drops a teammate's entry). A periodic **manual whole-tree garbage-collection pass** reconciles

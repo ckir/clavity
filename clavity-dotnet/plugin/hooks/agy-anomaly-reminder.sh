@@ -227,6 +227,6 @@ done 2>/dev/null < "$f"
 # they are standing -- at exactly the moment they are least inclined to go hunting for it.
 # jq -nc owns the escaping here, and that is load-bearing rather than tidy: $f is a PATH, the one value in
 # this message that can legitimately contain a character the envelope would choke on.
-msg="[AGY-ANOMALIES] $n untriaged$oldest in $f. Triage before new work: each entry is either PROMOTED to a tracked ROADMAP item with an owner, or DELETEd with a recorded reason. There is no parked state. Use the open-issues skill."
+msg="[AGY-ANOMALIES] $n untriaged$oldest in $f. Triage before new work: each entry is either PROMOTED to a tracked item in the repository's own tracker with an owner, or DELETEd with a recorded reason. There is no parked state. Use the open-issues skill."
 jq -nc --arg m "$msg" '{systemMessage:$m,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
 exit 0
