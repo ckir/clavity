@@ -24,7 +24,7 @@ namespace Clavity.Integration.Tests;
 [Collection("McpTools")]
 public class ArgumentPrecheckTests
 {
-    private static async Task<(McpClient Client, IAsyncDisposable Server)> ConnectAsync(bool withFilter)
+    private static async Task<(McpClient Client, IAsyncDisposable Server)> ConnectAsync(bool withFilter, LsEventLog? log = null)
     {
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
@@ -38,7 +38,7 @@ public class ArgumentPrecheckTests
         var b = services.AddMcpServer()
             .WithStreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream())
             .WithTools<McpTools>();
-        if (withFilter) b.WithRequestFilters(f => f.AddCallToolFilter(ArgumentPrecheck.Filter));
+        if (withFilter) b.WithRequestFilters(f => f.AddCallToolFilter(log is null ? new McpRequestFilter<CallToolRequestParams, CallToolResult>(ArgumentPrecheck.Filter) : ArgumentPrecheck.For(log)));
         var sp = services.BuildServiceProvider();
         var server = sp.GetRequiredService<McpServer>();
         var cts = new CancellationTokenSource();
@@ -256,7 +256,7 @@ public class ArgumentPrecheckTests
     [Fact]
     public void Program_registers_the_precheck_filter()
     {
-        // Lexical pin (Program.cs is not callable from a test): the round-trip rows above wire their OWN filter, so a
+        // Lexical pin of the log-aware variant, For(events) (Program.cs is not callable from a test): the round-trip rows above wire their OWN filter, so a
         // Program.cs that forgot the registration would ship the generic sentence with every row green.
         // Walk UP from the test binary until the repo's Program.cs is found - no fixed depth, so a custom output
         // directory still resolves; a published flat directory has no src/ above it and fails loudly below.
@@ -274,6 +274,64 @@ public class ArgumentPrecheckTests
         // start of a line (a `//`-commented line does not start with the call).
         src = System.Text.RegularExpressions.Regex.Replace(src, @"/\*.*?\*/", "", System.Text.RegularExpressions.RegexOptions.Singleline);
         Assert.DoesNotContain("#if", src);
-        Assert.Matches(new System.Text.RegularExpressions.Regex(@"^[ \t]*\.WithRequestFilters\(f => f\.AddCallToolFilter\(ArgumentPrecheck\.Filter\)\);", System.Text.RegularExpressions.RegexOptions.Multiline), src);
+        Assert.Matches(new System.Text.RegularExpressions.Regex(@"^[ \t]*\.WithRequestFilters\(f => f\.AddCallToolFilter\(ArgumentPrecheck\.For\(events\)\)\);", System.Text.RegularExpressions.RegexOptions.Multiline), src);
+    }
+
+    [Fact]
+    public async Task A_refusal_with_a_file_log_names_the_call_id_and_path_and_the_file_holds_a_refused_line()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "precheck-" + Guid.NewGuid().ToString("N") + ".log");
+        try
+        {
+            using var log = new LsEventLog(filePath: path);
+            var (client, server) = await ConnectAsync(withFilter: true, log);
+            await using (server)
+            {
+                var r = await client.CallToolAsync("agy_ask", new Dictionary<string, object?> { ["payload"] = "hi" });
+                Assert.True(r.IsError);
+                var t = Text(r);
+                Assert.Contains("missing required argument 'message'", t);
+                var m = System.Text.RegularExpressions.Regex.Match(t, @" Logged as (p\d+-\d{6}) in (.+)\.$");
+                Assert.True(m.Success, t);
+                Assert.Equal(path, m.Groups[2].Value);
+                var lines = File.ReadAllLines(path).Where(l => l.Contains(m.Groups[1].Value)).ToList();
+                var line = Assert.Single(lines);
+                Assert.Contains("\"phase\":\"refused\"", line);
+                Assert.Contains("\"outcome\":\"invalid_arguments\"", line);
+            }
+        }
+        finally { try { File.Delete(path); } catch (IOException) { } }
+    }
+
+    [Fact]
+    public async Task A_refusal_with_a_memory_only_log_says_so()
+    {
+        using var log = new LsEventLog();
+        var (client, server) = await ConnectAsync(withFilter: true, log);
+        await using (server)
+        {
+            var r = await client.CallToolAsync("agy_ask", new Dictionary<string, object?> { ["payload"] = "hi" });
+            Assert.True(r.IsError);
+            Assert.Matches(@" Logged as p\d+-\d{6} \(memory-only; no log file\)\.$", Text(r));
+        }
+    }
+
+    [Fact]
+    public async Task A_well_formed_call_is_untouched_by_the_log_aware_filter()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "precheck-" + Guid.NewGuid().ToString("N") + ".log");
+        try
+        {
+            using var log = new LsEventLog(filePath: path);
+            var (client, server) = await ConnectAsync(withFilter: true, log);
+            await using (server)
+            {
+                var r = await client.CallToolAsync("agy_status", new Dictionary<string, object?>());
+                Assert.DoesNotContain("Logged as", Text(r));
+            }
+            var text = File.Exists(path) ? File.ReadAllText(path) : "";
+            Assert.DoesNotContain("\"phase\":\"refused\"", text);
+        }
+        finally { try { File.Delete(path); } catch (IOException) { } }
     }
 }

@@ -77,7 +77,7 @@ if (args.Length > 0 && args[0] == "--mcp")
         .WithTools<McpTools>()
         // ROADMAP section 71 (b): refuse a call whose argument names do not match the tool's schema with a sentence that
         // says which, instead of the SDK's generic "An error occurred invoking". Runs before the SDK binds arguments.
-        .WithRequestFilters(f => f.AddCallToolFilter(ArgumentPrecheck.Filter));
+        .WithRequestFilters(f => f.AddCallToolFilter(ArgumentPrecheck.For(events)));
 
     await builder.Build().RunAsync();
     return 0;
