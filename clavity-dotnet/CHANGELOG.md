@@ -1,4 +1,9 @@
 # dotnet changelog
+## 0.17.0 - 2026-11-07
+
+### Features
+- feat(clavity-ls): fault replies name the event-log file and the call id (#113)
+
 ## 0.16.0 - 2026-11-06
 
 ### Features
