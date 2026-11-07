@@ -41,6 +41,9 @@ public sealed class LsEventLog : IDisposable
     /// lines are also written to. Unset = no file.</summary>
     public const string LogVar = "CLAVITY_LS_LOG";
 
+    /// <summary>What a fault reply says in place of a log path when no file holds the call.</summary>
+    public const string MemoryOnlyNote = "event log is memory-only (file disabled or dropped); no log file holds this call";
+
     /// <summary>Size at which the file sink rolls over: the file moves to <see cref="OldPathFor"/> (replacing any
     /// earlier one) and a fresh file is started, so a log never holds more than about twice this.</summary>
     public const long MaxFileBytes = 10 * 1024 * 1024;
