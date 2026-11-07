@@ -10,7 +10,8 @@ using System.Text.Json.Serialization;
 namespace Clavity.Ls;
 
 /// <summary>One lifecycle event of an MCP tool call. Field names are the wire contract of the event log; null fields
-/// are omitted from the line.</summary>
+/// are omitted from the line. <c>call</c> is the id of the tool call the event belongs to (see
+/// <see cref="LsEventLog.BeginCall"/>); an event outside a call has none.</summary>
 public sealed record LsEvent(
     [property: JsonPropertyName("ts")] string Ts,
     [property: JsonPropertyName("tool")] string? Tool,
@@ -19,7 +20,8 @@ public sealed record LsEvent(
     [property: JsonPropertyName("model")] int? Model = null,
     [property: JsonPropertyName("model_src")] string? ModelSrc = null,
     [property: JsonPropertyName("endpoint_src")] string? EndpointSrc = null,
-    [property: JsonPropertyName("outcome")] string? Outcome = null);
+    [property: JsonPropertyName("outcome")] string? Outcome = null,
+    [property: JsonPropertyName("call")] string? Call = null);
 
 /// <summary>
 /// What the server DID and WHEN, kept so a misbehaving ask can be reconstructed afterwards. Three sinks, one line each:
@@ -39,6 +41,17 @@ public sealed class LsEventLog : IDisposable
     /// lines are also written to. Unset = no file.</summary>
     public const string LogVar = "CLAVITY_LS_LOG";
 
+    /// <summary>What a fault reply says in place of a log path when no file holds the call.</summary>
+    public const string MemoryOnlyNote = "event log is memory-only (file disabled or dropped); no log file holds this call";
+
+    /// <summary>Size at which the file sink rolls over: the file moves to <see cref="OldPathFor"/> (replacing any
+    /// earlier one) and a fresh file is started, so a log never holds more than about twice this.</summary>
+    public const long MaxFileBytes = 10 * 1024 * 1024;
+
+    /// <summary>The rollover file for <paramref name="filePath"/>: <c>clavity-ls-s1.log</c> becomes
+    /// <c>clavity-ls-s1.old.log</c>, a name with no extension <c>x</c> becomes <c>x.old.log</c>.</summary>
+    public static string OldPathFor(string filePath) => Path.ChangeExtension(filePath, ".old.log");
+
     /// <summary>How many of the most recent lines are kept in memory.</summary>
     public const int RingCapacity = 20;
 
@@ -51,14 +64,22 @@ public sealed class LsEventLog : IDisposable
     private readonly Queue<string> _ring = new();
     private readonly TextWriter? _stderr;
     private readonly Func<DateTimeOffset> _clock;
+    private readonly long _maxFileBytes;
     private string? _filePath;
     private StreamWriter? _file;
+    private int _callCounter;
+    // An INSTANCE field on purpose: two logs in one flow must not share a call id.
+    private readonly AsyncLocal<string?> _callId = new();
 
     /// <param name="stderr">Where each line is echoed; null = nowhere (the in-memory default of tests).</param>
     /// <param name="filePath">Resolved file to append to (see <see cref="ResolveFilePath"/>); null = no file.</param>
     /// <param name="clock">UTC clock; injectable so a test can pin the timestamp.</param>
-    public LsEventLog(TextWriter? stderr = null, string? filePath = null, Func<DateTimeOffset>? clock = null)
+    /// <param name="maxFileBytes">Size at which the file is rolled over to <see cref="OldPathFor"/> (see <see cref="MaxFileBytes"/>).</param>
+    public LsEventLog(
+        TextWriter? stderr = null, string? filePath = null, Func<DateTimeOffset>? clock = null,
+        long maxFileBytes = MaxFileBytes)
     {
+        _maxFileBytes = maxFileBytes;
         _stderr = stderr;
         _filePath = filePath;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
@@ -77,10 +98,51 @@ public sealed class LsEventLog : IDisposable
         return Path.Combine(value, $"clavity-ls-{name}.log");
     }
 
+    /// <summary>The <see cref="LogVar"/> value that turns the file sink off (compared trimmed, ignoring case).</summary>
+    public const string OffValue = "off";
+
+    /// <summary>The file sink the server uses; ON by default. Unset/blank = a file in
+    /// <c>&lt;userProfileDir&gt;/.clavity/logs</c>, named as <see cref="ResolveFilePath"/> names directory files;
+    /// <see cref="OffValue"/> = null (no file); an unset value with a blank <paramref name="userProfileDir"/> = null too (no relative default); anything else is exactly what <see cref="ResolveFilePath"/> makes of it.</summary>
+    public static string? ResolveSink(string? envValue, string userProfileDir, string? sessionId, int pid)
+    {
+        if (string.IsNullOrWhiteSpace(envValue))
+        {
+            if (string.IsNullOrWhiteSpace(userProfileDir)) return null;
+            // The trailing separator makes ResolveFilePath treat a not-yet-created directory as a directory.
+            var logs = Path.Combine(userProfileDir, ".clavity", "logs") + Path.DirectorySeparatorChar;
+            return ResolveFilePath(logs, sessionId, pid);
+        }
+        if (string.Equals(envValue.Trim(), OffValue, StringComparison.OrdinalIgnoreCase)) return null;
+        return ResolveFilePath(envValue, sessionId, pid);
+    }
+
     private static string SafeFileName(string raw)
     {
         var bad = Path.GetInvalidFileNameChars();
         return new string(raw.Select(c => Array.IndexOf(bad, c) >= 0 ? '_' : c).ToArray());
+    }
+
+    /// <summary>Starts a call: allocates its id (<c>p&lt;pid&gt;-&lt;n, six digits&gt;</c>, unique per process), makes it
+    /// the id every following <see cref="Record"/> in this async flow carries, and returns it.</summary>
+    public string BeginCall()
+    {
+        var id = $"p{Environment.ProcessId}-{Interlocked.Increment(ref _callCounter):D6}";
+        _callId.Value = id;
+        return id;
+    }
+
+    /// <summary>Marks the end of the current call: later records in this flow carry no id.</summary>
+    public void EndCall() => _callId.Value = null;
+
+    /// <summary>The id <see cref="BeginCall"/> gave the call this flow is in; null outside a call.</summary>
+    public string? CurrentCallId => _callId.Value;
+
+    /// <summary>The file the sink is writing (or will write); null with no file, after the sink failed, or after
+    /// <see cref="Dispose"/>.</summary>
+    public string? FilePath
+    {
+        get { lock (_gate) return _filePath; }
     }
 
     /// <summary>The formatted line for <paramref name="e"/>: one JSON object, no trailing newline.</summary>
@@ -95,7 +157,7 @@ public sealed class LsEventLog : IDisposable
         {
             line = Format(new LsEvent(
                 _clock().UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
-                tool, phase, durMs, model, modelSrc, endpointSrc, outcome));
+                tool, phase, durMs, model, modelSrc, endpointSrc, outcome, CurrentCallId));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -129,12 +191,13 @@ public sealed class LsEventLog : IDisposable
         if (_filePath is null) return;
         try
         {
-            if (_file is null)
+            if (_file is null) Open();
+            if (_file!.BaseStream.Length >= _maxFileBytes)
             {
-                if (Path.GetDirectoryName(Path.GetFullPath(_filePath)) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
-                // ReadWrite|Delete: an operator tailing or rotating the file must not be locked out, nor lock US out.
-                var stream = new FileStream(_filePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
-                _file = new StreamWriter(stream) { AutoFlush = true };   // flush per line: a killed process keeps its last event
+                // One rollover generation: the previous .old.log is replaced. Any failure here drops the sink below.
+                _file.Dispose();
+                File.Move(_filePath, OldPathFor(_filePath), overwrite: true);
+                Open();
             }
             _file.WriteLine(line);
         }
@@ -146,6 +209,15 @@ public sealed class LsEventLog : IDisposable
             try { _file?.Dispose(); } catch (Exception) { /* already failed */ }
             _file = null;
         }
+    }
+
+    private void Open()
+    {
+        var path = _filePath!;
+        if (Path.GetDirectoryName(Path.GetFullPath(path)) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
+        // ReadWrite|Delete: an operator tailing or rotating the file must not be locked out, nor lock US out.
+        var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+        _file = new StreamWriter(stream) { AutoFlush = true };   // flush per line: a killed process keeps its last event
     }
 
     private static bool IsSinkFailure(Exception ex) => ex is IOException or ObjectDisposedException

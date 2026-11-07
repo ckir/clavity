@@ -39,6 +39,37 @@ public class AgyStatusShapeTests
     }
 
     [Fact]
+    public void A_fault_AgyStatus_with_a_log_path_serializes_LogPath_and_CallId_and_no_LogNote()
+    {
+        var json = JsonSerializer.Serialize(new AgyStatus("", 0, "channel_down", 0,
+            new ChannelDiagnostic("Unavailable", "x"), "h", new[] { "e1" }, LogPath: "/l/a.log", CallId: "p1-000001"));
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal("/l/a.log", doc.RootElement.GetProperty("LogPath").GetString());
+        Assert.Equal("p1-000001", doc.RootElement.GetProperty("CallId").GetString());
+        Assert.False(doc.RootElement.TryGetProperty("LogNote", out _));
+    }
+
+    [Fact]
+    public void A_fault_AgyStatus_with_only_a_note_serializes_LogNote_and_CallId_and_no_LogPath()
+    {
+        var json = JsonSerializer.Serialize(new AgyStatus("", 0, "channel_down", 0,
+            new ChannelDiagnostic("Unavailable", "x"), "h", new[] { "e1" }, LogNote: LsEventLog.MemoryOnlyNote, CallId: "p1-000001"));
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal(LsEventLog.MemoryOnlyNote, doc.RootElement.GetProperty("LogNote").GetString());
+        Assert.Equal("p1-000001", doc.RootElement.GetProperty("CallId").GetString());
+        Assert.False(doc.RootElement.TryGetProperty("LogPath", out _));
+    }
+
+    [Fact]
+    public void A_healthy_AgyStatus_omits_LogPath_LogNote_and_CallId()
+    {
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new AgyStatus("c", 3, "idle", 15)));
+        Assert.False(doc.RootElement.TryGetProperty("LogPath", out _));
+        Assert.False(doc.RootElement.TryGetProperty("LogNote", out _));
+        Assert.False(doc.RootElement.TryGetProperty("CallId", out _));
+    }
+
+    [Fact]
     public void Channel_down_AgyStatus_carries_the_diagnostic_and_hint()
     {
         var st = new AgyStatus("", 0, "channel_down", 0,

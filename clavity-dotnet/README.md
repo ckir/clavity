@@ -162,15 +162,24 @@ CLAUDE_CONFIG_DIR=~/.claude-profiles/test clavity-ls start ~/path/to/your/projec
 - `CLAVITY_AGY_IDLE_MAX_SECONDS` — ceiling on how long `agy_ask` waits for agy to go idle (default 600; the plugin's `.mcp.json` raises it to 1800). Read only when the MCP server starts.
 - `CLAVITY_AGY_IDLE_STALL_SECONDS` — how long agy may show no step progress before `agy_ask` reports `possible_modal` (stall). Default 120; raise it if your work has long single steps.
 - `CLAVITY_AGY_GENERATION_CAP_SECONDS` — how long agy may keep writing ONE long reply (an assistant step visibly still being generated) before `agy_ask` stops extending the wait and reports `possible_modal` (limit `generation_cap`). Default 600; `0` turns the extension off. It never exceeds `CLAVITY_AGY_IDLE_MAX_SECONDS`.
-- `CLAVITY_LS_LOG` — also write the server's event log to a file (unset = no file). A directory (existing, or
-  ending in a path separator) gets one file per server, `clavity-ls-<CLAVITY_SESSION_ID>.log`, or
-  `clavity-ls-pid<pid>.log` when no session id is set; any other value is the file itself, appended to. One JSON
-  line per event (`ts`, `tool`, `phase`, `dur_ms`, `model`, `model_src`, `endpoint_src`, `outcome`), flushed per
-  line so a killed server keeps its last event. It never holds a prompt, a reply, or the endpoint file's token.
-  Without it the server still keeps the last 20 events in memory and echoes each to stderr (Claude Code decides
-  whether stderr is kept): a failing `agy_status` returns them as `RecentEvents`, and a failing tool call as
-  `recentEvents`. They are absent from a healthy reply. A server that is killed takes the in-memory events with
-  it; only the file survives that.
+- `CLAVITY_LS_LOG` — where the server's event log file goes. On by default: `~/.clavity/logs/clavity-ls-<CLAVITY_SESSION_ID>.log`,
+  or `clavity-ls-pid<pid>.log` when no session id is set. A directory (existing, or ending in a path separator) gets
+  one file per server named the same way; any other value is the file itself, appended to; `off` (any case) writes no
+  file. One JSON line per event (`ts`, `tool`, `phase`, `dur_ms`, `model`, `model_src`, `endpoint_src`, `outcome`,
+  `call`), flushed per line so a killed server keeps its last event. It never holds a prompt, a reply, or the
+  endpoint file's token. Every call has an id, `p<pid>-<6 digits>`, so `grep <callId> <logPath>` isolates one call.
+  A fault reply carries `logPath` (or `logNote` when the log is memory-only) and `callId`; an `agy_status` fault
+  carries `LogPath` / `LogNote` / `CallId`; an argument refusal ends with "Logged as <callId> in <path>.". The file is
+  capped at 10 MB with one `<name>.old.log` rollover, and files older than 7 days are pruned at server start.
+  The server also keeps the last 20 events in memory and echoes each to stderr (Claude Code decides whether stderr
+  is kept): a failing `agy_status` returns them as `RecentEvents`, and a failing tool call as `recentEvents`. They
+  are absent from a healthy reply. A killed server takes the in-memory events with it; only the file survives that.
+  Limits: a call that straddles a rollover has its start line in `.old.log`; two servers writing one file (an
+  explicit shared `CLAVITY_LS_LOG` file, or the default file when two servers run under the same session id) overwrite
+  each other's lines, so `grep <callId>` may find nothing for such a server (give each server its own file; the
+  default does so per session id, or per pid when no session id is set); a call the caller
+  cancels is rethrown to the SDK, so its reply has no fields, though its `cancelled` line is logged; the SDK's own
+  "An error occurred invoking" errors are not covered.
 - `CLAVITY_TERMINAL` — Linux: the terminal command `start` opens agy with, run by `/bin/sh` with the script path
   appended as its last argument, so shell quoting works (e.g. `gnome-terminal --tab --`).
 - `CLAVITY_DATA_DIR` — overrides the dir removed by `uninstall --purge-data` (default

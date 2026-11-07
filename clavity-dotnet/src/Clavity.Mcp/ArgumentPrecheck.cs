@@ -19,7 +19,16 @@ namespace Clavity.Mcp;
 public static class ArgumentPrecheck
 {
     public static McpRequestHandler<CallToolRequestParams, CallToolResult> Filter(McpRequestHandler<CallToolRequestParams, CallToolResult> next)
-        => async (context, cancellationToken) =>
+        => Build(null)(next);
+
+    /// <summary>Like <see cref="Filter"/>, but a refusal is also recorded in <paramref name="events"/> (phase "refused",
+    /// outcome "invalid_arguments") under its own call id, and the refusal text ends by naming that id and the log file.
+    /// A well-formed call passes to <c>next</c> untouched: the tool handler assigns its own call id.</summary>
+    public static McpRequestFilter<CallToolRequestParams, CallToolResult> For(LsEventLog events)
+        => Build(events).Invoke;
+
+    private static Func<McpRequestHandler<CallToolRequestParams, CallToolResult>, McpRequestHandler<CallToolRequestParams, CallToolResult>> Build(LsEventLog? events)
+        => next => async (context, cancellationToken) =>
         {
             var name = context.Params?.Name;
             if (name is not null
@@ -27,10 +36,24 @@ public static class ArgumentPrecheck
                 && tools.TryGetPrimitive(name, out var tool)
                 && Problem(name, tool.ProtocolTool.InputSchema, context.Params!.Arguments) is { } problem)
             {
-                return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = problem }] };
+                return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = events is null ? problem : problem + LogSuffix(events, name) }] };
             }
             return await next(context, cancellationToken);
         };
+
+    private static string LogSuffix(LsEventLog events, string tool)
+    {
+        events.BeginCall();
+        try
+        {
+            events.Record(tool, "refused", outcome: "invalid_arguments");
+            var callId = events.CurrentCallId;
+            return events.FilePath is { } path
+                ? $" Logged as {callId} in {path}."
+                : $" Logged as {callId} (memory-only; no log file).";
+        }
+        finally { events.EndCall(); }
+    }
 
     // A client-supplied key may carry a newline or an escape sequence; the refusal is read by a model, so neutralise them.
     private static string Printable(string s) => new string(s.Select(c => char.IsControl(c) ? '?' : c).ToArray());

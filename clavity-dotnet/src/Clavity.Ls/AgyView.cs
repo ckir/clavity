@@ -230,7 +230,9 @@ public sealed class AgyView
             // poll stays as small as it was (RecentEvents is null there).
             var faultState = ChannelDown.StatusFor(diag);
             Events.Record("agy_status", "fault", outcome: faultState);   // so the ring below ends at the fault itself
-            return new AgyStatus("", 0, faultState, 0, diag, ChannelDown.Hint(diag), Events.Snapshot());
+            var logPath = Events.FilePath;
+            return new AgyStatus("", 0, faultState, 0, diag, ChannelDown.Hint(diag), Events.Snapshot(),
+                LogPath: logPath, LogNote: logPath is null ? LsEventLog.MemoryOnlyNote : null, CallId: Events.CurrentCallId);
         }
     }
 

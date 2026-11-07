@@ -245,6 +245,61 @@ public sealed class LsEventLogTests : IDisposable
         Assert.Equal(file, LsEventLog.ResolveFilePath(file, "s1", 1));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void An_unset_or_blank_value_resolves_to_the_default_file_under_dot_clavity_logs(string? value)
+    {
+        var logs = Path.Combine(_dir, ".clavity", "logs");
+        Assert.Equal(Path.Combine(logs, "clavity-ls-s1.log"), LsEventLog.ResolveSink(value, _dir, "s1", 42));
+        Assert.Equal(Path.Combine(logs, "clavity-ls-pid42.log"), LsEventLog.ResolveSink(value, _dir, null, 42));
+    }
+
+    [Theory]
+    [InlineData("off")]
+    [InlineData("OFF")]
+    [InlineData(" Off ")]
+    public void Off_in_any_case_with_padding_means_no_file(string value)
+    {
+        Assert.Null(LsEventLog.ResolveSink(value, _dir, "s1", 42));
+    }
+
+    [Fact]
+    public void An_explicit_value_behaves_exactly_as_ResolveFilePath()
+    {
+        var values = new[]
+        {
+            _dir,
+            Path.Combine(_dir, "my-events.log"),
+            Path.Combine(_dir, "later") + Path.DirectorySeparatorChar,
+        };
+        foreach (var v in values)
+            Assert.Equal(LsEventLog.ResolveFilePath(v, "s1", 1), LsEventLog.ResolveSink(v, "ignored", "s1", 1));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void An_unset_value_with_no_user_profile_means_no_file(string dir)
+    {
+        Assert.Null(LsEventLog.ResolveSink(null, dir, "s1", 1));
+        Assert.Null(LsEventLog.ResolveSink("", dir, "s1", 1));
+
+        // An explicit value is unaffected by a blank profile.
+        var v = Path.Combine(_dir, "my-events.log");
+        Assert.Equal(LsEventLog.ResolveFilePath(v, "s1", 1), LsEventLog.ResolveSink(v, dir, "s1", 1));
+    }
+
+    [Fact]
+    public void The_default_resolves_to_a_file_inside_the_dir_even_when_the_dir_does_not_exist_yet()
+    {
+        var logs = Path.Combine(_dir, ".clavity", "logs");
+        Assert.False(Directory.Exists(logs));
+        Assert.Equal(Path.Combine(logs, "clavity-ls-s1.log"), LsEventLog.ResolveSink(null, _dir, "s1", 42));
+        Assert.Equal(Path.Combine(logs, "clavity-ls-pid42.log"), LsEventLog.ResolveSink(null, _dir, null, 42));
+    }
+
     [Fact]
     public void A_session_id_is_not_trusted_as_a_file_name()
     {
@@ -258,6 +313,158 @@ public sealed class LsEventLogTests : IDisposable
     {
         // The schema IS the privacy guarantee: a prompt, a reply, an endpoint file or a CSRF token has no field to ride in.
         var members = typeof(LsEvent).GetProperties().Select(p => p.Name).OrderBy(n => n).ToArray();
-        Assert.Equal(new[] { "DurMs", "EndpointSrc", "Model", "ModelSrc", "Outcome", "Phase", "Tool", "Ts" }, members);
+        Assert.Equal(new[] { "Call", "DurMs", "EndpointSrc", "Model", "ModelSrc", "Outcome", "Phase", "Tool", "Ts" }, members);
+    }
+
+    private static string? CallOf(string line)
+    {
+        using var doc = JsonDocument.Parse(line);
+        return doc.RootElement.TryGetProperty("call", out var c) ? c.GetString() : null;
+    }
+
+    [Fact]
+    public void A_record_outside_a_call_has_no_call_member()
+    {
+        var log = new LsEventLog();
+        log.Record("agy_ask", "start");
+        Assert.Null(CallOf(log.Snapshot()[0]));
+        Assert.DoesNotContain("\"call\"", log.Snapshot()[0]);
+    }
+
+    [Fact]
+    public async Task BeginCall_stamps_every_following_record_in_that_flow_and_ids_are_distinct_and_pid_prefixed()
+    {
+        var log = new LsEventLog();
+        var first = await Task.Run(() => { var id = log.BeginCall(); log.Record("agy_ask", "start"); log.Record("agy_ask", "end"); return id; });
+        var second = await Task.Run(() => { var id = log.BeginCall(); log.Record("agy_ask", "start"); return id; });
+
+        Assert.Equal($"p{Environment.ProcessId}-000001", first);
+        Assert.Equal($"p{Environment.ProcessId}-000002", second);
+        Assert.Equal(new[] { first, first, second }, log.Snapshot().Select(CallOf).ToArray());
+        Assert.EndsWith($",\"call\":\"{first}\"}}", log.Snapshot()[0]);   // the member is LAST
+    }
+
+    [Fact]
+    public void Two_logs_in_one_flow_do_not_share_a_call_id()
+    {
+        var a = new LsEventLog();
+        var b = new LsEventLog();
+        a.BeginCall();
+        b.Record("agy_ask", "start");
+        Assert.Null(CallOf(b.Snapshot()[0]));
+        Assert.Null(b.CurrentCallId);
+    }
+
+    [Fact]
+    public void EndCall_clears_the_id()
+    {
+        var log = new LsEventLog();
+        var id = log.BeginCall();
+        Assert.Equal(id, log.CurrentCallId);
+        log.EndCall();
+        log.Record("agy_ask", "start");
+        Assert.Null(log.CurrentCallId);
+        Assert.Null(CallOf(log.Snapshot()[0]));
+    }
+
+    [Fact]
+    public void FilePath_is_null_without_a_sink_the_path_with_one_and_null_again_after_the_sink_fails()
+    {
+        Assert.Null(new LsEventLog().FilePath);
+
+        var good = Path.Combine(_dir, "ok.log");
+        using (var ok = new LsEventLog(filePath: good))
+        {
+            Assert.Equal(good, ok.FilePath);
+            ok.Record("agy_ask", "start");
+            Assert.Equal(good, ok.FilePath);
+        }
+
+        var blocker = Path.Combine(_dir, "blocker");
+        File.WriteAllText(blocker, "x");
+        var bad = new LsEventLog(filePath: Path.Combine(blocker, "events.log"));
+        Assert.NotNull(bad.FilePath);   // configured, not yet failed
+        bad.Record("agy_ask", "start");
+        Assert.Null(bad.FilePath);
+    }
+
+    private string CapLogPath => Path.Combine(_dir, "clavity-ls-t.log");
+
+    private static string Marker(int i) => $"n{i:D4}";
+
+    [Fact]
+    public void Reaching_the_cap_moves_the_file_to_old_log_and_continues_in_a_fresh_file()
+    {
+        var path = CapLogPath;
+        var old = LsEventLog.OldPathFor(path);
+        var last = 0;
+        using (var log = new LsEventLog(filePath: path, maxFileBytes: 200))
+        {
+            while (!File.Exists(old) && last < 100) log.Record("agy_ask", "progress", outcome: Marker(++last));
+        }
+
+        Assert.True(File.Exists(old), "the cap was never reached");
+        var active = File.ReadAllText(path);
+        var previous = File.ReadAllText(old);
+        Assert.NotEmpty(active);
+        Assert.True(active.Length < previous.Length);
+        Assert.Contains(Marker(1), previous);
+        Assert.Contains(Marker(last), active);
+    }
+
+    [Fact]
+    public void A_rollover_keeps_every_line_exactly_once_across_the_old_and_the_fresh_file()
+    {
+        // AGY-TEST-AUDIT MG-1: the line that triggers the rollover must land in the fresh file only, and none is lost.
+        var path = CapLogPath;
+        var old = LsEventLog.OldPathFor(path);
+        var last = 0;
+        using (var log = new LsEventLog(filePath: path, maxFileBytes: 200))
+        {
+            while (!File.Exists(old) && last < 100) log.Record("agy_ask", "progress", outcome: Marker(++last));
+        }
+
+        Assert.True(File.Exists(old), "the cap was never reached");
+        var lines = File.ReadAllLines(old).Concat(File.ReadAllLines(path)).ToArray();
+        Assert.Equal(last, lines.Length);
+        for (var i = 1; i <= last; i++)
+            Assert.Single(lines, l => l.Contains($"\"{Marker(i)}\"", StringComparison.Ordinal));
+        Assert.DoesNotContain($"\"{Marker(last)}\"", File.ReadAllText(old));
+    }
+
+    [Fact]
+    public void A_second_rollover_replaces_the_old_file()
+    {
+        var path = CapLogPath;
+        using (var log = new LsEventLog(filePath: path, maxFileBytes: 200))
+        {
+            for (var i = 1; i <= 30; i++) log.Record("agy_ask", "progress", outcome: Marker(i));
+        }
+
+        Assert.Equal(2, Directory.GetFiles(_dir, "*.log").Length);
+        Assert.DoesNotContain(Marker(1), File.ReadAllText(path));
+        Assert.DoesNotContain(Marker(1), File.ReadAllText(LsEventLog.OldPathFor(path)));
+    }
+
+    [Fact]
+    public void A_failed_rollover_drops_the_sink_and_never_fails_the_call()
+    {
+        var path = CapLogPath;
+        Directory.CreateDirectory(LsEventLog.OldPathFor(path));   // the move target is a directory: the rollover must fail
+        using var log = new LsEventLog(filePath: path, maxFileBytes: 200);
+
+        for (var i = 1; i <= 8; i++) log.Record("agy_ask", "progress", outcome: Marker(i));   // would throw if recording could fail
+        var length = new FileInfo(path).Length;
+        for (var i = 9; i <= 12; i++) log.Record("agy_ask", "progress", outcome: Marker(i));
+
+        Assert.Equal(length, new FileInfo(path).Length);
+        Assert.Contains(Marker(12), log.Snapshot()[^1]);
+    }
+
+    [Fact]
+    public void OldPathFor_names()
+    {
+        Assert.Equal("clavity-ls-s1.old.log", LsEventLog.OldPathFor("clavity-ls-s1.log"));
+        Assert.Equal("x.old.log", LsEventLog.OldPathFor("x"));
     }
 }

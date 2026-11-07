@@ -68,11 +68,15 @@ public sealed record ChannelDiagnostic(string StatusCode, string Detail);
 /// additive, so existing consumers are unaffected — F7. Consumers must treat "State names a fault" rather than
 /// "State == channel_down" as the test for a populated Diagnostic. RecentEvents (the event log's ring, oldest first) rides
 /// the same fault path and is OMITTED from the JSON on every healthy state (unlike Diagnostic and Hint, which are written as
-/// null), so a routine pre-fire poll is byte-for-byte what it was before the event log existed.</summary>
+/// null), so a routine pre-fire poll is byte-for-byte what it was before the event log existed. LogPath (the live log
+/// file) or LogNote (the file is off or dropped; never both) and CallId ride the fault path the same way.</summary>
 public sealed record AgyStatus(
     string CascadeId, int TotalSteps, string State, int LastStepKind,
     ChannelDiagnostic? Diagnostic = null, string? Hint = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? RecentEvents = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? RecentEvents = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? LogPath = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? LogNote = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CallId = null);
 
 /// <summary>Maps agy step kinds to a label + a coarse class. 14=user, 15=assistant, everything else = tool
 /// (the spec's "tool" + "unknown" both fail-safe to slow). Built from the captured trajectory golden.</summary>
