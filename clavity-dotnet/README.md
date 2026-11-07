@@ -175,7 +175,9 @@ CLAUDE_CONFIG_DIR=~/.claude-profiles/test clavity-ls start ~/path/to/your/projec
   is kept): a failing `agy_status` returns them as `RecentEvents`, and a failing tool call as `recentEvents`. They
   are absent from a healthy reply. A killed server takes the in-memory events with it; only the file survives that.
   Limits: a call that straddles a rollover has its start line in `.old.log`; two servers writing one file (an
-  explicit shared file, or the default under a shared session id) can lose lines across a rollover; a call the caller
+  explicit shared `CLAVITY_LS_LOG` file, or the default file when two servers run under the same session id) overwrite
+  each other's lines, so `grep <callId>` may find nothing for such a server (give each server its own file; the
+  default does so per session id, or per pid when no session id is set); a call the caller
   cancels is rethrown to the SDK, so its reply has no fields, though its `cancelled` line is logged; the SDK's own
   "An error occurred invoking" errors are not covered.
 - `CLAVITY_TERMINAL` — Linux: the terminal command `start` opens agy with, run by `/bin/sh` with the script path

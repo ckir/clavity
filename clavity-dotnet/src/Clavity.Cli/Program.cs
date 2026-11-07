@@ -25,8 +25,11 @@ if (args.Length > 0 && args[0] == "--mcp")
     var manualsDir = EscalationIndex.ResolveManualsDir(
         Environment.GetEnvironmentVariable(EscalationIndex.PluginRootVar), installRoot);
     var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-    try { LogRetention.Prune(Path.Combine(userProfile, ".clavity", "logs"), LogRetention.DefaultMaxAge, DateTime.UtcNow); }
-    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* an unreadable dir must not stop the server */ }
+    if (!string.IsNullOrWhiteSpace(userProfile))
+    {
+        try { LogRetention.Prune(Path.Combine(userProfile, ".clavity", "logs"), LogRetention.DefaultMaxAge, DateTime.UtcNow); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* an unreadable dir must not stop the server */ }
+    }
     var events = new LsEventLog(
         Console.Error,
         LsEventLog.ResolveSink(

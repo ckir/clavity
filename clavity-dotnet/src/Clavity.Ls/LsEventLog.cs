@@ -103,11 +103,12 @@ public sealed class LsEventLog : IDisposable
 
     /// <summary>The file sink the server uses; ON by default. Unset/blank = a file in
     /// <c>&lt;userProfileDir&gt;/.clavity/logs</c>, named as <see cref="ResolveFilePath"/> names directory files;
-    /// <see cref="OffValue"/> = null (no file); anything else is exactly what <see cref="ResolveFilePath"/> makes of it.</summary>
+    /// <see cref="OffValue"/> = null (no file); an unset value with a blank <paramref name="userProfileDir"/> = null too (no relative default); anything else is exactly what <see cref="ResolveFilePath"/> makes of it.</summary>
     public static string? ResolveSink(string? envValue, string userProfileDir, string? sessionId, int pid)
     {
         if (string.IsNullOrWhiteSpace(envValue))
         {
+            if (string.IsNullOrWhiteSpace(userProfileDir)) return null;
             // The trailing separator makes ResolveFilePath treat a not-yet-created directory as a directory.
             var logs = Path.Combine(userProfileDir, ".clavity", "logs") + Path.DirectorySeparatorChar;
             return ResolveFilePath(logs, sessionId, pid);

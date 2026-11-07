@@ -278,6 +278,19 @@ public sealed class LsEventLogTests : IDisposable
             Assert.Equal(LsEventLog.ResolveFilePath(v, "s1", 1), LsEventLog.ResolveSink(v, "ignored", "s1", 1));
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void An_unset_value_with_no_user_profile_means_no_file(string dir)
+    {
+        Assert.Null(LsEventLog.ResolveSink(null, dir, "s1", 1));
+        Assert.Null(LsEventLog.ResolveSink("", dir, "s1", 1));
+
+        // An explicit value is unaffected by a blank profile.
+        var v = Path.Combine(_dir, "my-events.log");
+        Assert.Equal(LsEventLog.ResolveFilePath(v, "s1", 1), LsEventLog.ResolveSink(v, dir, "s1", 1));
+    }
+
     [Fact]
     public void The_default_resolves_to_a_file_inside_the_dir_even_when_the_dir_does_not_exist_yet()
     {
