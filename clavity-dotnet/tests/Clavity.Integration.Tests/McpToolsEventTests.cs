@@ -187,6 +187,32 @@ public class McpToolsEventTests
     }
 
     [Fact]
+    public async Task Two_overlapping_calls_to_the_same_tool_stamp_their_own_lines()
+    {
+        var log = new LsEventLog();
+        await Task.WhenAll(
+            McpTools.RunAsync("agy_ask", log, async () => { await Task.Delay(150); return 1; }),
+            McpTools.RunAsync("agy_ask", log, async () => { await Task.Delay(50); return 2; }));
+
+        var lines = log.Snapshot().Select(Parse).ToArray();
+        var groups = lines.GroupBy(l => l.GetProperty("call").GetString()).ToArray();
+        Assert.Equal(2, groups.Length);
+        foreach (var g in groups)
+            Assert.Equal(new[] { "start", "end" }, g.Select(l => l.GetProperty("phase").GetString()).ToArray());
+    }
+
+    [Fact]
+    public async Task Inside_RunAsync_the_action_sees_the_call_id_of_its_own_start_line()
+    {
+        var log = new LsEventLog();
+        string? seen = null;
+        await McpTools.RunAsync("agy_ask", log, () => { seen = log.CurrentCallId; return Task.FromResult(1); });
+
+        Assert.Matches(@"^p\d+-\d{6}$", seen);
+        Assert.Equal(seen, Parse(log.Snapshot()[0]).GetProperty("call").GetString());
+    }
+
+    [Fact]
     public void A_throwing_event_sink_cannot_change_a_reply()
     {
         // Recording must never be able to fail the call it describes.
@@ -222,5 +248,100 @@ public class McpToolsEventTests
         Assert.Equal("success", McpTools.StatusOutcome(new AgyStatus("c", 3, "working", 15)));
         Assert.Equal("channel_down", McpTools.StatusOutcome(
             new AgyStatus("", 0, "channel_down", 0, new ChannelDiagnostic("Unavailable", "x"), "h")));
+    }
+
+    // ---- Task 3: fault replies name the log file and the call id ----
+
+    private static ModalGuardReport StallReport() =>
+        new("WaitFor", TimeSpan.FromSeconds(120), "agy may be stuck", IdleLimit.Stall);
+
+    public static IEnumerable<object[]> FaultsWithRing() => new[]
+    {
+        new object[] { new AgyModalHangException(StallReport()) },
+        new object[] { new AgyModalHangException(StallReport()) { PeerFile = "/ws/reply.md" } },
+        new object[] { new AgyModelUnavailableException("deprecated") },
+        new object[] { new InvalidOperationException("boom") },
+        new object[] { new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "refused")) },
+    };
+
+    private static string TempLogPath() => Path.Combine(Path.GetTempPath(), "clavity-t3-" + Guid.NewGuid().ToString("N") + ".log");
+
+    [Theory]
+    [MemberData(nameof(FaultsWithRing))]
+    public void Every_fault_status_carries_logPath_callId_and_the_ring_except_waiting_for_human(Exception toThrow)
+    {
+        var path = TempLogPath();
+        try
+        {
+            using var log = new LsEventLog(filePath: path);
+            var json = McpTools.RunAsync<object>("agy_ask", log, () => throw toThrow).GetAwaiter().GetResult();
+            var root = Parse(json);
+
+            Assert.Equal(path, root.GetProperty("logPath").GetString());
+            var callId = root.GetProperty("callId").GetString()!;
+            Assert.Matches(@"^p\d+-\d{6}$", callId);
+            var ring = root.GetProperty("recentEvents").EnumerateArray().Select(e => Parse(e.GetString()!)).ToArray();
+            Assert.Equal(callId, ring[^1].GetProperty("call").GetString());
+            Assert.False(root.TryGetProperty("logNote", out _));
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void A_waiting_for_human_reply_carries_logPath_and_callId_but_no_ring()
+    {
+        var path = TempLogPath();
+        try
+        {
+            using var log = new LsEventLog(filePath: path);
+            var json = McpTools.RunAsync<object>("agy_ask", log, () => throw new AgyConversationPendingException("wait")).GetAwaiter().GetResult();
+            var root = Parse(json);
+
+            Assert.Equal("waiting_for_human", root.GetProperty("status").GetString());
+            Assert.Equal(path, root.GetProperty("logPath").GetString());
+            Assert.Matches(@"^p\d+-\d{6}$", root.GetProperty("callId").GetString()!);
+            Assert.False(root.TryGetProperty("recentEvents", out _));
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void A_fault_reply_from_a_log_with_no_file_says_memory_only_and_has_no_logPath()
+    {
+        var (root, _) = RunFault(new InvalidOperationException("boom"));
+        Assert.False(root.TryGetProperty("logPath", out _));
+        Assert.Equal("event log is memory-only (file disabled or dropped); no log file holds this call",
+            root.GetProperty("logNote").GetString());
+        Assert.True(root.TryGetProperty("recentEvents", out _));
+        Assert.True(root.TryGetProperty("callId", out _));
+    }
+
+    [Fact]
+    public void A_dropped_file_sink_is_not_advertised()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "clavity-t3-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var blocker = Path.Combine(dir, "blocker");
+            File.WriteAllText(blocker, "x");
+            using var log = new LsEventLog(filePath: Path.Combine(blocker, "events.log"));   // cannot be opened: sink drops on first write
+            var json = McpTools.RunAsync<object>("agy_ask", log, () => throw new InvalidOperationException("boom")).GetAwaiter().GetResult();
+            var root = Parse(json);
+
+            Assert.False(root.TryGetProperty("logPath", out _));
+            Assert.True(root.TryGetProperty("logNote", out _));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void Pre_existing_members_serialize_byte_identically_with_html_and_non_ascii_text()
+    {
+        var log = new LsEventLog();
+        var json = McpTools.RunAsync<object>("agy_ask", log, () => throw new InvalidOperationException("a<b>&c \u00e9 \u65e5\u672c")).GetAwaiter().GetResult();
+        Assert.StartsWith(
+            @"{""status"":""error"",""exception"":""InvalidOperationException"",""message"":""a\u003Cb\u003E\u0026c \u00E9 \u65E5\u672C"",""recentEvents"":",
+            json);
     }
 }
