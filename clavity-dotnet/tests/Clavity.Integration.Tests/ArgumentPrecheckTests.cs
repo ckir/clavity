@@ -77,6 +77,16 @@ public class ArgumentPrecheckTests
 
     private static string Text(CallToolResult r) => string.Join("\n", r.Content.OfType<TextContentBlock>().Select(c => c.Text));
 
+    // Read the event-log file the way an operator tailing it does: while the log still holds it open for writing.
+    // File.ReadAllText/ReadAllLines open with FileShare.Read, which Windows refuses against a live writer (CI run
+    // 42381717935); LsEventLog opens with ReadWrite|Delete precisely so this shared read works.
+    private static string ReadLive(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
     [Fact]
     public async Task Without_the_filter_the_SDK_hides_the_cause_in_a_generic_sentence()
     {
@@ -294,7 +304,7 @@ public class ArgumentPrecheckTests
                 var m = System.Text.RegularExpressions.Regex.Match(t, @" Logged as (p\d+-\d{6}) in (.+)\.$");
                 Assert.True(m.Success, t);
                 Assert.Equal(path, m.Groups[2].Value);
-                var lines = File.ReadAllLines(path).Where(l => l.Contains(m.Groups[1].Value)).ToList();
+                var lines = ReadLive(path).Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(l => l.Contains(m.Groups[1].Value)).ToList();
                 var line = Assert.Single(lines);
                 Assert.Contains("\"phase\":\"refused\"", line);
                 Assert.Contains("\"outcome\":\"invalid_arguments\"", line);
@@ -329,7 +339,7 @@ public class ArgumentPrecheckTests
                 var r = await client.CallToolAsync("agy_status", new Dictionary<string, object?>());
                 Assert.DoesNotContain("Logged as", Text(r));
             }
-            var text = File.Exists(path) ? File.ReadAllText(path) : "";
+            var text = File.Exists(path) ? ReadLive(path) : "";
             Assert.DoesNotContain("\"phase\":\"refused\"", text);
         }
         finally { try { File.Delete(path); } catch (IOException) { } }
