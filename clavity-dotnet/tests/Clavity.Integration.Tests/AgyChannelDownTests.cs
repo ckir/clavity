@@ -703,6 +703,52 @@ public class AgyChannelDownTests
     }
 
     [Fact]
+    public async Task Dead_channel_agy_status_names_the_log_file_and_its_call_id()
+    {
+        var fake = new FakeChannelDownLs("conv-1", StatusCode.Unavailable);
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var logPath = Path.Combine(dir, "events-under-test.log");
+            using (var log = new LsEventLog(filePath: logPath))
+            {
+                var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Events = log });
+                var json = await McpTools.AgyStatus(view);
+
+                using var doc = JsonDocument.Parse(json);
+                Assert.Equal(logPath, doc.RootElement.GetProperty("LogPath").GetString());
+                Assert.False(doc.RootElement.TryGetProperty("LogNote", out _));
+                var callId = doc.RootElement.GetProperty("CallId").GetString()!;
+                Assert.Matches(@"^p\d+-\d{6}$", callId);
+                var fault = JsonDocument.Parse(doc.RootElement.GetProperty("RecentEvents").EnumerateArray().Last().GetString()!).RootElement;
+                Assert.Equal("fault", fault.GetProperty("phase").GetString());
+                Assert.Equal(callId, fault.GetProperty("call").GetString());
+            }
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task Dead_channel_agy_status_with_a_memory_only_log_says_so()
+    {
+        var fake = new FakeChannelDownLs("conv-1", StatusCode.Unavailable);
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Events = new LsEventLog() });
+            var json = await McpTools.AgyStatus(view);
+
+            using var doc = JsonDocument.Parse(json);
+            Assert.False(doc.RootElement.TryGetProperty("LogPath", out _));
+            Assert.Equal(LsEventLog.MemoryOnlyNote, doc.RootElement.GetProperty("LogNote").GetString());
+            Assert.True(doc.RootElement.TryGetProperty("CallId", out _));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public async Task Dead_channel_agy_ask_envelope_carries_the_ring_including_its_end_event()
     {
         var fake = new FakeChannelDownLs("conv-1", StatusCode.Unavailable);
