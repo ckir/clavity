@@ -77,6 +77,24 @@ public sealed class LsEventLog : IDisposable
         return Path.Combine(value, $"clavity-ls-{name}.log");
     }
 
+    /// <summary>The <see cref="LogVar"/> value that turns the file sink off (compared trimmed, ignoring case).</summary>
+    public const string OffValue = "off";
+
+    /// <summary>The file sink the server uses; ON by default. Unset/blank = a file in
+    /// <c>&lt;userProfileDir&gt;/.clavity/logs</c>, named as <see cref="ResolveFilePath"/> names directory files;
+    /// <see cref="OffValue"/> = null (no file); anything else is exactly what <see cref="ResolveFilePath"/> makes of it.</summary>
+    public static string? ResolveSink(string? envValue, string userProfileDir, string? sessionId, int pid)
+    {
+        if (string.IsNullOrWhiteSpace(envValue))
+        {
+            // The trailing separator makes ResolveFilePath treat a not-yet-created directory as a directory.
+            var logs = Path.Combine(userProfileDir, ".clavity", "logs") + Path.DirectorySeparatorChar;
+            return ResolveFilePath(logs, sessionId, pid);
+        }
+        if (string.Equals(envValue.Trim(), OffValue, StringComparison.OrdinalIgnoreCase)) return null;
+        return ResolveFilePath(envValue, sessionId, pid);
+    }
+
     private static string SafeFileName(string raw)
     {
         var bad = Path.GetInvalidFileNameChars();

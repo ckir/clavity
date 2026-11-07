@@ -24,10 +24,14 @@ if (args.Length > 0 && args[0] == "--mcp")
     var installRoot = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
     var manualsDir = EscalationIndex.ResolveManualsDir(
         Environment.GetEnvironmentVariable(EscalationIndex.PluginRootVar), installRoot);
+    var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    try { LogRetention.Prune(Path.Combine(userProfile, ".clavity", "logs"), LogRetention.DefaultMaxAge, DateTime.UtcNow); }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* an unreadable dir must not stop the server */ }
     var events = new LsEventLog(
         Console.Error,
-        LsEventLog.ResolveFilePath(
+        LsEventLog.ResolveSink(
             Environment.GetEnvironmentVariable(LsEventLog.LogVar),
+            userProfile,
             Environment.GetEnvironmentVariable(AgyEnvironment.SessionIdVar),
             Environment.ProcessId));
     var options = new AgyViewOptions

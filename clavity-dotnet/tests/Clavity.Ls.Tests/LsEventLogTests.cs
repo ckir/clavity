@@ -245,6 +245,48 @@ public sealed class LsEventLogTests : IDisposable
         Assert.Equal(file, LsEventLog.ResolveFilePath(file, "s1", 1));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void An_unset_or_blank_value_resolves_to_the_default_file_under_dot_clavity_logs(string? value)
+    {
+        var logs = Path.Combine(_dir, ".clavity", "logs");
+        Assert.Equal(Path.Combine(logs, "clavity-ls-s1.log"), LsEventLog.ResolveSink(value, _dir, "s1", 42));
+        Assert.Equal(Path.Combine(logs, "clavity-ls-pid42.log"), LsEventLog.ResolveSink(value, _dir, null, 42));
+    }
+
+    [Theory]
+    [InlineData("off")]
+    [InlineData("OFF")]
+    [InlineData(" Off ")]
+    public void Off_in_any_case_with_padding_means_no_file(string value)
+    {
+        Assert.Null(LsEventLog.ResolveSink(value, _dir, "s1", 42));
+    }
+
+    [Fact]
+    public void An_explicit_value_behaves_exactly_as_ResolveFilePath()
+    {
+        var values = new[]
+        {
+            _dir,
+            Path.Combine(_dir, "my-events.log"),
+            Path.Combine(_dir, "later") + Path.DirectorySeparatorChar,
+        };
+        foreach (var v in values)
+            Assert.Equal(LsEventLog.ResolveFilePath(v, "s1", 1), LsEventLog.ResolveSink(v, "ignored", "s1", 1));
+    }
+
+    [Fact]
+    public void The_default_resolves_to_a_file_inside_the_dir_even_when_the_dir_does_not_exist_yet()
+    {
+        var logs = Path.Combine(_dir, ".clavity", "logs");
+        Assert.False(Directory.Exists(logs));
+        Assert.Equal(Path.Combine(logs, "clavity-ls-s1.log"), LsEventLog.ResolveSink(null, _dir, "s1", 42));
+        Assert.Equal(Path.Combine(logs, "clavity-ls-pid42.log"), LsEventLog.ResolveSink(null, _dir, null, 42));
+    }
+
     [Fact]
     public void A_session_id_is_not_trusted_as_a_file_name()
     {
