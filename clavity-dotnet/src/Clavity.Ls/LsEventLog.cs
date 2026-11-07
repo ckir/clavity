@@ -10,7 +10,8 @@ using System.Text.Json.Serialization;
 namespace Clavity.Ls;
 
 /// <summary>One lifecycle event of an MCP tool call. Field names are the wire contract of the event log; null fields
-/// are omitted from the line.</summary>
+/// are omitted from the line. <c>call</c> is the id of the tool call the event belongs to (see
+/// <see cref="LsEventLog.BeginCall"/>); an event outside a call has none.</summary>
 public sealed record LsEvent(
     [property: JsonPropertyName("ts")] string Ts,
     [property: JsonPropertyName("tool")] string? Tool,
@@ -19,7 +20,8 @@ public sealed record LsEvent(
     [property: JsonPropertyName("model")] int? Model = null,
     [property: JsonPropertyName("model_src")] string? ModelSrc = null,
     [property: JsonPropertyName("endpoint_src")] string? EndpointSrc = null,
-    [property: JsonPropertyName("outcome")] string? Outcome = null);
+    [property: JsonPropertyName("outcome")] string? Outcome = null,
+    [property: JsonPropertyName("call")] string? Call = null);
 
 /// <summary>
 /// What the server DID and WHEN, kept so a misbehaving ask can be reconstructed afterwards. Three sinks, one line each:
@@ -62,6 +64,9 @@ public sealed class LsEventLog : IDisposable
     private readonly long _maxFileBytes;
     private string? _filePath;
     private StreamWriter? _file;
+    private int _callCounter;
+    // An INSTANCE field on purpose: two logs in one flow must not share a call id.
+    private readonly AsyncLocal<string?> _callId = new();
 
     /// <param name="stderr">Where each line is echoed; null = nowhere (the in-memory default of tests).</param>
     /// <param name="filePath">Resolved file to append to (see <see cref="ResolveFilePath"/>); null = no file.</param>
@@ -114,6 +119,28 @@ public sealed class LsEventLog : IDisposable
         return new string(raw.Select(c => Array.IndexOf(bad, c) >= 0 ? '_' : c).ToArray());
     }
 
+    /// <summary>Starts a call: allocates its id (<c>p&lt;pid&gt;-&lt;n, six digits&gt;</c>, unique per process), makes it
+    /// the id every following <see cref="Record"/> in this async flow carries, and returns it.</summary>
+    public string BeginCall()
+    {
+        var id = $"p{Environment.ProcessId}-{Interlocked.Increment(ref _callCounter):D6}";
+        _callId.Value = id;
+        return id;
+    }
+
+    /// <summary>Marks the end of the current call: later records in this flow carry no id.</summary>
+    public void EndCall() => _callId.Value = null;
+
+    /// <summary>The id <see cref="BeginCall"/> gave the call this flow is in; null outside a call.</summary>
+    public string? CurrentCallId => _callId.Value;
+
+    /// <summary>The file the sink is writing (or will write); null with no file, after the sink failed, or after
+    /// <see cref="Dispose"/>.</summary>
+    public string? FilePath
+    {
+        get { lock (_gate) return _filePath; }
+    }
+
     /// <summary>The formatted line for <paramref name="e"/>: one JSON object, no trailing newline.</summary>
     public static string Format(LsEvent e) => JsonSerializer.Serialize(e, Json);
 
@@ -126,7 +153,7 @@ public sealed class LsEventLog : IDisposable
         {
             line = Format(new LsEvent(
                 _clock().UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
-                tool, phase, durMs, model, modelSrc, endpointSrc, outcome));
+                tool, phase, durMs, model, modelSrc, endpointSrc, outcome, CurrentCallId));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

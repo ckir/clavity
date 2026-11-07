@@ -187,6 +187,32 @@ public class McpToolsEventTests
     }
 
     [Fact]
+    public async Task Two_overlapping_calls_to_the_same_tool_stamp_their_own_lines()
+    {
+        var log = new LsEventLog();
+        await Task.WhenAll(
+            McpTools.RunAsync("agy_ask", log, async () => { await Task.Delay(150); return 1; }),
+            McpTools.RunAsync("agy_ask", log, async () => { await Task.Delay(50); return 2; }));
+
+        var lines = log.Snapshot().Select(Parse).ToArray();
+        var groups = lines.GroupBy(l => l.GetProperty("call").GetString()).ToArray();
+        Assert.Equal(2, groups.Length);
+        foreach (var g in groups)
+            Assert.Equal(new[] { "start", "end" }, g.Select(l => l.GetProperty("phase").GetString()).ToArray());
+    }
+
+    [Fact]
+    public async Task Inside_RunAsync_the_action_sees_the_call_id_of_its_own_start_line()
+    {
+        var log = new LsEventLog();
+        string? seen = null;
+        await McpTools.RunAsync("agy_ask", log, () => { seen = log.CurrentCallId; return Task.FromResult(1); });
+
+        Assert.Matches(@"^p\d+-\d{6}$", seen);
+        Assert.Equal(seen, Parse(log.Snapshot()[0]).GetProperty("call").GetString());
+    }
+
+    [Fact]
     public void A_throwing_event_sink_cannot_change_a_reply()
     {
         // Recording must never be able to fail the call it describes.

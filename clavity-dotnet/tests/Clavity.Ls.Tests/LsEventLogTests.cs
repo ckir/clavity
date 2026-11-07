@@ -300,7 +300,79 @@ public sealed class LsEventLogTests : IDisposable
     {
         // The schema IS the privacy guarantee: a prompt, a reply, an endpoint file or a CSRF token has no field to ride in.
         var members = typeof(LsEvent).GetProperties().Select(p => p.Name).OrderBy(n => n).ToArray();
-        Assert.Equal(new[] { "DurMs", "EndpointSrc", "Model", "ModelSrc", "Outcome", "Phase", "Tool", "Ts" }, members);
+        Assert.Equal(new[] { "Call", "DurMs", "EndpointSrc", "Model", "ModelSrc", "Outcome", "Phase", "Tool", "Ts" }, members);
+    }
+
+    private static string? CallOf(string line)
+    {
+        using var doc = JsonDocument.Parse(line);
+        return doc.RootElement.TryGetProperty("call", out var c) ? c.GetString() : null;
+    }
+
+    [Fact]
+    public void A_record_outside_a_call_has_no_call_member()
+    {
+        var log = new LsEventLog();
+        log.Record("agy_ask", "start");
+        Assert.Null(CallOf(log.Snapshot()[0]));
+        Assert.DoesNotContain("\"call\"", log.Snapshot()[0]);
+    }
+
+    [Fact]
+    public async Task BeginCall_stamps_every_following_record_in_that_flow_and_ids_are_distinct_and_pid_prefixed()
+    {
+        var log = new LsEventLog();
+        var first = await Task.Run(() => { var id = log.BeginCall(); log.Record("agy_ask", "start"); log.Record("agy_ask", "end"); return id; });
+        var second = await Task.Run(() => { var id = log.BeginCall(); log.Record("agy_ask", "start"); return id; });
+
+        Assert.Equal($"p{Environment.ProcessId}-000001", first);
+        Assert.Equal($"p{Environment.ProcessId}-000002", second);
+        Assert.Equal(new[] { first, first, second }, log.Snapshot().Select(CallOf).ToArray());
+        Assert.EndsWith($",\"call\":\"{first}\"}}", log.Snapshot()[0]);   // the member is LAST
+    }
+
+    [Fact]
+    public void Two_logs_in_one_flow_do_not_share_a_call_id()
+    {
+        var a = new LsEventLog();
+        var b = new LsEventLog();
+        a.BeginCall();
+        b.Record("agy_ask", "start");
+        Assert.Null(CallOf(b.Snapshot()[0]));
+        Assert.Null(b.CurrentCallId);
+    }
+
+    [Fact]
+    public void EndCall_clears_the_id()
+    {
+        var log = new LsEventLog();
+        var id = log.BeginCall();
+        Assert.Equal(id, log.CurrentCallId);
+        log.EndCall();
+        log.Record("agy_ask", "start");
+        Assert.Null(log.CurrentCallId);
+        Assert.Null(CallOf(log.Snapshot()[0]));
+    }
+
+    [Fact]
+    public void FilePath_is_null_without_a_sink_the_path_with_one_and_null_again_after_the_sink_fails()
+    {
+        Assert.Null(new LsEventLog().FilePath);
+
+        var good = Path.Combine(_dir, "ok.log");
+        using (var ok = new LsEventLog(filePath: good))
+        {
+            Assert.Equal(good, ok.FilePath);
+            ok.Record("agy_ask", "start");
+            Assert.Equal(good, ok.FilePath);
+        }
+
+        var blocker = Path.Combine(_dir, "blocker");
+        File.WriteAllText(blocker, "x");
+        var bad = new LsEventLog(filePath: Path.Combine(blocker, "events.log"));
+        Assert.NotNull(bad.FilePath);   // configured, not yet failed
+        bad.Record("agy_ask", "start");
+        Assert.Null(bad.FilePath);
     }
 
     private string CapLogPath => Path.Combine(_dir, "clavity-ls-t.log");
