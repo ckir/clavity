@@ -413,6 +413,26 @@ public sealed class LsEventLogTests : IDisposable
     }
 
     [Fact]
+    public void A_rollover_keeps_every_line_exactly_once_across_the_old_and_the_fresh_file()
+    {
+        // AGY-TEST-AUDIT MG-1: the line that triggers the rollover must land in the fresh file only, and none is lost.
+        var path = CapLogPath;
+        var old = LsEventLog.OldPathFor(path);
+        var last = 0;
+        using (var log = new LsEventLog(filePath: path, maxFileBytes: 200))
+        {
+            while (!File.Exists(old) && last < 100) log.Record("agy_ask", "progress", outcome: Marker(++last));
+        }
+
+        Assert.True(File.Exists(old), "the cap was never reached");
+        var lines = File.ReadAllLines(old).Concat(File.ReadAllLines(path)).ToArray();
+        Assert.Equal(last, lines.Length);
+        for (var i = 1; i <= last; i++)
+            Assert.Single(lines, l => l.Contains($"\"{Marker(i)}\"", StringComparison.Ordinal));
+        Assert.DoesNotContain($"\"{Marker(last)}\"", File.ReadAllText(old));
+    }
+
+    [Fact]
     public void A_second_rollover_replaces_the_old_file()
     {
         var path = CapLogPath;
