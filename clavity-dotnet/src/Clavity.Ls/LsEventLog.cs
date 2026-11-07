@@ -39,6 +39,14 @@ public sealed class LsEventLog : IDisposable
     /// lines are also written to. Unset = no file.</summary>
     public const string LogVar = "CLAVITY_LS_LOG";
 
+    /// <summary>Size at which the file sink rolls over: the file moves to <see cref="OldPathFor"/> (replacing any
+    /// earlier one) and a fresh file is started, so a log never holds more than about twice this.</summary>
+    public const long MaxFileBytes = 10 * 1024 * 1024;
+
+    /// <summary>The rollover file for <paramref name="filePath"/>: <c>clavity-ls-s1.log</c> becomes
+    /// <c>clavity-ls-s1.old.log</c>, a name with no extension <c>x</c> becomes <c>x.old.log</c>.</summary>
+    public static string OldPathFor(string filePath) => Path.ChangeExtension(filePath, ".old.log");
+
     /// <summary>How many of the most recent lines are kept in memory.</summary>
     public const int RingCapacity = 20;
 
@@ -51,14 +59,19 @@ public sealed class LsEventLog : IDisposable
     private readonly Queue<string> _ring = new();
     private readonly TextWriter? _stderr;
     private readonly Func<DateTimeOffset> _clock;
+    private readonly long _maxFileBytes;
     private string? _filePath;
     private StreamWriter? _file;
 
     /// <param name="stderr">Where each line is echoed; null = nowhere (the in-memory default of tests).</param>
     /// <param name="filePath">Resolved file to append to (see <see cref="ResolveFilePath"/>); null = no file.</param>
     /// <param name="clock">UTC clock; injectable so a test can pin the timestamp.</param>
-    public LsEventLog(TextWriter? stderr = null, string? filePath = null, Func<DateTimeOffset>? clock = null)
+    /// <param name="maxFileBytes">Size at which the file is rolled over to <see cref="OldPathFor"/> (see <see cref="MaxFileBytes"/>).</param>
+    public LsEventLog(
+        TextWriter? stderr = null, string? filePath = null, Func<DateTimeOffset>? clock = null,
+        long maxFileBytes = MaxFileBytes)
     {
+        _maxFileBytes = maxFileBytes;
         _stderr = stderr;
         _filePath = filePath;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
@@ -147,12 +160,13 @@ public sealed class LsEventLog : IDisposable
         if (_filePath is null) return;
         try
         {
-            if (_file is null)
+            if (_file is null) Open();
+            if (_file!.BaseStream.Length >= _maxFileBytes)
             {
-                if (Path.GetDirectoryName(Path.GetFullPath(_filePath)) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
-                // ReadWrite|Delete: an operator tailing or rotating the file must not be locked out, nor lock US out.
-                var stream = new FileStream(_filePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
-                _file = new StreamWriter(stream) { AutoFlush = true };   // flush per line: a killed process keeps its last event
+                // One rollover generation: the previous .old.log is replaced. Any failure here drops the sink below.
+                _file.Dispose();
+                File.Move(_filePath, OldPathFor(_filePath), overwrite: true);
+                Open();
             }
             _file.WriteLine(line);
         }
@@ -164,6 +178,15 @@ public sealed class LsEventLog : IDisposable
             try { _file?.Dispose(); } catch (Exception) { /* already failed */ }
             _file = null;
         }
+    }
+
+    private void Open()
+    {
+        var path = _filePath!;
+        if (Path.GetDirectoryName(Path.GetFullPath(path)) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
+        // ReadWrite|Delete: an operator tailing or rotating the file must not be locked out, nor lock US out.
+        var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+        _file = new StreamWriter(stream) { AutoFlush = true };   // flush per line: a killed process keeps its last event
     }
 
     private static bool IsSinkFailure(Exception ex) => ex is IOException or ObjectDisposedException

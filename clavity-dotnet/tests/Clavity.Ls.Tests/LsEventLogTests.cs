@@ -302,4 +302,64 @@ public sealed class LsEventLogTests : IDisposable
         var members = typeof(LsEvent).GetProperties().Select(p => p.Name).OrderBy(n => n).ToArray();
         Assert.Equal(new[] { "DurMs", "EndpointSrc", "Model", "ModelSrc", "Outcome", "Phase", "Tool", "Ts" }, members);
     }
+
+    private string CapLogPath => Path.Combine(_dir, "clavity-ls-t.log");
+
+    private static string Marker(int i) => $"n{i:D4}";
+
+    [Fact]
+    public void Reaching_the_cap_moves_the_file_to_old_log_and_continues_in_a_fresh_file()
+    {
+        var path = CapLogPath;
+        var old = LsEventLog.OldPathFor(path);
+        var last = 0;
+        using (var log = new LsEventLog(filePath: path, maxFileBytes: 200))
+        {
+            while (!File.Exists(old) && last < 100) log.Record("agy_ask", "progress", outcome: Marker(++last));
+        }
+
+        Assert.True(File.Exists(old), "the cap was never reached");
+        var active = File.ReadAllText(path);
+        var previous = File.ReadAllText(old);
+        Assert.NotEmpty(active);
+        Assert.True(active.Length < previous.Length);
+        Assert.Contains(Marker(1), previous);
+        Assert.Contains(Marker(last), active);
+    }
+
+    [Fact]
+    public void A_second_rollover_replaces_the_old_file()
+    {
+        var path = CapLogPath;
+        using (var log = new LsEventLog(filePath: path, maxFileBytes: 200))
+        {
+            for (var i = 1; i <= 30; i++) log.Record("agy_ask", "progress", outcome: Marker(i));
+        }
+
+        Assert.Equal(2, Directory.GetFiles(_dir, "*.log").Length);
+        Assert.DoesNotContain(Marker(1), File.ReadAllText(path));
+        Assert.DoesNotContain(Marker(1), File.ReadAllText(LsEventLog.OldPathFor(path)));
+    }
+
+    [Fact]
+    public void A_failed_rollover_drops_the_sink_and_never_fails_the_call()
+    {
+        var path = CapLogPath;
+        Directory.CreateDirectory(LsEventLog.OldPathFor(path));   // the move target is a directory: the rollover must fail
+        using var log = new LsEventLog(filePath: path, maxFileBytes: 200);
+
+        for (var i = 1; i <= 8; i++) log.Record("agy_ask", "progress", outcome: Marker(i));   // would throw if recording could fail
+        var length = new FileInfo(path).Length;
+        for (var i = 9; i <= 12; i++) log.Record("agy_ask", "progress", outcome: Marker(i));
+
+        Assert.Equal(length, new FileInfo(path).Length);
+        Assert.Contains(Marker(12), log.Snapshot()[^1]);
+    }
+
+    [Fact]
+    public void OldPathFor_names()
+    {
+        Assert.Equal("clavity-ls-s1.old.log", LsEventLog.OldPathFor("clavity-ls-s1.log"));
+        Assert.Equal("x.old.log", LsEventLog.OldPathFor("x"));
+    }
 }
