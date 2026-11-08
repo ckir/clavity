@@ -1,16 +1,40 @@
 # Version control
 .git/
 
+# Git worktrees
+.worktrees/
+
 # Cargo build artifacts
 target/
 **/*.rs.bk
 
-# IDE and tool configs/caches
+# .NET build artifacts
+# Anchored to clavity-dotnet to avoid matching Rust crate binary targets (e.g. clavity-classic/src/bin/fake_tmux.rs)
+clavity-dotnet/**/bin/
+clavity-dotnet/**/obj/
+clavity-dotnet/artifacts/
+clavity-dotnet/publish/
+clavity-dotnet/TestResults/
+TestResults/
+*.user
+
+# Python environments and caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Node dependencies
+node_modules/
+
+# IDE and OS configs/caches
 .idea/
 .vscode/
 *.swp
 *.swo
 .DS_Store
+/Microsoft/
 
 # Secrets and local environments
 .env
@@ -18,31 +42,34 @@ target/
 *.pem
 *.key
 
-# Logs
+# Logs and scratch files
 *.log
 logs/
+diff.txt
+clavity.txt
+scratchpad/
 
-# Agent/AI tools data
+# Test and audit outputs
+testResults.xml
+coverage/
+docs/docs-audit-findings.json
+docs/docs-audit-findings.md
+docs/docs-audit-log.md
+docs/docs-audit.lock
+
+# Agent/AI runtime data and local overrides
 .gemini/
 .serena/
 .agent/
-
-# Git Worktrees
-.worktrees/
+.superpowers/
+.clavity/
+.review-relay/
+docs/session-notes/
+.claude/settings.local.json
+.claude/*.local.md
 
 # Installer output
 dist/
-
-# .NET Build artifacts
-[Bb]in/
-[Oo]bj/
-artifacts/
-TestResults/
-
-# Python environments
-.venv/
-__pycache__/
-*.pyc
 
 # clavity agy-pairing-bridge (branch: agy-pairing-bridge) — keep the bridge design,
 # plan, and the agy-facing pairing doc out of agy's index/view (owner waiver: the
