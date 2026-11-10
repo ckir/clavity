@@ -363,6 +363,8 @@ them and records the output in this document.
    or `/c/...`); that `git --exec-path` sits three levels below the Git root on a machine-wide, a
    per-user and a Scoop install; and that `CHERE_INVOKING=1` keeps `bash -l` in the current folder.
 
+   UNVERIFIED-WINDOWS 2026-11-10: handoff dispatched (docs/handoff/windows-session-3.md, items (a)-(c)); the launcher library's normalisation accepts both forms until Task 7 records the measured one.
+
 ## What is tested
 
 - Pester for the hook (`scripts/tests/fetch-clavity-ls.Tests.ps1`): launcher created on Unix after a

@@ -78,7 +78,7 @@ Describe 'shipped plugin hook payload' {
         # golden-header/agy-register/classic-exclusion extras). classic has no equivalent (it ships its own
         # binary via Inno), so these are a permitted asymmetry in the DOTNET direction, named here exactly as
         # agy-drive-session-reset.sh is named for the classic direction.
-        $dotnetOnly = @('fetch-clavity-ls.sh', 'clavity-dotnet-setup.sh')
+        $dotnetOnly = @('fetch-clavity-ls.sh', 'clavity-dotnet-setup.sh', 'clavity-ls-launcher-lib.sh')
 
         $dotnet  = Get-HookSet $script:DotnetHooks
         $classic = Get-HookSet $script:ClassicHooks

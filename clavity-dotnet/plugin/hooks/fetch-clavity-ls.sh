@@ -55,6 +55,15 @@ _note() {
   _say "$msg"
 }
 
+# The PATH launcher (clavity-ls-launcher-lib.sh) speaks through the same JSON _say, never through _note: _note's
+# "install clavity-ls manually" tail is wrong for a launcher failure. Sourced from this hook's OWN directory, not
+# $ROOT/hooks/, so it resolves wherever the hook file lives (the test fixtures hand the hook a CLAUDE_PLUGIN_ROOT that
+# holds only plugin.json). Absent lib: skipped silently. Sourcing only defines functions, so it costs no process.
+_launcher_say() { _say "$1"; }
+# shellcheck source=clavity-ls-launcher-lib.sh
+d=${0%[/\\]*}; [ "$d" = "$0" ] && d=.; [ -z "$d" ] && d=/
+[ -f "$d/clavity-ls-launcher-lib.sh" ] && . "$d/clavity-ls-launcher-lib.sh"
+
 # Version from the plugin's own manifest (the release asset name embeds it).
 # Branch 21: a builtin read of the first line that carries a "version" key. The regex keeps the old sed's greedy `.*`
 # prefix, so the LAST "version" on that line wins, exactly as before.
