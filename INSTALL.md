@@ -4,7 +4,7 @@ You are a coding agent (Claude Code, Antigravity, or another) installing clavity
 
 ## 1. Preconditions
 
-Check that `claude` (Claude Code) is on PATH, and that `curl`, `tar` and `sha256sum` or `shasum` exist. The plugins are Claude Code plugins even when agy performs the install. If anything is missing, tell the human what to install and stop.
+Check that `claude` (Claude Code) is on PATH. The plugins are Claude Code plugins even when agy performs the install. If it is missing, tell the human to install Claude Code and stop. Do not check anything else yourself: the script checks `curl`, `tar` and `sha256sum` or `shasum` inside its own bash, and reports a missing one with a `missing: ...` line and exit 1 (see section 4).
 
 ## 2. The command
 
@@ -52,4 +52,4 @@ clavity-classic is Windows-only and mutually exclusive with clavity-dotnet. The 
 - The fetch failed (offline, rate-limited): run the command again later, or place the binary by hand as the hook's own message says.
 - `~/.local/bin` is not on PATH: use the `export PATH=...` line the script prints (exit 3).
 - On Windows `clavity-ls start` opens a new console window, not an editor tab.
-- `~/.local/bin/.no-launcher` exists, so the launcher is off: run the script again with `--launcher` (`--no-launcher` turns it off).
+- The launcher is off because the marker `<Claude config dir>/plugins/data/clavity-clavity/bin/.no-launcher` exists (default config dir `~/.claude`; `CLAUDE_CONFIG_DIR` overrides it). When it is the reason, the `clavity-ls is NOT on PATH yet` status line names the marker. Run the script again with `--launcher` to remove it (`--no-launcher` turns the launcher off).
