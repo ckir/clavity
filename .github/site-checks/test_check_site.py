@@ -66,6 +66,8 @@ def page(body: str, head: str = "") -> str:
 
 
 CLEAN_COMMANDS = [
+    "claude plugin marketplace add obra/superpowers-marketplace",
+    "claude plugin install superpowers@superpowers-marketplace",
     "claude plugin marketplace add ckir/clavity",
     "claude plugin install clavity@clavity",
     "claude plugin install agy-autotrain@clavity",
@@ -73,9 +75,9 @@ CLEAN_COMMANDS = [
     "claude plugin install review-relay@clavity",
 ]
 README_COMMANDS = [
-    CLEAN_COMMANDS[0],
-    CLEAN_COMMANDS[1] + "          # clavity-dotnet",
-    *CLEAN_COMMANDS[2:],
+    *CLEAN_COMMANDS[:3],
+    CLEAN_COMMANDS[3] + "          # clavity-dotnet",
+    *CLEAN_COMMANDS[4:],
 ]
 WAIVER_1 = (
     "All the above can be waived by prompts. "
@@ -1389,13 +1391,13 @@ class RealPageContract(unittest.TestCase):
         ]
         cls.css = (REAL_SITE / "style.css").read_text(encoding="utf-8")
 
-    def test_five_copy_buttons_with_unique_labels_starting_with_copy(self):
-        self.assertEqual(len(self.buttons), 5)
+    def test_seven_copy_buttons_with_unique_labels_starting_with_copy(self):
+        self.assertEqual(len(self.buttons), 7)
         labels = [b.get("aria-label", "") for b in self.buttons]
         for label in labels:
             self.assertTrue(label.startswith("Copy"), label)
             self.assertNotIn("claude plugin", label.lower())
-        self.assertEqual(len(set(labels)), 5, labels)
+        self.assertEqual(len(set(labels)), 7, labels)
 
     def test_live_region_is_visually_hidden_by_class(self):
         regions = [a for _, a in self.parser.elements if a.get("id") == "copy-status"]

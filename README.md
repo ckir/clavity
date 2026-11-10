@@ -64,11 +64,21 @@ These two tools are **mutually exclusive** — pick exactly one. They let Claude
 
 ### How to get started
 
-The five products install one of two ways. **Four install with `claude plugin`** —
-clavity-dotnet, agy-autotrain, commonmemory and review-relay — from this repository's marketplace.
-Cross-platform (Windows, Linux, macOS):
+> Tell your agent: `Fetch and follow the instructions at https://raw.githubusercontent.com/ckir/clavity/main/INSTALL.md`
+
+From a terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ckir/clavity/main/install.sh | bash -s --
+```
+
+Add `--with agy-autotrain,commonmemory,review-relay` for the add-ons.
+
+What those do, by hand:
 
 ```
+claude plugin marketplace add obra/superpowers-marketplace
+claude plugin install superpowers@superpowers-marketplace
 claude plugin marketplace add ckir/clavity
 claude plugin install clavity@clavity          # clavity-dotnet
 claude plugin install agy-autotrain@clavity
@@ -77,7 +87,7 @@ claude plugin install review-relay@clavity
 ```
 
 clavity-dotnet fetches its `clavity-ls` binary on first run from the matching `clavity-v<N>` GitHub
-release (win-x64 / linux-x64 / osx-arm64 / osx-x64), so nothing lands on your PATH. Checksum-verified
+release (win-x64 / linux-x64 / osx-arm64 / osx-x64), and keeps a clavity-ls launcher on your PATH (a symlink in ~/.local/bin, or the plugin's data dir on the Windows user PATH). Checksum-verified
 when a `.sha256` companion asset is published and `sha256sum` is on PATH; otherwise the fetch proceeds
 unverified.
 
