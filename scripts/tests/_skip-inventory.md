@@ -265,6 +265,7 @@ The last three are conditional, listed in `### conditional`. A listed line is do
 | clavity-ls-launcher-lib.Tests.ps1 | clavity-ls-launcher-lib.unix steady state runs on builtins alone: exit 0 and silence with PATH holding only the link dir | LinuxOnly | - |
 | fetch-clavity-ls.Tests.ps1 | fetch-clavity-ls.sh tells the user what happened.after a successful fetch, the launcher exists | LinuxOnly | - |
 | fetch-clavity-ls.Tests.ps1 | fetch-clavity-ls.sh tells the user what happened.on the stamp-current path, creates the launcher and stays silent when ~/.local/bin is on PATH | LinuxOnly | - |
+| fetch-clavity-ls.Tests.ps1 | fetch-clavity-ls.sh tells the user what happened.on the stamp-current path, says NOT on PATH once when ~/.local/bin is off PATH | LinuxOnly | - |
 | register-plugin.Tests.ps1 | Test-AgentPresent.falls back to HOME when USERPROFILE is unset (the Linux/macOS case; no mocks, child process) | LinuxOnly | - |
 
 ### conditional

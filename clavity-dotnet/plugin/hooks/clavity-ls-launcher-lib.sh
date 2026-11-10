@@ -161,14 +161,20 @@ clavity_ls_launcher_ensure() {
     _launcher_say "$msg"
     return 2
   fi
+  # The opt-outs are said ONCE per version, like the NOT-on-PATH note and with the same stamp: the hook calls this on
+  # every session start, and a durable .no-launcher would otherwise put the same note in front of the user every time.
   if [ "${CLAVITY_SKIP_PATH:-}" = 1 ]; then
+    [ -f "$bin_dir/.path-note.$ver" ] && return 0
     msg="[clavity-ls] PATH launcher skipped (CLAVITY_SKIP_PATH=1); clavity-ls stays at $target"
     _launcher_say "$msg"
+    : 2>/dev/null > "$bin_dir/.path-note.$ver"
     return 0
   fi
   if [ -e "$bin_dir/.no-launcher" ]; then
+    [ -f "$bin_dir/.path-note.$ver" ] && return 0
     msg="[clavity-ls] PATH launcher skipped: $bin_dir/.no-launcher exists; clavity-ls stays at $target"
     _launcher_say "$msg"
+    : 2>/dev/null > "$bin_dir/.path-note.$ver"
     return 0
   fi
   case "${OSTYPE:-}" in

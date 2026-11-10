@@ -170,6 +170,11 @@ Describe 'clavity-ls-launcher-lib' {
             $res.StdErr | Should -Match 'skipped'
             Test-Path -LiteralPath (Join-Path $fx.Home '.local/bin/clavity-ls') | Should -BeFalse
             Test-Path -LiteralPath (Join-Path $fx.Home '.local') | Should -BeFalse
+            # Once per version: the second run is silent and the stamp is what keeps it so.
+            $again = Invoke-Lib $fx -OsType 'linux-gnu' -PathValue ('$p/home/.local/bin:' + $script:Sys) -Extra 'CLAVITY_SKIP_PATH=1'
+            $again.ExitCode | Should -Be 0
+            $again.StdErr | Should -BeNullOrEmpty -Because 'the opt-out note is given once per version, not on every session start'
+            Join-Path $fx.Bin '.path-note.9.9.9' | Should -Exist
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -181,6 +186,10 @@ Describe 'clavity-ls-launcher-lib' {
             $res.ExitCode | Should -Be 0
             $res.StdErr | Should -Match ([regex]::Escape('.no-launcher'))
             Test-Path -LiteralPath (Join-Path $fx.Home '.local/bin/clavity-ls') | Should -BeFalse
+            $again = Invoke-Lib $fx -OsType 'linux-gnu' -PathValue ('$p/home/.local/bin:' + $script:Sys)
+            $again.ExitCode | Should -Be 0
+            $again.StdErr | Should -BeNullOrEmpty -Because 'the opt-out note is given once per version, not on every session start'
+            Join-Path $fx.Bin '.path-note.9.9.9' | Should -Exist
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 

@@ -59,7 +59,11 @@ _note() {
 # "install clavity-ls manually" tail is wrong for a launcher failure. Sourced from this hook's OWN directory, not
 # $ROOT/hooks/, so it resolves wherever the hook file lives (the test fixtures hand the hook a CLAUDE_PLUGIN_ROOT that
 # holds only plugin.json). Absent lib: skipped silently. Sourcing only defines functions, so it costs no process.
-_launcher_say() { _say "$1"; }
+# ONE JSON object per run: Claude Code reads the hook's stdout as a single object, and two concatenated ones are not JSON.
+# So with _launcher_collect set (the success path) the launcher's notes are collected into _lnote and folded into the
+# success message; on the stamp-current path, where nothing else is said, they go straight to _say.
+_lnote=''
+_launcher_say() { if [ -n "${_launcher_collect:-}" ]; then _lnote+="${_lnote:+ }$1"; else _say "$1"; fi; }
 # Called on the stamp-current path and after a successful fetch, never on a failure path. FAIL-OPEN: its return code is
 # ignored (the lib speaks for itself). The declare -F guard keeps an absent lib silent: an undefined function would print
 # "command not found" on stderr. declare is a builtin, so the steady state still spawns nothing.
@@ -194,6 +198,6 @@ printf '%s' "$VER" > "$STAMP"
 rm -f "$FAIL_STAMP" 2>/dev/null
 msg_ok="[clavity-ls] fetched $ASSET -> $TARGET. If the clavity-ls MCP server failed to start in this session, run /mcp and reconnect it."
 msg_unverified="[clavity-ls] fetched $ASSET -> $TARGET, installed UNVERIFIED: the release publishes no .sha256 asset to check it against. If the clavity-ls MCP server failed to start in this session, run /mcp and reconnect it."
-if [ "$_unverified" -eq 1 ]; then _say "$msg_unverified"; else _say "$msg_ok"; fi
-_launcher
+_launcher_collect=1; _launcher; _launcher_collect=
+if [ "$_unverified" -eq 1 ]; then _say "$msg_unverified${_lnote:+ $_lnote}"; else _say "$msg_ok${_lnote:+ $_lnote}"; fi
 exit 0
