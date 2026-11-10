@@ -1183,6 +1183,7 @@ test-temp-discipline.Tests.ps1             UNMEASURED  4 tests    <- FAST, NEW 2
 clavity-dotnet-setup.Tests.ps1             UNMEASURED  14 tests   <- FAST, NEW 2026-10-13 (ROADMAP section 68, Branch R: one bash child per row with a logging agy shim, ~0.7s each, 8,6s wall for the file solo on a loaded Linux box; the driver measures it idle with the Branch R gates)
 release-workflow-refs.Tests.ps1             UNMEASURED  20 tests   <- FAST, NEW 2026-10-13 (ROADMAP section 63, Branch R; 6 -> 20 same day: section 92 generalises the rows over the five member builds, +the notes checkout, +republish-member's two jobs; before that 5 -> 6: +the dotnet --version stamp wiring row, stale-client item: in-process regex over three workflow files, sub-second rows; 2,2s for the file solo including pwsh start)
 clavity-ls-launcher-lib.Tests.ps1          UNMEASURED  15 tests   <- SLOW, NEW 2026-11-10 (agent-driven install Task 1: one bash child per row, each starting the lib and its fake cygpath/powershell.exe; 1 row WindowsOnly)
+install-sh.Tests.ps1                       UNMEASURED  26 tests   <- SLOW, NEW 2026-11-10 (agent-driven install Task 3: one bash child per run, each starting install.sh, the real launcher lib and the fake claude/agy/curl/cygpath/powershell.exe; 4 rows LinuxOnly)
 ```
 
 Every FAST row above was re-measured in ONE sweep on 2026-08-05 (the 292,09s sample below). The SLOW rows
