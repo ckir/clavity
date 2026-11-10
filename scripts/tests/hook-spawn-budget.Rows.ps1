@@ -441,12 +441,25 @@ $script:Rows = @(
     # and the lookup row came back 'no release asset named ...win-x64...' - Git Bash reorders PATH, the REAL curl won, and
     # the row was hitting the live GitHub API. A function cannot be shadowed. Each lookup row's -Expect is what proves the
     # fake ran. The function costs no process, so the pinned counts are the hook's own. ---
+    # The steady state now includes the PATH launcher (clavity-ls-launcher-lib.sh). This suite runs on Windows only, where bash
+    # reports OSTYPE msys and the lib takes its WINDOWS branch: "already right" is "BIN_DIR is among the PATH entries", tested
+    # with builtins. So the fixture puts its own data/bin on the PATH the hook inherits, and the -Max 0 is the oracle that it
+    # landed. Two forms of ONE dir, because MSYS converts a PATH entry from Windows through its mount table and Git for
+    # Windows mounts %TEMP% (where the fixture lives) as /tmp: the Windows form goes on PATH, and CLAUDE_PLUGIN_DATA gets the
+    # POSIX form `cygpath -u` gives through the same table, computed HERE, outside the counted run (as New-Fx in
+    # clavity-ls-launcher-lib.Tests.ps1 does). A Windows-form CLAUDE_PLUGIN_DATA would normalise to /c/users/.../temp/...
+    # against a /tmp/... entry: a miss that spawns cygpath and powershell.exe against the HOST user PATH. HOME is already
+    # the fixture's (New-HookFixture), so nothing here can reach the host home. OSTYPE is left to bash on purpose.
     New-BudgetRow "$D/fetch-clavity-ls.sh" 'binary installed, stamp matches (steady state)' {
         param($fx)
         $bin = Join-Path $fx.Root 'data/bin'; New-Item -ItemType Directory -Force -Path $bin, (Join-Path $fx.Root 'root') | Out-Null
         [IO.File]::WriteAllText((Join-Path $fx.Root 'root/plugin.json'), '{"version":"9.9.9"}')
         [IO.File]::WriteAllText((Join-Path $bin 'clavity-ls.exe'), 'BIN'); [IO.File]::WriteAllText((Join-Path $bin '.clavity-ls.version'), '9.9.9')
-        $fx.Env.CLAUDE_PLUGIN_DATA = (($fx.Root -replace '\\', '/') + '/data'); $fx.Env.CLAUDE_PLUGIN_ROOT = (($fx.Root -replace '\\', '/') + '/root')
+        $data = Join-Path $fx.Root 'data'
+        $dataPosix = "$(& (Get-GitBashOrThrow) -c 'cygpath -u "$1"' _ $data)".Trim()
+        $dataPosix | Should -Match '^/' -Because 'the fixture needs the POSIX form of its data dir, or the launcher step leaves its steady state'
+        $fx.Env.CLAUDE_PLUGIN_DATA = $dataPosix; $fx.Env.CLAUDE_PLUGIN_ROOT = (($fx.Root -replace '\\', '/') + '/root')
+        $fx.Env.PATH = $bin + [IO.Path]::PathSeparator + $(if ($fx.Env.ContainsKey('PATH')) { $fx.Env.PATH } else { $env:PATH })
         New-SessionStartPayload $fx } -Max 0 -Silent
     New-BudgetRow "$D/fetch-clavity-ls.sh" 'release lookup FAILS (fake curl = false) -> manual-install note' {
         param($fx)
