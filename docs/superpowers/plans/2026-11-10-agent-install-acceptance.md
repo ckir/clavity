@@ -159,3 +159,74 @@ form of `CLAUDE_PLUGIN_DATA`/`CLAUDE_PLUGIN_ROOT`, `git --exec-path` depth, `CHE
 `docs/handoff/windows-session-4.md` (item (d): the four suites and the `## windows` skip-inventory regeneration). The
 results arrive as a pull request with base `feat/agent-install`; this section and the spec's "Measure first" item 2
 (`UNVERIFIED-WINDOWS`) are updated from that PR before any release.
+
+## 4. Post-merge: the plain sentence (Claude Code, headless, Linux)
+
+Run on 2026-11-10 after PR #117 merged to `main` (222b2dd3), with NO branch substitution and NO
+`CLAVITY_INSTALL_RAW_BASE`: the sentence exactly as the README gives it. Same shape as section 1 (host sign-in file
+copied into a throwaway `CLAUDE_CONFIG_DIR`, `claude -p`, `--allowedTools 'Bash,WebFetch'`, an empty `git init` repo as
+cwd, `CLAVITY_SKIP_PATH=1 CLAVITY_SKIP_AGY=1` so the host PATH and agy stay untouched). Model: claude-opus-5-5, 7 turns,
+66 s, claude exit 0.
+
+Prompt (verbatim, one line):
+
+```
+Fetch and follow the instructions at https://raw.githubusercontent.com/ckir/clavity/main/INSTALL.md
+```
+
+### (a) Commands the agent ran (in order)
+1. `WebFetch` of `https://raw.githubusercontent.com/ckir/clavity/main/INSTALL.md`
+2. `curl -fsSL https://raw.githubusercontent.com/ckir/clavity/main/install.sh -o install.sh` into a `mktemp -d`, then
+   `command -v claude curl tar sha256sum shasum`
+3. a `Read` of the script (denied: not in `--allowedTools`), then `cat` of it to review it
+4. `bash <that copy>/install.sh; echo "EXIT CODE: $?"`
+
+### (b) install.sh stdout (verbatim; the throwaway config dir was `/tmp/tmp.FD939JdNTo`, the repo `/tmp/tmp.DLTdCCO24i`)
+
+```
+[clavity install] added marketplace ckir/clavity
+[clavity install] added marketplace obra/superpowers-marketplace
+[clavity install] installed superpowers@superpowers-marketplace
+[clavity install] installed clavity@clavity
+[clavity install] clavity@clavity 0.17.0 at /tmp/tmp.FD939JdNTo/plugins/cache/clavity/clavity/0.17.0
+[clavity install] running the plugin's fetch hook (downloads clavity-ls now)
+[clavity-ls] fetched clavity-ls-linux-x64-0.17.0.tar.gz -> /tmp/tmp.FD939JdNTo/plugins/data/clavity-clavity/bin/clavity-ls.exe. If the clavity-ls MCP server failed to start in this session, run /mcp and reconnect it.
+[clavity install] agy registration skipped (CLAVITY_SKIP_AGY=1)
+[clavity install] PATH launcher step skipped (CLAVITY_SKIP_PATH=1)
+[clavity install] clavity-ls is NOT on PATH yet: /home/user/.local/bin/clavity-ls is your own file, not clavity's launcher; remove it and run this again, or use the launch line below
+If Claude Code or agy is already running in this folder, exit them first. Then open a new terminal and run: export PATH="/tmp/tmp.FD939JdNTo/plugins/data/clavity-clavity/bin:$PATH"; clavity-ls.exe start /tmp/tmp.DLTdCCO24i
+EXIT CODE: 3
+```
+
+The plugin is 0.17.0 from the `release` branch (v31), whose session-start hook does not yet carry the launcher
+library; install.sh fetched the library from `main` for its own launcher step, which `CLAVITY_SKIP_PATH=1` then
+skipped. The status line names the host's hand-placed `~/.local/bin/clavity-ls` (a regular file) as the user's own
+file: the wording the final-review fix wave introduced, measured here on a real host for the first time.
+
+### (c) Exit code the agent reported
+3, quoted as "The installer exited with code 3, which means it worked but you have to take one more step".
+
+### (d) Agent's final message to the human (verbatim, abridged to the claims that matter)
+
+> clavity installed, but it isn't on your PATH yet. The installer exited with code 3 [...]
+> **What got installed:** Two plugin marketplaces [...] Two plugins, for your user account: `superpowers@superpowers-marketplace` and `clavity@clavity` 0.17.0. The `clavity-ls` program, downloaded to `/tmp/tmp.FD939JdNTo/plugins/data/clavity-clavity/bin/clavity-ls.exe`. I didn't add any add-ons because you didn't ask for them. Before running the installer I downloaded and read `install.sh`, and then ran that same copy.
+> **Why it isn't on your PATH:** [the status line, quoted verbatim] Your environment already had `CLAVITY_SKIP_PATH=1` and `CLAVITY_SKIP_AGY=1` set, so the installer skipped placing the PATH launcher and registering with agy. I didn't delete your existing `~/.local/bin/clavity-ls`.
+> **What to do next:** [...] The installer's last line was: [the launch line, quoted verbatim]
+> The `agy_*` tools won't be available in this session until you restart it.
+
+### Plugin list in the throwaway config (`CLAUDE_CONFIG_DIR="$cfg" claude plugin list --json`)
+`clavity@clavity 0.17.0 enabled scope=user`, `superpowers@superpowers-marketplace 7.0.2 enabled scope=user` (two
+`@synced` plugins also listed come from the account's synced scope, not from install.sh).
+
+### Binary
+`clavity-ls.exe --version` in the throwaway data dir: `clavity-ls 0.17.0+c356375b`.
+
+### Host untouched
+`stat` of `~/.local/bin/clavity-ls`, `~/.claude/plugins` and `~/.claude/plugins/installed_plugins.json` identical
+before and after; the hand-placed launcher is still a regular file. Throwaway config, repo and the agent's download dir
+removed afterwards.
+
+### Verdict
+Outcome: matches expectation. The bash form ran from `main` with no substitution, exit 3, the status line and the launch
+line relayed verbatim, no plain-success claim, no `agy_*` claim for the current session. Ready for the v32 release
+from the owner's side; after v32 the release-branch plugin's own hook maintains the launcher on later session starts.
