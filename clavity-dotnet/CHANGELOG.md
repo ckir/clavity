@@ -1,4 +1,9 @@
 # dotnet changelog
+## 0.18.0 - 2026-11-10
+
+### Features
+- feat(install): agent-driven install - one sentence to paste, install.sh, INSTALL.md, clavity-ls launcher on PATH (#117)
+
 ## 0.17.0 - 2026-11-07
 
 ### Features
