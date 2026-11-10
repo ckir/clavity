@@ -643,7 +643,10 @@ Describe 'install.sh' {
             $repo = Join-Path $fx.Root 'repo'
             New-Item -ItemType Directory -Path (Join-Path $repo 'sub') -Force | Out-Null
             & git -C $repo init -q
-            $top = "$(& git -C $repo rev-parse --show-toplevel)".Trim()
+            # The toplevel as install.sh's OWN git prints it under the same bash: on Windows PowerShell's git says
+            # C:/Users/... while git-bash's says /c/Users/... (MEASURED on CI 2026-11-10, the row failed with PowerShell's form).
+            $top = "$(& $script:Bash -c 'PATH=/usr/bin:/bin; cd "$1" && git rev-parse --show-toplevel' _ ($repo -replace '\\', '/'))".Trim()
+            $top | Should -Not -BeNullOrEmpty -Because 'the expected folder comes from git-bash, not from PowerShell'
             $res = Invoke-Install $fx -Env $script:Skip -Cwd '$p/repo/sub'
             $res.Last | Should -BeLike ($script:LaunchPrefix + '*')
             $res.Last | Should -BeLike "* start `"$top`"" -Because 'the fixture root carries a space, so install.sh:423 quotes the folder'
