@@ -17,7 +17,7 @@
 #
 # clavity_ls_launcher_ensure TARGET BIN_DIR VER returns
 #   0  a new terminal will resolve clavity-ls (or the step was skipped on purpose),
-#   3  the launcher is in place but its directory is not on PATH,
+#   3  the launcher is in place but its directory is not on PATH (Windows: in the user PATH, not this process's),
 #   2  it could not be placed.
 # Opt-outs: CLAVITY_SKIP_PATH=1 (this run only) and the marker file BIN_DIR/.no-launcher (durable; the user creates it).
 #
@@ -48,7 +48,7 @@ _clavity_ls_launcher_norm() {
 }
 
 _clavity_ls_launcher_windows() {
-  local bin_dir="$1" want e hit= nof= msg win ps_script
+  local bin_dir="$1" ver="$2" want e hit= nof= msg win wq ps_script r stamp
   _clavity_ls_launcher_norm "$bin_dir"; want=$_cll_n
   # Split $PATH with IFS=: and globbing OFF (a PATH entry holding * or ? must not expand); restore -f as found.
   case $- in *f*) nof=1 ;; esac
@@ -61,7 +61,13 @@ _clavity_ls_launcher_windows() {
   [ -n "$nof" ] || set +f
   [ -n "$hit" ] && return 0
 
-  # Not on PATH: from here on, processes are allowed (this runs once, then the steady state above takes over).
+  # Not in THIS process's PATH. After the first append that stays true for every session started from a terminal opened
+  # before it (Windows Terminal tabs, VS Code), so, as on Unix, the user PATH is checked and the note given once per
+  # version: with the stamp present, return 3 silently and spawn nothing.
+  stamp="$bin_dir/.path-note.$ver"
+  [ -f "$stamp" ] && return 3
+
+  # From here on, processes are allowed (once per version).
   if ! command -v powershell.exe >/dev/null 2>&1; then
     msg="[clavity-ls] powershell.exe not found, so $bin_dir was not added to your user PATH; add it yourself, then open a new terminal"
     _launcher_say "$msg"
@@ -75,22 +81,33 @@ _clavity_ls_launcher_windows() {
   fi
   # One PowerShell string. The user PATH is read and written through [Environment] - never setx, which truncates the
   # value at 1024 characters. Append only when no entry equals the dir case-insensitively (a trailing backslash
-  # ignored), keeping the existing value as it is. The dir goes in a single-quoted PowerShell literal: ' is doubled.
-  win=${win//\'/\'\'}
-  ps_script="\$ErrorActionPreference = 'Stop'; \$d = '$win'; "
+  # ignored), keeping the existing value as it is. It prints `added` or `present` so the caller knows which note to
+  # give. The dir goes in a single-quoted PowerShell literal: ' is doubled.
+  wq=${win//\'/\'\'}
+  ps_script="\$ErrorActionPreference = 'Stop'; \$d = '$wq'; "
   ps_script+="\$p = [Environment]::GetEnvironmentVariable('Path','User'); "
   ps_script+="\$e = @(if (\$p) { \$p -split ';' }); "
-  ps_script+="if (-not (\$e | Where-Object { \$_.TrimEnd('\\') -ieq \$d.TrimEnd('\\') })) { "
+  ps_script+="if (\$e | Where-Object { \$_.TrimEnd('\\') -ieq \$d.TrimEnd('\\') }) { 'present' } else { "
   ps_script+="\$new = if (\$p) { \$p.TrimEnd(';') + ';' + \$d } else { \$d }; "
-  ps_script+="[Environment]::SetEnvironmentVariable('Path', \$new, 'User') }"
-  if ! powershell.exe -NoProfile -NonInteractive -Command "$ps_script" >/dev/null 2>&1; then
-    msg="[clavity-ls] powershell.exe could not add $win to your user PATH; add it yourself, then open a new terminal"
-    _launcher_say "$msg"
-    return 2
-  fi
-  msg="[clavity-ls] added $win to your user PATH; a new terminal will find clavity-ls"
+  ps_script+="[Environment]::SetEnvironmentVariable('Path', \$new, 'User'); 'added' }"
+  r=$(powershell.exe -NoProfile -NonInteractive -Command "$ps_script" 2>/dev/null) || r=
+  r=${r//$'\r'/}; r=${r//$'\n'/}   # PowerShell ends its output with CRLF
+  case "$r" in
+    added)
+      : 2>/dev/null > "$stamp"
+      msg="[clavity-ls] added $win to your user PATH; a new terminal will find clavity-ls"
+      _launcher_say "$msg"
+      return 0 ;;
+    present)
+      : 2>/dev/null > "$stamp"
+      msg="[clavity-ls] $win is already on your user PATH but not in this session's; open a new terminal to use clavity-ls"
+      _launcher_say "$msg"
+      return 3 ;;
+  esac
+  # A failed or unrecognised run: no stamp, so the next session start tries again.
+  msg="[clavity-ls] powershell.exe could not add $win to your user PATH; add it yourself, then open a new terminal"
   _launcher_say "$msg"
-  return 0
+  return 2
 }
 
 _clavity_ls_launcher_unix() {
@@ -155,7 +172,7 @@ clavity_ls_launcher_ensure() {
     return 0
   fi
   case "${OSTYPE:-}" in
-    msys*|cygwin*) _clavity_ls_launcher_windows "$bin_dir" ;;
+    msys*|cygwin*) _clavity_ls_launcher_windows "$bin_dir" "$ver" ;;
     *)             _clavity_ls_launcher_unix "$target" "$bin_dir" "$ver" ;;
   esac
 }

@@ -60,8 +60,8 @@ _note() {
 # $ROOT/hooks/, so it resolves wherever the hook file lives (the test fixtures hand the hook a CLAUDE_PLUGIN_ROOT that
 # holds only plugin.json). Absent lib: skipped silently. Sourcing only defines functions, so it costs no process.
 _launcher_say() { _say "$1"; }
-# shellcheck source=clavity-ls-launcher-lib.sh
 d=${0%[/\\]*}; [ "$d" = "$0" ] && d=.; [ -z "$d" ] && d=/
+# shellcheck source=clavity-ls-launcher-lib.sh
 [ -f "$d/clavity-ls-launcher-lib.sh" ] && . "$d/clavity-ls-launcher-lib.sh"
 
 # Version from the plugin's own manifest (the release asset name embeds it).

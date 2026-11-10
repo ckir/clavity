@@ -42,18 +42,26 @@ case "$x" in /[a-zA-Z]/*) d=${x:1:1}; x="${d^^}:${x:2}";; esac
 printf '%s\n' "${x//\//\\}"
 '@
         # Fake powershell.exe: every call appends to FAKE_PS_LOG (the -Command text on its own line), so an absent log
-        # proves no call was made. Without FAKE_PS_LOG it fails loudly rather than pretending.
+        # proves no call was made. Without FAKE_PS_LOG it fails loudly rather than pretending. It answers what the real
+        # script prints, FAKE_PS_OUT (default `added`), with the CRLF real PowerShell ends its output with.
         $ps = @'
 #!/usr/bin/env bash
 [ -n "${FAKE_PS_LOG:-}" ] || { echo "fake powershell.exe: FAKE_PS_LOG unset" >&2; exit 97; }
 while [ $# -gt 0 ]; do
   case "$1" in -Command) printf 'COMMAND %s\n' "$2" >> "$FAKE_PS_LOG"; shift 2;; *) printf 'ARG %s\n' "$1" >> "$FAKE_PS_LOG"; shift;; esac
 done
+printf '%s\r\n' "${FAKE_PS_OUT:-added}"
 exit "${FAKE_PS_EXIT:-0}"
 '@
         foreach ($d in $fx.Shim, $fx.ShimNoPs) { [IO.File]::WriteAllText((Join-Path $d 'cygpath'), $cygpath) }
         [IO.File]::WriteAllText((Join-Path $fx.Shim 'powershell.exe'), $ps)
         Set-ShimExecutable -Path (Join-Path $fx.Shim 'cygpath'), (Join-Path $fx.ShimNoPs 'cygpath'), (Join-Path $fx.Shim 'powershell.exe')
+        # The data dir in the POSIX form MSYS gives it, computed ONCE here, outside any counted run. MSYS converts a PATH
+        # inherited from Windows through its mount table, and Git for Windows mounts /tmp as usertemp, so a dir under
+        # %TEMP% arrives as /tmp/...; `cygpath -u` uses the same table, so BIN_DIR and the PATH entry agree under any
+        # mount layout. Off Windows there is no mount table (and no real cygpath): the fixture path is already POSIX.
+        $binPosix = if ($IsWindows) { "$(& $script:Bash -c 'cygpath -u "$1"' _ $fx.Bin)".Trim() } else { $fx.Bin }
+        $fx | Add-Member -NotePropertyName BinPosix -NotePropertyValue $binPosix
         return $fx
     }
     function Invoke-Lib($Fx, [Parameter(Mandatory)][string]$OsType, [Parameter(Mandatory)][string]$PathValue,
@@ -221,6 +229,37 @@ Describe 'clavity-ls-launcher-lib' {
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'windows: a stale process PATH after the append spawns nothing and returns 3' {
+        # The user PATH already got the dir (the stamp says the note was given for this version), but this session was
+        # started from a terminal opened before that: the dir is absent from the process PATH. Every session start in
+        # that terminal must stay silent and spawn nothing.
+        $fx = New-Fx
+        try {
+            [IO.File]::WriteAllText((Join-Path $fx.Bin '.path-note.9.9.9'), '')
+            $res = Invoke-Lib $fx -OsType 'msys' -PathValue ('$p/shim:' + $script:Sys)
+            $res.ExitCode | Should -Be 3
+            $res.StdErr | Should -BeNullOrEmpty
+            Test-Path -LiteralPath $fx.PsLog | Should -BeFalse -Because 'the stamp short-circuits before any cygpath or powershell.exe'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'windows: says present once when the user PATH already holds the dir' {
+        $fx = New-Fx
+        try {
+            $res = Invoke-Lib $fx -OsType 'msys' -PathValue ('$p/shim:' + $script:Sys) -Extra 'FAKE_PS_OUT=present'
+            $res.ExitCode | Should -Be 3
+            $res.StdErr | Should -Match 'already on your user PATH'
+            Test-Path -LiteralPath (Join-Path $fx.Bin '.path-note.9.9.9') | Should -BeTrue
+            Test-Path -LiteralPath $fx.PsLog | Should -BeTrue -Because 'the first run must have asked powershell.exe'
+            $logBefore = Get-Content -Raw -LiteralPath $fx.PsLog
+
+            $again = Invoke-Lib $fx -OsType 'msys' -PathValue ('$p/shim:' + $script:Sys) -Extra 'FAKE_PS_OUT=present'
+            $again.ExitCode | Should -Be 3
+            $again.StdErr | Should -BeNullOrEmpty
+            Get-Content -Raw -LiteralPath $fx.PsLog | Should -BeExactly $logBefore -Because 'the second run spawns no powershell.exe'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'unix steady state runs on builtins alone: exit 0 and silence with PATH holding only the link dir' -Tag 'LinuxOnly' -Skip:($IsWindows) {
         $fx = New-Fx
         try {
@@ -237,9 +276,10 @@ Describe 'clavity-ls-launcher-lib' {
     It 'windows steady state runs on builtins alone: exit 0 and silence with PATH holding only BIN_DIR' {
         $fx = New-Fx
         try {
-            # PATH is the data dir ONLY, in the /c/... form; no shim dir, so a wrongly-taken cygpath or powershell.exe call
-            # prints `command not found`. BIN_DIR arrives in the C:\... form, so the normalisation itself is exercised.
-            $res = Invoke-Lib $fx -OsType 'msys' -PathValue '/c/Users/u/d/bin' -BinDir 'C:\Users\u\d\bin' -Target 'C:\Users\u\d\bin\clavity-ls.exe'
+            # PATH is the data dir ONLY, no shim dir, so a wrongly-taken cygpath or powershell.exe call prints `command not
+            # found`. BIN_DIR and the PATH entry are both the fixture dir's POSIX form (New-Fx, BinPosix), so they agree
+            # under any MSYS mount table; the C:\... vs /c/... normalisation is the `windows: spawns nothing` row's job.
+            $res = Invoke-Lib $fx -OsType 'msys' -PathValue $fx.BinPosix -BinDir $fx.BinPosix -Target "$($fx.BinPosix)/clavity-ls.exe"
             $res.ExitCode | Should -Be 0
             $res.StdErr | Should -BeNullOrEmpty
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
@@ -256,7 +296,9 @@ Describe 'clavity-ls-launcher-lib' {
             # PATH is the fake-powershell shim and the data dir, NOT the inherited Windows PATH: a regression that missed
             # the match must land on the fake (and be counted), never on System32's powershell.exe and the real user PATH.
             # The counter itself prepends /ucrt64/bin:/mingw64/bin:/usr/bin, none of which holds a powershell.exe.
-            $r = Measure-BashHookProcesses -HookPath $wrapper -Arguments @(($script:Lib -replace '\\', '/'), "$binWin\clavity-ls.exe", $binWin) `
+            # BIN_DIR goes in as BinPosix: the -Env PATH below is converted by MSYS through its mount table (%TEMP% -> /tmp),
+            # and BinPosix was converted by the same table, so the steady state matches on any machine.
+            $r = Measure-BashHookProcesses -HookPath $wrapper -Arguments @(($script:Lib -replace '\\', '/'), "$($fx.BinPosix)/clavity-ls.exe", $fx.BinPosix) `
                 -Env @{ OSTYPE = 'msys'; HOME = $fx.Home; PATH = "$($fx.Shim);$binWin"; FAKE_PS_LOG = $fx.PsLog; CLAVITY_SKIP_PATH = $null }
             $r.ExitCode | Should -Be 0 -Because $r.StdErr
             $r.StdErr | Should -BeNullOrEmpty
