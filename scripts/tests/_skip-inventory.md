@@ -268,6 +268,8 @@ The last three are conditional, listed in `### conditional`. A listed line is do
 | fetch-clavity-ls.Tests.ps1 | fetch-clavity-ls.sh tells the user what happened.on the stamp-current path, says NOT on PATH once when ~/.local/bin is off PATH | LinuxOnly | - |
 | install-sh.Tests.ps1 | install.sh.--no-launcher writes .no-launcher and exits 3 naming the marker; --launcher removes it and exits 0 | LinuxOnly | - |
 | install-sh.Tests.ps1 | install.sh.exit 0 happy path: link in place, dir on PATH, plugin enabled, launch line last | LinuxOnly | - |
+| install-sh.Tests.ps1 | install.sh.exit 3 names a link pointing elsewhere and says relink, never that there is no link | LinuxOnly | - |
+| install-sh.Tests.ps1 | install.sh.exit 3 when the link is placed but ~/.local/bin is off PATH: status names the shell profile line, launch line exports $HOME/.local/bin | LinuxOnly | - |
 | install-sh.Tests.ps1 | install.sh.fetches the lib from RAW_BASE/clavity-dotnet/plugin/hooks/clavity-ls-launcher-lib.sh when CLAVITY_INSTALL_LIB is unset | LinuxOnly | - |
 | register-plugin.Tests.ps1 | Test-AgentPresent.falls back to HOME when USERPROFILE is unset (the Linux/macOS case; no mocks, child process) | LinuxOnly | - |
 

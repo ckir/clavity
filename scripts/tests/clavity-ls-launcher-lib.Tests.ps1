@@ -25,7 +25,7 @@ BeforeAll {
     $script:Bash = Get-GitBashOrThrow
 
     function New-Fx {
-        $root = New-TestTempPath 'cll'
+        $root = New-TestTempPath 'cll sp'   # a space: every row exercises quoting (AGY-TEST-AUDIT 2026-11-10, GAP-3)
         $fx = [pscustomobject]@{
             Root = $root; Home = (Join-Path $root 'home'); Bin = (Join-Path $root 'data/bin'); OtherBin = (Join-Path $root 'other/bin')
             Shim = (Join-Path $root 'shim'); ShimNoPs = (Join-Path $root 'shim-nops'); PsLog = (Join-Path $root 'ps.log')

@@ -51,7 +51,7 @@ BeforeAll {
     }
 
     function New-Fx {
-        $root = New-TestTempPath 'install-sh'
+        $root = New-TestTempPath 'install sh'   # a space: every row exercises quoting (AGY-TEST-AUDIT 2026-11-10, GAP-3)
         $fx = [pscustomobject]@{
             Root = $root; Home = (Join-Path $root 'home'); Cfg = (Join-Path $root 'cfg'); Plugin = (Join-Path $root 'plugin')
             Shim = (Join-Path $root 'shim'); AgyShim = (Join-Path $root 'agyshim'); Work = (Join-Path $root 'work')
@@ -646,10 +646,49 @@ Describe 'install.sh' {
             $top = "$(& git -C $repo rev-parse --show-toplevel)".Trim()
             $res = Invoke-Install $fx -Env $script:Skip -Cwd '$p/repo/sub'
             $res.Last | Should -BeLike ($script:LaunchPrefix + '*')
-            $res.Last | Should -BeLike "* start $top"
+            $res.Last | Should -BeLike "* start `"$top`"" -Because 'the fixture root carries a space, so install.sh:423 quotes the folder'
 
             $res = Invoke-Install $fx -Env $script:Skip
             $res.Last | Should -BeLike '* start <folder>'
+        } finally { Remove-TestPath $fx.Root }
+    }
+
+    It 'exit 3 when the link is placed but ~/.local/bin is off PATH: status names the shell profile line, launch line exports $HOME/.local/bin' -Tag 'LinuxOnly' -Skip:($IsWindows) {
+        $fx = New-Fx
+        try {
+            # The newcomer's commonest exit 3: the lib places the link and nothing puts ~/.local/bin on PATH. verify must take
+            # the link-in-place branch (the profile line), never the no-link fallback (the data-dir export, clavity-ls.exe).
+            $res = Invoke-Install $fx -Env @{ CLAVITY_SKIP_AGY = '1' } -PathValue '$p/shim:/usr/bin:/bin'
+            $res.ExitCode | Should -Be 3 -Because "$($res.StdOut)`n$($res.StdErr)"
+            Test-Bash '[ -L "$1" ] && [ "$1" -ef "$2" ]' (Join-Path $fx.Home '.local/bin/clavity-ls'), (Join-Path $fx.Data 'bin/clavity-ls.exe') | Should -Be 'YES'
+            $status = @($res.Lines | Where-Object { $_ -like '`[clavity install`] clavity-ls is NOT on PATH yet: *' })
+            $status.Count | Should -Be 1 -Because $res.StdOut
+            $status[0] | Should -Match 'add this line to your shell profile'
+            $status[0] | Should -Match ([regex]::Escape('export PATH="$HOME/.local/bin:$PATH"'))
+            $status[0] | Should -Not -Match 'there is no' -Because 'the link IS in place'
+            $res.Last | Should -BeExactly ($script:LaunchPrefix + 'export PATH="$HOME/.local/bin:$PATH"; clavity-ls start <folder>')
+        } finally { Remove-TestPath $fx.Root }
+    }
+
+    It 'exit 3 names a link pointing elsewhere and says relink, never that there is no link' -Tag 'LinuxOnly' -Skip:($IsWindows) {
+        $fx = New-Fx
+        try {
+            # A clavity link from another data dir, with the launcher step skipped so the lib cannot repair it: verify must
+            # give the relink advice, not claim there is no link (the lie the final-review fix wave removed).
+            $link = Join-Path $fx.Home '.local/bin/clavity-ls'
+            $other = Join-Path $fx.Root 'other-clavity-ls.exe'
+            New-Item -ItemType Directory -Path (Split-Path -Parent $link) | Out-Null
+            [IO.File]::WriteAllText($other, 'OTHER')
+            & $script:Bash -c 'ln -s "$1" "$2"' _ ($other -replace '\\', '/') ($link -replace '\\', '/')
+            $res = Invoke-Install $fx -Env $script:Skip
+            $res.ExitCode | Should -Be 3 -Because "$($res.StdOut)`n$($res.StdErr)"
+            $status = @($res.Lines | Where-Object { $_ -like '`[clavity install`] clavity-ls is NOT on PATH yet: *' })
+            $status.Count | Should -Be 1 -Because $res.StdOut
+            $status[0] | Should -Match 'points elsewhere'
+            $status[0] | Should -Match 'CLAVITY_SKIP_PATH=1' -Because 'the why clause names the skipped step'
+            $status[0] | Should -Not -Match 'there is no' -Because 'a link IS there'
+            $res.Last | Should -BeLike ($script:LaunchPrefix + 'export PATH="*/bin:$PATH"; clavity-ls.exe start <folder>')
+            Test-Bash '[ -L "$1" ] && [ "$1" -ef "$2" ]' $link, $other | Should -Be 'YES' -Because 'verify never relinks'
         } finally { Remove-TestPath $fx.Root }
     }
 }
