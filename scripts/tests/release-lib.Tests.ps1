@@ -631,7 +631,7 @@ Describe 'Get-PathBucket ($DevOnlyPaths coverage for site/, marketing/, header.t
     It 'classifies site/ assets, marketing/ assets, header.txt, and Greek docs as dev-only rather than unclassified' {
         Get-PathBucket 'header.txt' | Should -BeExactly 'dev-only'
         Get-PathBucket 'site/index.html' | Should -BeExactly 'dev-only'
-        Get-PathBucket 'site/assets/clavity.svg' | Should -BeExactly 'dev-only'
+        Get-PathBucket 'site/assets/profile.png' | Should -BeExactly 'dev-only'
         Get-PathBucket 'marketing/README.md' | Should -BeExactly 'dev-only'
         Get-PathBucket 'marketing/campaigns/guidelines.md' | Should -BeExactly 'dev-only'
         Get-PathBucket 'README.el.md' | Should -BeExactly 'dev-only'

@@ -28,7 +28,7 @@ marketing/
 
 | Asset Name | Target Dimensions | Format | Purpose | Status |
 |---|---|---|---|---|
-| `clavity.svg` | Scalable Vector | SVG | Primary brand vector logo | **Available** (`site/assets/clavity.svg`) |
+| `clavity.svg` | Scalable Vector | SVG | Primary brand vector logo | **Removed 2026-11-10** (its wordmark never matched the banner; `profile.png` is the mark now) |
 | `banner.webp` | 1670 x 941 | WebP | Hero glowing bridge illustration | **Available** (`site/assets/banner.webp`) |
 | `og.jpg` | 1200 x 630 | JPEG | OpenGraph social preview card | **Available** (`site/assets/og.jpg`) |
 | `profile.png` | 96 x 96 | PNG | Brand emblem / avatar | **Available** (`site/assets/profile.png`) |

@@ -70,7 +70,7 @@ Currently, the website is a single page (`site/index.html`):
   - Text colors: `--text: #eaf2ff`, `--muted: #9db3d6`
 - **Branding Assets Available in `site/assets/`:**
   - `banner.webp` (144 KB, 1670x941): Glowing neon connector bridge connecting Claude Code and Antigravity terminals.
-  - `clavity.svg` (10.6 KB): Primary vector logo.
+  - `clavity.svg`: removed 2026-11-10 (wordmark did not match the banner; `profile.png` is the favicon and nav mark).
   - `og.jpg` (92.4 KB, 1200x630): OpenGraph social sharing card.
   - `profile.png` (243.9 KB, 96x96): Circular brand emblem.
 
