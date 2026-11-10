@@ -33,11 +33,12 @@ BeforeAll {
         # ~/.local/bin. Invoke-Fetch hands EVERY row this HOME.
         $fx | Add-Member -NotePropertyName Link -NotePropertyValue (Join-Path $fx.Home '.local/bin/clavity-ls')
         New-Item -ItemType Directory -Path $fx.Data, $fx.PluginRoot, $fx.Shim, $fx.Srv, (Join-Path $fx.Home '.local/bin') | Out-Null
-        # Windows HOST: the once-per-version stamp that makes Invoke-Fetch's launcher opt-out SILENT (see there). A row that
-        # needs the lib's note on Windows deletes it.
+        # Windows HOST: the lib's once-per-version OPT-OUT stamp (.optout-note, its own; not .path-note, the not-on-PATH
+        # stamp) that makes Invoke-Fetch's launcher opt-out SILENT (see there). A row that needs the opt-out note on Windows
+        # deletes it.
         if ($IsWindows) {
             New-Item -ItemType Directory -Path (Join-Path $fx.Data 'bin') | Out-Null
-            [IO.File]::WriteAllText((Join-Path $fx.Data 'bin/.path-note.9.9.9'), '')
+            [IO.File]::WriteAllText((Join-Path $fx.Data 'bin/.optout-note.9.9.9'), '')
         }
         [IO.File]::WriteAllText((Join-Path $fx.PluginRoot 'plugin.json'), "{ `"name`": `"clavity`", `"version`": `"9.9.9`" }`n")
         # The served archive (a stand-in binary named as the linux-x64 RID ships it) and its checksum.
@@ -450,7 +451,7 @@ Describe 'fetch-clavity-ls.sh tells the user what happened' {
         $fx = New-Fx
         try {
             Set-Installed $fx
-            Remove-Item -LiteralPath (Join-Path $fx.Data 'bin/.path-note.9.9.9') -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath (Join-Path $fx.Data 'bin/.optout-note.9.9.9') -ErrorAction SilentlyContinue
             $res = Invoke-Fetch $fx 'fail' -Launcher -Extra @{ CLAVITY_SKIP_PATH = '1' }
             $res.ExitCode | Should -Be 0
             # The lib's skip note is what proves the hook REACHED the launcher step on the stamp-current path (a hook that never

@@ -1,6 +1,6 @@
 # Agent-driven install ("tell your agent to install clavity") - design
 
-Date: 2026-11-10. Status: DRAFT, awaiting owner approval.
+Date: 2026-11-10. Status: APPROVED 2026-11-10 (commit 592e216f); implemented on feat/agent-install
 
 ## Intent and why
 
@@ -308,7 +308,7 @@ an agent's fetch tool reads most reliably:
 
 The terminal line is likewise identical everywhere:
 
-> `curl -fsSL https://raw.githubusercontent.com/ckir/clavity/main/install.sh | bash`
+> `curl -fsSL https://raw.githubusercontent.com/ckir/clavity/main/install.sh | bash -s --`
 
 Driver's call: both are page TEXT inside `<code>` on the site, never an `href`, which is all Check 3
 inspects. Neither contains the words `claude plugin`, so Check 6's page-text rule is untouched.
@@ -406,7 +406,7 @@ them and records the output in this document.
 - Whether the Windows PATH entry is the data dir itself or a `~/bin` with a `.cmd` shim. The design
   prefers the data dir because the native name already resolves; switch only if the data path
   contains characters the PATH write cannot carry.
-- How `install.sh` fetches `clavity-ls-launcher.sh` (a second `curl` of the raw file at `main` is
+- How `install.sh` fetches `clavity-ls-launcher-lib.sh` (a second `curl` of the raw file at `main` is
   the expected form) and where it keeps it (a temp dir removed on exit).
 
 ## Stand-downs

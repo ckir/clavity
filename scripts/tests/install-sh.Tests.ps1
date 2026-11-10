@@ -32,6 +32,7 @@ BeforeAll {
     $script:Bash = Get-GitBashOrThrow
     $script:LaunchPrefix = 'If Claude Code or agy is already running in this folder, exit them first. Then open a new terminal and run: '
     $script:LaunchLine = $script:LaunchPrefix + 'clavity-ls start <folder>'
+    $script:NotInstalledLine = '[clavity install] clavity is NOT installed: fix the FAILED line above, then run this again'
     $script:RawBase = 'http://raw.test/ckir/clavity/main'
     $script:LibRel = 'clavity-dotnet/plugin/hooks/clavity-ls-launcher-lib.sh'
 
@@ -443,12 +444,15 @@ Describe 'install.sh' {
             $fail[0] | Should -Match ([regex]::Escape('clavity-ls.exe --version'))
             $fail[0] | Should -Match ([regex]::Escape('STUB release lookup failed (offline?)'))
             $res.StdErr | Should -Match 'FAILED'
-            $res.Last | Should -BeLike ($script:LaunchPrefix + '*')
+            $res.Last | Should -BeExactly $script:NotInstalledLine
+            @($res.Lines | Where-Object { $_ -like ($script:LaunchPrefix + '*') }).Count | Should -Be 0 -Because 'there is nothing to launch on exit 2'
 
             # The binary is there but does not run.
             $res = Invoke-Install $fx -Env ($script:Skip + @{ FAKE_BIN_EXIT = '1' })
             $res.ExitCode | Should -Be 2 -Because $res.StdOut
             @($res.Lines | Where-Object { $_ -match 'FAILED' -and $_ -match [regex]::Escape('clavity-ls.exe --version') }).Count | Should -Be 1
+            $res.Last | Should -BeExactly $script:NotInstalledLine
+            @($res.Lines | Where-Object { $_ -like ($script:LaunchPrefix + '*') }).Count | Should -Be 0 -Because 'there is nothing to launch on exit 2'
         } finally { Remove-TestPath $fx.Root }
     }
 
@@ -461,6 +465,28 @@ Describe 'install.sh' {
             $res.ExitCode | Should -Be 2 -Because $res.StdOut
             @($res.Lines | Where-Object { $_ -match 'FAILED' -and $_ -match 'clavity@clavity is not enabled' }).Count | Should -Be 1 -Because $res.StdOut
             $res.StdErr | Should -Match 'clavity@clavity is not enabled'
+            $res.Last | Should -BeExactly $script:NotInstalledLine
+            @($res.Lines | Where-Object { $_ -like ($script:LaunchPrefix + '*') }).Count | Should -Be 0 -Because 'there is nothing to launch on exit 2'
+        } finally { Remove-TestPath $fx.Root }
+    }
+
+    It 'exit 3 names a foreign regular file at ~/.local/bin/clavity-ls instead of saying there is none' {
+        $fx = New-Fx
+        try {
+            # A hand-placed file at the link path: the lib leaves it alone, and the status line must name it as the
+            # user's own file, not claim there is no link. ~/.local/bin is on PATH (the default), so only the file is wrong.
+            $link = Join-Path $fx.Home '.local/bin/clavity-ls'
+            New-Item -ItemType Directory -Path (Split-Path -Parent $link) | Out-Null
+            [IO.File]::WriteAllText($link, 'MINE')
+            $res = Invoke-Install $fx -Env @{ CLAVITY_SKIP_AGY = '1' }
+            $res.ExitCode | Should -Be 3 -Because "$($res.StdOut)`n$($res.StdErr)"
+            $status = @($res.Lines | Where-Object { $_ -like '`[clavity install`] clavity-ls is NOT on PATH yet: *' })
+            $status.Count | Should -Be 1 -Because $res.StdOut
+            $status[0] | Should -Match 'your own file'
+            $status[0] | Should -Not -Match 'there is no' -Because 'a file IS there'
+            $res.Last | Should -BeLike ($script:LaunchPrefix + '*')
+            Test-Bash '[ -f "$1" ] && [ ! -L "$1" ]' $link | Should -Be 'YES'
+            Get-Content -Raw -LiteralPath $link | Should -BeExactly 'MINE'
         } finally { Remove-TestPath $fx.Root }
     }
 

@@ -58,6 +58,8 @@ This is the part that most affects a working setup.
   fixed path. The plugin keeps a `clavity-ls` launcher on PATH on every session start (Linux/macOS
   `~/.local/bin/clavity-ls`, Windows: the data dir on the user PATH), so `clavity-ls start` keeps working from a
   terminal.
+  A hand-placed `clavity-ls` at `~/.local/bin` (Linux/macOS) is left alone and reported once per version; remove it
+  to let the plugin manage the launcher.
 
 Consequences:
 

@@ -162,6 +162,30 @@ Describe 'clavity-ls-launcher-lib' {
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'leaves a regular file alone, names it once per version, and returns 2 both times' {
+        $fx = New-Fx
+        try {
+            $link = Join-Path $fx.Home '.local/bin/clavity-ls'
+            New-Item -ItemType Directory -Path (Split-Path -Parent $link) | Out-Null
+            [IO.File]::WriteAllText($link, 'MINE')
+            $res = Invoke-Lib $fx -OsType 'linux-gnu' -PathValue ('$p/home/.local/bin:' + $script:Sys)
+            $res.ExitCode | Should -Be 2
+            $res.StdErr | Should -Match 'is not a clavity link'
+            Join-Path $fx.Bin '.foreign-note.9.9.9' | Should -Exist
+            Join-Path $fx.Bin '.path-note.9.9.9' | Should -Not -Exist -Because 'the foreign-file note has its own stamp'
+
+            $again = Invoke-Lib $fx -OsType 'linux-gnu' -PathValue ('$p/home/.local/bin:' + $script:Sys)
+            $again.ExitCode | Should -Be 2
+            $again.StdErr | Should -BeNullOrEmpty -Because 'the foreign-file note is given once per version, not on every session start'
+            Get-Content -Raw -LiteralPath $link | Should -BeExactly 'MINE'
+
+            # A new version names it once more.
+            $next = Invoke-Lib $fx -OsType 'linux-gnu' -PathValue ('$p/home/.local/bin:' + $script:Sys) -Ver '9.9.10'
+            $next.ExitCode | Should -Be 2
+            $next.StdErr | Should -Match 'is not a clavity link'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'skips with CLAVITY_SKIP_PATH=1 and says so' {
         $fx = New-Fx
         try {
@@ -174,7 +198,8 @@ Describe 'clavity-ls-launcher-lib' {
             $again = Invoke-Lib $fx -OsType 'linux-gnu' -PathValue ('$p/home/.local/bin:' + $script:Sys) -Extra 'CLAVITY_SKIP_PATH=1'
             $again.ExitCode | Should -Be 0
             $again.StdErr | Should -BeNullOrEmpty -Because 'the opt-out note is given once per version, not on every session start'
-            Join-Path $fx.Bin '.path-note.9.9.9' | Should -Exist
+            Join-Path $fx.Bin '.optout-note.9.9.9' | Should -Exist
+            Join-Path $fx.Bin '.path-note.9.9.9' | Should -Not -Exist -Because 'the opt-out has its own stamp: .path-note means the PATH note or the append was done'
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -189,7 +214,8 @@ Describe 'clavity-ls-launcher-lib' {
             $again = Invoke-Lib $fx -OsType 'linux-gnu' -PathValue ('$p/home/.local/bin:' + $script:Sys)
             $again.ExitCode | Should -Be 0
             $again.StdErr | Should -BeNullOrEmpty -Because 'the opt-out note is given once per version, not on every session start'
-            Join-Path $fx.Bin '.path-note.9.9.9' | Should -Exist
+            Join-Path $fx.Bin '.optout-note.9.9.9' | Should -Exist
+            Join-Path $fx.Bin '.path-note.9.9.9' | Should -Not -Exist -Because 'the opt-out has its own stamp: .path-note means the PATH note or the append was done'
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -218,7 +244,7 @@ Describe 'clavity-ls-launcher-lib' {
                 $log = Get-Content -Raw -LiteralPath $fx.PsLog
                 @($log -split "`n" | Where-Object { $_ -like 'COMMAND *' }).Count | Should -Be 1 -Because 'one powershell call'
                 $log | Should -Match ([regex]::Escape("GetEnvironmentVariable('Path','User')"))
-                $log | Should -Match 'SetEnvironmentVariable'
+                $log | Should -Match ([regex]::Escape("[Environment]::SetEnvironmentVariable('Path', `$new, 'User')")) -Because 'the USER scope, never Machine or Process'
                 $log | Should -Match ([regex]::Escape('C:\Users\u\d\bin')) -Because 'the Windows form of the data dir is what reaches the user PATH'
                 $log | Should -Match '(?m)^ARG -NoProfile$'
                 $log | Should -Match '(?m)^ARG -NonInteractive$'
@@ -249,6 +275,26 @@ Describe 'clavity-ls-launcher-lib' {
             $res.ExitCode | Should -Be 3
             $res.StdErr | Should -BeNullOrEmpty
             Test-Path -LiteralPath $fx.PsLog | Should -BeFalse -Because 'the stamp short-circuits before any cygpath or powershell.exe'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'windows: --launcher after an opt-out still attempts the append in the same version' {
+        # The opt-out note's stamp must not be the one that means "the append was done": install.sh --launcher removes
+        # .no-launcher, and the next run of the SAME version has to reach powershell.exe.
+        $fx = New-Fx
+        try {
+            [IO.File]::WriteAllText((Join-Path $fx.Bin '.no-launcher'), '')
+            $res = Invoke-Lib $fx -OsType 'msys' -PathValue ('$p/shim:' + $script:Sys)
+            $res.ExitCode | Should -Be 0 -Because $res.StdErr
+            $res.StdErr | Should -Match ([regex]::Escape('.no-launcher'))
+            Test-Path -LiteralPath $fx.PsLog | Should -BeFalse -Because 'the opt-out spawns no powershell.exe'
+
+            Remove-Item -Force -LiteralPath (Join-Path $fx.Bin '.no-launcher')
+            $again = Invoke-Lib $fx -OsType 'msys' -PathValue ('$p/shim:' + $script:Sys)
+            $again.ExitCode | Should -Be 0 -Because $again.StdErr
+            Test-Path -LiteralPath $fx.PsLog | Should -BeTrue -Because 'the opt-out stamp must not stop the append once the marker is gone'
+            Get-Content -Raw -LiteralPath $fx.PsLog | Should -Match 'SetEnvironmentVariable'
+            $again.StdErr | Should -Match 'added'
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 

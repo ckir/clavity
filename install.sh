@@ -16,7 +16,8 @@
 #   4. the plugin's fetch hook, run by hand so clavity-ls lands now; then the agy registration when agy is on PATH
 #   5. the PATH launcher, through clavity-ls-launcher-lib.sh fetched from this repository's main branch
 #   6. verify, in two tiers: hard checks (exit 2) and the resolution check (exit 3, never 2)
-#   7. the launch line, printed LAST
+#   7. the launch line, printed LAST (on exit 2 the last line says clavity is NOT installed instead, and there is no
+#      launch line)
 # Exit codes: 0 done and clavity-ls resolves in new terminals, 1 precondition missing or bad argument, 2 the binary does
 # not run or clavity@clavity is not enabled, 3 done but clavity-ls is NOT on PATH yet (the status and launch lines say
 # what to do; an agent must not report plain success on 3).
@@ -25,8 +26,8 @@
 # CLAVITY_SKIP_AGY=1 (skip the agy registration), CLAVITY_INSTALL_LIB (a local launcher lib: no fetch),
 # CLAVITY_INSTALL_RAW_BASE (default https://raw.githubusercontent.com/ckir/clavity/main).
 #
-# Every message of this script is one line on stdout, prefixed [clavity install]; the launch line is the last line,
-# verbatim. The fetch hook's stderr passes through untouched and its stdout (hook JSON) is discarded.
+# Every message of this script is one line on stdout, prefixed [clavity install]; the last line is the closing message,
+# verbatim: the launch line on 0 and 3, the NOT-installed line on 2. The fetch hook's stderr passes through untouched and its stdout (hook JSON) is discarded.
 #
 # The whole body is functions; the only top-level command is `main "$@"` on the LAST line, so a download truncated by
 # a dropped connection runs nothing. No set -e: the script decides its own exit codes.
@@ -336,7 +337,7 @@ verify() {
   fi
   # Tier 1, hard checks (exit 2). The binary by its data path: this shell's PATH may predate any PATH edit.
   if ! "$TARGET" --version >/dev/null 2>&1; then
-    fail "$TARGET --version did not run (the fetch hook said: ${HOOK_MSG:-nothing})"
+    fail "$TARGET --version did not run (the hook or launcher said: ${HOOK_MSG:-nothing})"
     hard=1
   fi
   PLUGINS_JSON=$(claude plugin list --json 2>/dev/null) || PLUGINS_JSON=
@@ -390,8 +391,14 @@ verify() {
     LAUNCH_CMD="export PATH=\"\$HOME/.local/bin:\$PATH\"; clavity-ls start $FOLDER"
     return 3
   fi
-  [ -n "$why" ] || why="the launcher step did not place $link (see the [clavity-ls] note above)"
-  say "clavity-ls is NOT on PATH yet: $why, so there is no $link; link it yourself (ln -s \"$TARGET\" \"$link\") or use the launch line below"
+  if [ -e "$link" ] && [ ! -L "$link" ]; then
+    say "clavity-ls is NOT on PATH yet: $link is your own file, not clavity's launcher; remove it and run this again, or use the launch line below"
+  elif [ -L "$link" ]; then
+    say "clavity-ls is NOT on PATH yet: ${why:+$why; }$link points elsewhere; relink it (ln -sfn \"$TARGET\" \"$link\") or use the launch line below"
+  else
+    [ -n "$why" ] || why="the launcher step did not place $link (see the [clavity-ls] note above)"
+    say "clavity-ls is NOT on PATH yet: $why, so there is no $link; link it yourself (ln -s \"$TARGET\" \"$link\") or use the launch line below"
+  fi
   LAUNCH_CMD="export PATH=\"$BIN_DIR:\$PATH\"; clavity-ls.exe start $FOLDER"
   return 3
 }
@@ -422,7 +429,12 @@ main() {
   register_agy
   run_launcher
   verify; rc=$?
-  launch_line
+  if [ "$rc" -eq 2 ]; then
+    # Nothing to launch: the closing line says so instead, and is the LAST line.
+    say "clavity is NOT installed: fix the FAILED line above, then run this again"
+  else
+    launch_line
+  fi
   exit "$rc"
 }
 

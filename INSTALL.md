@@ -1,6 +1,6 @@
 # Install clavity (instructions for the agent)
 
-You are a coding agent (Claude Code, Antigravity, or another) installing clavity for the person you are working with. Follow these steps in order and relay the closing message verbatim.
+You are a coding agent (Claude Code, Antigravity, or another) installing clavity for the person you are working with. Follow these steps in order and relay the closing message verbatim: the closing message is whatever the script's last line of stdout is (the launch line on exit 0 and 3; the `clavity is NOT installed` line on exit 2).
 
 ## 1. Preconditions
 
@@ -20,25 +20,26 @@ PowerShell form (an agent whose shell is PowerShell, such as agy on Windows). Ad
 
 Outside the plugin, the add-ons need: commonmemory, the agentmemory MCP server configured in both Claude Code and agy, pointing at the same daemon (`commonmemory/README.md`); review-relay, the AiSaveDev browser extension, which the human loads once in Chrome or Edge with "Load unpacked" (`review-relay/README.md`).
 
-Every script message is one line starting `[clavity install]`. The last line of stdout is the launch line.
+Every status line of the script is one line starting `[clavity install]`; the fetch hook's and the launcher's own `[clavity-ls]` lines pass through as-is. The last line of stdout is the closing message (section 5).
 
 ## 3. Verify
 
-The human does this after the restart, not you: in a NEW terminal, `clavity-ls --version`, then `claude plugin list` (clavity should be listed and enabled). No `claude plugin ...` command is left for the human to run to install.
+The human does this after exiting and opening a new terminal (section 5), not you: in a NEW terminal, `clavity-ls --version`, then `claude plugin list` (clavity should be listed and enabled). No `claude plugin ...` command is left for the human to run to install.
 
 ## 4. Exit codes
 
 - 0: done, and `clavity-ls` resolves in new terminals. Relay the launch line as success.
 - 1: a precondition is missing (or a bad argument). Relay the script's line naming it and stop.
-- 2: the binary does not run, or the plugin is not enabled. Relay the `[clavity install] FAILED: ...` line (it names which) and stop. Do not retry in a loop.
+- 2: the binary does not run, or the plugin is not enabled. Relay the `[clavity install] FAILED: ...` line (it names which) and the closing line `[clavity install] clavity is NOT installed: fix the FAILED line above, then run this again`, and stop. There is no launch line: do not give one. Do not retry in a loop.
 - 3: installed, but `clavity-ls` is NOT on PATH yet. Relay BOTH the `clavity-ls is NOT on PATH yet: ...` line (it says what to do) and the launch line. Never call this plain success.
 
 ## 5. Closing message
 
-Give the human this, exactly as the script printed it (the last line of stdout):
+On exit 0 and 3, give the human this, exactly as the script printed it (the last line of stdout):
 
     If Claude Code or agy is already running in this folder, exit them first. Then open a new terminal and run: clavity-ls start <folder>
 
+- On exit 2 the last line is `[clavity install] clavity is NOT installed: fix the FAILED line above, then run this again` instead, and there is no launch line to give.
 - Do not run `clavity-ls start` yourself.
 - If you are Claude Code, do not claim the `agy_*` tools work in this session; they do not until the restart.
 - If you are agy, the message is the same: `clavity-ls start` opens its own agy tab and Claude session. The agy session that ran the install is not the pair.
@@ -50,6 +51,6 @@ clavity-classic is Windows-only and mutually exclusive with clavity-dotnet. The 
 ## 7. Troubleshooting
 
 - The fetch failed (offline, rate-limited): run the command again later, or place the binary by hand as the hook's own message says.
-- `~/.local/bin` is not on PATH: use the `export PATH=...` line the script prints (exit 3).
+- `~/.local/bin` is not on PATH: use the `export PATH=...` line the script prints (exit 3); on Windows: add the plugin data dir to your user PATH, as the status line says.
 - On Windows `clavity-ls start` opens a new console window, not an editor tab.
 - The launcher is off because the marker `<Claude config dir>/plugins/data/clavity-clavity/bin/.no-launcher` exists (default config dir `~/.claude`; `CLAUDE_CONFIG_DIR` overrides it). When it is the reason, the `clavity-ls is NOT on PATH yet` status line names the marker. Run the script again with `--launcher` to remove it (`--no-launcher` turns the launcher off).

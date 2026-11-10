@@ -37,6 +37,9 @@ then (d) below. Both can go in the same PR.
   path (`hook-spawn-budget.Rows.ps1` "binary installed, stamp matches (steady state)" at `-Max 0 -Silent`;
   `clavity-ls-launcher-lib.Tests.ps1` "windows steady state spawns zero processes"). A RED there is a real finding, not a flake:
   quote it in full and stop; do not change `-Max`, a tag, or a fixture to make it green (that is a code change: ask the owner first).
+  Before running the suites, record the user PATH to a file, e.g.
+  `[Environment]::GetEnvironmentVariable('Path','User') | Set-Content "$HOME\user-path-backup.txt"`, so it can be restored if a
+  row ever reaches it.
 - **Fixture paths under `%TEMP%`.** The fixtures hand the hook its data dir in the POSIX form `cygpath -u` yields, because MSYS maps
   `%TEMP%` to `/tmp` through its mount table. If a row fails with a message naming `/tmp/...` next to `C:\...`, that mapping is the
   suspect; quote both paths.

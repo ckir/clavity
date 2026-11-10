@@ -124,9 +124,13 @@ _clavity_ls_launcher_unix() {
   if [ -L "$link" ] && [ "$link" -ef "$target" ]; then
     :
   elif [ -e "$link" ] && [ ! -L "$link" ]; then
-    # Somebody else's file (a hand-placed binary, a wrapper script). Never replace it.
+    # Somebody else's file (a hand-placed binary, a wrapper script). Never replace it. Named once per version (its own
+    # stamp, so it never silences the NOT-on-PATH note), then a silent 2 on every later session start.
+    stamp="$bin_dir/.foreign-note.$ver"
+    [ -f "$stamp" ] && return 2
     msg="[clavity-ls] $link exists and is not a clavity link, so it was left alone; remove it to let clavity manage it"
     _launcher_say "$msg"
+    : 2>/dev/null > "$stamp"
     return 2
   elif [ ! -f "$target" ]; then
     msg="[clavity-ls] $target does not exist, so no launcher was placed"
@@ -161,20 +165,21 @@ clavity_ls_launcher_ensure() {
     _launcher_say "$msg"
     return 2
   fi
-  # The opt-outs are said ONCE per version, like the NOT-on-PATH note and with the same stamp: the hook calls this on
-  # every session start, and a durable .no-launcher would otherwise put the same note in front of the user every time.
+  # The opt-outs are said ONCE per version, with their OWN stamp: the hook calls this on every session start, and a
+  # durable .no-launcher would otherwise put the same note in front of the user every time. Not .path-note.$ver, which
+  # on Windows also means "the append was done": sharing it would stop a later --launcher run from appending.
   if [ "${CLAVITY_SKIP_PATH:-}" = 1 ]; then
-    [ -f "$bin_dir/.path-note.$ver" ] && return 0
+    [ -f "$bin_dir/.optout-note.$ver" ] && return 0
     msg="[clavity-ls] PATH launcher skipped (CLAVITY_SKIP_PATH=1); clavity-ls stays at $target"
     _launcher_say "$msg"
-    : 2>/dev/null > "$bin_dir/.path-note.$ver"
+    : 2>/dev/null > "$bin_dir/.optout-note.$ver"
     return 0
   fi
   if [ -e "$bin_dir/.no-launcher" ]; then
-    [ -f "$bin_dir/.path-note.$ver" ] && return 0
+    [ -f "$bin_dir/.optout-note.$ver" ] && return 0
     msg="[clavity-ls] PATH launcher skipped: $bin_dir/.no-launcher exists; clavity-ls stays at $target"
     _launcher_say "$msg"
-    : 2>/dev/null > "$bin_dir/.path-note.$ver"
+    : 2>/dev/null > "$bin_dir/.optout-note.$ver"
     return 0
   fi
   case "${OSTYPE:-}" in
