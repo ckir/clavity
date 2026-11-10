@@ -35,6 +35,7 @@ divergent() {
     hooks/agy-drive-session-reset.sh) return 0 ;;   # classic-only: driver-guidance reset
     hooks/fetch-clavity-ls.sh)        return 0 ;;   # dotnet-only: fetch the .NET clavity-ls binary on first run (Inno-retirement)
     hooks/clavity-dotnet-setup.sh)    return 0 ;;   # dotnet-only: preserved-extras setup (golden-header seed, agy register, classic-exclusion)
+    hooks/clavity-ls-launcher-lib.sh) return 0 ;;   # dotnet-only: keeps the clavity-ls launcher on PATH (sourced by fetch-clavity-ls.sh)
     skills/driving/SKILL.md)          return 0 ;;   # classic transport twin of ls-driving
     skills/responder/SKILL.md)        return 0 ;;   # classic transport twin of ls-pairing
     skills/ls-driving/SKILL.md)       return 0 ;;   # dotnet transport twin of driving

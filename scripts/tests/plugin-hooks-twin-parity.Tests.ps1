@@ -19,7 +19,7 @@ BeforeAll {
     # The known asymmetries. hooks.json is registered per product; the other three exist in one product only.
     $script:Differs = @('hooks.json')
     $script:ClassicOnly = @('agy-drive-session-reset.sh')
-    $script:DotnetOnly = @('clavity-dotnet-setup.sh', 'fetch-clavity-ls.sh')
+    $script:DotnetOnly = @('clavity-dotnet-setup.sh', 'clavity-ls-launcher-lib.sh', 'fetch-clavity-ls.sh')
 
     function Get-HookNames([string]$Dir) {
         @(Get-ChildItem -LiteralPath $Dir -File | ForEach-Object { $_.Name } | Sort-Object)

@@ -26,9 +26,20 @@ BeforeAll {
         $root = New-TestTempPath 'fcl'
         $fx = [pscustomobject]@{
             Root = $root; Data = (Join-Path $root 'data'); PluginRoot = (Join-Path $root 'plugin')
-            Shim = (Join-Path $root 'shim'); Srv = (Join-Path $root 'srv')
+            Shim = (Join-Path $root 'shim'); Srv = (Join-Path $root 'srv'); Home = (Join-Path $root 'home')
         }
-        New-Item -ItemType Directory -Path $fx.Data, $fx.PluginRoot, $fx.Shim, $fx.Srv | Out-Null
+        # The fixture HOME, with ~/.local/bin already in it. The hook keeps a clavity-ls launcher at $HOME/.local/bin on the
+        # stamp-current path and after a fetch, so a row that inherited the host HOME would link into the developer's own
+        # ~/.local/bin. Invoke-Fetch hands EVERY row this HOME.
+        $fx | Add-Member -NotePropertyName Link -NotePropertyValue (Join-Path $fx.Home '.local/bin/clavity-ls')
+        New-Item -ItemType Directory -Path $fx.Data, $fx.PluginRoot, $fx.Shim, $fx.Srv, (Join-Path $fx.Home '.local/bin') | Out-Null
+        # Windows HOST: the lib's once-per-version OPT-OUT stamp (.optout-note, its own; not .path-note, the not-on-PATH
+        # stamp) that makes Invoke-Fetch's launcher opt-out SILENT (see there). A row that needs the opt-out note on Windows
+        # deletes it.
+        if ($IsWindows) {
+            New-Item -ItemType Directory -Path (Join-Path $fx.Data 'bin') | Out-Null
+            [IO.File]::WriteAllText((Join-Path $fx.Data 'bin/.optout-note.9.9.9'), '')
+        }
         [IO.File]::WriteAllText((Join-Path $fx.PluginRoot 'plugin.json'), "{ `"name`": `"clavity`", `"version`": `"9.9.9`" }`n")
         # The served archive (a stand-in binary named as the linux-x64 RID ships it) and its checksum.
         $p = $fx.Srv -replace '\\', '/'
@@ -56,32 +67,62 @@ esac
         (& $script:Bash -c ((Get-BashCygpathPrelude) + '; ' + 'PATH="$p:$PATH"; uname -s; type -P curl') _ $fx.Shim | Out-String) | Should -Match '(?s)^Linux\s+\S*/shim/curl'
         return $fx
     }
-    function Invoke-Fetch($Fx, [string]$Mode, [string]$Data = $Fx.Data, [switch]$NoPluginContext, [switch]$NoJq, [string]$OsType = 'linux-gnu', [string]$HostType = 'x86_64', [hashtable]$Extra = @{}) {
+    function Invoke-Fetch($Fx, [string]$Mode, [string]$Data = $Fx.Data, [switch]$NoPluginContext, [switch]$NoJq, [switch]$HomeOffPath, [switch]$Launcher, [string]$OsType = 'linux-gnu', [string]$HostType = 'x86_64', [hashtable]$Extra = @{}) {
         # NOT Invoke-BashHook: Git's bin/bash.exe launcher puts its own dirs ahead of a PATH handed in from Windows,
         # so the fake uname/curl were ignored and the hook queried the REAL GitHub API (measured). The shim dir is
         # prepended INSIDE bash, the same way the fixture-sanity line in New-Fx proves it resolves.
+        # HOME is the fixture's for EVERY row (see New-Fx), and its .local/bin goes on the PATH the hook sees unless
+        # -HomeOffPath: the launcher's "already on PATH" test then holds, so the rows that do not concern the launcher stay
+        # as silent as before it existed. The entry is spelled "$HOME/.local/bin" INSIDE bash, the exact string the lib
+        # looks for, so it matches whatever form MSYS gives HOME.
         $vars = @{
             FAKE_CURL = $Mode; FAKE_SRV = ($Fx.Srv -replace '\\', '/'); FAKE_ASSET = $script:Asset
             CLAUDE_PLUGIN_ROOT = $Fx.PluginRoot; CLAUDE_PLUGIN_DATA = $(if ($NoPluginContext) { '' } else { $Data })
-            OSTYPE = $OsType; HOSTTYPE = $HostType
+            OSTYPE = $OsType; HOSTTYPE = $HostType; HOME = $Fx.Home
         }
+        # Windows HOST: every row opts OUT of the launcher unless -Launcher. The rows pin OSTYPE=linux-gnu, so the lib takes
+        # its Unix branch, and Git Bash's `ln -s` makes a COPY unless MSYS=winsymlinks:native* is set: the next hook run in
+        # the same fixture would meet that copy and say "is not a clavity link". New-Fx pre-creates the once-per-version
+        # stamp, so the opt-out is silent. The production Windows path (the lib's msys branch) is pinned elsewhere: the
+        # windows rows of clavity-ls-launcher-lib.Tests.ps1 and the steady-state row of hook-spawn-budget.Rows.ps1.
+        if ($IsWindows -and -not $Launcher) { $vars.CLAVITY_SKIP_PATH = '1' }
         foreach ($k in $Extra.Keys) { $vars[$k] = $Extra[$k] }
+        $homePath = if ($HomeOffPath) { '' } else { '$HOME/.local/bin:' }
         $errFile = [IO.Path]::GetTempFileName()
+        # HOME is set in THIS process for the child to inherit, so the host value is put back afterwards, not removed:
+        # pwsh, git and every later row would otherwise run without a HOME.
+        $saved = @{}
+        foreach ($k in $vars.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k) }
         try {
             foreach ($k in $vars.Keys) { Set-Item -Path "Env:$k" -Value $vars[$k] }
             # -NoJq drops every PATH directory holding a jq, so the hook takes its grep fallback. MEASURED: this box's
             # Git Bash finds jq in the portable-tools dir, so without it the fallback never runs here.
             $cmd = if ($NoJq) {
-                (Get-BashCygpathPrelude) + '; ' + 'PATH="$p:$3"; command -v jq >/dev/null && { echo "fixture: jq still on PATH" >&2; exit 99; }
+                (Get-BashCygpathPrelude) + '; ' + 'PATH="' + $homePath + '$p:$3"; command -v jq >/dev/null && { echo "fixture: jq still on PATH" >&2; exit 99; }
                  bash "$2" </dev/null'
-            } else { (Get-BashCygpathPrelude) + '; ' + 'PATH="$p:$PATH" bash "$2" </dev/null' }
+            } else { (Get-BashCygpathPrelude) + '; ' + 'PATH="' + $homePath + '$p:$PATH" bash "$2" </dev/null' }
             $out = & $script:Bash -c $cmd _ $Fx.Shim ($script:Hook -replace '\\', '/') @(if ($NoJq) { $script:NoJqPath }) 2>$errFile | Out-String
             $code = $LASTEXITCODE
             return [pscustomobject]@{ StdOut = $out.Trim(); StdErr = "$(Get-Content -Raw -LiteralPath $errFile)".Trim(); ExitCode = $code }
         } finally {
-            foreach ($k in $vars.Keys) { Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue }
+            foreach ($k in $vars.Keys) {
+                if ($null -eq $saved[$k]) { Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue } else { Set-Item -Path "Env:$k" -Value $saved[$k] }
+            }
             Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue
         }
+    }
+    function Set-Installed($Fx) {
+        # The stamp-current state without a fetch (a fetch would itself place the launcher): the binary, executable, and
+        # the version stamp, as a previous session left them.
+        $bin = Join-Path $Fx.Data 'bin'
+        New-Item -ItemType Directory -Force -Path $bin | Out-Null
+        [IO.File]::WriteAllText((Join-Path $bin 'clavity-ls.exe'), 'BIN'); [IO.File]::WriteAllText((Join-Path $bin '.clavity-ls.version'), '9.9.9')
+        Set-ShimExecutable -Path (Join-Path $bin 'clavity-ls.exe')
+    }
+    function Test-LauncherLink($Fx) {
+        # A symlink, AND the same file as the fixture binary ([ -ef ] follows the link and compares inodes).
+        & $script:Bash -c '[ -L "$1" ] && [ "$1" -ef "$2" ]' _ ($Fx.Link -replace '\\', '/') ((Join-Path $Fx.Data 'bin/clavity-ls.exe') -replace '\\', '/')
+        return ($LASTEXITCODE -eq 0)
     }
     function Set-Archive($Fx, [string]$Member) {
         # Re-pack the served archive so its ONLY member is $Member (and refresh the .sha256 the hook verifies). New-Fx packs the
@@ -340,6 +381,83 @@ Describe 'fetch-clavity-ls.sh tells the user what happened' {
             $odd = 'C:\a' + [char]1 + 'b' + [char]27 + 'c' + [char]31 + 'd e' + [char]127 + 'f\data'
             $msg = Get-Message (Invoke-Fetch $fx 'fail' -Data $odd)
             $msg | Should -Match ([regex]::Escape('C:\abcd e' + [char]127 + 'f\data/bin/clavity-ls.exe')) -Because 'C0 (0x01-0x1f) is deleted, 0x20 and 0x7f are not'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # --- the PATH launcher (clavity-ls-launcher-lib.sh) ----------------------------------------------------------------------
+    # The hook keeps ~/.local/bin/clavity-ls on the stamp-current path and after a successful fetch, never on a failure path.
+    # Every row runs with OSTYPE=linux-gnu, so the lib takes its Unix branch; the rows that assert a symlink are LinuxOnly
+    # because Git for Windows' `ln -s` makes a COPY unless MSYS=winsymlinks:native* is set (clavity-ls-launcher-lib.Tests.ps1).
+
+    It 'on the stamp-current path, creates the launcher and stays silent when ~/.local/bin is on PATH' -Tag 'LinuxOnly' -Skip:($IsWindows) {
+        $fx = New-Fx
+        try {
+            Set-Installed $fx
+            # 'fail': a run that left the stamp-current path would say "release lookup failed".
+            $res = Invoke-Fetch $fx 'fail' -Launcher
+            $res.ExitCode | Should -Be 0
+            $res.StdOut | Should -BeNullOrEmpty -Because 'the steady state must not nag on every session start'
+            Test-LauncherLink $fx | Should -BeTrue -Because "$($fx.Link) must be a symlink to the fixture binary"
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # LinuxOnly: on Windows the second run would meet the COPY Git Bash's `ln -s` left (see Invoke-Fetch).
+    It 'on the stamp-current path, says NOT on PATH once when ~/.local/bin is off PATH' -Tag 'LinuxOnly' -Skip:($IsWindows) {
+        $fx = New-Fx
+        try {
+            Set-Installed $fx
+            $res = Invoke-Fetch $fx 'fail' -HomeOffPath -Launcher
+            $res.ExitCode | Should -Be 0
+            Get-Message $res | Should -Match ([regex]::Escape('export PATH'))
+            $again = Invoke-Fetch $fx 'fail' -HomeOffPath -Launcher
+            $again.ExitCode | Should -Be 0
+            $again.StdOut | Should -BeNullOrEmpty -Because 'the NOT-on-PATH note is given once per version, not on every session start'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'after a successful fetch, the launcher exists' -Tag 'LinuxOnly' -Skip:($IsWindows) {
+        $fx = New-Fx
+        try {
+            Get-Message (Invoke-Fetch $fx 'ok' -Launcher) | Should -Match ([regex]::Escape("fetched $($script:Asset)"))
+            Test-LauncherLink $fx | Should -BeTrue -Because "$($fx.Link) must be a symlink to the fetched binary"
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # Claude Code reads the hook's stdout as ONE JSON object: the launcher's note is folded into the success message, not
+    # printed as a second object. Both OSes: the Unix branch places the link (a copy on Windows) and then, in the same first
+    # run, says NOT on PATH.
+    It 'after a successful fetch with ~/.local/bin off PATH, stdout is ONE JSON object naming both the asset and export PATH' {
+        $fx = New-Fx
+        try {
+            Remove-Item -LiteralPath (Join-Path $fx.Data 'bin/.path-note.9.9.9') -ErrorAction SilentlyContinue
+            $res = Invoke-Fetch $fx 'ok' -HomeOffPath -Launcher
+            $res.ExitCode | Should -Be 0
+            $msg = Get-Message $res
+            $msg | Should -Match ([regex]::Escape("fetched $($script:Asset)"))
+            $msg | Should -Match ([regex]::Escape('export PATH'))
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'on a failed lookup, no launcher is created' {
+        $fx = New-Fx
+        try {
+            Get-Message (Invoke-Fetch $fx 'fail' -Launcher) | Should -Match 'release lookup failed'
+            # Get-ChildItem -Force lists a dangling link too, which Test-Path would not.
+            @(Get-ChildItem -Force -LiteralPath (Join-Path $fx.Home '.local/bin')).Count | Should -Be 0 -Because 'a failure path must not touch ~/.local/bin'
+        } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'CLAVITY_SKIP_PATH=1 creates no launcher on the stamp-current path' {
+        $fx = New-Fx
+        try {
+            Set-Installed $fx
+            Remove-Item -LiteralPath (Join-Path $fx.Data 'bin/.optout-note.9.9.9') -ErrorAction SilentlyContinue
+            $res = Invoke-Fetch $fx 'fail' -Launcher -Extra @{ CLAVITY_SKIP_PATH = '1' }
+            $res.ExitCode | Should -Be 0
+            # The lib's skip note is what proves the hook REACHED the launcher step on the stamp-current path (a hook that never
+            # called it would also leave ~/.local/bin empty).
+            Get-Message $res | Should -Match 'PATH launcher skipped \(CLAVITY_SKIP_PATH=1\)'
+            @(Get-ChildItem -Force -LiteralPath (Join-Path $fx.Home '.local/bin')).Count | Should -Be 0 -Because 'CLAVITY_SKIP_PATH=1 opts out of the launcher'
         } finally { Remove-Item $fx.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }

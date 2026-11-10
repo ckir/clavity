@@ -58,11 +58,21 @@
 
 ### Πώς να ξεκινήσετε
 
-Τα πέντε προϊόντα εγκαθίστανται με έναν από δύο τρόπους. **Τέσσερα εγκαθίστανται με το `claude plugin`** —
-clavity-dotnet, agy-autotrain, commonmemory και review-relay — από το marketplace αυτού του αποθετηρίου.
-Διαλειτουργικότητα μεταξύ πλατφορμών (Windows, Linux, macOS):
+> Πείτε στον πράκτορά σας: `Fetch and follow the instructions at https://raw.githubusercontent.com/ckir/clavity/main/INSTALL.md`
+
+Από τερματικό:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ckir/clavity/main/install.sh | bash -s --
+```
+
+Προσθέστε `--with agy-autotrain,commonmemory,review-relay` για τα πρόσθετα.
+
+Τι κάνουν αυτά, χειροκίνητα:
 
 ```
+claude plugin marketplace add obra/superpowers-marketplace
+claude plugin install superpowers@superpowers-marketplace
 claude plugin marketplace add ckir/clavity
 claude plugin install clavity@clavity          # clavity-dotnet
 claude plugin install agy-autotrain@clavity
@@ -71,7 +81,7 @@ claude plugin install review-relay@clavity
 ```
 
 Το clavity-dotnet ανακτά το εκτελέσιμο `clavity-ls` κατά την πρώτη εκτέλεση από την αντίστοιχη έκδοση `clavity-v<N>` στο GitHub
-(win-x64 / linux-x64 / osx-arm64 / osx-x64), επομένως τίποτα δεν προστίθεται στο PATH σας. Επαληθεύεται με άθροισμα ελέγχου (checksum)
+(win-x64 / linux-x64 / osx-arm64 / osx-x64), και διατηρεί έναν εκκινητή `clavity-ls` στο PATH σας (symlink στο `~/.local/bin`, ή ο φάκελος δεδομένων του προσθέτου στο PATH χρήστη των Windows). Επαληθεύεται με άθροισμα ελέγχου (checksum)
 όταν δημοσιεύεται συνοδευτικό στοιχείο `.sha256` και το `sha256sum` υπάρχει στο PATH· διαφορετικά η ανάκτηση προχωρά
 χωρίς επαλήθευση.
 

@@ -197,8 +197,12 @@ cp "$ART/clavity.svg" site/assets/clavity.svg
   -->
   <section id="install">
     <h2>Install</h2>
-    <p>Install <a href="https://github.com/obra/superpowers">superpowers</a> first. clavity-dotnet and clavity-classic are mutually exclusive, so copy only the lines you want. If you use the classic installer below, skip the <code>clavity@clavity</code> line.</p>
+    <p>Tell your agent: <code>Fetch and follow the instructions at https://raw.githubusercontent.com/ckir/clavity/main/INSTALL.md</code></p>
+    <p>From a terminal: <code>curl -fsSL https://raw.githubusercontent.com/ckir/clavity/main/install.sh | bash -s --</code></p>
+    <p><a href="https://github.com/obra/superpowers">superpowers</a> is installed by the sentence and the script; the lines below are what they run. clavity-dotnet and clavity-classic are mutually exclusive, so copy only the lines you want. If you use the classic installer below, skip the <code>clavity@clavity</code> line.</p>
     <ul class="commands">
+      <li><code data-cmd>claude plugin marketplace add obra/superpowers-marketplace</code> <button type="button" data-copy="claude plugin marketplace add obra/superpowers-marketplace" aria-label="Copy command: add the superpowers marketplace">Copy</button></li>
+      <li><code data-cmd>claude plugin install superpowers@superpowers-marketplace</code> <button type="button" data-copy="claude plugin install superpowers@superpowers-marketplace" aria-label="Copy command: install superpowers">Copy</button></li>
       <li><code data-cmd>claude plugin marketplace add ckir/clavity</code> <button type="button" data-copy="claude plugin marketplace add ckir/clavity" aria-label="Copy command: add the clavity marketplace">Copy</button></li>
       <li><code data-cmd>claude plugin install clavity@clavity</code> <small># clavity-dotnet</small> <button type="button" data-copy="claude plugin install clavity@clavity" aria-label="Copy command: install clavity (clavity-dotnet)">Copy</button></li>
       <li><code data-cmd>claude plugin install agy-autotrain@clavity</code> <button type="button" data-copy="claude plugin install agy-autotrain@clavity" aria-label="Copy command: install agy-autotrain">Copy</button></li>

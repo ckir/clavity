@@ -55,6 +55,23 @@ _note() {
   _say "$msg"
 }
 
+# The PATH launcher (clavity-ls-launcher-lib.sh) speaks through the same JSON _say, never through _note: _note's
+# "install clavity-ls manually" tail is wrong for a launcher failure. Sourced from this hook's OWN directory, not
+# $ROOT/hooks/, so it resolves wherever the hook file lives (the test fixtures hand the hook a CLAUDE_PLUGIN_ROOT that
+# holds only plugin.json). Absent lib: skipped silently. Sourcing only defines functions, so it costs no process.
+# ONE JSON object per run: Claude Code reads the hook's stdout as a single object, and two concatenated ones are not JSON.
+# So with _launcher_collect set (the success path) the launcher's notes are collected into _lnote and folded into the
+# success message; on the stamp-current path, where nothing else is said, they go straight to _say.
+_lnote=''
+_launcher_say() { if [ -n "${_launcher_collect:-}" ]; then _lnote+="${_lnote:+ }$1"; else _say "$1"; fi; }
+# Called on the stamp-current path and after a successful fetch, never on a failure path. FAIL-OPEN: its return code is
+# ignored (the lib speaks for itself). The declare -F guard keeps an absent lib silent: an undefined function would print
+# "command not found" on stderr. declare is a builtin, so the steady state still spawns nothing.
+_launcher() { declare -F clavity_ls_launcher_ensure >/dev/null && clavity_ls_launcher_ensure "$TARGET" "$BIN_DIR" "$VER"; return 0; }
+d=${0%[/\\]*}; [ "$d" = "$0" ] && d=.; [ -z "$d" ] && d=/
+# shellcheck source=clavity-ls-launcher-lib.sh
+[ -f "$d/clavity-ls-launcher-lib.sh" ] && . "$d/clavity-ls-launcher-lib.sh"
+
 # Version from the plugin's own manifest (the release asset name embeds it).
 # Branch 21: a builtin read of the first line that carries a "version" key. The regex keeps the old sed's greedy `.*`
 # prefix, so the LAST "version" on that line wins, exactly as before.
@@ -89,7 +106,7 @@ esac
 # fills _st; a missing stamp leaves it empty, which is what the old `cat 2>/dev/null` gave). 2>/dev/null precedes the <.
 _st=''
 IFS= read -r _st 2>/dev/null < "$STAMP"
-if [ -x "$TARGET" ] && [ "$_st" = "$VER" ]; then exit 0; fi
+if [ -x "$TARGET" ] && [ "$_st" = "$VER" ]; then _launcher; exit 0; fi
 
 for _t in curl tar; do command -v "$_t" >/dev/null 2>&1 || { _note "'$_t' not found (needed to auto-fetch)"; exit 0; }; done
 
@@ -181,5 +198,6 @@ printf '%s' "$VER" > "$STAMP"
 rm -f "$FAIL_STAMP" 2>/dev/null
 msg_ok="[clavity-ls] fetched $ASSET -> $TARGET. If the clavity-ls MCP server failed to start in this session, run /mcp and reconnect it."
 msg_unverified="[clavity-ls] fetched $ASSET -> $TARGET, installed UNVERIFIED: the release publishes no .sha256 asset to check it against. If the clavity-ls MCP server failed to start in this session, run /mcp and reconnect it."
-if [ "$_unverified" -eq 1 ]; then _say "$msg_unverified"; else _say "$msg_ok"; fi
+_launcher_collect=1; _launcher; _launcher_collect=
+if [ "$_unverified" -eq 1 ]; then _say "$msg_unverified${_lnote:+ $_lnote}"; else _say "$msg_ok${_lnote:+ $_lnote}"; fi
 exit 0

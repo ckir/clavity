@@ -637,4 +637,13 @@ Describe 'Get-PathBucket ($DevOnlyPaths coverage for site/, marketing/, header.t
         Get-PathBucket 'README.el.md' | Should -BeExactly 'dev-only'
         Get-PathBucket 'CONTRIBUTING.el.md' | Should -BeExactly 'dev-only'
     }
+
+    It 'classifies the agent-install root files INSTALL.md and install.sh as dev-only, and an unlisted root file as unclassified' {
+        # Both ship LIVE from the raw main URL, never from a release asset (release-lib.ps1 DevOnlyPaths comment).
+        Get-PathBucket 'INSTALL.md' | Should -BeExactly 'dev-only'
+        Get-PathBucket 'install.sh' | Should -BeExactly 'dev-only'
+        # The distractor: a root file nobody listed still refuses, so the two rows above cannot pass on a wildcard.
+        Get-PathBucket 'UNINSTALL.md' | Should -BeExactly 'unclassified'
+        Get-PathBucket 'install.ps1' | Should -BeExactly 'unclassified'
+    }
 }

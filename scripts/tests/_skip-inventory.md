@@ -44,6 +44,7 @@ The last three are conditional, listed in `### conditional`. A listed line is do
 | check-injected-context.Tests.ps1 | check-injected-context.ps1.computes a sane relative path when -RepoRoot is an 8.3 SHORT path | WindowsOnly | 8.3 short names are a Windows filesystem feature |
 | check-installer-ascii.Tests.ps1 | check-installer-ascii.ps1.reports the correct relative path when -RepoRoot is an 8.3 SHORT path | WindowsOnly | 8.3 short names are a Windows filesystem feature |
 | check-plugin-drift.Tests.ps1 | check-plugin-drift.ps1.accepts an installed root given as an 8.3 SHORT path | WindowsOnly | 8.3 short names are a Windows filesystem feature |
+| clavity-ls-launcher-lib.Tests.ps1 | clavity-ls-launcher-lib.windows steady state spawns zero processes | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget..claude/hooks/agy-verify-reminder.sh: all rows current -> silent (fake agy on PATH) prints the same on the bash 3.2 code path | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget..claude/hooks/agy-verify-reminder.sh: all rows current -> silent (fake agy on PATH) starts at most 8 processes beyond bash boot | WindowsOnly | - |
 | hook-spawn-budget.Tests.ps1 | hook spawn budget..claude/hooks/agy-verify-reminder.sh: not the clavity repo prints the same on the bash 3.2 code path | WindowsOnly | - |
@@ -257,6 +258,19 @@ The last three are conditional, listed in `### conditional`. A listed line is do
 | agy-consult-guard.Tests.ps1 | agy-consult-guard.WARNS when an existing hook becomes unreadable | LinuxOnly | chmod 000 does not make a file unreadable to Git Bash on Windows |
 | agy-consult-guard.Tests.ps1 | agy-consult-guard.agy_guard_hash_files gives the same digests as the old cut\|sed pipeline | LinuxOnly | - |
 | agy-consult-guard.Tests.ps1 | agy-consult-guard.section 87 - the sentinel of an unfinished consult.has no time limit: a sentinel two days old still speaks | LinuxOnly | - |
+| clavity-ls-launcher-lib.Tests.ps1 | clavity-ls-launcher-lib.creates the ~/.local/bin symlink to TARGET and returns 0 when ~/.local/bin is on PATH | LinuxOnly | - |
+| clavity-ls-launcher-lib.Tests.ps1 | clavity-ls-launcher-lib.repairs a dangling symlink | LinuxOnly | - |
+| clavity-ls-launcher-lib.Tests.ps1 | clavity-ls-launcher-lib.repairs a symlink into another data dir | LinuxOnly | - |
+| clavity-ls-launcher-lib.Tests.ps1 | clavity-ls-launcher-lib.returns 3 and says NOT on PATH once per version when ~/.local/bin is not on PATH | LinuxOnly | - |
+| clavity-ls-launcher-lib.Tests.ps1 | clavity-ls-launcher-lib.unix steady state runs on builtins alone: exit 0 and silence with PATH holding only the link dir | LinuxOnly | - |
+| fetch-clavity-ls.Tests.ps1 | fetch-clavity-ls.sh tells the user what happened.after a successful fetch, the launcher exists | LinuxOnly | - |
+| fetch-clavity-ls.Tests.ps1 | fetch-clavity-ls.sh tells the user what happened.on the stamp-current path, creates the launcher and stays silent when ~/.local/bin is on PATH | LinuxOnly | - |
+| fetch-clavity-ls.Tests.ps1 | fetch-clavity-ls.sh tells the user what happened.on the stamp-current path, says NOT on PATH once when ~/.local/bin is off PATH | LinuxOnly | - |
+| install-sh.Tests.ps1 | install.sh.--no-launcher writes .no-launcher and exits 3 naming the marker; --launcher removes it and exits 0 | LinuxOnly | - |
+| install-sh.Tests.ps1 | install.sh.exit 0 happy path: link in place, dir on PATH, plugin enabled, launch line last | LinuxOnly | - |
+| install-sh.Tests.ps1 | install.sh.exit 3 names a link pointing elsewhere and says relink, never that there is no link | LinuxOnly | - |
+| install-sh.Tests.ps1 | install.sh.exit 3 when the link is placed but ~/.local/bin is off PATH: status names the shell profile line, launch line exports $HOME/.local/bin | LinuxOnly | - |
+| install-sh.Tests.ps1 | install.sh.fetches the lib from RAW_BASE/clavity-dotnet/plugin/hooks/clavity-ls-launcher-lib.sh when CLAVITY_INSTALL_LIB is unset | LinuxOnly | - |
 | register-plugin.Tests.ps1 | Test-AgentPresent.falls back to HOME when USERPROFILE is unset (the Linux/macOS case; no mocks, child process) | LinuxOnly | - |
 
 ### conditional

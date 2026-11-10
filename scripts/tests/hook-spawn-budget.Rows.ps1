@@ -51,6 +51,8 @@ function New-HookFixture {
             AGY_SESSION_ID = $null; CLAVITY_SESSION = $null; AGY_SESSION = $null
             CLAVITY_GOLDEN_HEADER = $null; CLAVITY_AUDIT_BASE_REF = $null; AGY_GUARD_TTL_MIN = $null
             AGY_CURATE_NUDGE_THRESHOLD = $null; AGY_CURATE_NUDGE_MAX_AGE_DAYS = $null; AGY_INBOX_SNAPSHOT_KEEP = $null
+            # fetch-clavity-ls.sh's launcher lib (clavity-ls-launcher-lib.sh): =1 would skip the step a row means to count.
+            CLAVITY_SKIP_PATH = $null
         }
     }
     if (-not $NoGit) {
@@ -441,12 +443,48 @@ $script:Rows = @(
     # and the lookup row came back 'no release asset named ...win-x64...' - Git Bash reorders PATH, the REAL curl won, and
     # the row was hitting the live GitHub API. A function cannot be shadowed. Each lookup row's -Expect is what proves the
     # fake ran. The function costs no process, so the pinned counts are the hook's own. ---
+    # The steady state now includes the PATH launcher (clavity-ls-launcher-lib.sh). This suite runs on Windows only, where bash
+    # reports OSTYPE msys and the lib takes its WINDOWS branch: "already right" is "BIN_DIR is among the PATH entries", tested
+    # with builtins. So the fixture puts its own data/bin on the PATH the hook inherits, and the -Max 0 is the oracle that it
+    # landed. Two forms of ONE dir, because MSYS converts a PATH entry from Windows through its mount table and Git for
+    # Windows mounts %TEMP% (where the fixture lives) as /tmp: the Windows form goes on PATH, and CLAUDE_PLUGIN_DATA gets the
+    # POSIX form `cygpath -u` gives through the same table, computed HERE, outside the counted run (as New-Fx in
+    # clavity-ls-launcher-lib.Tests.ps1 does). A Windows-form CLAUDE_PLUGIN_DATA would normalise to /c/users/.../temp/...
+    # against a /tmp/... entry: a miss that spawns cygpath and powershell.exe against the HOST user PATH. HOME is already
+    # the fixture's (New-HookFixture), so nothing here can reach the host home. OSTYPE is left to bash on purpose.
+    # The PATH also starts with a fixture shim dir holding a LOGGING fake powershell.exe and a fake cygpath (the shapes of
+    # clavity-ls-launcher-lib.Tests.ps1's fakes), ahead of the host PATH and so of System32: a steady-state miss spawns the
+    # fakes, fails on count, and never reaches the host USER PATH in the registry. (Git Bash puts /usr/bin ahead of the
+    # shim, so the REAL cygpath may win; it only converts a path. No dir Git Bash prepends holds a powershell.exe.)
     New-BudgetRow "$D/fetch-clavity-ls.sh" 'binary installed, stamp matches (steady state)' {
         param($fx)
         $bin = Join-Path $fx.Root 'data/bin'; New-Item -ItemType Directory -Force -Path $bin, (Join-Path $fx.Root 'root') | Out-Null
+        $shim = Join-Path $fx.Root 'shim'; New-Item -ItemType Directory -Force -Path $shim | Out-Null
+        [IO.File]::WriteAllText((Join-Path $shim 'cygpath'), @'
+#!/usr/bin/env bash
+[ "$1" = -w ] || exit 2
+x=$2
+case "$x" in /[a-zA-Z]/*) d=${x:1:1}; x="${d^^}:${x:2}";; esac
+printf '%s\n' "${x//\//\\}"
+'@)
+        [IO.File]::WriteAllText((Join-Path $shim 'powershell.exe'), @'
+#!/usr/bin/env bash
+[ -n "${FAKE_PS_LOG:-}" ] || { echo "fake powershell.exe: FAKE_PS_LOG unset" >&2; exit 97; }
+while [ $# -gt 0 ]; do
+  case "$1" in -Command) printf 'COMMAND %s\n' "$2" >> "$FAKE_PS_LOG"; shift 2;; *) printf 'ARG %s\n' "$1" >> "$FAKE_PS_LOG"; shift;; esac
+done
+printf '%s\r\n' "${FAKE_PS_OUT:-added}"
+exit "${FAKE_PS_EXIT:-0}"
+'@)
+        Set-ShimExecutable -Path (Join-Path $shim 'cygpath'), (Join-Path $shim 'powershell.exe')
+        $fx.Env.FAKE_PS_LOG = ((Join-Path $fx.Root 'ps.log') -replace '\\', '/')
         [IO.File]::WriteAllText((Join-Path $fx.Root 'root/plugin.json'), '{"version":"9.9.9"}')
         [IO.File]::WriteAllText((Join-Path $bin 'clavity-ls.exe'), 'BIN'); [IO.File]::WriteAllText((Join-Path $bin '.clavity-ls.version'), '9.9.9')
-        $fx.Env.CLAUDE_PLUGIN_DATA = (($fx.Root -replace '\\', '/') + '/data'); $fx.Env.CLAUDE_PLUGIN_ROOT = (($fx.Root -replace '\\', '/') + '/root')
+        $data = Join-Path $fx.Root 'data'
+        $dataPosix = "$(& (Get-GitBashOrThrow) -c 'cygpath -u "$1"' _ $data)".Trim()
+        $dataPosix | Should -Match '^/' -Because 'the fixture needs the POSIX form of its data dir, or the launcher step leaves its steady state'
+        $fx.Env.CLAUDE_PLUGIN_DATA = $dataPosix; $fx.Env.CLAUDE_PLUGIN_ROOT = (($fx.Root -replace '\\', '/') + '/root')
+        $fx.Env.PATH = $shim + [IO.Path]::PathSeparator + $bin + [IO.Path]::PathSeparator + $(if ($fx.Env.ContainsKey('PATH')) { $fx.Env.PATH } else { $env:PATH })
         New-SessionStartPayload $fx } -Max 0 -Silent
     New-BudgetRow "$D/fetch-clavity-ls.sh" 'release lookup FAILS (fake curl = false) -> manual-install note' {
         param($fx)

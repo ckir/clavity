@@ -1,5 +1,8 @@
 # Handoff: the second Windows session (what is left after 2026-10-29)
 
+> **SUPERSEDED 2026-11-10** by `docs/handoff/windows-session-3.md` (read it first; its measurements are for the
+> agent-install branch, and the three open items below are NOT done - they are carried there under "Not for this session").
+
 For a Claude session started on the owner's real Windows machine, after the owner pulls `origin/main`. It supersedes
 `docs/handoff/windows-session.md`, most of which is done (that file stays as the record). The Linux session that wrote this has no Windows box
 (no VM, no `/dev/kvm`), so everything below is a measurement or a check only Windows can give.
