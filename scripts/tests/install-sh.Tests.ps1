@@ -648,9 +648,14 @@ Describe 'install.sh' {
             # No PATH override: git-bash keeps git under /mingw64/bin or /cmd, not /usr/bin (MEASURED on CI: an override left $top empty).
             $top = "$(& $script:Bash -c 'cd "$1" && git rev-parse --show-toplevel' _ ($repo -replace '\\', '/'))".Trim()
             $top | Should -Not -BeNullOrEmpty -Because 'the expected folder comes from git-bash, not from PowerShell'
-            $res = Invoke-Install $fx -Env $script:Skip -Cwd '$p/repo/sub'
+            # install.sh must FIND git on the harness PATH, which holds only /usr/bin:/bin: Git for Windows keeps git under
+            # /mingw64/bin or /cmd, so without this it printed the <folder> placeholder on CI (MEASURED 2026-11-10, three runs).
+            $gitBin = "$(& $script:Bash -c 'dirname "$(command -v git)"')".Trim()
+            $gitBin | Should -Not -BeNullOrEmpty -Because 'the bash that runs install.sh must see a git'
+            $res = Invoke-Install $fx -Env $script:Skip -Cwd '$p/repo/sub' -PathValue ('$p/shim:$p/home/.local/bin:/usr/bin:/bin:' + $gitBin)
             $res.Last | Should -BeLike ($script:LaunchPrefix + '*')
-            $res.Last | Should -BeLike "* start `"$top`"" -Because 'the fixture root carries a space, so install.sh:423 quotes the folder'
+            # Assert on the tail so a failure message shows the WHOLE folder (Pester truncates long actual values).
+            $res.Last.Substring($res.Last.LastIndexOf(' start ')) | Should -BeExactly " start `"$top`"" -Because 'the fixture root carries a space, so install.sh:423 quotes the folder'
 
             $res = Invoke-Install $fx -Env $script:Skip
             $res.Last | Should -BeLike '* start <folder>'
