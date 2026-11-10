@@ -97,7 +97,12 @@ $script:DevOnlyPaths = @(
     # nobody). 'BundleCodeBase.ps1' is a dev tool that bundles the repo for the agy peer.
     # 'site/' is the GitHub Pages static site deployed live from main by pages.yml; 'marketing/' holds
     # GTM asset specifications and campaign drafts; 'header.txt' is the PolyForm NC license-header template.
-    '.claude-plugin/', 'archive/', 'BundleCodeBase.ps1', 'site/', 'marketing/', 'header.txt', '*.el.md'
+    '.claude-plugin/', 'archive/', 'BundleCodeBase.ps1', 'site/', 'marketing/', 'header.txt', '*.el.md',
+    # Agent-driven install (2026-11-10). 'INSTALL.md' and 'install.sh' reach users LIVE from the raw `main` URL
+    # the README sentence names, never through a member installer or a release asset: install.sh installs
+    # whatever plugin version the release branch serves and fetches its launcher library from the same raw base.
+    # So a change to them ships at merge and bumps nobody - the plugin they install carries its own version.
+    'INSTALL.md', 'install.sh'
 )
 function Get-DevOnlyPaths { $script:DevOnlyPaths }
 
