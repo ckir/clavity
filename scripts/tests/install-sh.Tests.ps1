@@ -645,7 +645,8 @@ Describe 'install.sh' {
             & git -C $repo init -q
             # The toplevel as install.sh's OWN git prints it under the same bash: on Windows PowerShell's git says
             # C:/Users/... while git-bash's says /c/Users/... (MEASURED on CI 2026-11-10, the row failed with PowerShell's form).
-            $top = "$(& $script:Bash -c 'PATH=/usr/bin:/bin; cd "$1" && git rev-parse --show-toplevel' _ ($repo -replace '\\', '/'))".Trim()
+            # No PATH override: git-bash keeps git under /mingw64/bin or /cmd, not /usr/bin (MEASURED on CI: an override left $top empty).
+            $top = "$(& $script:Bash -c 'cd "$1" && git rev-parse --show-toplevel' _ ($repo -replace '\\', '/'))".Trim()
             $top | Should -Not -BeNullOrEmpty -Because 'the expected folder comes from git-bash, not from PowerShell'
             $res = Invoke-Install $fx -Env $script:Skip -Cwd '$p/repo/sub'
             $res.Last | Should -BeLike ($script:LaunchPrefix + '*')
