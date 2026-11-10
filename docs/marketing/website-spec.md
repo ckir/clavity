@@ -13,7 +13,6 @@ site/
 ├── script.js                    # Interactive controls & copy handlers
 ├── assets/                      # Brand raster & vector assets
 │   ├── banner.webp
-│   ├── clavity.svg
 │   ├── og.jpg
 │   └── profile.png
 ├── products/                    # Product deep-dive pages
@@ -35,7 +34,7 @@ site/
 ## 2. Homepage Section Specifications
 
 1. **Global Header & Navigation:**
-   - Brand logo (`assets/clavity.svg`) linking to `/`.
+   - Brand mark (`assets/profile.png`) linking to `/`.
    - Links: Products (dropdown/group), How it works, Docs, Roadmap, Community, Beta.
    - Primary Header CTA: "Join Beta" or "Install".
 2. **Hero:**
