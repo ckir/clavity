@@ -1,5 +1,8 @@
 # Handoff: Windows measurements for the agent-driven install (third Windows session)
 
+> **See also 2026-11-10:** `docs/handoff/windows-session-4.md` adds item (d), the Windows test run; this file stays the one
+> for items (a) to (c). Both can be reported in one PR.
+
 For an agent session started on the owner's real Windows machine, after `git fetch origin && git switch feat/agent-install`
 (the work lives on that branch, not on `main`). The Linux session that wrote this has no Windows box (measured 2026-11-10:
 `uname` = Linux 7.0.0-43-generic, no `powershell.exe`, no `cygpath` on PATH), so everything below is a measurement only Windows
