@@ -140,8 +140,9 @@ a launcher failure.
   the data dir against `$PATH` after normalising both to lower case with forward slashes and the
   `/c/` drive form (parameter expansion only). `readlink` is never used. The pinned budget row stays
   at zero. The form Claude Code gives `CLAUDE_PLUGIN_DATA` under git-bash on Windows (`C:\...` or
-  `/c/...`) is unknown and is measured on Windows before the normalisation is written (see "Measure
-  first").
+  `/c/...`) is unknown and is measured on Windows (handoff dispatched in the plan's Task 0) before the Windows
+  acceptance; if the measurement is late, the normalisation is written to accept both forms and the
+  spec records `UNVERIFIED-WINDOWS` until Task 7 clears it.
 - **Linux and macOS, when missing or wrong:** create `~/.local/bin` if needed and `ln -sfn` the
   `clavity-ls` link there to `$TARGET` (`-f` because plain `ln -s` fails with "Already exists" on a
   dangling link, measured; the binary is an ELF or Mach-O under a cosmetic `.exe` name, and the link
@@ -343,6 +344,20 @@ them and records the output in this document.
    `CLAUDE_CONFIG_DIR` with a harmless plugin. This is the feature's core promise; if it fails, the
    agent-facing file must instead end with "exit Claude Code and run the terminal line", and the
    sentence survives only as a pointer.
+
+   Measured 2026-11-10: yes. The install ran inside a headless session (`claude -p`, exit 0) and a
+   fresh process afterwards still listed it as enabled. Commands and output, in a throwaway
+   `CLAUDE_CONFIG_DIR`:
+
+       claude -p "Run exactly this shell command and print its output: claude plugin install review-relay@clavity -y --scope user" --allowedTools "Bash(claude plugin *)" ; echo "session exit: $?"
+       Installing plugin "review-relay@clavity"...✔ Successfully installed plugin: review-relay@clavity (scope: user)
+       session exit: 0
+
+       claude plugin list --json | python3 -I -c "import json,sys;print([p['enabled'] for p in json.load(sys.stdin) if p['id']=='review-relay@clavity'])"
+       [True]
+
+   (The prompt precedes `--allowedTools` because that flag is variadic and otherwise swallows the
+   prompt: "Input must be provided either through stdin or as a prompt argument".)
 2. On Windows, via the platform-handoff procedure if no Windows machine is at hand: the textual form
    of `CLAUDE_PLUGIN_DATA` and `CLAUDE_PLUGIN_ROOT` as the hook sees them under git-bash (`C:\...`
    or `/c/...`); that `git --exec-path` sits three levels below the Git root on a machine-wide, a
