@@ -34,6 +34,8 @@ claude plugin marketplace add ckir/clavity
 claude plugin install clavity@clavity
 ```
 
+Or paste the sentence in the repository's README to your agent; see INSTALL.md.
+
 clavity-dotnet is cross-platform (Windows, Linux, macOS — RIDs `win-x64`, `linux-x64`, `osx-arm64`,
 `osx-x64`). The `clavity-ls` binary is not bundled with the plugin; a plugin SessionStart hook fetches
 the RID-matching binary on first run from the matching `clavity-v<N>` GitHub release and verifies it
@@ -66,8 +68,10 @@ clavity-ls start C:\path\to\your\project
 Opens a visible `agy` tab in that folder, waits until agy has paired (published its endpoint - after 10 s it reminds
 you to check agy's tab for a prompt; Ctrl+C aborts; if agy exits first, `start` stops and says so), then launches
 Claude Code in the foreground. Warns (without
-blocking) if the folder is not a git repository. To uninstall, run `claude plugin uninstall
-clavity@clavity`.
+blocking) if the folder is not a git repository. clavity-ls is on PATH from the first session start (a
+launcher the plugin keeps). To uninstall, run `claude plugin uninstall
+clavity@clavity`, then `rm -f ~/.local/bin/clavity-ls` on Linux/macOS, and remove the plugin data dir from your
+user PATH on Windows (a reinstall needs neither).
 
 On Linux, `start` opens agy as a new tab in the terminal you ran it from (mate-terminal, gnome-terminal, konsole or
 xfce4-terminal), otherwise in `xdg-terminal-exec` or `x-terminal-emulator`; set `CLAVITY_TERMINAL` to choose one. With

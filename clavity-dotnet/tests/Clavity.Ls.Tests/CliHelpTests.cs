@@ -49,7 +49,8 @@ public sealed class CliHelpTests
         var help = CliVerbs.HelpText();
         Assert.Contains("claude plugin marketplace add ckir/clavity", help);
         Assert.Contains("claude plugin install clavity@clavity", help);
-        Assert.Contains("must be on PATH", help);
+        Assert.Contains("keeps a clavity-ls launcher on PATH", help);
+        Assert.Contains("INSTALL.md", help);
         Assert.Contains("agent-profile", help);
     }
 

@@ -55,12 +55,12 @@ This is the part that most affects a working setup.
   You ran `clavity-ls start C:\path\to\your\project` from a terminal.
 - **New:** the plugin fetches the platform-matched binary on first session start into
   `${CLAUDE_PLUGIN_DATA}/bin/clavity-ls.exe`, and the plugin's MCP server launches it by that
-  fixed path. It is **not** placed on your PATH.
+  fixed path. The plugin keeps a `clavity-ls` launcher on PATH on every session start (Linux/macOS
+  `~/.local/bin/clavity-ls`, Windows: the data dir on the user PATH), so `clavity-ls start` keeps working from a
+  terminal.
 
 Consequences:
 
-- After migrating, typing `clavity-ls` in a terminal no longer resolves. Update any script,
-  alias, or shortcut that invoked it directly.
 - The fetch needs `curl` and `tar`. If either is missing, the fetch fails open with a note on
   stderr, and the MCP server will not start until you place the binary by hand.
 - The download is keyed by a version stamp, so a plugin upgrade re-fetches. It is
