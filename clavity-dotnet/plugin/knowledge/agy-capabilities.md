@@ -152,6 +152,24 @@ Separate context window from Claude's; sequential/local reasoning bias.
    on PATH); the MCP signal-bus path is **main-thread-only** (subagents lack the MCP tools), so the CLI
    front door is what makes the peer subagent-accessible. The front-door skill does not auto-load in a
    sub-context, so the subagent must be **told** to use the CLI in its dispatch prompt.
+5. **agy's own built-in subagents do not save tokens** `[corpus]` (MEASURED 2026-11-10, agy 1.5.3, fresh
+   chats, per-call counts from agy's own transcripts). agy lists default agents from an installed plugin
+   (code-reviewer, security-auditor, test-engineer, ...). Telling it to "use a subagent" for a read-only
+   reading task starts a SEPARATE conversation with its own system context, re-read on every call, while
+   the main chat still makes its own calls. A small read (one diff plus 40 lines): about 238-298K tokens
+   with a subagent against 204-279K without (two runs each), a wash. A heavy read (four files, about
+   140 KB): 1.08M against 239K, about 4.5x worse (one run each). It did start exactly one subagent and
+   kept review-only (tree and HEAD unchanged). In LONG chats the result is unmatched and inconclusive (one
+   run each): the same heavy read cost 2.43M direct in a ~202K chat (25 calls; agy compacted its context to
+   ~29K mid-run) against 1.36M with a subagent in a ~131K chat (5 main + 11 subagent calls, the subagent's
+   reads in a ~60K context). The long-chat direct cost is dominated by re-reading the big context, so a
+   subagent CAN help there; a fresh chat (see ls-driving, Spend) was the larger and more reliable lever.
+   Do NOT add "use a subagent" to review briefs as a cost measure without a matched long-chat pair.
+6. **A two-line chat reply does not save tokens either** `[corpus]` (same date, one run each): full answer
+   in a reply file plus a two-line chat reply cost about 244K against 239K (7 calls each); output tokens
+   are mostly the peer's working steps, not its final message, and lifting the file's character cap grew
+   the file about 4x. The chat-reply cap in the discipline briefs is a stall mitigation (ROADMAP section
+   108), not a cost lever; the cost lever that WAS measured is a fresh chat (see ls-driving, Spend).
 
 ## Refresh after an `agy update`
 
