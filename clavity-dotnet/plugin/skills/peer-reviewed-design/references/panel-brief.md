@@ -46,7 +46,8 @@ Same review-only banner and reply contract as the fork brief, with these differe
 - Discipline `adversarial-panel-review` (on clavity-dotnet also the `discipline` argument), the artifact path, and the terminal line `PANEL VERDICT:`
   followed by `FINDINGS-N` or `CLEAN`. Do not ask for a bracketed verdict token in a panel round;
   on clavity-dotnet the language-server driver expects `PANEL VERDICT` and flags anything else as
-  truncated, and on clavity-classic you check the last line by eye.
+  truncated, and on clavity-classic you check the last line by eye. A reply that fails either check is recovered as in
+  `<BASE>/references/fork-brief.md`, "Transport".
 - State the md5 of the artifact when it changed since the peer last read it, and tell it to re-read
   from disk; a peer can answer from a stale copy.
 - One open question at the end: "name what you examined LEAST and say whether a clean verdict means

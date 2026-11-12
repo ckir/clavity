@@ -127,7 +127,9 @@ Use the channel the installed clavity plugin provides.
   skill documents the flagged notices in full.
 - **clavity-classic:** `clavity ask "<payload>" --review-only` is the front door. No `discipline` or
   `artifactPath` parameter exists there, so no automatic check runs: demand the echo and the terminal
-  line in the payload and verify both by eye.
+  line in the payload and verify both by eye. A reply missing either is incomplete, not empty: read the
+  reply file the brief named (the reply contract makes the peer write its whole analysis there), then
+  re-ask at most once, asking for that file if it is absent, then halt and ask the owner.
 
 Never use the delegation bridge for a consult: it gates on committed changes and fails by construction
 for review-only work.
