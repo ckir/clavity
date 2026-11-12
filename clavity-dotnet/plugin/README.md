@@ -21,6 +21,7 @@ clavity-dotnet/
   skills/agy-test-audit/                     # Claude: audit test-suite coverage exhaustiveness after capstone is green
   skills/open-issues/                        # Claude: capture an anomaly now, triage it later
   skills/platform-handoff/                   # Claude: hand platform-bound work (Windows, macOS, hardware) to a session that can run it, then verify its report
+  skills/peer-reviewed-design/               # Claude: drive a design phase through decision forks, a peer consult per fork, measurement and owner rulings
   hooks/                                     # PreToolUse/PostToolUse/SessionStart hooks: consult guards + seam-inject, after/test-audit reminders, startup liveness/anomaly checks
   knowledge/                                 # agy-assumptions.md + agy-capabilities.md — the agy-version-current manuals
 ```
