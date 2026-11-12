@@ -1,9 +1,9 @@
 # Design doc outline
 
 Write the design doc so a talented builder could plan from it without going back to the owner, and
-so a reader a year later can see what was decided, by whom, and on what evidence. Save it as
-`docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` on a design branch, and commit it at each
-reviewed state.
+so a reader a year later can see what was decided, by whom, and on what evidence. By default save it as
+`docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` (the project's own convention overrides the path)
+on a design branch, and commit it at each reviewed state.
 
 ## Header
 

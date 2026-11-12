@@ -12,6 +12,8 @@ recovery hook recognises; the discipline is `agy-first`), prepared through the m
 a scratch area `.clavity/scratch/<topic>-agreement/` and a named reply file. The payload carries the
 same review-only banner, scratch sanction and reply contract as the fork brief (see
 `<BASE>/references/fork-brief.md`, "The payload"); only the seats, the instruction and the terminal line differ.
+Prepare the paths and write the `agy-first` marker exactly as that file's opening block and "After the
+reply" step 4 show, with `<topic>-agreement` in place of `<topic>`.
 
 Write the draft as numbered points (P1 to Pn). Each point is one executable claim:
 a licence structure, an enforcement mechanism, a pricing axis, a first adopter, a metric. Add the

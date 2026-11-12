@@ -27,7 +27,9 @@ can die at any time and the next one must resume from the index alone.
 
 ## 1. Find the forks before the answers
 
-Start with the brainstorming posture (the brainstorming skill, when available): understand what the owner wants and why before proposing how.
+Before anything else, look for an existing execution index and resume from it (section 8 says where
+it lives and what to do when there are several); only a project with none starts fresh.
+Then take the brainstorming posture (the brainstorming skill, when available): understand what the owner wants and why before proposing how.
 Read whatever exists (repo, docs, earlier conversation) first; never ask what the project already
 answers. Then name the forks, in dependency order. A fork is a decision whose different answers lead
 to materially different work. Typical first forks for a product: who the first adopter is, what the
@@ -178,7 +180,9 @@ Where it lives: the harness's persistent memory directory when it has one (for e
 `project_<name>_execution.md` under the auto-memory directory, with a one-line pointer in the memory
 index file); otherwise one file per project at `.clavity/execution/<project>.md`, where `<project>` is
 the repository directory's basename with every character outside `[A-Za-z0-9_-]` replaced by `-` (the
-marker writer refuses any path containing two consecutive dots). Only one location is ever written.
+marker writer refuses any path containing two consecutive dots). If no letter or digit survives that
+replacement, use `project`; if `.clavity/execution/<project>.md` already exists and its `Repo:` line names
+a different path, append `-2`, `-3`, and so on until the name is free. Only one location is ever written.
 Create the fallback through the marker writer, which asserts the `.clavity/` shield, and abort if it
 exits non-zero:
 

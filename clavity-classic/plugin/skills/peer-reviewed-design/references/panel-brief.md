@@ -43,7 +43,7 @@ below it; a mismatch a builder must resolve by guessing is above it.
 
 Same review-only banner and reply contract as the fork brief, with these differences:
 
-- `discipline: adversarial-panel-review`, the artifact path, and the terminal line `PANEL VERDICT:`
+- Discipline `adversarial-panel-review` (on clavity-dotnet also the `discipline` argument), the artifact path, and the terminal line `PANEL VERDICT:`
   followed by `FINDINGS-N` or `CLEAN`. Do not ask for a bracketed verdict token in a panel round;
   on clavity-dotnet the language-server driver expects `PANEL VERDICT` and flags anything else as
   truncated, and on clavity-classic you check the last line by eye.

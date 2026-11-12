@@ -63,7 +63,8 @@ End of round-N artifact <topic>-first, questions one to four above.
 ```
 
 The last line is deliberate: it is the line the peer must echo, and it carries no inline code so the
-peer cannot drop backticks and fail the check.
+peer cannot drop backticks and fail the echo check (the driver's on clavity-dotnet, your own eye on
+clavity-classic).
 
 ## The payload
 
@@ -75,7 +76,8 @@ Send the path, not the text. The payload carries, in this order:
    the peer needs to run ("do it under `${TMPDIR:-/tmp}/agy-<topic>/`, no dependency installs or
    builds, or name the command and I will run it"). A prohibition with no legal path invites a
    workaround.
-3. Discipline name, artifact path, scratch path, reply file path.
+3. Discipline name (on clavity-dotnet also passed as the `discipline` argument, see "Transport"),
+   artifact path, scratch path, reply file path.
 4. The goal and success criterion restated in one line, with full method latitude.
 5. The panel: named seats, the rule that a seat with nothing new writes exactly "no new findings",
    the instruction to name dropped seats.
@@ -119,7 +121,10 @@ Use the channel the installed clavity plugin provides.
 
 - **clavity-dotnet:** check idle with `agy_status`, then call `agy_ask` with `discipline` and
   `artifactPath` set, so the language-server driver runs its own completeness checks on the reply (a
-  missing echo or terminal token is flagged).
+  missing echo or terminal token is flagged). A flagged reply is incomplete, not empty: never read it as
+  "no findings". Recover in this order: the `ReplyFile` the notice names (its last 200 lines first), then
+  the peer's own reply file, then re-ask at most once, then halt and ask the owner. The `clavity:agy-first`
+  skill documents the flagged notices in full.
 - **clavity-classic:** `clavity ask "<payload>" --review-only` is the front door. No `discipline` or
   `artifactPath` parameter exists there, so no automatic check runs: demand the echo and the terminal
   line in the payload and verify both by eye.
@@ -134,7 +139,11 @@ for review-only work.
 3. Verify every claim that bears on the decision (see the verification playbook). Note where a
    citation is invented even if the conclusion stands.
 4. Write the discipline marker through the marker writer so the auto-fire hook does not re-inject
-   the consult for the same commit.
+   the consult for the same commit (skip it when `git rev-parse HEAD` cannot resolve):
+
+   ```bash
+   bash "<BASE>/../../hooks/agy-mark.sh" head "agy-first" "$(git rev-parse HEAD)"
+   ```
 5. Update the execution index.
 6. Present to the owner: what the peer said, what you measured, where it was wrong, your read, the
    question, the verdict token.
