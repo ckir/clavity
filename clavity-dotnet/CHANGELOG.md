@@ -1,4 +1,13 @@
 # dotnet changelog
+## 0.19.0 - 2026-11-12
+
+### Features
+- feat(plugin): peer-reviewed-design skill in both plugins
+
+### Fixes
+- fix(plugin): classic recovery for an incomplete peer reply in peer-reviewed-design
+- fix(plugin): fold the six deferred minors of peer-reviewed-design
+
 ## 0.18.0 - 2026-11-10
 
 ### Features

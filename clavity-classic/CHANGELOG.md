@@ -1,4 +1,13 @@
 # classic changelog
+## 0.13.0 - 2026-11-12
+
+### Features
+- feat(plugin): peer-reviewed-design skill in both plugins
+
+### Fixes
+- fix(plugin): classic recovery for an incomplete peer reply in peer-reviewed-design
+- fix(plugin): fold the six deferred minors of peer-reviewed-design
+
 ## 0.12.2 - 2026-11-06
 
 ### Fixes
