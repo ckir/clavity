@@ -83,3 +83,15 @@ as token-absent in chat while the capture file holds the complete reply, and the
 `TurnEndedOnToolStep` is true, judge the LAST assistant run rather than requiring it to be trailing
 (or judge the rendered capture text the way `RescueFromPeerFile` judges the peer file). Unmeasured -
 reproduce before building; the entry stays a carried rule either way.
+
+## Addendum 2026-11-13 - shape 1 (token mismatch) observed twice more, in two further sessions
+
+Two inbox entries drained 2026-11-13 (captured 2026-11-10 and 2026-11-11) report shape 1 again: a review
+brief that dictated its own closing-token wording, or the closing token of a SIBLING discipline, got a
+complete, in-cap, echo-correct reply flagged `[13b] TRUNCATED REPLY`. In both the peer complied with the
+brief exactly, so the flag named the wrong cause and the recovery it suggests (re-ask) was the wrong one;
+the fix was to correct the brief. This is the third and fourth independent session to hit shape 1, which
+makes the `TokenMismatch` reason in the mitigation above the highest-value of the three. Not measured in this
+drain; the shape and mitigation are unchanged. Check `DisciplineContract.Tokens` for the CURRENT token for each
+discipline before writing the fixture: one entry quotes a last line beginning "VERDICT:", which may differ from the
+`PANEL VERDICT` text recorded above if the table has been edited since.
