@@ -1717,7 +1717,15 @@ public class AgyAskIntegrationTests
         // A rescue wired only into the no-progress branch would leave this route shipping possible_modal.
         // Window 1 is clamped to the whole 400ms budget (stall window 1000ms), appends the reply, and the next
         // iteration finds the budget gone.
-        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, AppendAfter: TurnEnd("made it")) };
+        // The trailing flat step matters: the fake REUSES its last plan entry for every later window, so a lone
+        // AppendAfter entry re-appends the reply on any second window. Windows' CancelAfter can wake a few ms before
+        // the precise clock says the budget is spent, which opens exactly such a sliver window - and the reply came
+        // back as "made it\nmade it" (CI ci-dotnet 43593716442, 43596737808).
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, AppendAfter: TurnEnd("made it")),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false),
+        };
         var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
         await using var app = await StartFakeAsync(fake);
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
