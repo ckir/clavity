@@ -472,3 +472,40 @@ Describe 'Invoke-AgentRulesIgnoreCheck - census and include resolution (F3-F8)' 
         $s.Candidates | Should -Contain 'sub/docs/x.md'
     }
 }
+
+Describe 'check-agent-rules-ignore - test-audit gaps (PP1, MG1, BS1)' {
+    It 'PP1: run as a script, a clean repo prints the census line and exits 0; a leaking repo prints the failure list and exits 1' {
+        $pwsh = (Get-Process -Id $PID).Path
+        foreach ($case in @(
+                @{ Body = "Run ``just test`` in ``scripts/``.`n"; Exit = 0 },
+                @{ Body = "ok`nsee ``.clavity/x```n"; Exit = 1 })) {
+            $repo = New-RuleRepo @{ 'AGENTS.md' = $case.Body }
+            New-Item -ItemType Directory -Path (Join-Path $repo 'scripts') -Force | Out-Null
+            $copy = Join-Path $repo 'scripts/check-agent-rules-ignore.ps1'
+            Copy-Item ([System.IO.Path]::Combine($PSScriptRoot, '..', 'check-agent-rules-ignore.ps1')) $copy
+            $out = @(& $pwsh -NoProfile -File $copy 2>&1 | ForEach-Object { ("$_" -replace "\x1b\[[0-9;]*m", '').TrimEnd() } | Where-Object { $_ -ne '' })
+            $LASTEXITCODE | Should -Be $case.Exit -Because ($out -join ' | ')
+            if ($case.Exit -eq 0) {
+                $out.Count | Should -Be 1
+                $out[0] | Should -Match '^agent rules ok \(1 rule files, [1-9]\d* references, none hidden by \.antigravityignore\)$'
+            } else {
+                $out[0] | Should -BeExactly 'agent-rules-ignore gate FAILED:'
+                $out | Should -Contain '  - AGENTS.md:2  .clavity/x  ->  .antigravityignore:2:.clavity/'
+                $out | Should -Not -Contain 'agent rules ok' -Because 'the census line is the success contract only'
+            }
+        }
+    }
+    It 'MG1: a token repeated on one line yields the same hits and ReferenceCount as the token written once' {
+        $once  = Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "see ``.clavity/x```n" })
+        $twice = Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "see ``.clavity/x`` and ``.clavity/x`` and .clavity/x`n" })
+        $once.ExitCode | Should -Be 1
+        @($twice.Hits) | Should -Be @($once.Hits)
+        $twice.ReferenceCount | Should -Be $once.ReferenceCount
+    }
+    It 'BS1: a tilde fence is scanned as code and closes, so prose after it is not fence content' {
+        $r = Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "~~~bash`ncat debug.log`n~~~`nthe debug.log name in prose`n" })
+        $r.ExitCode | Should -Be 1
+        @($r.Hits).Count | Should -Be 1
+        $r.Hits[0] | Should -BeLike 'AGENTS.md:2  debug.log  ->  *'
+    }
+}
