@@ -388,3 +388,87 @@ Describe 'Invoke-AgentRulesIgnoreCheck - no drive-letter candidate ever reaches 
         @(ConvertTo-CandidatePath -Text 'D:/a/b' -RepoRoot '/r' -FileDir '' | Where-Object { $_ -match '^[A-Za-z]:(/|$)' }) | Should -BeNullOrEmpty
     }
 }
+
+# Capstone round-1 fold. Additive: nothing above was changed.
+Describe 'Invoke-AgentRulesIgnoreCheck - forms that name another checkout (F1)' {
+    It 'flags a hidden path reached through an escape, an env-var home, ~user, a device prefix or a clamped ..' {
+        foreach ($t in @('see ../clavity/clavity-dotnet/pairing/x', 'see $HOME/src/clavity/clavity-dotnet/pairing/x',
+                         'see ${HOME}/src/clavity/clavity-dotnet/pairing/x', 'see %USERPROFILE%\src\clavity\clavity-dotnet\pairing',
+                         'see ~bob/clavity/clavity-dotnet/pairing/x', 'see /a/../../clavity-dotnet/pairing/x',
+                         'see \\?\D:\a\clavity\clavity-dotnet\pairing', 'see \\.\D:\a\clavity\clavity-dotnet\pairing')) {
+            (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "$t`n" })).ExitCode | Should -Be 1 -Because $t
+        }
+    }
+    It 'adds the boundary suffixes of an escaping path and keeps no drive-letter or device-prefix form' {
+        $c = @(ConvertTo-CandidatePath -Text '../clavity/clavity-dotnet/pairing/x' -RepoRoot '/r' -FileDir '')
+        $c | Should -Contain 'clavity-dotnet/pairing/x'
+        $d = @(ConvertTo-CandidatePath -Text '\\?\D:\a\clavity\clavity-dotnet\pairing' -RepoRoot '/r' -FileDir '')
+        $d | Should -Contain 'clavity-dotnet/pairing'
+        @($d | Where-Object { $_ -match '^[A-Za-z]:' -or $_ -match '\?' }) | Should -BeNullOrEmpty
+        @(ConvertTo-CandidatePath -Text '$HOME/src/clavity/x' -RepoRoot '/r' -FileDir '') | Should -Contain '$HOME/src/clavity/x'
+    }
+    It 'does not flag such a path when its suffixes are not hidden' {
+        foreach ($t in @('see ../clavity/docs/readme.md', 'see $HOME/src/clavity/docs/readme.md', 'see ~bob/clavity/docs/readme.md')) {
+            (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "$t`n" })).ExitCode | Should -Be 0 -Because $t
+        }
+    }
+}
+
+Describe 'Invoke-AgentRulesIgnoreCheck - git pathspec magic (F2)' {
+    It 'does not fail on ordinary git documentation that uses pathspec magic' {
+        foreach ($t in @("``git diff -- ':!docs'``", "``git diff -- ':^docs'``", "``git diff -- ':(exclude)docs'``", "``git log -- ':(top)docs'``")) {
+            $r = Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "$t`n" })
+            $r.ExitCode | Should -Be 0 -Because $t
+            $r.Failures | Should -BeNullOrEmpty -Because $t
+        }
+    }
+    It 'checks the remainder after the magic prefix and never sends the raw magic form' {
+        (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "``:/clavity-dotnet/pairing```n" })).ExitCode | Should -Be 1
+        (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "``:!clavity-dotnet/pairing/x```n" })).ExitCode | Should -Be 1
+        foreach ($t in @(':!docs', ':^docs', ':/docs', ':(exclude)docs', '/home/u/:!docs')) {
+            @(ConvertTo-CandidatePath -Text $t -RepoRoot '/r' -FileDir '' | Where-Object { $_ -like ':*' }) | Should -BeNullOrEmpty -Because $t
+        }
+        @(ConvertTo-CandidatePath -Text ':!docs' -RepoRoot '/r' -FileDir '') | Should -Contain 'docs'
+    }
+}
+
+Describe 'Invoke-AgentRulesIgnoreCheck - census and include resolution (F3-F8)' {
+    It 'F3: fails when a tracked rule file is missing from the working tree' {
+        $repo = New-RuleRepo @{ 'AGENTS.md' = "x`n" }
+        Remove-Item -LiteralPath (Join-Path $repo 'AGENTS.md')
+        $r = Invoke-Check $repo
+        $r.ExitCode | Should -Be 1
+        ($r.Failures -join ' ') | Should -Match 'tracked rule file missing from working tree: AGENTS.md'
+    }
+    It 'F4: follows an include whose label holds one level of nested brackets' {
+        $r = Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "@[a [b] c](docs/inc.md)`n"; 'docs/inc.md' = "``.clavity/x```n" })
+        $r.ExitCode | Should -Be 1
+    }
+    It 'F5: a footnote definition is not a link definition, a real link definition still is' {
+        (Invoke-Check (New-RuleRepo @{ 'docs/AGENTS.md' = "[^1]: hidden-plan.md`n" })).ExitCode | Should -Be 0
+        @(Get-RuleReferences @('[^1]: some text')).Count | Should -Be 0
+        (Invoke-Check (New-RuleRepo @{ 'docs/AGENTS.md' = "[r]: hidden-plan.md`n" })).ExitCode | Should -Be 1
+    }
+    It 'F6: two includes that differ only by case are both scanned' -Skip:([Environment]::OSVersion.Platform -ne 'Unix' -or (Test-Path '/System/Library')) {
+        $files = [hashtable]::new([System.StringComparer]::Ordinal)   # a literal would be a duplicate key: PS keys ignore case
+        $files['AGENTS.md'] = "@[a](docs/a.md)`n@[b](docs/A.md)`n"; $files['docs/a.md'] = "plain`n"; $files['docs/A.md'] = "``.clavity/x```n"
+        $r = Invoke-Check (New-RuleRepo $files)
+        $r.ExitCode | Should -Be 1
+        $r.FileCount | Should -Be 3
+    }
+    It 'F7: ReferenceCount is the same deduplicated count on the failure path as on the normal path' {
+        $content = @{ 'AGENTS.md' = "``.clavity/x`` .clavity/x`n" }
+        $ok = Invoke-Check (New-RuleRepo $content)
+        $fail = Invoke-Check (New-RuleRepo $content -NoIgnore)
+        $fail.Failures.Count | Should -BeGreaterThan 0
+        $fail.ReferenceCount | Should -Be $ok.ReferenceCount
+        $ok.ReferenceCount | Should -BeGreaterThan 0
+    }
+    It 'F8: the literal forms from Get-CandidateSet equal Get-CandidateForms' {
+        $s = Get-CandidateSet -Text 'docs/x.md' -RepoRoot '/r' -FileDir 'sub'
+        $f = Get-CandidateForms -Text 'docs/x.md' -RepoRoot '/r' -FileDir 'sub'
+        $s.Literal.A | Should -Be $f.A
+        $s.Literal.B | Should -Be $f.B
+        $s.Candidates | Should -Contain 'sub/docs/x.md'
+    }
+}

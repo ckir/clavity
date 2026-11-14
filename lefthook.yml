@@ -52,6 +52,8 @@ pre-push:
         - "scripts/check-control-bytes.ps1"
       run: just check-control-bytes
     agent-rules-ignore:
+      # Seconds-range, as this hook's header requires (one pwsh start plus one git process), and it runs only when
+      # a push touches a rule file, .antigravityignore or the gate itself (the glob below).
       # CI is the complete trigger; this glob cannot see an edit to an included file elsewhere.
       glob:
         - "AGENTS.md"

@@ -121,7 +121,7 @@ function Get-RuleReferences([string[]]$Lines) {
     # unbalanced ')'. An '@[label](path)' is an include. Returns @(@{ Dest; Kind }).
     $linkDests = {
         param([string]$line)
-        foreach ($m in [regex]::Matches($line, '(?<at>@?)\[[^\]]*\]\(\s*(?:<(?<ang>[^>]*)>|(?<raw>\S*))')) {
+        foreach ($m in [regex]::Matches($line, '(?<at>@?)\[(?:[^\[\]]|\[[^\[\]]*\])*\]\(\s*(?:<(?<ang>[^>]*)>|(?<raw>\S*))')) {
             $dest = if ($m.Groups['ang'].Success) { $m.Groups['ang'].Value } else {
                 $raw = $m.Groups['raw'].Value; $depth = 0; $end = $raw.Length
                 for ($i = 0; $i -lt $raw.Length; $i++) {
@@ -158,8 +158,9 @@ function Get-RuleReferences([string[]]$Lines) {
             foreach ($tok in ($info -split '\s+')) { if ($tok -ne '') { & $add $n $tok 'prose' $false } }
             continue
         }
-        # Reference-style link definition '[id]: dest "title"': the destination is a link target.
-        if ($line -match '^\s{0,3}\[[^\]]+\]:\s*(?:<(?<ang>[^>]*)>|(?<raw>\S+))') {
+        # Reference-style link definition '[id]: dest "title"': the destination is a link target. A footnote
+        # definition '[^1]: text' is prose, not a link definition.
+        if ($line -match '^\s{0,3}\[(?!\^)[^\]]+\]:\s*(?:<(?<ang>[^>]*)>|(?<raw>\S+))') {
             $rd = if ($Matches['ang']) { $Matches['ang'] } else { $Matches['raw'] }
             & $add $n $rd 'link' $true
         }
@@ -201,9 +202,18 @@ function Get-PreparedText([string]$Text) {
     # (2) strip * and backticks from both ends, sentence punctuation from the END only (a leading dot survives)
     $t = $t.TrimStart([char[]]@('*', '`')).TrimEnd([char[]]@('*', '`', '.', ',', ';', ':', '!'))
     # (3) drop a #fragment and a ?query
-    $cut = $t.IndexOfAny([char[]]@('#', '?'))
+    # (a '?' in a \\?\ or \\.\ device prefix is part of the prefix, not a query)
+    $from = if ($t -match '^(\\\\|//)[?.][\\/]') { 4 } else { 0 }
+    $cut = $t.IndexOfAny([char[]]@('#', '?'), $from)
     if ($cut -ge 0) { $t = $t.Substring(0, $cut) }
     return $t
+}
+
+# Every suffix of an already-resolved path that starts at a '/' boundary (the whole path first). $() when null.
+function Get-BoundarySuffixes([string]$Resolved) {
+    if ([string]::IsNullOrEmpty($Resolved)) { return @() }
+    $segs = $Resolved.Split([char]'/')
+    return @(for ($i = 0; $i -lt $segs.Count; $i++) { $segs[$i..($segs.Count - 1)] -join '/' })
 }
 
 # Steps 4-7 and forms A/B for a text that already went through steps 1-3.
@@ -224,6 +234,11 @@ function Get-FormsForText([string]$t, [string]$RepoRoot, [string]$FileDir) {
         }
     }
     elseif ($t -match '^[A-Za-z][A-Za-z0-9+.-]*://') { return $none }
+    # A Windows device prefix (\\?\D:\x, \\.\D:\x) names the path after it.
+    if ($t -match '^//[?.]/(?<r>.*)$') {
+        $t = '/' + $Matches['r']
+        if ($t -match '^/[A-Za-z]:(/|$)') { $t = $t.Substring(1) }
+    }
     # (6) an absolute path inside the repo root becomes repo-relative (prefix compared case-insensitively)
     $root = $RepoRoot.Replace('\', '/').TrimEnd([char]'/')
     $inRepo = $false
@@ -235,16 +250,14 @@ function Get-FormsForText([string]$t, [string]$RepoRoot, [string]$FileDir) {
     # another checkout (/home/u/clavity/docs/x, D:\a\clavity\docs\x, ~/src/clavity/docs/x): root-anchored ignore
     # patterns never match it, so ADD every suffix that starts at a '/' boundary.
     $drive = (-not $inRepo) -and ($t -match '^[A-Za-z]:/')
-    $foreign = (-not $inRepo) -and ($drive -or $t.StartsWith('/') -or $t.StartsWith('~/'))
+    # $VAR/x, ${VAR}/x, %VAR%/x and ~name/x expand to a home or other absolute directory: same treatment.
+    $envLike = (-not $inRepo) -and ($t -match '^(\$\{?[A-Za-z_][A-Za-z0-9_]*\}?|%[^%/\s]+%|~[^/]*)/')
+    $foreign = (-not $inRepo) -and ($drive -or $envLike -or $t.StartsWith('/'))
     $extra = [System.Collections.Generic.List[string]]::new()
     if ($foreign) {
         # Resolve FIRST ('D:/../x' is 'D:/x' on Windows, and '..' may cancel the drive segment), then take every
-        # suffix from index 0; drive-shaped suffixes are removed centrally by ConvertTo-CandidatePath.
-        $full = Resolve-RepoRelative $t -Clamp
-        if ($null -ne $full) {
-            $segs = $full.Split([char]'/')
-            for ($i = 0; $i -lt $segs.Count; $i++) { $extra.Add(($segs[$i..($segs.Count - 1)] -join '/')) }
-        }
+        # suffix from index 0; drive-shaped suffixes are removed centrally by Get-CandidateSet.
+        foreach ($sfx in (Get-BoundarySuffixes (Resolve-RepoRelative $t -Clamp))) { $extra.Add($sfx) }
     }
     # (7) strip EVERY remaining leading '/'
     $t = $t.TrimStart([char]'/')
@@ -254,6 +267,10 @@ function Get-FormsForText([string]$t, [string]$RepoRoot, [string]$FileDir) {
     $a = Resolve-RepoRelative $t
     $dir = if ($null -eq $FileDir) { '' } else { $FileDir.Replace('\', '/').Trim([char]'/') }
     $b = if ($dir -eq '') { $a } else { Resolve-RepoRelative ($dir + '/' + $t) }
+    # A path that climbs out of the repo ('../clavity/docs/x') may name the same tree in a sibling checkout:
+    # keep the as-written form dropped (it escapes) but ADD its boundary suffixes.
+    if ($null -eq $a) { foreach ($sfx in (Get-BoundarySuffixes (Resolve-RepoRelative $t -Clamp))) { $extra.Add($sfx) } }
+    if ($dir -ne '' -and $null -eq $b) { foreach ($sfx in (Get-BoundarySuffixes (Resolve-RepoRelative ($dir + '/' + $t) -Clamp))) { $extra.Add($sfx) } }
     return @{ A = $a; B = $b; Extra = $extra.ToArray() }
 }
 
@@ -281,16 +298,28 @@ function Get-VariantTexts([string]$t) {
     return $out.ToArray()
 }
 
-function ConvertTo-CandidatePath([string]$Text, [string]$RepoRoot, [string]$FileDir) {
+# Candidates for one reference text, plus the literal (as-written, spec-normalised) forms of the same text, so a
+# caller that needs both (include resolution) normalises once. Returns @{ Candidates = string[]; Literal = @{A;B;Extra} }.
+function Get-CandidateSet([string]$Text, [string]$RepoRoot, [string]$FileDir) {
     $out = [System.Collections.Generic.List[string]]::new()
+    $literal = $null
     foreach ($v in @(Get-VariantTexts (Get-PreparedText $Text))) {
         $f = Get-FormsForText $v $RepoRoot $FileDir
+        if ($null -eq $literal) { $literal = $f }
         foreach ($c in (@($f.A, $f.B) + @($f.Extra))) {
+            if ($null -eq $c) { continue }
+            # A leading git pathspec-magic prefix (':!x', ':^x', ':/x', ':(exclude)x') would make git exit 128 on a
+            # path: the raw form is never sent, the remainder is checked instead.
+            $c = $c -replace '^:(\([^)]*\)|[!^/]*)', ''
             # Windows git exits 128 on a drive-letter path, however it arose (D:/.., \\.\D:\.., /mnt/D:/..): never send one.
-            if ($null -ne $c -and $c -ne '' -and $c -notmatch '^[A-Za-z]:(/|$)' -and -not $out.Contains($c)) { $out.Add($c) }
+            if ($c -ne '' -and $c -notmatch '^[A-Za-z]:(/|$)' -and -not $out.Contains($c)) { $out.Add($c) }
         }
     }
-    return $out.ToArray()
+    return @{ Candidates = $out.ToArray(); Literal = $literal }
+}
+
+function ConvertTo-CandidatePath([string]$Text, [string]$RepoRoot, [string]$FileDir) {
+    return (Get-CandidateSet $Text $RepoRoot $FileDir).Candidates
 }
 
 # Which of $Paths does .antigravityignore hide? Each path is tested as given and with a trailing '/', in ONE git
@@ -357,7 +386,7 @@ function Invoke-AgentRulesIgnoreCheck([string]$RepoRoot, [string]$ScratchParent 
     try { $ruleFiles = @(Get-AgentRuleFiles $RepoRoot) }
     catch { $failures.Add("cannot list rule files: $($_.Exception.Message)"); return (& $result 0 0) }
 
-    $visited = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $visited = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     $queue = [System.Collections.Generic.Queue[string]]::new()
     foreach ($f in $ruleFiles) { if ($visited.Add($f)) { $queue.Enqueue($f) } }
     $entries = [System.Collections.Generic.List[object]]::new()
@@ -365,18 +394,23 @@ function Invoke-AgentRulesIgnoreCheck([string]$RepoRoot, [string]$ScratchParent 
     while ($queue.Count -gt 0) {
         $file = $queue.Dequeue()
         $abs = Join-Path $RepoRoot $file
-        if (-not (Test-Path -LiteralPath $abs -PathType Leaf)) { continue }   # tracked but deleted: agy cannot load it
+        if (-not (Test-Path -LiteralPath $abs -PathType Leaf)) {
+            # A tracked rule file absent from the working tree cannot be scanned: never let that read as a pass.
+            $failures.Add("tracked rule file missing from working tree: $file")
+            continue
+        }
         $scanned++
         $lines = [System.IO.File]::ReadAllText($abs) -split "`r`n|`r|`n"
         $slash = $file.LastIndexOf('/')
         $dir = if ($slash -ge 0) { $file.Substring(0, $slash) } else { '' }
         foreach ($ref in @(Get-RuleReferences $lines)) {
-            foreach ($c in @(ConvertTo-CandidatePath $ref.Text $RepoRoot $dir)) {
+            $set = Get-CandidateSet $ref.Text $RepoRoot $dir
+            foreach ($c in @($set.Candidates)) {
                 $entries.Add([pscustomobject]@{ File = $file; Line = $ref.Line; Candidate = $c })
             }
             if ($ref.Kind -ne 'include') { continue }
             # agy's include base is undocumented: try the including file's directory first, then the repo root.
-            $forms = Get-CandidateForms $ref.Text $RepoRoot $dir
+            $forms = $set.Literal
             $target = $null
             foreach ($c in @($forms.B, $forms.A)) {
                 if ($null -ne $c -and (Test-Path -LiteralPath (Join-Path $RepoRoot $c) -PathType Leaf)) { $target = $c; break }
@@ -386,24 +420,26 @@ function Invoke-AgentRulesIgnoreCheck([string]$RepoRoot, [string]$ScratchParent 
         }
     }
 
+    # One deduplicated census, used on every path: (file, line, candidate) triples, and the unique candidates.
+    $distinct = [System.Collections.Generic.List[object]]::new()
+    $done = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     $unique = [System.Collections.Generic.List[string]]::new()
     $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-    foreach ($e in $entries) { if ($seen.Add($e.Candidate)) { $unique.Add($e.Candidate) } }
+    foreach ($e in $entries) {
+        if ($seen.Add($e.Candidate)) { $unique.Add($e.Candidate) }
+        if ($done.Add("$($e.File)`0$($e.Line)`0$($e.Candidate)")) { $distinct.Add($e) }
+    }
     $ignored = @{}
     try { $ignored = Find-IgnoredPath $RepoRoot $unique.ToArray() $ScratchParent }
-    catch { $failures.Add("ignore check failed: $($_.Exception.Message)"); return (& $result $scanned $entries.Count) }
+    catch { $failures.Add("ignore check failed: $($_.Exception.Message)"); return (& $result $scanned $distinct.Count) }
 
-    $done = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-    $checked = 0
-    foreach ($e in $entries) {
-        if (-not $done.Add("$($e.File)`0$($e.Line)`0$($e.Candidate)")) { continue }
-        $checked++
+    foreach ($e in $distinct) {
         if ($ignored.ContainsKey($e.Candidate)) {
             $m = $ignored[$e.Candidate]
             $hits.Add("$($e.File):$($e.Line)  $($e.Candidate)  ->  .antigravityignore:$($m.IgnoreLine):$($m.Pattern)")
         }
     }
-    return (& $result $scanned $checked)
+    return (& $result $scanned $distinct.Count)
 }
 
 # main-guard: run only when invoked directly (NOT when dot-sourced by Pester - InvocationName is '.').

@@ -57,7 +57,7 @@ Hooks are managed with lefthook ([lefthook.yml](lefthook.yml)).
 - `clavity-classic/src/driver_cheatsheet.rs` and `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs` are
   generated from `agy-autotrain/knowledge/driver-cheatsheet.core.md` by `just gen-cheatsheet-literals`.
 - `installer/_shared/register-plugin.ps1` is SHA-256 pinned (`just sync-register-hash` refreshes the pin).
-- Seed agent artifacts must stay byte-identical across the two driver plugins (`just seed-sync-check`).
+- Seed agent artifacts are byte-identical across the two driver plugins (checked by `just seed-sync-check`).
 - `docs/USER_GUIDE.html` is generated.
 
 ### agy-facing code
