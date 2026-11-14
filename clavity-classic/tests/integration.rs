@@ -155,8 +155,6 @@
 // and you may not remove or obscure any functionality protected by the licence key or any licence
 // notices.
 
-
-
 //! Integration tests: drive the real `clavity` binary against a fake psmux (no live agy).
 //!
 //! Built only with `--features test-fakes` (see Cargo.toml) — empty otherwise — because it

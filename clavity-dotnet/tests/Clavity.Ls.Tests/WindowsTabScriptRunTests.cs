@@ -185,13 +185,18 @@ public sealed class WindowsTabScriptRunTests : IDisposable
         var exited = Path.Combine(_dir, exitedName);   // default: a quote and a space - both must survive quoting
         var plan = Launcher.Build(new LaunchOptions
         {
-            Folder = _dir, SessionId = "sid", AgyLogFilePath = Path.Combine(_dir, "agy.log"),
-            AgyEndpointFilePath = Path.Combine(_dir, "ep.json"), AgyExitedFilePath = exited,
+            Folder = _dir,
+            SessionId = "sid",
+            AgyLogFilePath = Path.Combine(_dir, "agy.log"),
+            AgyEndpointFilePath = Path.Combine(_dir, "ep.json"),
+            AgyExitedFilePath = exited,
         });
         var psi = new ProcessStartInfo(shell)
         {
             ArgumentList = { "-NoProfile", "-NonInteractive", "-EncodedCommand", plan.AgyTab.Arguments[6] },
-            UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
         };
         psi.Environment["PATH"] = binDir + Path.PathSeparator + Environment.SystemDirectory;
         using var p = Process.Start(psi)!;

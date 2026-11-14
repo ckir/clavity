@@ -155,8 +155,6 @@
 // and you may not remove or obscure any functionality protected by the licence key or any licence
 // notices.
 
-
-
 //! agentmemory signal-bus conventions (component C5).
 //!
 //! This module holds the *pure* conventions both sides agree on: request-id minting and the request

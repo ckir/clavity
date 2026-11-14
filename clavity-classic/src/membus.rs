@@ -155,8 +155,6 @@
 // and you may not remove or obscure any functionality protected by the licence key or any licence
 // notices.
 
-
-
 //! agentmemory daemon REST client — the I/O half of the bus (component C5').
 //!
 //! `src/bus.rs` holds the *pure conventions* (req-id minting, the `[req_id=..]` envelope) and

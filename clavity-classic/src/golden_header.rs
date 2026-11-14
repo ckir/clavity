@@ -155,8 +155,6 @@
 // and you may not remove or obscure any functionality protected by the licence key or any licence
 // notices.
 
-
-
 //! Shared, variant-agnostic golden-header contract — mirrors dotnet `GoldenHeader.cs` so a header
 //! written by either variant is read identically by the other. The wisdom is split into two
 //! independently-owned region files under a resolved directory (default `<home>/.clavity`):

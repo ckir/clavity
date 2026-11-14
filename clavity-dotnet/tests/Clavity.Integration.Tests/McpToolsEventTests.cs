@@ -179,10 +179,10 @@ public class McpToolsEventTests
     }
 
     [Fact]
-    public void A_healthy_call_records_start_then_end_success_and_adds_nothing_to_its_reply()
+    public async Task A_healthy_call_records_start_then_end_success_and_adds_nothing_to_its_reply()
     {
         var log = new LsEventLog();
-        var json = McpTools.RunAsync("agy_look", log, () => Task.FromResult(new { ok = 1 })).GetAwaiter().GetResult();
+        var json = await McpTools.RunAsync("agy_look", log, () => Task.FromResult(new { ok = 1 }));
 
         Assert.Equal("{\"ok\":1}", json);   // the reply is byte-for-byte what it was before the event log existed
         var events = log.Snapshot().Select(Parse).ToArray();
@@ -195,10 +195,10 @@ public class McpToolsEventTests
     }
 
     [Fact]
-    public void The_end_event_carries_the_elapsed_time_of_the_call()
+    public async Task The_end_event_carries_the_elapsed_time_of_the_call()
     {
         var log = new LsEventLog();
-        McpTools.RunAsync("agy_ask", log, async () => { await Task.Delay(120); return 1; }).GetAwaiter().GetResult();
+        await McpTools.RunAsync("agy_ask", log, async () => { await Task.Delay(120); return 1; });
         var end = Parse(log.Snapshot()[^1]);
         Assert.InRange(end.GetProperty("dur_ms").GetInt64(), 100, 5000);
     }
@@ -305,11 +305,11 @@ public class McpToolsEventTests
     }
 
     [Fact]
-    public void The_ring_in_a_fault_reply_holds_earlier_calls_too_oldest_first()
+    public async Task The_ring_in_a_fault_reply_holds_earlier_calls_too_oldest_first()
     {
         var log = new LsEventLog();
-        McpTools.RunAsync("agy_status", log, () => Task.FromResult(1)).GetAwaiter().GetResult();
-        var json = McpTools.RunAsync<object>("agy_ask", log, () => throw new InvalidOperationException("boom")).GetAwaiter().GetResult();
+        await McpTools.RunAsync("agy_status", log, () => Task.FromResult(1));
+        var json = await McpTools.RunAsync<object>("agy_ask", log, () => throw new InvalidOperationException("boom"));
 
         var tools = Parse(json).GetProperty("recentEvents").EnumerateArray()
             .Select(e => Parse(e.GetString()!)).Select(e => e.GetProperty("tool").GetString() + "/" + e.GetProperty("phase").GetString()).ToArray();
@@ -366,11 +366,11 @@ public class McpToolsEventTests
     }
 
     [Fact]
-    public void A_throwing_event_sink_cannot_change_a_reply()
+    public async Task A_throwing_event_sink_cannot_change_a_reply()
     {
         // Recording must never be able to fail the call it describes.
         var log = new LsEventLog(new BrokenWriter());
-        var json = McpTools.RunAsync("agy_look", log, () => Task.FromResult(new { ok = 1 })).GetAwaiter().GetResult();
+        var json = await McpTools.RunAsync("agy_look", log, () => Task.FromResult(new { ok = 1 }));
         Assert.Equal("{\"ok\":1}", json);
     }
 
@@ -421,13 +421,13 @@ public class McpToolsEventTests
 
     [Theory]
     [MemberData(nameof(FaultsWithRing))]
-    public void Every_fault_status_carries_logPath_callId_and_the_ring_except_waiting_for_human(Exception toThrow)
+    public async Task Every_fault_status_carries_logPath_callId_and_the_ring_except_waiting_for_human(Exception toThrow)
     {
         var path = TempLogPath();
         try
         {
             using var log = new LsEventLog(filePath: path);
-            var json = McpTools.RunAsync<object>("agy_ask", log, () => throw toThrow).GetAwaiter().GetResult();
+            var json = await McpTools.RunAsync<object>("agy_ask", log, () => throw toThrow);
             var root = Parse(json);
 
             Assert.Equal(path, root.GetProperty("logPath").GetString());
@@ -441,13 +441,13 @@ public class McpToolsEventTests
     }
 
     [Fact]
-    public void A_waiting_for_human_reply_carries_logPath_and_callId_but_no_ring()
+    public async Task A_waiting_for_human_reply_carries_logPath_and_callId_but_no_ring()
     {
         var path = TempLogPath();
         try
         {
             using var log = new LsEventLog(filePath: path);
-            var json = McpTools.RunAsync<object>("agy_ask", log, () => throw new AgyConversationPendingException("wait")).GetAwaiter().GetResult();
+            var json = await McpTools.RunAsync<object>("agy_ask", log, () => throw new AgyConversationPendingException("wait"));
             var root = Parse(json);
 
             Assert.Equal("waiting_for_human", root.GetProperty("status").GetString());
@@ -470,7 +470,7 @@ public class McpToolsEventTests
     }
 
     [Fact]
-    public void A_dropped_file_sink_is_not_advertised()
+    public async Task A_dropped_file_sink_is_not_advertised()
     {
         var dir = Path.Combine(Path.GetTempPath(), "clavity-t3-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -479,7 +479,7 @@ public class McpToolsEventTests
             var blocker = Path.Combine(dir, "blocker");
             File.WriteAllText(blocker, "x");
             using var log = new LsEventLog(filePath: Path.Combine(blocker, "events.log"));   // cannot be opened: sink drops on first write
-            var json = McpTools.RunAsync<object>("agy_ask", log, () => throw new InvalidOperationException("boom")).GetAwaiter().GetResult();
+            var json = await McpTools.RunAsync<object>("agy_ask", log, () => throw new InvalidOperationException("boom"));
             var root = Parse(json);
 
             Assert.False(root.TryGetProperty("logPath", out _));
@@ -489,10 +489,10 @@ public class McpToolsEventTests
     }
 
     [Fact]
-    public void Pre_existing_members_serialize_byte_identically_with_html_and_non_ascii_text()
+    public async Task Pre_existing_members_serialize_byte_identically_with_html_and_non_ascii_text()
     {
         var log = new LsEventLog();
-        var json = McpTools.RunAsync<object>("agy_ask", log, () => throw new InvalidOperationException("a<b>&c \u00e9 \u65e5\u672c")).GetAwaiter().GetResult();
+        var json = await McpTools.RunAsync<object>("agy_ask", log, () => throw new InvalidOperationException("a<b>&c \u00e9 \u65e5\u672c"));
         Assert.StartsWith(
             @"{""status"":""error"",""exception"":""InvalidOperationException"",""message"":""a\u003Cb\u003E\u0026c \u00E9 \u65E5\u672C"",""recentEvents"":",
             json);

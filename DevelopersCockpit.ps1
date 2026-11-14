@@ -311,7 +311,7 @@ $script:Actions = @(
 # ---------------------------------------------------------------------------
 # Render + main loop
 # ---------------------------------------------------------------------------
-function Render-Menu {
+function Show-Menu {
     if ($script:Interactive) { Clear-Host }
     Write-Host ''
     $parts = $script:BannerMembers | ForEach-Object { "$($_.Name) $(Get-MemberVersion $_.File)" }
@@ -329,7 +329,7 @@ function Render-Menu {
 
 $script:Quit = $false
 while (-not $script:Quit) {
-    Render-Menu
+    Show-Menu
     $key = (Read-Host 'select').Trim().ToUpperInvariant()
     if ([string]::IsNullOrEmpty($key)) { continue }
     $row = $script:Actions | Where-Object { $_.Key -eq $key } | Select-Object -First 1

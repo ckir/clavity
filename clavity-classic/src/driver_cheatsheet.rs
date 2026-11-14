@@ -155,8 +155,6 @@
 // and you may not remove or obscure any functionality protected by the licence key or any licence
 // notices.
 
-
-
 //! Reads the shared driver-cheatsheet (peer-driving core reminders) from the golden-header directory,
 //! degrading to a shipped baseline floor when missing/oversized/unreadable. The delivered block is the
 //! text prefixed with a `[driver_guidance]` label (spec §5.C-C).

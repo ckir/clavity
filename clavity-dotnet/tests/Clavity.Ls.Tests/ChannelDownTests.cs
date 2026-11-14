@@ -317,7 +317,7 @@ public class ChannelDownTests
     {
         // Distractor: PeerReachedButUnanswered proves the peer is alive, so it outranks the stale-file note.
         var d = ChannelDown.Diagnose(new LsDiscoveryException("busy")
-            { PeerReachedButUnanswered = true, StaleEndpointNote = "file X is stale" });
+        { PeerReachedButUnanswered = true, StaleEndpointNote = "file X is stale" });
 
         Assert.Equal(ChannelDown.LsUnanswered, d.StatusCode);
         Assert.Contains("RETRY", ChannelDown.Hint(d));

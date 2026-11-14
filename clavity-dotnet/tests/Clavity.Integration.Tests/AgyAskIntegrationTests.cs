@@ -1264,7 +1264,9 @@ public class AgyAskIntegrationTests
     /// <summary>A DONE planner step that requests NO tools: agy's turn is over.</summary>
     private static CascadeStep TurnEnd(string text) => new()
     {
-        Kind = 15, Status = DoneStatus, AssistantOutput = new CascadeAssistantOutput { Text = text },
+        Kind = 15,
+        Status = DoneStatus,
+        AssistantOutput = new CascadeAssistantOutput { Text = text },
     };
 
     /// <summary>A planner step identical to <see cref="TurnEnd"/> except for ONE field, so each control isolates it.</summary>
@@ -1458,7 +1460,9 @@ public class AgyAskIntegrationTests
 
     private static CascadeStep Generating(string text, int kind = 15, int status = GeneratingStatus) => new()
     {
-        Kind = kind, Status = status, AssistantOutput = new CascadeAssistantOutput { Text = text },
+        Kind = kind,
+        Status = status,
+        AssistantOutput = new CascadeAssistantOutput { Text = text },
     };
 
     /// <summary>Window 0 appends the step and does not go idle; window 1 changes nothing (the step count is FLAT, which is what
@@ -3385,8 +3389,10 @@ public class AgyAskIntegrationTests
             var log = new LsEventLog();
             var view = new AgyView(new AgyViewOptions
             {
-                CliLogPath = cliLog, Events = log,
-                IdleStallWindow = TimeSpan.FromMilliseconds(150), IdleAbsoluteMax = TimeSpan.Zero,
+                CliLogPath = cliLog,
+                Events = log,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
             });
             await McpTools.AgyAsk(view, "do a long thing", new CollectingProgress<ProgressNotificationValue>());
 

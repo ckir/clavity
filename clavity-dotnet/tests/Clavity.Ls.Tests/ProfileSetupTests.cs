@@ -362,7 +362,7 @@ public sealed class ProfileSetupTests
     public void Doctor_exit_5_with_a_document_continues()
     {
         var fx = NewFake(BothEnabled().Concat(new Dictionary<string, object>
-            { [Doctor] = new CommandResult(5, DoctorJson(Dir), "warnings", false) }).ToDictionary(p => p.Key, p => p.Value));
+        { [Doctor] = new CommandResult(5, DoctorJson(Dir), "warnings", false) }).ToDictionary(p => p.Key, p => p.Value));
         Assert.Equal(Dir, ProfileSetup.Run(fx, "work"));
     }
 
@@ -370,10 +370,11 @@ public sealed class ProfileSetupTests
     public void Doctor_exit_5_with_a_missing_directory_fails()
     {
         var fx = NewFake(BothEnabled().Concat(new Dictionary<string, object>
-            { [Doctor] = new CommandResult(5, DoctorJson(Dir), "", false) }).ToDictionary(p => p.Key, p => p.Value));
+        { [Doctor] = new CommandResult(5, DoctorJson(Dir), "", false) }).ToDictionary(p => p.Key, p => p.Value));
         var missing = new Fake
         {
-            Script = fx.Script, MissingDirs = new() { Dir },
+            Script = fx.Script,
+            MissingDirs = new() { Dir },
         };
         Assert.Null(ProfileSetup.Run(missing, "work"));
         Assert.Contains("clavity: ", missing.Err.ToString());

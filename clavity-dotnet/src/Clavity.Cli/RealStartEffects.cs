@@ -229,7 +229,7 @@ internal sealed class RealStartEffects : IStartEffects
     public int RunScriptHere(string scriptPath)
     {
         using var process = Process.Start(new ProcessStartInfo("/bin/sh")
-            { ArgumentList = { scriptPath, "--here" }, UseShellExecute = false })!;
+        { ArgumentList = { scriptPath, "--here" }, UseShellExecute = false })!;
         process.WaitForExit();
         return process.ExitCode;
     }

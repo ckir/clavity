@@ -234,8 +234,11 @@ public sealed class PosixScriptRunTests : IDisposable
         var script = Path.Combine(_dir, "s.sh");
         File.WriteAllText(script, Launcher.BuildPosixScript(new LaunchOptions
         {
-            Folder = Fwd(work), SessionId = "sid", AgyLogFilePath = Fwd(Path.Combine(_dir, "agy.log")),
-            AgyEndpointFilePath = Fwd(Path.Combine(_dir, "ep.json")), SkipPermissions = true,
+            Folder = Fwd(work),
+            SessionId = "sid",
+            AgyLogFilePath = Fwd(Path.Combine(_dir, "agy.log")),
+            AgyEndpointFilePath = Fwd(Path.Combine(_dir, "ep.json")),
+            SkipPermissions = true,
             AgyInstallDocPath = Fwd(Path.Combine(_dir, "doc.md")),
         }, claim, exited));
         return (bin, script, claim, exited);

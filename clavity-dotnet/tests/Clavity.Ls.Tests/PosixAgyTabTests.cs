@@ -324,8 +324,12 @@ public class PosixAgyTabTests
         var deps = w.Deps();
         var lateDeps = new PosixAgyTabDeps
         {
-            GetEnv = deps.GetEnv, ParentComms = deps.ParentComms, Start = deps.Start, FileExists = deps.FileExists,
-            NowMs = deps.NowMs, Sleep = deps.Sleep,
+            GetEnv = deps.GetEnv,
+            ParentComms = deps.ParentComms,
+            Start = deps.Start,
+            FileExists = deps.FileExists,
+            NowMs = deps.NowMs,
+            Sleep = deps.Sleep,
             TryCreateExclusive = _ => false,   // a late script won the race
         };
         Assert.NotNull(PosixAgyTab.TryOpen(P, "/repo", lateDeps, PosixAgyTab.ReadyTimeout));

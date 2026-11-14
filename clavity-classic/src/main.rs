@@ -155,8 +155,6 @@
 // and you may not remove or obscure any functionality protected by the licence key or any licence
 // notices.
 
-
-
 //! clavity — a remote control for a live Antigravity (`agy`) session in the same folder.
 //!
 //! Claude drives agy on demand via a psmux "doorbell" (`send-keys`) + the agentmemory signal

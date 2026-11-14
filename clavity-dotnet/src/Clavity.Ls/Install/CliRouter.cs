@@ -212,75 +212,75 @@ public static class CliRouter
         switch (verb)
         {
             case "install":
-            {
-                var pluginName = OptionValue(args, "--plugin") ?? PluginInstaller.PluginName;   // default = core
-                var isClaudeRunning = claudeRunning ?? ClaudeAppRunning;
-                if (present.Contains(Agent.Claude) && isClaudeRunning())
                 {
-                    output.WriteLine("clavity-ls: Claude Code is running — close Claude Code completely, then re-run. " +
-                        "A running Claude overwrites the plugin registration (leaving the bridge unregistered).");
-                    return 5;
+                    var pluginName = OptionValue(args, "--plugin") ?? PluginInstaller.PluginName;   // default = core
+                    var isClaudeRunning = claudeRunning ?? ClaudeAppRunning;
+                    if (present.Contains(Agent.Claude) && isClaudeRunning())
+                    {
+                        output.WriteLine("clavity-ls: Claude Code is running — close Claude Code completely, then re-run. " +
+                            "A running Claude overwrites the plugin registration (leaving the bridge unregistered).");
+                        return 5;
+                    }
+                    var anySucceeded = false;
+                    var registeredCount = 0;
+                    foreach (var a in Enum.GetValues<Agent>())
+                    {
+                        if (!present.Contains(a)) { output.WriteLine($"[{a}] skipped — not present on this machine"); continue; }
+                        var r = PluginInstaller.Install(a, pluginName, marketplaceRoot, streamer ?? PowerShellRegistrar.Stream);
+                        if (r.Ok) registeredCount++;
+                        anySucceeded |= r.Ok;
+                        output.WriteLine($"[{a}] {(r.Ok ? "ok" : "FAILED")}: {r.Detail}");
+                    }
+                    // C1 per-agent semantics: fail only if EVERY detected agent's registration failed
+                    // (a genuine no-op install). A partial success is reported, not rolled back here.
+                    if (!anySucceeded)
+                    {
+                        output.WriteLine("clavity-ls: plugin registration failed for every detected agent.");
+                        return 1;
+                    }
+                    if (registeredCount < present.Count)
+                        output.WriteLine("clavity-ls: plugin registered for at least one agent; the FAILED agent(s) above were left as reported (not rolled back).");
+                    return 0;
                 }
-                var anySucceeded = false;
-                var registeredCount = 0;
-                foreach (var a in Enum.GetValues<Agent>())
-                {
-                    if (!present.Contains(a)) { output.WriteLine($"[{a}] skipped — not present on this machine"); continue; }
-                    var r = PluginInstaller.Install(a, pluginName, marketplaceRoot, streamer ?? PowerShellRegistrar.Stream);
-                    if (r.Ok) registeredCount++;
-                    anySucceeded |= r.Ok;
-                    output.WriteLine($"[{a}] {(r.Ok ? "ok" : "FAILED")}: {r.Detail}");
-                }
-                // C1 per-agent semantics: fail only if EVERY detected agent's registration failed
-                // (a genuine no-op install). A partial success is reported, not rolled back here.
-                if (!anySucceeded)
-                {
-                    output.WriteLine("clavity-ls: plugin registration failed for every detected agent.");
-                    return 1;
-                }
-                if (registeredCount < present.Count)
-                    output.WriteLine("clavity-ls: plugin registered for at least one agent; the FAILED agent(s) above were left as reported (not rolled back).");
-                return 0;
-            }
 
             case "uninstall":
-            {
-                var pluginName = OptionValue(args, "--plugin") ?? PluginInstaller.PluginName;   // default = core
-                if (present.Contains(Agent.Claude) && (claudeRunning ?? ClaudeAppRunning)())
                 {
-                    output.WriteLine("clavity-ls: Claude Code is running — close it completely, then re-run. " +
-                        "Uninstalling now lets a running Claude restore a dangling registration on exit.");
-                    return 5;
+                    var pluginName = OptionValue(args, "--plugin") ?? PluginInstaller.PluginName;   // default = core
+                    if (present.Contains(Agent.Claude) && (claudeRunning ?? ClaudeAppRunning)())
+                    {
+                        output.WriteLine("clavity-ls: Claude Code is running — close it completely, then re-run. " +
+                            "Uninstalling now lets a running Claude restore a dangling registration on exit.");
+                        return 5;
+                    }
+                    var ok = true;
+                    foreach (var a in Enum.GetValues<Agent>())
+                    {
+                        if (!present.Contains(a)) { output.WriteLine($"[{a}] skipped — not present on this machine"); continue; }
+                        var r = PluginInstaller.Uninstall(a, pluginName, streamer ?? PowerShellRegistrar.Stream);
+                        ok &= r.Ok;
+                        output.WriteLine($"[{a}] {(r.Ok ? "ok" : "FAILED")}: {r.Detail}");
+                    }
+                    if (purgeData) PurgeData(logsDir, clavityDataDir, output);
+                    return ok ? 0 : 1;   // non-zero if ANY agent's removal failed (the Inno uninstall gate depends on this)
                 }
-                var ok = true;
-                foreach (var a in Enum.GetValues<Agent>())
-                {
-                    if (!present.Contains(a)) { output.WriteLine($"[{a}] skipped — not present on this machine"); continue; }
-                    var r = PluginInstaller.Uninstall(a, pluginName, streamer ?? PowerShellRegistrar.Stream);
-                    ok &= r.Ok;
-                    output.WriteLine($"[{a}] {(r.Ok ? "ok" : "FAILED")}: {r.Detail}");
-                }
-                if (purgeData) PurgeData(logsDir, clavityDataDir, output);
-                return ok ? 0 : 1;   // non-zero if ANY agent's removal failed (the Inno uninstall gate depends on this)
-            }
 
             case "is-installed":
-            {
-                if (args.Length < 2) { output.WriteLine("usage: clavity-ls is-installed <plugin-name>"); return 2; }
-                var name = args[1];
-                foreach (var a in present)
                 {
-                    var exe = a == Agent.Claude ? "claude" : "agy";
-                    var r = run(exe, new[] { "plugin", "list" });
-                    if (r.ExitCode == 0 && ContainsPluginName(r.Output, name))
+                    if (args.Length < 2) { output.WriteLine("usage: clavity-ls is-installed <plugin-name>"); return 2; }
+                    var name = args[1];
+                    foreach (var a in present)
                     {
-                        output.WriteLine($"[{a}] {name} is installed");
-                        return 0;
+                        var exe = a == Agent.Claude ? "claude" : "agy";
+                        var r = run(exe, new[] { "plugin", "list" });
+                        if (r.ExitCode == 0 && ContainsPluginName(r.Output, name))
+                        {
+                            output.WriteLine($"[{a}] {name} is installed");
+                            return 0;
+                        }
                     }
+                    output.WriteLine($"{name} is not installed");
+                    return 1;
                 }
-                output.WriteLine($"{name} is not installed");
-                return 1;
-            }
 
             default:
                 output.WriteLine("usage: clavity-ls [install | uninstall | is-installed <plugin>]");

@@ -155,8 +155,6 @@
 // and you may not remove or obscure any functionality protected by the licence key or any licence
 // notices.
 
-
-
 //! psmux primitives + pane-state detection (component C3).
 //!
 //! The live `agy` (Antigravity CLI) session runs inside a psmux session (default

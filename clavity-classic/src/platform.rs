@@ -155,8 +155,6 @@
 // and you may not remove or obscure any functionality protected by the licence key or any licence
 // notices.
 
-
-
 //! Platform seam — OS detection + the per-OS assumptions clavity makes.
 //!
 //! **Only Windows is exercised today.** The `Unix` arms are scaffolding for a future

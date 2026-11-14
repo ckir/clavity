@@ -347,7 +347,7 @@ public class McpToolsIntegrationTests
         await using var app = await StartFakeAsync(fake);
         var cliLog = WriteCliLog(PortOf(app));
         var dir = Path.GetDirectoryName(cliLog)!;
-        
+
         var cheatDir = Path.Combine(Path.GetTempPath(), "clavity-dg-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(cheatDir);
         try

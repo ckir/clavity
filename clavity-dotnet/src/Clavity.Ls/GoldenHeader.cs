@@ -348,7 +348,7 @@ public static class GoldenHeader
                 case SidecarVerdict.Absent when requireSidecar:
                     warn?.Invoke($"golden-header GROWTH at {path} has no .sha256 sidecar - it was not written by curate-commit, skipped");
                     return null;
-                // Absent = ACCEPT (installer-seeded SEED has no sidecar); Match = accept.
+                    // Absent = ACCEPT (installer-seeded SEED has no sidecar); Match = accept.
             }
 
             string text;

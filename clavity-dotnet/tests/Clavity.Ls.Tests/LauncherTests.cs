@@ -296,8 +296,11 @@ public class LauncherTests
     {
         var plan = Launcher.Build(new LaunchOptions
         {
-            Folder = "C:\\proj", SessionId = "sid", AgyLogFilePath = "C:\\logs\\agy.log",
-            AgyEndpointFilePath = "C:\\ep\\agy-endpoint.sid.json", SkipPermissions = true,
+            Folder = "C:\\proj",
+            SessionId = "sid",
+            AgyLogFilePath = "C:\\logs\\agy.log",
+            AgyEndpointFilePath = "C:\\ep\\agy-endpoint.sid.json",
+            SkipPermissions = true,
         });
         var script = DecodeScript(plan);
         Assert.DoesNotContain(" -i '", script);
@@ -308,8 +311,11 @@ public class LauncherTests
     {
         var plan = Launcher.Build(new LaunchOptions
         {
-            Folder = "C:\\proj", SessionId = "sid", AgyLogFilePath = "C:\\logs\\agy.log",
-            AgyEndpointFilePath = "C:\\ep\\agy-endpoint.sid.json", AgyExitedFilePath = "C:\\o'x\\agy-session.sid.exited",
+            Folder = "C:\\proj",
+            SessionId = "sid",
+            AgyLogFilePath = "C:\\logs\\agy.log",
+            AgyEndpointFilePath = "C:\\ep\\agy-endpoint.sid.json",
+            AgyExitedFilePath = "C:\\o'x\\agy-session.sid.exited",
         });
         Assert.EndsWith(
             "$clavityRc = ''; try { agy --log-file 'C:\\logs\\agy.log'; $clavityRc = $LASTEXITCODE } finally { " +
@@ -329,8 +335,11 @@ public class LauncherTests
 
         var plan = Launcher.Build(new LaunchOptions
         {
-            Folder = "C:\\proj", SessionId = "sid", AgyLogFilePath = "C:\\logs\\agy.log",
-            AgyEndpointFilePath = "C:\\ep\\agy-endpoint.sid.json", WindowsShell = "powershell",
+            Folder = "C:\\proj",
+            SessionId = "sid",
+            AgyLogFilePath = "C:\\logs\\agy.log",
+            AgyEndpointFilePath = "C:\\ep\\agy-endpoint.sid.json",
+            WindowsShell = "powershell",
         });
         Assert.Equal(new[] { "new-tab", "--startingDirectory", "C:\\proj", "powershell", "-NoExit", "-EncodedCommand" },
             plan.AgyTab.Arguments.Take(6));
