@@ -217,13 +217,13 @@ Describe 'Invoke-AgentRulesIgnoreCheck - git failures fail closed (I3, I4a)' {
         $r.ExitCode | Should -Be 1
         ($r.Failures -join ' ') | Should -Match 'check-ignore'
     }
-    It 'fails closed when check-ignore reports a path that was not sent' -Skip:([Environment]::OSVersion.Platform -eq 'Win32NT') {
+    It 'fails closed when check-ignore reports a path that was not sent' -Skip:([Environment]::OSVersion.Platform -eq 'Win32NT') -Tag 'LinuxOnly' {
         $repo = New-RuleRepo @{ 'AGENTS.md' = "``.clavity/x```n" }
         $r = Invoke-WithShim (New-GitShim "printf '%s\0%s\0%s\0%s\0' .gitignore 2 '.clavity/' 'never/sent'; exit 0") $repo
         $r.ExitCode | Should -Be 1
         ($r.Failures -join ' ') | Should -Match 'not sent'
     }
-    It 'fails closed when check-ignore reports a match from a source other than .gitignore' -Skip:([Environment]::OSVersion.Platform -eq 'Win32NT') {
+    It 'fails closed when check-ignore reports a match from a source other than .gitignore' -Skip:([Environment]::OSVersion.Platform -eq 'Win32NT') -Tag 'LinuxOnly' {
         $repo = New-RuleRepo @{ 'AGENTS.md' = "``.clavity/x```n" }
         $r = Invoke-WithShim (New-GitShim "printf '%s\0%s\0%s\0%s\0' /home/u/.config/git/ignore 1 '.clavity/' '.clavity/x'; exit 0") $repo
         $r.ExitCode | Should -Be 1
@@ -449,7 +449,7 @@ Describe 'Invoke-AgentRulesIgnoreCheck - census and include resolution (F3-F8)' 
         @(Get-RuleReferences @('[^1]: some text')).Count | Should -Be 0
         (Invoke-Check (New-RuleRepo @{ 'docs/AGENTS.md' = "[r]: hidden-plan.md`n" })).ExitCode | Should -Be 1
     }
-    It 'F6: two includes that differ only by case are both scanned' -Skip:([Environment]::OSVersion.Platform -ne 'Unix' -or (Test-Path '/System/Library')) {
+    It 'F6: two includes that differ only by case are both scanned' -Skip:([Environment]::OSVersion.Platform -ne 'Unix' -or (Test-Path '/System/Library')) -Tag 'LinuxOnly' {
         $files = [hashtable]::new([System.StringComparer]::Ordinal)   # a literal would be a duplicate key: PS keys ignore case
         $files['AGENTS.md'] = "@[a](docs/a.md)`n@[b](docs/A.md)`n"; $files['docs/a.md'] = "plain`n"; $files['docs/A.md'] = "``.clavity/x```n"
         $r = Invoke-Check (New-RuleRepo $files)
