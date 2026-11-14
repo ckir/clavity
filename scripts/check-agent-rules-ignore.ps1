@@ -96,22 +96,30 @@ function Get-RuleReferences([string[]]$Lines) {
         }
     }
     $fenceChar = ''; $fenceLen = 0
+    # A fence may sit inside a blockquote ('> ```') or a list item ('- ```', '1. ```', or indented under one):
+    # allow any run of whitespace, '>' and list markers before the fence characters.
+    $pre = '^(?:\s|>|[-*+](?=\s)|\d{1,9}[.)](?=\s))*'
     $n = 0
     foreach ($line in $Lines) {
         $n++
         if ($null -eq $line) { $line = '' }
         if ($fenceChar -ne '') {
-            if ($line -match '^\s{0,3}(`{3,}|~{3,})\s*$' -and $Matches[1][0] -eq $fenceChar[0] -and $Matches[1].Length -ge $fenceLen) {
+            if ($line -match ($pre + '(`{3,}|~{3,})\s*$') -and $Matches[1][0] -eq $fenceChar[0] -and $Matches[1].Length -ge $fenceLen) {
                 $fenceChar = ''; $fenceLen = 0
                 continue
             }
             foreach ($tok in ($line -split '\s+')) { if ($tok -ne '') { & $add $n $tok 'fence' $true } }
             continue
         }
-        if ($line -match '^\s{0,3}(`{3,}|~{3,})(.*)$') {
+        if ($line -match ($pre + '(`{3,}|~{3,})(.*)$')) {
             $fenceChar = [string]$Matches[1][0]; $fenceLen = $Matches[1].Length
             foreach ($tok in ($Matches[2] -split '\s+')) { if ($tok -ne '') { & $add $n $tok 'prose' $false } }
             continue
+        }
+        # Reference-style link definition '[id]: dest "title"': the destination is a link target.
+        if ($line -match '^\s{0,3}\[[^\]]+\]:\s*(?:<(?<ang>[^>]*)>|(?<raw>\S+))') {
+            $rd = if ($Matches['ang']) { $Matches['ang'] } else { $Matches['raw'] }
+            & $add $n $rd 'link' $true
         }
         # Inline code spans: a backtick run closed by a run of the same length.
         foreach ($m in [regex]::Matches($line, '(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)')) {
@@ -155,8 +163,7 @@ function Resolve-RepoRelative([string]$Path) {
 
 # Spec "Normalisation, in order" steps 1-7, then forms A (root-relative) and B (file-directory-relative).
 # Returns @{ A = <path or $null>; B = <path or $null> }.
-function Get-CandidateForms([string]$Text, [string]$RepoRoot, [string]$FileDir) {
-    $none = @{ A = $null; B = $null }
+function Get-PreparedText([string]$Text) {
     $t = $Text
     # (1) percent-decode, first, so an encoded %23 fragment is dropped by step 3
     try { $t = [System.Uri]::UnescapeDataString($t) } catch { }
@@ -165,6 +172,12 @@ function Get-CandidateForms([string]$Text, [string]$RepoRoot, [string]$FileDir) 
     # (3) drop a #fragment and a ?query
     $cut = $t.IndexOfAny([char[]]@('#', '?'))
     if ($cut -ge 0) { $t = $t.Substring(0, $cut) }
+    return $t
+}
+
+# Steps 4-7 and forms A/B for a text that already went through steps 1-3.
+function Get-FormsForText([string]$t, [string]$RepoRoot, [string]$FileDir) {
+    $none = @{ A = $null; B = $null }
     # (4) backslash -> slash
     $t = $t.Replace('\', '/')
     # (5) skip scheme:// URLs other than file://; rewrite a file: URI as a path
@@ -195,11 +208,36 @@ function Get-CandidateForms([string]$Text, [string]$RepoRoot, [string]$FileDir) 
     return @{ A = $a; B = $b }
 }
 
-function ConvertTo-CandidatePath([string]$Text, [string]$RepoRoot, [string]$FileDir) {
-    $f = Get-CandidateForms $Text $RepoRoot $FileDir
+# The spec-normalised forms (used for include resolution, where only the literal target counts).
+function Get-CandidateForms([string]$Text, [string]$RepoRoot, [string]$FileDir) {
+    return (Get-FormsForText (Get-PreparedText $Text) $RepoRoot $FileDir)
+}
+
+# ADDITIVE variants of a prepared text (owner ruling R3): the original is always first and is never replaced; each
+# extra form can only ADD a hit. (a) a trailing :line[-line][:col] removed; (b) leading @ _ ~ removed; (c) trailing
+# _ ~ (and the step-2 punctuation) removed. All 8 combinations, so `_docs/x.md_` and `~~docs/x.md~~` reduce fully.
+function Get-VariantTexts([string]$t) {
     $out = [System.Collections.Generic.List[string]]::new()
-    foreach ($c in @($f.A, $f.B)) {
-        if ($null -ne $c -and -not $out.Contains($c)) { $out.Add($c) }
+    $out.Add($t)
+    $bases = @($t, ($t -replace ':\d+(-\d+)?(:\d+)?$', ''))
+    foreach ($base in $bases) {
+        $leads = @($base, $base.TrimStart([char[]]@('@', '_', '~')))
+        foreach ($l in $leads) {
+            foreach ($v in @($l, $l.TrimEnd([char[]]@('_', '~', '*', '`', '.', ',', ';', ':', '!')))) {
+                if ($v -ne '' -and -not $out.Contains($v)) { $out.Add($v) }
+            }
+        }
+    }
+    return $out.ToArray()
+}
+
+function ConvertTo-CandidatePath([string]$Text, [string]$RepoRoot, [string]$FileDir) {
+    $out = [System.Collections.Generic.List[string]]::new()
+    foreach ($v in @(Get-VariantTexts (Get-PreparedText $Text))) {
+        $f = Get-FormsForText $v $RepoRoot $FileDir
+        foreach ($c in @($f.A, $f.B)) {
+            if ($null -ne $c -and -not $out.Contains($c)) { $out.Add($c) }
+        }
     }
     return $out.ToArray()
 }
@@ -240,8 +278,9 @@ function Find-IgnoredPath([string]$RepoRoot, [string[]]$Paths, [string]$ScratchP
         if ($r.Stdout -eq '') { $f = @() }
         if (@($f).Count % 4 -ne 0) { throw "git check-ignore output is not 4-field records ($(@($f).Count) fields)" }
         for ($i = 0; $i + 3 -lt @($f).Count; $i += 4) {
-            if ($f[$i] -ne '.gitignore' -or $f[$i + 2].StartsWith('!')) { continue }
-            if (-not $sent.ContainsKey($f[$i + 3])) { continue }
+            if ($f[$i] -ne '.gitignore') { throw "git check-ignore reported a match from an unexpected source '$($f[$i])' (expected .gitignore)" }
+            if (-not $sent.ContainsKey($f[$i + 3])) { throw "git check-ignore reported a path that was not sent: '$($f[$i + 3])'" }
+            if ($f[$i + 2].StartsWith('!')) { continue }
             $key = $sent[$f[$i + 3]]
             if ($found.ContainsKey($key) -and $f[$i + 3] -ne $key) { continue }   # prefer the as-given form
             $found[$key] = [pscustomobject]@{ IgnoreLine = [int]$f[$i + 1]; Pattern = $f[$i + 2] }

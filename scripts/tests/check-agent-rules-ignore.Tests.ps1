@@ -124,3 +124,121 @@ Describe 'Invoke-AgentRulesIgnoreCheck' {
         (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "x`n``.clavity/x``" })).ExitCode | Should -Be 1
     }
 }
+
+# Fix round 1 (review findings I1-I4). The 21 cases above are the verbatim original suite; everything below is additive.
+Describe 'Invoke-AgentRulesIgnoreCheck - fences nested in list items and blockquotes (I1)' {
+    It 'flags a hidden path in a fenced block indented under a list item' {
+        $t = (@('- step:', '', '    ```bash', '    cat debug.log', '    ```') -join "`n") + "`n"
+        (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = $t })).ExitCode | Should -Be 1
+    }
+    It 'flags a hidden path in a fenced block inside a blockquote' {
+        $t = (@('> ```bash', '> cat debug.log', '> ```') -join "`n") + "`n"
+        (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = $t })).ExitCode | Should -Be 1
+    }
+    It 'flags a hidden path in a fence opened on the list-marker line, bulleted and numbered' {
+        foreach ($m in @('- ', '* ', '1. ', '2) ')) {
+            $t = (@(($m + '```bash'), '  cat debug.log', '  ```') -join "`n") + "`n"
+            (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = $t })).ExitCode | Should -Be 1 -Because $m
+        }
+    }
+    It 'closes a nested fence, so the prose after it is not scanned as fence content' {
+        $t = (@('> ```bash', '> ls', '> ```', 'plain', 'debug.log') -join "`n") + "`n"
+        (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = $t })).ExitCode | Should -Be 0
+    }
+}
+
+Describe 'Invoke-AgentRulesIgnoreCheck - additive candidate forms (I2)' {
+    It '(a) flags a path followed by :line, :line-line or :line:col' {
+        foreach ($t in @('`docs/hidden-plan.md:42`', 'docs/hidden-plan.md:10-20', 'see docs/hidden-plan.md:10:5.')) {
+            (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "$t`n" })).ExitCode | Should -Be 1 -Because $t
+        }
+    }
+    It '(b) flags a path with a leading @' {
+        foreach ($t in @('@clavity-dotnet/pairing/README.md', '`@clavity-dotnet/pairing/README.md`', '@docs/hidden-plan.md')) {
+            (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "$t`n" })).ExitCode | Should -Be 1 -Because $t
+        }
+    }
+    It '(c) flags a path wrapped in markdown emphasis or strikethrough' {
+        foreach ($t in @('_docs/hidden-plan.md_', '~~docs/hidden-plan.md~~', '__docs/hidden-plan.md__')) {
+            (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "$t`n" })).ExitCode | Should -Be 1 -Because $t
+        }
+    }
+    It 'keeps the as-written form, so a hidden underscore-prefixed folder is still flagged' {
+        (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "``_private/x.md```n" } -Ignore "_private/`n")).ExitCode | Should -Be 1
+    }
+    It '(d) flags a reference-style link definition destination in a nested file' {
+        foreach ($t in @('[r]: hidden-plan.md', '[r]: <hidden-plan.md>', '  [r]:   hidden-plan.md "Title"')) {
+            (Invoke-Check (New-RuleRepo @{ 'docs/AGENTS.md' = "$t`n" })).ExitCode | Should -Be 1 -Because $t
+        }
+    }
+    It 'adds forms without removing the as-written one' {
+        $c = @(ConvertTo-CandidatePath -Text '_docs/hidden-plan.md_' -RepoRoot '/r' -FileDir '')
+        $c | Should -Contain '_docs/hidden-plan.md_'
+        $c | Should -Contain 'docs/hidden-plan.md'
+        @(ConvertTo-CandidatePath -Text 'docs/a.md:42' -RepoRoot '/r' -FileDir '') | Should -Be @('docs/a.md:42', 'docs/a.md')
+    }
+}
+
+Describe 'Invoke-AgentRulesIgnoreCheck - git failures fail closed (I3, I4a)' {
+    BeforeAll {
+        $script:IsWin = [Environment]::OSVersion.Platform -eq 'Win32NT'
+        $script:RealGit = (Get-Command git -CommandType Application | Select-Object -First 1).Source
+        # A `git` earlier on PATH that behaves as the real one except for check-ignore, where it runs $Body.
+        function New-GitShim([string]$Body, [string]$WinBody = 'echo fatal: boom 1>&2 & exit /b 128') {
+            $dir = Join-Path $TestDrive ('shim-' + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            if ($script:IsWin) {
+                $cmd = "@echo off`r`necho %* | findstr /C:`"check-ignore`" >nul && ($WinBody)`r`n`"$($script:RealGit)`" %*`r`n"
+                [IO.File]::WriteAllText((Join-Path $dir 'git.cmd'), $cmd)
+            } else {
+                $sh = "#!/bin/bash`nfor a in `"`$@`"; do`n  if [ `"`$a`" = check-ignore ]; then`n    cat > /dev/null`n    $Body`n  fi`ndone`nexec '$($script:RealGit)' `"`$@`"`n"
+                $f = Join-Path $dir 'git'
+                [IO.File]::WriteAllText($f, $sh)
+                chmod +x $f
+            }
+            return $dir
+        }
+        function Invoke-WithShim([string]$ShimDir, [string]$Repo) {
+            $saved = $env:PATH
+            try { $env:PATH = $ShimDir + [IO.Path]::PathSeparator + $saved; return (Invoke-Check $Repo) }
+            finally { $env:PATH = $saved }
+        }
+    }
+    It 'fails closed (exit 1, never a pass) when git check-ignore errors' {
+        $repo = New-RuleRepo @{ 'AGENTS.md' = "``.clavity/x```n" }
+        $r = Invoke-WithShim (New-GitShim 'echo "fatal: boom" >&2; exit 128') $repo
+        $r.ExitCode | Should -Be 1
+        ($r.Failures -join ' ') | Should -Match 'check-ignore'
+        $r.Hits.Count | Should -Be 0
+    }
+    It 'fails closed on a clean file too, when git check-ignore errors' {
+        $repo = New-RuleRepo @{ 'AGENTS.md' = "Run ``just test``.`n" }
+        $r = Invoke-WithShim (New-GitShim 'echo "fatal: boom" >&2; exit 128') $repo
+        $r.ExitCode | Should -Be 1
+        ($r.Failures -join ' ') | Should -Match 'check-ignore'
+    }
+    It 'fails closed when check-ignore reports a path that was not sent' -Skip:([Environment]::OSVersion.Platform -eq 'Win32NT') {
+        $repo = New-RuleRepo @{ 'AGENTS.md' = "``.clavity/x```n" }
+        $r = Invoke-WithShim (New-GitShim "printf '%s\0%s\0%s\0%s\0' .gitignore 2 '.clavity/' 'never/sent'; exit 0") $repo
+        $r.ExitCode | Should -Be 1
+        ($r.Failures -join ' ') | Should -Match 'not sent'
+    }
+    It 'fails closed when check-ignore reports a match from a source other than .gitignore' -Skip:([Environment]::OSVersion.Platform -eq 'Win32NT') {
+        $repo = New-RuleRepo @{ 'AGENTS.md' = "``.clavity/x```n" }
+        $r = Invoke-WithShim (New-GitShim "printf '%s\0%s\0%s\0%s\0' /home/u/.config/git/ignore 1 '.clavity/' '.clavity/x'; exit 0") $repo
+        $r.ExitCode | Should -Be 1
+        ($r.Failures -join ' ') | Should -Match 'unexpected source'
+    }
+}
+
+Describe 'ConvertTo-CandidatePath - Windows-style roots on any OS (I4b, I4c)' {
+    It 'makes a file:///X:/ URI repo-relative against a Windows root' {
+        ConvertTo-CandidatePath -Text 'file:///C:/Repo/.clavity/x' -RepoRoot 'C:/Repo' -FileDir '' | Should -Contain '.clavity/x'
+        ConvertTo-CandidatePath -Text 'file://C:/Repo/.clavity/x' -RepoRoot 'C:/Repo' -FileDir '' | Should -Contain '.clavity/x'
+    }
+    It 'matches a differently-cased drive letter and folder against a Windows root' {
+        ConvertTo-CandidatePath -Text 'c:/repo/.clavity/x' -RepoRoot 'C:/Repo' -FileDir '' | Should -Contain '.clavity/x'
+        ConvertTo-CandidatePath -Text 'C:\REPO\.clavity\x' -RepoRoot 'c:\repo\' -FileDir '' | Should -Contain '.clavity/x'
+        ConvertTo-CandidatePath -Text 'file:///c:/repo/.clavity/x' -RepoRoot 'C:/Repo' -FileDir '' | Should -Contain '.clavity/x'
+    }
+}
