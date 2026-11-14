@@ -242,3 +242,97 @@ Describe 'ConvertTo-CandidatePath - Windows-style roots on any OS (I4b, I4c)' {
         ConvertTo-CandidatePath -Text 'file:///c:/repo/.clavity/x' -RepoRoot 'C:/Repo' -FileDir '' | Should -Contain '.clavity/x'
     }
 }
+
+# Final-review fix wave. Additive again: the 37 cases above are untouched. Each "flags" case exited 0 before the fix.
+Describe 'Invoke-AgentRulesIgnoreCheck - prose filter sees through emphasis (I1)' {
+    It 'flags a dot-folder wrapped in emphasis, strikethrough or @' {
+        foreach ($t in @('never open **.clavity** please', 'never open _.clavity_ please', 'never open ~~.clavity~~ please', 'never open @.clavity please')) {
+            (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "$t`n" })).ExitCode | Should -Be 1 -Because $t
+        }
+    }
+    It 'flags an emphasised dot-folder in a table cell' {
+        (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "| x | **.clavity** |`n" })).ExitCode | Should -Be 1
+    }
+    It 'does not check an emphasised ordinary word' {
+        (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "this is **very** _plain_ ~~prose~~ and @mention.`n" })).ExitCode | Should -Be 0
+    }
+}
+
+Describe 'Invoke-AgentRulesIgnoreCheck - absolute paths into another checkout (I2)' {
+    It 'flags a hidden path under an absolute, a drive-letter and a ~/ path outside this repo' {
+        foreach ($t in @('see /home/u/clavity/clavity-dotnet/pairing/x', 'see D:\a\clavity\clavity\clavity-dotnet\pairing',
+                         '~/src/clavity/docs/hidden-plan.md', '`/home/u/clavity/.clavity/seams`')) {
+            (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "$t`n" })).ExitCode | Should -Be 1 -Because $t
+        }
+    }
+    It 'does not flag an absolute path into another checkout that is not hidden' {
+        foreach ($t in @('see /home/u/clavity/docs/readme.md', 'see D:\a\clavity\clavity\docs\readme.md', '~/src/clavity/docs/readme.md')) {
+            $r = Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "$t`n" })
+            $r.ExitCode | Should -Be 0 -Because $t
+        }
+    }
+    It 'adds every suffix from a / boundary and never sends a raw drive-letter form to git' {
+        $c = @(ConvertTo-CandidatePath -Text 'D:\a\clavity\clavity\docs\x' -RepoRoot '/r' -FileDir '')
+        $c | Should -Contain 'clavity/docs/x'
+        $c | Should -Contain 'docs/x'
+        @($c | Where-Object { $_ -match '^[A-Za-z]:' }) | Should -BeNullOrEmpty
+        $u = @(ConvertTo-CandidatePath -Text '/home/u/clavity/docs/x' -RepoRoot '/r' -FileDir '')
+        $u | Should -Contain 'home/u/clavity/docs/x'
+        $u | Should -Contain 'clavity/docs/x'
+        $u | Should -Contain 'x'
+    }
+    It 'adds no suffixes to a relative path or an in-repo absolute path' {
+        @(ConvertTo-CandidatePath -Text 'a/b/c' -RepoRoot '/r' -FileDir '') | Should -Be @('a/b/c')
+        @(ConvertTo-CandidatePath -Text '/r/a/b/c' -RepoRoot '/r' -FileDir '') | Should -Be @('a/b/c')
+    }
+}
+
+Describe 'Invoke-AgentRulesIgnoreCheck - tokens glued by quotes, pipes, commas, semicolons (I3)' {
+    It 'flags a hidden path inside typographic quotes, pipes, commas and semicolons' {
+        $lq = [string][char]0x201C; $rq = [string][char]0x201D
+        foreach ($t in @("see ${lq}.clavity/seams${rq} now", "see ${lq}clavity-dotnet/pairing/${rq} now", '|a|clavity-dotnet/pairing/|',
+                         'see a/x,docs/hidden-plan.md', 'see a/x;docs/hidden-plan.md', "see ${lq}.clavity/seams,")) {
+            (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "$t`n" })).ExitCode | Should -Be 1 -Because $t
+        }
+    }
+    It 'keeps the whole token and adds the parts (never replaces it)' {
+        $lq = [string][char]0x201C; $rq = [string][char]0x201D
+        $t = @(Get-RuleReferences @("see ${lq}.clavity/seams${rq} now") | ForEach-Object { $_.Text })
+        $t | Should -Contain "${lq}.clavity/seams${rq}"
+        $t | Should -Contain '.clavity/seams'
+    }
+    It 'produces no reference for plain prose with typographic quotes' {
+        $lq = [string][char]0x201C; $rq = [string][char]0x201D; $ap = [string][char]0x2019
+        $line = "He said ${lq}hello there${rq}, then left; it${ap}s fine | really."
+        @(Get-RuleReferences @($line)).Count | Should -Be 0
+        (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "$line`n" })).ExitCode | Should -Be 0
+    }
+}
+
+Describe 'Invoke-AgentRulesIgnoreCheck - fence opener and variants (D7, D8) and includes in fences (M2)' {
+    It 'D7: a line like three backticks, x, three backticks is a code span, not a fence opener' {
+        $t = (@('```x``` inline', 'text', '```', 'cat debug.log', '```') -join "`n") + "`n"
+        (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = $t })).ExitCode | Should -Be 1
+    }
+    It 'D7: an include after such a line is still followed' {
+        $t = (@('```x``` inline', '@[m](docs/more.md)') -join "`n") + "`n"
+        (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = $t; 'docs/more.md' = "``.clavity/x```n" })).ExitCode | Should -Be 1
+    }
+    It 'D7: a correctly closed fence still closes (the line after it is prose, not fence content)' {
+        $t = (@('```bash', 'echo hi', '```', 'debug.log') -join "`n") + "`n"
+        (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = $t })).ExitCode | Should -Be 0
+        $t2 = (@('```bash', 'cat debug.log', '```') -join "`n") + "`n"
+        (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = $t2 })).ExitCode | Should -Be 1
+    }
+    It 'D8: the :line strip and the trailing _ or ~ trim combine in any order' {
+        foreach ($t in @('_docs/hidden-plan.md:42_', '~~docs/hidden-plan.md:42~~', '_docs/hidden-plan.md_:42', '@docs/hidden-plan.md:10-20_')) {
+            (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "$t`n" })).ExitCode | Should -Be 1 -Because $t
+        }
+    }
+    It 'M2: an include written inside a fenced block is followed' {
+        $t = (@('```text', '@[m](docs/more.md)', '```') -join "`n") + "`n"
+        (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = $t; 'docs/more.md' = "``.clavity/x```n" })).ExitCode | Should -Be 1
+        $miss = Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = (@('```text', '@[m](docs/nope.md)', '```') -join "`n") + "`n" })
+        $miss.ExitCode | Should -Be 1; ($miss.Failures -join ' ') | Should -Match 'docs/nope.md'
+    }
+}

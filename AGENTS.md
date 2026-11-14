@@ -37,8 +37,9 @@ just test-scripts-fast                           # fast Pester gate over scripts
 ```
 
 - `just test-scripts-slow` and `just test-scripts` each take **more than 10 minutes**.
-- Repo-level `check-*` recipes (`just --list` shows them all) are **not** part of `just lint`. CI runs
-  `just check-injected-context` on every push.
+- Repo-level `check-*` recipes (`just --list` shows them all) are **not** part of `just lint`. CI runs the
+  same script as `just check-injected-context` only when plugin, seed, skill or gate-script paths change
+  (its workflow is path-filtered), not on every push.
 - Most tooling is PowerShell 7 (`pwsh`) — scripts under `scripts/` assume it is on PATH.
 - `just release-dry` previews a release without publishing; releases themselves are owner-gated (see the rules below).
 
@@ -99,7 +100,7 @@ The maintainer procedure that drains captured `agy-learn` observations into thos
 Skip this section if your session is review-only.
 
 - Run `lefthook install` once per clone.
-- Run `lint` and `test` yourself before pushing; the pre-push hook does not run them.
+- Run `just lint` and `just test` yourself before pushing; the pre-push hook does not run them.
 - Run `just check-injected-context` by hand if you touch plugin, seed, or skill content.
 - Run `just test-scripts-slow` and `just test-scripts` in the background, never in a foreground call with a
   timeout.

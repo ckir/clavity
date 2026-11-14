@@ -22,6 +22,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $script:SplitChars = '[=\[\](){}<>"'']'
+# Typographic quotes, '|', ',' and ';' glue paths to prose or to each other. They are NOT in SplitChars: a token
+# is never replaced by its parts. The whole token is kept and the parts are ADDED (adds-only, as owner ruling R3).
+$script:GlueChars = '[' + [char]0x201C + [char]0x201D + [char]0x2018 + [char]0x2019 + '|,;]'
+$script:WrapChars = [char[]]@('*', '_', '~', '@', '`', [char]0x201C, [char]0x201D, [char]0x2018, [char]0x2019)
 
 # Run git and capture BYTES -> UTF-8 text. Piping through the PowerShell native-command pipeline would mangle NULs
 # and non-ASCII paths (the console encoding is the OEM page on Windows PowerShell 5.1), so use Process directly.
@@ -87,12 +91,40 @@ function Get-AgentRuleFiles([string]$RepoRoot) {
 # token is further split on = [ ] ( ) { } < > " ' so that --out=path, href="path" and Text](path all yield path.
 function Get-RuleReferences([string[]]$Lines) {
     $refs = [System.Collections.Generic.List[object]]::new()
+    # A prose token is checked when it holds a slash or backslash, or (once emphasis, @, backticks and typographic
+    # quotes are trimmed from both ends) starts with '.' + a letter: `**.clavity**` and `_.clavity_` name a folder.
+    $wanted = {
+        param([string]$t)
+        if ($t.Contains('/') -or $t.Contains('\')) { return $true }
+        return ($t.Trim($script:WrapChars) -match '^\.[A-Za-z]')
+    }
     $add = {
         param([int]$LineNo, [string]$Token, [string]$Kind, [bool]$Always)
         foreach ($t in [regex]::Split($Token, $script:SplitChars)) {
             if ($t -eq '') { continue }
-            if (-not $Always -and -not ($t.Contains('/') -or $t.Contains('\') -or $t -match '^\.[A-Za-z]')) { continue }
-            $refs.Add([pscustomobject]@{ Line = $LineNo; Text = $t; Kind = $Kind })
+            $forms = [System.Collections.Generic.List[string]]::new()
+            $forms.Add($t)
+            foreach ($part in [regex]::Split($t, $script:GlueChars)) { if ($part -ne '' -and $part -ne $t) { $forms.Add($part) } }
+            foreach ($f in $forms) {
+                if (-not $Always -and -not (& $wanted $f)) { continue }
+                $refs.Add([pscustomobject]@{ Line = $LineNo; Text = $f; Kind = $Kind })
+            }
+        }
+    }
+    # Markdown link destinations on a line: <...> if present, else up to the first whitespace, cut at the first
+    # unbalanced ')'. An '@[label](path)' is an include. Returns @(@{ Dest; Kind }).
+    $linkDests = {
+        param([string]$line)
+        foreach ($m in [regex]::Matches($line, '(?<at>@?)\[[^\]]*\]\(\s*(?:<(?<ang>[^>]*)>|(?<raw>\S*))')) {
+            $dest = if ($m.Groups['ang'].Success) { $m.Groups['ang'].Value } else {
+                $raw = $m.Groups['raw'].Value; $depth = 0; $end = $raw.Length
+                for ($i = 0; $i -lt $raw.Length; $i++) {
+                    if ($raw[$i] -eq '(') { $depth++ }
+                    elseif ($raw[$i] -eq ')') { if ($depth -eq 0) { $end = $i; break } else { $depth-- } }
+                }
+                $raw.Substring(0, $end)
+            }
+            @{ Dest = $dest; Kind = $(if ($m.Groups['at'].Value -eq '@') { 'include' } else { 'link' }) }
         }
     }
     $fenceChar = ''; $fenceLen = 0
@@ -109,11 +141,15 @@ function Get-RuleReferences([string[]]$Lines) {
                 continue
             }
             foreach ($tok in ($line -split '\s+')) { if ($tok -ne '') { & $add $n $tok 'fence' $true } }
+            # An include inside a fence is still an include if agy follows it: follow it too (this only adds hits).
+            foreach ($l in @(& $linkDests $line)) { if ($l.Kind -eq 'include') { & $add $n $l.Dest 'include' $true } }
             continue
         }
-        if ($line -match ($pre + '(`{3,}|~{3,})(.*)$')) {
-            $fenceChar = [string]$Matches[1][0]; $fenceLen = $Matches[1].Length
-            foreach ($tok in ($Matches[2] -split '\s+')) { if ($tok -ne '') { & $add $n $tok 'prose' $false } }
+        # A backtick fence's info string may not contain a backtick (CommonMark): "```x``` inline" is a code span.
+        if ($line -match ($pre + '(?:(?<bt>`{3,})(?<bi>[^`]*)|(?<tl>~{3,})(?<ti>.*))$')) {
+            if ($Matches['bt']) { $fenceChar = '`'; $fenceLen = $Matches['bt'].Length; $info = $Matches['bi'] }
+            else { $fenceChar = '~'; $fenceLen = $Matches['tl'].Length; $info = $Matches['ti'] }
+            foreach ($tok in ($info -split '\s+')) { if ($tok -ne '') { & $add $n $tok 'prose' $false } }
             continue
         }
         # Reference-style link definition '[id]: dest "title"': the destination is a link target.
@@ -125,20 +161,8 @@ function Get-RuleReferences([string[]]$Lines) {
         foreach ($m in [regex]::Matches($line, '(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)')) {
             foreach ($tok in ($m.Groups[2].Value -split '\s+')) { if ($tok -ne '') { & $add $n $tok 'code' $true } }
         }
-        # Link destinations (and @[label](path) includes): <...> if present, else up to the first whitespace,
-        # cut at the first unbalanced ')'.
-        foreach ($m in [regex]::Matches($line, '(?<at>@?)\[[^\]]*\]\(\s*(?:<(?<ang>[^>]*)>|(?<raw>\S*))')) {
-            $dest = if ($m.Groups['ang'].Success) { $m.Groups['ang'].Value } else {
-                $raw = $m.Groups['raw'].Value; $depth = 0; $end = $raw.Length
-                for ($i = 0; $i -lt $raw.Length; $i++) {
-                    if ($raw[$i] -eq '(') { $depth++ }
-                    elseif ($raw[$i] -eq ')') { if ($depth -eq 0) { $end = $i; break } else { $depth-- } }
-                }
-                $raw.Substring(0, $end)
-            }
-            $kind = if ($m.Groups['at'].Value -eq '@') { 'include' } else { 'link' }
-            & $add $n $dest $kind $true
-        }
+        # Link destinations (and @[label](path) includes).
+        foreach ($l in @(& $linkDests $line)) { & $add $n $l.Dest $l.Kind $true }
         # Prose: every whitespace token on the raw line (HTML comments, reference definitions and raw HTML included).
         foreach ($tok in ($line -split '\s+')) { if ($tok -ne '') { & $add $n $tok 'prose' $false } }
     }
@@ -177,7 +201,7 @@ function Get-PreparedText([string]$Text) {
 
 # Steps 4-7 and forms A/B for a text that already went through steps 1-3.
 function Get-FormsForText([string]$t, [string]$RepoRoot, [string]$FileDir) {
-    $none = @{ A = $null; B = $null }
+    $none = @{ A = $null; B = $null; Extra = @() }
     # (4) backslash -> slash
     $t = $t.Replace('\', '/')
     # (5) skip scheme:// URLs other than file://; rewrite a file: URI as a path
@@ -195,17 +219,33 @@ function Get-FormsForText([string]$t, [string]$RepoRoot, [string]$FileDir) {
     elseif ($t -match '^[A-Za-z][A-Za-z0-9+.-]*://') { return $none }
     # (6) an absolute path inside the repo root becomes repo-relative (prefix compared case-insensitively)
     $root = $RepoRoot.Replace('\', '/').TrimEnd([char]'/')
+    $inRepo = $false
     if ($root -ne '') {
-        if ($t.Equals($root, [System.StringComparison]::OrdinalIgnoreCase)) { $t = '' }
-        elseif ($t.StartsWith($root + '/', [System.StringComparison]::OrdinalIgnoreCase)) { $t = $t.Substring($root.Length + 1) }
+        if ($t.Equals($root, [System.StringComparison]::OrdinalIgnoreCase)) { $t = ''; $inRepo = $true }
+        elseif ($t.StartsWith($root + '/', [System.StringComparison]::OrdinalIgnoreCase)) { $t = $t.Substring($root.Length + 1); $inRepo = $true }
+    }
+    # An absolute, ~/ or drive-letter path that step 6 did not place inside THIS repo may name the same tree in
+    # another checkout (/home/u/clavity/docs/x, D:\a\clavity\docs\x, ~/src/clavity/docs/x): root-anchored ignore
+    # patterns never match it, so ADD every suffix that starts at a '/' boundary.
+    $drive = (-not $inRepo) -and ($t -match '^[A-Za-z]:/')
+    $foreign = (-not $inRepo) -and ($drive -or $t.StartsWith('/') -or $t.StartsWith('~/'))
+    $extra = [System.Collections.Generic.List[string]]::new()
+    if ($foreign) {
+        $full = Resolve-RepoRelative $t
+        if ($null -ne $full) {
+            $segs = $full.Split([char]'/')
+            for ($i = 1; $i -lt $segs.Count; $i++) { $extra.Add(($segs[$i..($segs.Count - 1)] -join '/')) }
+        }
     }
     # (7) strip EVERY remaining leading '/'
     $t = $t.TrimStart([char]'/')
     if ($t -eq '') { return $none }
+    # A raw drive-letter form (X:/...) is never sent to git: Windows git exits 128 on it; the suffixes cover it.
+    if ($drive) { return @{ A = $null; B = $null; Extra = $extra.ToArray() } }
     $a = Resolve-RepoRelative $t
     $dir = if ($null -eq $FileDir) { '' } else { $FileDir.Replace('\', '/').Trim([char]'/') }
     $b = if ($dir -eq '') { $a } else { Resolve-RepoRelative ($dir + '/' + $t) }
-    return @{ A = $a; B = $b }
+    return @{ A = $a; B = $b; Extra = $extra.ToArray() }
 }
 
 # The spec-normalised forms (used for include resolution, where only the literal target counts).
@@ -215,17 +255,18 @@ function Get-CandidateForms([string]$Text, [string]$RepoRoot, [string]$FileDir) 
 
 # ADDITIVE variants of a prepared text (owner ruling R3): the original is always first and is never replaced; each
 # extra form can only ADD a hit. (a) a trailing :line[-line][:col] removed; (b) leading @ _ ~ removed; (c) trailing
-# _ ~ (and the step-2 punctuation) removed. All 8 combinations, so `_docs/x.md_` and `~~docs/x.md~~` reduce fully.
+# _ ~ (and the step-2 punctuation) removed. Every combination, in every order (fixed point).
 function Get-VariantTexts([string]$t) {
     $out = [System.Collections.Generic.List[string]]::new()
     $out.Add($t)
-    $bases = @($t, ($t -replace ':\d+(-\d+)?(:\d+)?$', ''))
-    foreach ($base in $bases) {
-        $leads = @($base, $base.TrimStart([char[]]@('@', '_', '~')))
-        foreach ($l in $leads) {
-            foreach ($v in @($l, $l.TrimEnd([char[]]@('_', '~', '*', '`', '.', ',', ';', ':', '!')))) {
-                if ($v -ne '' -and -not $out.Contains($v)) { $out.Add($v) }
-            }
+    $lead = [char[]]@('@', '_', '~')
+    $trail = [char[]]@('_', '~', '*', '`', '.', ',', ';', ':', '!')
+    # Close under the three transforms (fixed point), so every order is covered: `_docs/x.md:42_` needs the
+    # trailing '_' off BEFORE the :42 strip can match. Bounded: each transform only shortens the text.
+    for ($i = 0; $i -lt $out.Count; $i++) {
+        $cur = $out[$i]
+        foreach ($v in @(($cur -replace ':\d+(-\d+)?(:\d+)?$', ''), $cur.TrimStart($lead), $cur.TrimEnd($trail))) {
+            if ($v -ne '' -and -not $out.Contains($v)) { $out.Add($v) }
         }
     }
     return $out.ToArray()
@@ -235,8 +276,8 @@ function ConvertTo-CandidatePath([string]$Text, [string]$RepoRoot, [string]$File
     $out = [System.Collections.Generic.List[string]]::new()
     foreach ($v in @(Get-VariantTexts (Get-PreparedText $Text))) {
         $f = Get-FormsForText $v $RepoRoot $FileDir
-        foreach ($c in @($f.A, $f.B)) {
-            if ($null -ne $c -and -not $out.Contains($c)) { $out.Add($c) }
+        foreach ($c in (@($f.A, $f.B) + @($f.Extra))) {
+            if ($null -ne $c -and $c -ne '' -and -not $out.Contains($c)) { $out.Add($c) }
         }
     }
     return $out.ToArray()
