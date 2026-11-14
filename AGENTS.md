@@ -40,7 +40,7 @@ just test-scripts-fast                           # fast Pester gate over scripts
 - Repo-level `check-*` recipes (`just --list` shows them all) are **not** part of `just lint`. CI runs
   `just check-injected-context` on every push.
 - Most tooling is PowerShell 7 (`pwsh`) — scripts under `scripts/` assume it is on PATH.
-- `just release-dry` is a safe preview of a release; releases themselves are owner-gated (see the rules below).
+- `just release-dry` previews a release without publishing; releases themselves are owner-gated (see the rules below).
 
 ### Git hooks
 
@@ -89,7 +89,8 @@ The maintainer procedure that drains captured `agy-learn` observations into thos
 ## Rules for every agent
 
 - Never edit the block in `README.md` between `HUMAN ONLY SECTION START` and `HUMAN ONLY SECTION END`.
-- Never hand-edit a generated or pinned file (listed under "Generated and pinned files" above).
+- Never hand-edit a generated file: `clavity-classic/src/driver_cheatsheet.rs`,
+  `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs` and `docs/USER_GUIDE.html`.
 - Releases are owner-gated: never run `just release` and never push a `clavity-v*` tag unless the owner
   explicitly asks.
 
@@ -106,7 +107,8 @@ Skip this section if your session is review-only.
   [clavity-dotnet/plugin/knowledge/agy-assumptions.md](clavity-dotnet/plugin/knowledge/agy-assumptions.md)
   first.
 - To change a generated cheatsheet file: edit `agy-autotrain/knowledge/driver-cheatsheet.core.md`, run
-  `just gen-cheatsheet-literals`, and stage all three files together.
+  `just gen-cheatsheet-literals`, and stage `agy-autotrain/knowledge/driver-cheatsheet.core.md`,
+  `clavity-classic/src/driver_cheatsheet.rs` and `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs` together.
 - After changing `installer/_shared/register-plugin.ps1`, run `just sync-register-hash`.
 - Keep seed agent artifacts byte-identical across the two driver plugins (`just seed-sync-check`).
 - **Licence header:** every first-party source file carries the text of [header.txt](header.txt)
