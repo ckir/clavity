@@ -336,3 +336,55 @@ Describe 'Invoke-AgentRulesIgnoreCheck - fence opener and variants (D7, D8) and 
         $miss.ExitCode | Should -Be 1; ($miss.Failures -join ' ') | Should -Match 'docs/nope.md'
     }
 }
+
+# K1-K3 fold (regressions found by the re-review of the final-fix wave). Additive: nothing above was changed.
+Describe 'Invoke-AgentRulesIgnoreCheck - drive paths through .. (K1)' {
+    It 'flags a hidden path when .. cancels the drive segment' {
+        foreach ($t in @('see D:/../.clavity/x', 'see D:\..\clavity-dotnet\pairing\x', 'see C:/../docs/session-notes/n.md',
+                         'see D:\a\..\..\clavity-dotnet\pairing\x', 'see D:/../clavity-dotnet/pairing/x')) {
+            $ign = "docs/session-notes/`n.clavity/`nclavity-dotnet/pairing/`n"
+            (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "$t`n" } -Ignore $ign)).ExitCode | Should -Be 1 -Because $t
+        }
+    }
+    It 'keeps the first real segment after .. and sends no drive-letter form' {
+        foreach ($t in @('D:/../clavity-dotnet/pairing/x', 'D:\..\clavity-dotnet\pairing\x', 'D:\a\..\..\clavity-dotnet\pairing\x')) {
+            $c = @(ConvertTo-CandidatePath -Text $t -RepoRoot '/r' -FileDir '')
+            $c | Should -Contain 'clavity-dotnet/pairing/x' -Because $t
+            @($c | Where-Object { $_ -match '^[A-Za-z]:' }) | Should -BeNullOrEmpty -Because $t
+        }
+    }
+}
+
+Describe 'Invoke-AgentRulesIgnoreCheck - an include is resolved only from its literal destination (K2)' {
+    It 'does not fail on an existing include whose name contains a comma' {
+        $r = Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "@[m](docs/a,b.md)`n"; 'docs/a,b.md' = "plain text`n" })
+        $r.ExitCode | Should -Be 0; $r.Failures | Should -BeNullOrEmpty
+    }
+    It 'does not fail on an existing include whose name contains parentheses' {
+        $r = Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "@[m](docs/foo(1).md)`n"; 'docs/foo(1).md' = "plain text`n" })
+        $r.ExitCode | Should -Be 0; $r.Failures | Should -BeNullOrEmpty
+    }
+    It 'still follows such an include and flags a hidden path inside it' {
+        $r = Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "@[m](docs/a,b.md)`n"; 'docs/a,b.md' = "``.clavity/x```n" })
+        $r.ExitCode | Should -Be 1
+    }
+    It 'tags the split parts of an include destination as links, never includes' {
+        $refs = @(Get-RuleReferences @('@[m](docs/a,b.md)'))
+        @($refs | Where-Object { $_.Kind -eq 'include' } | ForEach-Object { $_.Text }) | Should -Be @('docs/a,b.md')
+        @($refs | Where-Object { $_.Text -eq 'docs/a' })[0].Kind | Should -Be 'link'
+    }
+}
+
+Describe 'Invoke-AgentRulesIgnoreCheck - no drive-letter candidate ever reaches git (K3)' {
+    It 'filters a drive letter that appears mid-path and keeps the non-drive suffixes' {
+        foreach ($t in @('\\.\D:\a\clavity\clavity-dotnet\pairing', '/mnt/D:/clavity-dotnet/pairing')) {
+            $c = @(ConvertTo-CandidatePath -Text $t -RepoRoot '/r' -FileDir '')
+            @($c | Where-Object { $_ -match '^[A-Za-z]:' }) | Should -BeNullOrEmpty -Because $t
+            $c | Should -Contain 'clavity-dotnet/pairing' -Because $t
+            (Invoke-Check (New-RuleRepo @{ 'AGENTS.md' = "see $t`n" })).ExitCode | Should -Be 1 -Because $t
+        }
+    }
+    It 'never returns a bare drive or an X:/ candidate for a plain drive path either' {
+        @(ConvertTo-CandidatePath -Text 'D:/a/b' -RepoRoot '/r' -FileDir '' | Where-Object { $_ -match '^[A-Za-z]:(/|$)' }) | Should -BeNullOrEmpty
+    }
+}

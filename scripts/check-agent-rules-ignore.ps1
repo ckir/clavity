@@ -100,6 +100,12 @@ function Get-RuleReferences([string[]]$Lines) {
     }
     $add = {
         param([int]$LineNo, [string]$Token, [string]$Kind, [bool]$Always)
+        # An include is resolved ONLY from its literal destination as written. Its split parts are still checked
+        # as path candidates, but as plain links: they must never be resolved as include targets.
+        if ($Kind -eq 'include') {
+            if ($Token -ne '') { $refs.Add([pscustomobject]@{ Line = $LineNo; Text = $Token; Kind = 'include' }) }
+            $Kind = 'link'
+        }
         foreach ($t in [regex]::Split($Token, $script:SplitChars)) {
             if ($t -eq '') { continue }
             $forms = [System.Collections.Generic.List[string]]::new()
@@ -169,13 +175,14 @@ function Get-RuleReferences([string[]]$Lines) {
     return $refs.ToArray()
 }
 
-# Resolve '.' and '..' and collapse empty segments. $null when the path escapes the root or is empty.
-function Resolve-RepoRelative([string]$Path) {
+# Resolve '.' and '..' and collapse empty segments. $null when the path escapes the root or is empty
+# (with -Clamp a '..' above the start is dropped instead, as at a filesystem or drive root).
+function Resolve-RepoRelative([string]$Path, [switch]$Clamp) {
     $out = [System.Collections.Generic.List[string]]::new()
     foreach ($s in $Path.Split([char]'/')) {
         if ($s -eq '' -or $s -eq '.') { continue }
         if ($s -eq '..') {
-            if ($out.Count -eq 0) { return $null }
+            if ($out.Count -eq 0) { if ($Clamp) { continue } else { return $null } }   # an absolute root has no parent
             $out.RemoveAt($out.Count - 1)
             continue
         }
@@ -231,10 +238,12 @@ function Get-FormsForText([string]$t, [string]$RepoRoot, [string]$FileDir) {
     $foreign = (-not $inRepo) -and ($drive -or $t.StartsWith('/') -or $t.StartsWith('~/'))
     $extra = [System.Collections.Generic.List[string]]::new()
     if ($foreign) {
-        $full = Resolve-RepoRelative $t
+        # Resolve FIRST ('D:/../x' is 'D:/x' on Windows, and '..' may cancel the drive segment), then take every
+        # suffix from index 0; drive-shaped suffixes are removed centrally by ConvertTo-CandidatePath.
+        $full = Resolve-RepoRelative $t -Clamp
         if ($null -ne $full) {
             $segs = $full.Split([char]'/')
-            for ($i = 1; $i -lt $segs.Count; $i++) { $extra.Add(($segs[$i..($segs.Count - 1)] -join '/')) }
+            for ($i = 0; $i -lt $segs.Count; $i++) { $extra.Add(($segs[$i..($segs.Count - 1)] -join '/')) }
         }
     }
     # (7) strip EVERY remaining leading '/'
@@ -277,7 +286,8 @@ function ConvertTo-CandidatePath([string]$Text, [string]$RepoRoot, [string]$File
     foreach ($v in @(Get-VariantTexts (Get-PreparedText $Text))) {
         $f = Get-FormsForText $v $RepoRoot $FileDir
         foreach ($c in (@($f.A, $f.B) + @($f.Extra))) {
-            if ($null -ne $c -and $c -ne '' -and -not $out.Contains($c)) { $out.Add($c) }
+            # Windows git exits 128 on a drive-letter path, however it arose (D:/.., \\.\D:\.., /mnt/D:/..): never send one.
+            if ($null -ne $c -and $c -ne '' -and $c -notmatch '^[A-Za-z]:(/|$)' -and -not $out.Contains($c)) { $out.Add($c) }
         }
     }
     return $out.ToArray()
