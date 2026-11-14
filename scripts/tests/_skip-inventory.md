@@ -258,6 +258,9 @@ The last three are conditional, listed in `### conditional`. A listed line is do
 | agy-consult-guard.Tests.ps1 | agy-consult-guard.WARNS when an existing hook becomes unreadable | LinuxOnly | chmod 000 does not make a file unreadable to Git Bash on Windows |
 | agy-consult-guard.Tests.ps1 | agy-consult-guard.agy_guard_hash_files gives the same digests as the old cut\|sed pipeline | LinuxOnly | - |
 | agy-consult-guard.Tests.ps1 | agy-consult-guard.section 87 - the sentinel of an unfinished consult.has no time limit: a sentinel two days old still speaks | LinuxOnly | - |
+| check-agent-rules-ignore.Tests.ps1 | Invoke-AgentRulesIgnoreCheck - census and include resolution (F3-F8).F6: two includes that differ only by case are both scanned | LinuxOnly | - |
+| check-agent-rules-ignore.Tests.ps1 | Invoke-AgentRulesIgnoreCheck - git failures fail closed (I3, I4a).fails closed when check-ignore reports a match from a source other than .gitignore | LinuxOnly | - |
+| check-agent-rules-ignore.Tests.ps1 | Invoke-AgentRulesIgnoreCheck - git failures fail closed (I3, I4a).fails closed when check-ignore reports a path that was not sent | LinuxOnly | - |
 | clavity-ls-launcher-lib.Tests.ps1 | clavity-ls-launcher-lib.creates the ~/.local/bin symlink to TARGET and returns 0 when ~/.local/bin is on PATH | LinuxOnly | - |
 | clavity-ls-launcher-lib.Tests.ps1 | clavity-ls-launcher-lib.repairs a dangling symlink | LinuxOnly | - |
 | clavity-ls-launcher-lib.Tests.ps1 | clavity-ls-launcher-lib.repairs a symlink into another data dir | LinuxOnly | - |

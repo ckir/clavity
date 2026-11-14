@@ -113,6 +113,11 @@ jobs:
         # the driver-cheatsheet EXTEND path, and nothing else noticed.
         run: pwsh -File scripts/check-dangling-consumers.ps1
 
+      - name: Agent rules vs .antigravityignore gate
+        shell: pwsh
+        # Spec: docs/superpowers/specs/2026-11-14-agents-md-canonical-design.md (agy must not load a rule file whose reference .antigravityignore hides).
+        run: pwsh -File scripts/check-agent-rules-ignore.ps1
+
       - name: Install yq (required by check-skill-frontmatter)
         shell: pwsh
         # scripts/check-skill-frontmatter.ps1 parses every SKILL.md frontmatter with mikefarah yq v4 and
