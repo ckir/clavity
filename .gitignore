@@ -51,6 +51,7 @@ docs/superpowers/plans/*
 !docs/superpowers/plans/2026-11-07-ls-audit-log.md
 !docs/superpowers/plans/2026-11-10-agent-install-acceptance.md
 !docs/superpowers/plans/2026-11-10-agent-install.md
+!docs/superpowers/plans/2026-11-14-agents-md-canonical.md
 docs/session-notes/
 .clavity/
 # review-relay round workspaces (snapshots, prompts, captured web-model replies). Owner ruling 2026-09-28,
