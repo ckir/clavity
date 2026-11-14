@@ -87,7 +87,7 @@ function Get-SharedPathsFor([string]$Key) {
 $script:DevOnlyPaths = @(
     'scripts/', '.github/', 'docs/', '.claude/', '.vscode/', '.worktrees/',
     '.antigravityignore', '.editorconfig', '.gitattributes', '.gitignore', '.mlc.toml',
-    'CLAUDE.md', 'CODE_OF_CONDUCT.md', 'CONTRIBUTING.md', 'DevelopersCockpit.ps1',
+    'AGENTS.md', 'CLAUDE.md', 'CODE_OF_CONDUCT.md', 'CONTRIBUTING.md', 'DevelopersCockpit.ps1',
     'LICENSE', 'NOTICE', 'README.md', 'README.el.md', 'SECURITY.md', 'justfile', 'lefthook.yml',
     # Inno-retirement (2026-09-14). '.claude-plugin/' is the repo-ROOT marketplace that
     # `claude plugin marketplace add ckir/clavity` fetches LIVE from the repo (not a released asset), so a
