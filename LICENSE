@@ -1,3 +1,10 @@
+Copyright (c) 2026 Costas Kirgoussios
+
+This software is licensed under the PolyForm Noncommercial License 1.0.0.
+You may obtain a copy of the License at:
+https://polyformproject.org/licenses/noncommercial/1.0.0/
+> **This file holds the PolyForm Noncommercial 1.0.0 text followed by the additional terms: an evaluation grant and an anti-circumvention everything in this repo is source-available software. It is not open source.
+
 # PolyForm Noncommercial License 1.0.0
 
 <https://polyformproject.org/licenses/noncommercial/1.0.0>
@@ -129,3 +136,20 @@ software under these terms.
 
 **Use** means anything you do with the software requiring one
 of your licenses.
+
+---
+
+# ADDITIONAL TERMS (not part of PolyForm Noncommercial 1.0.0)
+
+## Commercial Evaluation Grant
+
+Any organisation, including one that is not a Noncommercial Organization, may use the software
+for internal testing and evaluation for 30 days from first use, royalty-free. Use beyond that
+period, and any production or other commercial use, requires a paid licence key from the
+licensor.
+
+## Anti-Circumvention
+
+You may not move, change, disable, or circumvent the licence key functionality in the software,
+and you may not remove or obscure any functionality protected by the licence key or any licence
+notices.
