@@ -34,6 +34,10 @@ check-agy-skills:
 check-doc-stubs:
     pwsh -NoProfile -File scripts/check-doc-stubs.ps1
 
+# Fail if an agent rule file the agy peer loads references a path .antigravityignore hides.
+check-agent-rules-ignore:
+    pwsh -NoProfile -File scripts/check-agent-rules-ignore.ps1
+
 # The tracker-format excerpt in docs/tracker-format.md must equal the copy in the three promote-step skills of BOTH plugins.
 check-tracker-format-excerpt:
     pwsh -NoProfile -File scripts/check-tracker-format-excerpt.ps1

@@ -51,6 +51,24 @@ pre-push:
         - "*.md"
         - "scripts/check-control-bytes.ps1"
       run: just check-control-bytes
+    agent-rules-ignore:
+      # CI is the complete trigger; this glob cannot see an edit to an included file elsewhere.
+      glob:
+        - "AGENTS.md"
+        - "**/AGENTS.md"
+        - "GEMINI.md"
+        - "**/GEMINI.md"
+        - ".agents/**"
+        - "**/.agents/**"
+        - ".agent/**"
+        - "**/.agent/**"
+        - "_agents/**"
+        - "**/_agents/**"
+        - "_agent/**"
+        - "**/_agent/**"
+        - ".antigravityignore"
+        - "scripts/check-agent-rules-ignore.ps1"
+      run: just check-agent-rules-ignore
     register-hash:
       run: just check-register-hash
     knowledge-store:
