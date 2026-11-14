@@ -209,3 +209,34 @@ spec needs a `!docs/superpowers/specs/2026-11-14-agents-md-canonical-design.md` 
 
 Exact wording of the restructured `AGENTS.md`, the census line format, and whether any `CLAUDE.md` line is
 Claude-only (default: none).
+
+## Builder amendments (2026-11-14, during execution)
+
+The reviews of the built gate found spellings the normalisation above lets through, and the gate now goes beyond
+the steps it describes. The rule all the changes keep: an added candidate form never replaces the form as written,
+so every change can only add hits. The exception is a form git rejects, which is replaced by a form git accepts.
+The owner accepted the cost, which is visible false failures and never silent passes.
+
+- **Added forms.** These forms are checked in every combination, alongside the token as written:
+  - the token with a trailing `:N`, `:N-M` or `:N:C` removed;
+  - the token with leading `@`, `_` or `~`, or trailing `_` or `~`, removed;
+  - the parts of a token split on typographic quotes, `|`, `,` or `;`.
+  The prose filter looks at the trimmed token, so `**.dir**` is checked. Reference-definition destinations
+  (`[r]: path`) count as links, and footnote definitions (`[^1]:`) are excluded.
+- **Fences.** A fence is recognised inside list items and blockquotes. A backtick fence's info string may not
+  contain a backtick. An `@[label](path)` inside a fence is still followed. An include target is resolved only from
+  its literal destination.
+- **Paths outside the root.** Some forms add every suffix that starts at a `/` boundary:
+  - an absolute path that step 6 does not make repo-relative;
+  - a path that climbs above the root;
+  - a path that starts with `$VAR/`, `${VAR}/`, `%VAR%\`, `~name/`, `\\?\` or `\\.\`.
+  A `..` above a drive or root is clamped. No candidate that matches `^[A-Za-z]:(/|$)` is sent to git, and a
+  leading pathspec-magic prefix (`:!`, `:^`, `:(exclude)`, `:/`) is replaced by its remainder. Git rejects both
+  forms with exit 128.
+- **Fail closed.** The gate also fails on:
+  - a check-ignore record for a path that was never sent;
+  - a source other than `.gitignore`;
+  - a tracked rule file missing from the working tree.
+- **Accepted by ruling.** Nested `rules/<sub>/*.md` folders are not scanned, because the peer documents
+  `.agents/rules/*.md`. HTML-entity-escaped or dynamically built paths are deliberate obfuscation, outside the
+  accidental-leak threat model.
