@@ -245,6 +245,20 @@ public class McpTools
         var guidance = _view.TryTakeGuidanceBlock();
         if (guidance is not null) blocks.Add(new TextContentBlock { Text = guidance });
 
+        // Backlog item ask-silently-follows-conversation-switch. The server follows the most recently active agy conversation, so
+        // when the human opened another chat since the last delivered reply this ask ran there. Independent of the [13b] chain
+        // below, like UNCHECKED: it is a fact about the ASK, not a verdict on the reply, and must not compete with one. Only set
+        // on a switch, so an ordinary ask carries no extra block.
+        if (reply13b is { PreviousCascadeId: { } previousCascade })
+        {
+            blocks.Add(new TextContentBlock
+            {
+                Text = "[conv] CONVERSATION CHANGED: " + previousCascade + " -> " + reply13b.CascadeId
+                     + "; this ask went to a different conversation than your last delivered ask, so the peer may lack the "
+                     + "earlier rounds - treat it as a first brief unless you know they are in this conversation."
+            });
+        }
+
         // A reply delivered from a turn that ENDED while the conversation stayed busy. Independent of the 13b verdicts
         // below: those judge the reply, this reports the peer's state - and the caller's next pre-fire agy_status will
         // say "working" for a reason that has nothing to do with this reply.
