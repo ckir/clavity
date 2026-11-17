@@ -197,7 +197,11 @@ public sealed record AskReply(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PeerFile = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PeerFileStatus = null,
     // ROADMAP section 66: agy's own quota-stop sentence, read from its log for THIS ask; null on every ordinary reply.
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? QuotaStop = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? QuotaStop = null,
+    // Backlog item ask-silently-follows-conversation-switch: the trajectory CascadeId of the last DELIVERED reply, set only when
+    // THIS ask went to a different conversation than that reply did (the server follows the most recently active one). Null on the
+    // first ask of a process, on an unchanged conversation and on every non-switch, so an ordinary reply carries no extra key.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreviousCascadeId = null);
 
 /// <summary>One summarized step of the reply delta. Summary = bounded prose for assistant/user steps, else null.</summary>
 public sealed record ActivityItem(int Kind, string Label, string? Summary);
