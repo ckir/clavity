@@ -51,7 +51,7 @@ large tree; decide separately whether it is worth the cost.
 ## Notes
 
 Both variants: `clavity-dotnet/plugin/hooks/` and `clavity-classic/plugin/hooks/` ship byte-identical copies of
-`agy-consult-guard-lib.sh`, `-pre.sh` and `-post.sh` (`cmp` clean on 2026-11-13), so the fix lands in both copies
+`agy-consult-guard-lib.sh`, `agy-consult-guard-pre.sh` and `agy-consult-guard-post.sh` (`cmp` clean on 2026-11-13), so the fix lands in both copies
 together. Determinism is therefore the same on both variants. The driving-side workaround (forbid symlinks into the
 repository and writes under any dependency or cache directory in the review-only banner, then compare ignored
 paths by hand after the consult) is carried in the cheatsheet GROWTH from 2026-11-13 and must not be retired when
