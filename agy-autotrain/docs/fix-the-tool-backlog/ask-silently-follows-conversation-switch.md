@@ -3,7 +3,9 @@ slug: ask-silently-follows-conversation-switch
 variant: clavity-dotnet
 observed: 2026-11-16
 source-inbox-entry: "An ask goes to whichever conversation is most recent at that moment, so"
-status: OPEN
+status: SHIPPED
+fixed-by: de7f0785, c081e394
+fixed-on: 2026-11-18
 ---
 
 # A series of asks can silently jump to a different agy conversation, and nothing in the result says so
