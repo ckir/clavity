@@ -268,6 +268,34 @@ public sealed class AgyView
     // agy_ask of this server session only. AgyView is a process-lifetime singleton, so this flag IS session-scoped.
     private int _guidanceDelivered; // 0 = not yet delivered
 
+    // Backlog item ask-silently-follows-conversation-switch. The server follows the MOST RECENTLY ACTIVE conversation on every
+    // ask (SelectMostRecent), so a human opening another agy chat silently reroutes the next ask. These remember the RESOLVED
+    // CONVERSATION id and the trajectory CascadeId of the last DELIVERED reply. The decision key is the conversation id, not the
+    // CascadeId: a CascadeId that changed inside one conversation would be a false alarm, and whether that can happen is
+    // unmeasured. AgyView is a process-lifetime singleton and asks can overlap, so the pair is read and written together under
+    // _convSwitchGate; it is a leaf lock (nothing else is taken, nothing is awaited, while it is held).
+    private readonly object _convSwitchGate = new();
+    private string? _lastDeliveredConversationId;
+    private string? _lastDeliveredCascadeId;
+
+    /// <summary>Record that a reply from <paramref name="conversationId"/> (trajectory <paramref name="cascadeId"/>) was
+    /// DELIVERED, and return the CascadeId of the previous delivered reply when it came from a DIFFERENT conversation; null on the
+    /// first delivery of the process and when the conversation is unchanged. Called only on the success path of
+    /// <see cref="AskAsync"/>, so a failed, timed-out or cancelled ask never advances the state.</summary>
+    private string? NoteDeliveredConversation(string conversationId, string cascadeId)
+    {
+        lock (_convSwitchGate)
+        {
+            var previous = _lastDeliveredConversationId is not null
+                           && !string.Equals(_lastDeliveredConversationId, conversationId, StringComparison.Ordinal)
+                ? _lastDeliveredCascadeId
+                : null;
+            _lastDeliveredConversationId = conversationId;
+            _lastDeliveredCascadeId = cascadeId;
+            return previous;
+        }
+    }
+
     /// <summary>True the FIRST time an unchecked consult is seen on this view, false ever after.
     ///
     /// The UNCHECKED notice tells a caller its completeness checks did not run - vital for a discipline
@@ -478,7 +506,12 @@ public sealed class AgyView
                 if (peerFile is not null && (judged.TerminalTokenMissing || judged.EchoMissing))
                     judged = RescueFromPeerFile(judged, peerFile, peerNonce!, expectTerminal, expectEcho);
                 judged = DropFilePointersWhenHealthy(judged);
-                return judged with { PeerStillBusy = peerStillBusy };
+                // Reached only when the reply was delivered: every earlier throw (send failure, timeout, cancellation) skips it.
+                var previousCascadeId = NoteDeliveredConversation(conversationId, full.CascadeId);
+                // Recorded AFTER the lock is released: the event log takes its own lock and writes a file.
+                if (previousCascadeId is not null)
+                    Events.Record("agy_ask", "conv_switch", outcome: previousCascadeId + "->" + full.CascadeId);
+                return judged with { PeerStillBusy = peerStillBusy, PreviousCascadeId = previousCascadeId };
             }
             finally
             {

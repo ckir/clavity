@@ -488,4 +488,244 @@ public class McpToolsIntegrationTests
             McpTools.WarmParameterCache();
         }
     }
+
+    // ---- conversation-switch notice (backlog item ask-silently-follows-conversation-switch) ----
+
+    // Serves several conversations. Each map KEY (the conversation id) maps to a trajectory whose own CascadeId is a
+    // DIFFERENT string, as real agy does (ROADMAP.md section 20, T1 measurement), so a conversation-id key and a CascadeId
+    // key are distinguishable in a test. MakeMostRecent moves the "most recently active" pointer between asks;
+    // RenewTrajectory changes a conversation's trajectory id while its key stays; FailNextSendTo makes the next send throw.
+    private sealed class SwitchableLs : LanguageServerService.LanguageServerServiceBase
+    {
+        private sealed class Conv
+        {
+            public string TrajectoryId { get; set; } = "";
+            public List<CascadeStep> Steps { get; } = new();
+            public DateTimeOffset LastModified { get; set; }
+        }
+
+        private static readonly DateTimeOffset Base = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        private readonly object _gate = new();
+        private readonly Dictionary<string, Conv> _convs = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _failNext = new(StringComparer.Ordinal);
+        private int _tick;
+
+        public SwitchableLs(params (string Key, string TrajectoryId)[] conversations)
+        {
+            foreach (var (key, trajectoryId) in conversations)
+                _convs[key] = new Conv { TrajectoryId = trajectoryId, LastModified = Base };
+            MakeMostRecent(conversations[0].Key);
+        }
+
+        // A strictly increasing time, so no two conversations ever tie (DateTimeOffset.UtcNow could).
+        public void MakeMostRecent(string key)
+        {
+            lock (_gate) _convs[key].LastModified = Base.AddMinutes(++_tick);
+        }
+
+        public void RenewTrajectory(string key, string newTrajectoryId)
+        {
+            lock (_gate) _convs[key].TrajectoryId = newTrajectoryId;
+        }
+
+        public void FailNextSendTo(string key)
+        {
+            lock (_gate) _failNext.Add(key);
+        }
+
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            var resp = new GetAllCascadeTrajectoriesResponse();
+            lock (_gate)
+                foreach (var (key, conv) in _convs)
+                    resp.TrajectorySummaries[key] = new CascadeTrajectorySummary
+                    {
+                        LastModifiedTime = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(conv.LastModified),
+                    };
+            return Task.FromResult(resp);
+        }
+
+        public override Task<GetCascadeTrajectoryResponse> GetCascadeTrajectory(
+            GetCascadeTrajectoryRequest request, ServerCallContext context)
+        {
+            lock (_gate)
+            {
+                var conv = _convs[request.CascadeId];   // the request carries the conversation KEY
+                var trajectory = new CascadeTrajectory { CascadeId = conv.TrajectoryId };
+                trajectory.Steps.AddRange(conv.Steps);
+                return Task.FromResult(new GetCascadeTrajectoryResponse { NumTotalSteps = (uint)conv.Steps.Count, Trajectory = trajectory });
+            }
+        }
+
+        public override Task<GetAvailableModelsResponse> GetAvailableModels(
+            FetchAvailableModelsRequest request, ServerCallContext context)
+            => Task.FromResult(new GetAvailableModelsResponse
+            {
+                AvailableModels = new FetchAvailableModelsResponse
+                {
+                    DefaultAgentModelId = "key1",
+                    Models = { { "key1", new ModelDetails { Model = 1 } } }
+                }
+            });
+
+        public override Task<SendUserCascadeMessageResponse> SendUserCascadeMessage(
+            SendUserCascadeMessageRequest request, ServerCallContext context)
+        {
+            lock (_gate)
+            {
+                if (_failNext.Remove(request.CascadeId))
+                    throw new RpcException(new Status(StatusCode.Internal, "boom"));
+                var conv = _convs[request.CascadeId];
+                var text = request.Items.Count > 0 ? request.Items[0].Text : "";
+                conv.Steps.Add(new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = text } });
+                conv.Steps.Add(new CascadeStep { Kind = 15, AssistantOutput = new CascadeAssistantOutput { Text = "ok" } });
+            }
+            return Task.FromResult(new SendUserCascadeMessageResponse());
+        }
+
+        public override Task<WaitForConversationFullyIdleResponse> WaitForConversationFullyIdle(
+            WaitForConversationFullyIdleRequest request, ServerCallContext context)
+            => Task.FromResult(new WaitForConversationFullyIdleResponse());
+    }
+
+    // A fake LS plus a real AgyView pointed at it. AskAsync never assumes the ask succeeded: a failed ask comes back as the
+    // server's error payload in block 0, which is what a driver would see.
+    private sealed class SwitchRig : IAsyncDisposable
+    {
+        private readonly WebApplication _app;
+        private readonly string _dir;
+        public SwitchableLs Fake { get; }
+        public AgyView View { get; }
+
+        private SwitchRig(WebApplication app, string dir, SwitchableLs fake, AgyView view)
+        {
+            _app = app;
+            _dir = dir;
+            Fake = fake;
+            View = view;
+        }
+
+        public static async Task<SwitchRig> StartAsync(params (string Key, string TrajectoryId)[] conversations)
+        {
+            var fake = new SwitchableLs(conversations);
+            var app = await FakeLsHost.StartAsync(fake);
+            var cliLog = WriteCliLog(PortOf(app));
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            return new SwitchRig(app, Path.GetDirectoryName(cliLog)!, fake, view);
+        }
+
+        public async Task<(string Json, List<string> Blocks)> AskAsync(string message = "q")
+        {
+            var result = await McpTools.AgyAsk(View, message, new CollectingProgress<ProgressNotificationValue>());
+            var blocks = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            return (blocks[0], blocks);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await _app.DisposeAsync();
+            try { Directory.Delete(_dir, true); } catch (IOException) { /* a late log flush; the temp dir is disposable */ }
+        }
+    }
+
+    private static string? PreviousOf(string json)
+        => JsonDocument.Parse(json).RootElement.TryGetProperty("PreviousCascadeId", out var p) ? p.GetString() : null;
+
+    private static string CascadeIdOf(string json)
+        => JsonDocument.Parse(json).RootElement.GetProperty("CascadeId").GetString()!;
+
+    // Parse, do not substring-match: the event log's default JSON encoder writes '>' as > (LsEventLog.cs, Json options).
+    private static List<JsonElement> SwitchEvents(AgyView view)
+        => view.Events.Snapshot()
+            .Select(line => JsonDocument.Parse(line).RootElement)
+            .Where(e => e.GetProperty("phase").GetString() == "conv_switch")
+            .ToList();
+
+    [Fact]
+    public async Task First_ask_has_no_PreviousCascadeId()
+    {
+        await using var rig = await SwitchRig.StartAsync(("conv-A", "traj-A"), ("conv-B", "traj-B"));
+        var first = await rig.AskAsync();
+        Assert.DoesNotContain("PreviousCascadeId", first.Json);
+        Assert.Equal("traj-A", CascadeIdOf(first.Json));
+    }
+
+    [Fact]
+    public async Task Control_same_conversation_twice_has_no_PreviousCascadeId_and_no_event()
+    {
+        await using var rig = await SwitchRig.StartAsync(("conv-A", "traj-A"), ("conv-B", "traj-B"));
+        var first = await rig.AskAsync();
+        var second = await rig.AskAsync();
+        Assert.DoesNotContain("PreviousCascadeId", first.Json);
+        Assert.DoesNotContain("PreviousCascadeId", second.Json);
+        Assert.Equal("traj-A", CascadeIdOf(second.Json));
+        Assert.Empty(SwitchEvents(rig.View));
+    }
+
+    [Fact]
+    public async Task Switch_sets_PreviousCascadeId_once_and_the_next_ask_in_the_same_conversation_has_none()
+    {
+        await using var rig = await SwitchRig.StartAsync(("conv-A", "traj-A"), ("conv-B", "traj-B"));
+        await rig.AskAsync();
+        rig.Fake.MakeMostRecent("conv-B");
+        var second = await rig.AskAsync();
+        Assert.Equal("traj-A", PreviousOf(second.Json));
+        Assert.Equal("traj-B", CascadeIdOf(second.Json));
+
+        var third = await rig.AskAsync();   // still conv-B: the switch was already reported
+        Assert.DoesNotContain("PreviousCascadeId", third.Json);
+        Assert.Equal("traj-B", CascadeIdOf(third.Json));
+    }
+
+    [Fact]
+    public async Task Renewed_trajectory_id_in_the_same_conversation_is_not_a_switch()
+    {
+        await using var rig = await SwitchRig.StartAsync(("conv-A", "traj-A"), ("conv-B", "traj-B"));
+        await rig.AskAsync();
+        rig.Fake.RenewTrajectory("conv-A", "traj-A2");   // same conversation key, new trajectory id
+        var second = await rig.AskAsync();
+        Assert.DoesNotContain("PreviousCascadeId", second.Json);
+        Assert.Equal("traj-A2", CascadeIdOf(second.Json));
+        Assert.Empty(SwitchEvents(rig.View));
+    }
+
+    [Fact]
+    public async Task Switching_back_reports_each_switch_with_the_last_delivered_id_as_previous()
+    {
+        await using var rig = await SwitchRig.StartAsync(("conv-A", "traj-A"), ("conv-B", "traj-B"));
+        await rig.AskAsync();
+        rig.Fake.MakeMostRecent("conv-B");
+        var toB = await rig.AskAsync();
+        rig.Fake.MakeMostRecent("conv-A");
+        var backToA = await rig.AskAsync();
+        Assert.Equal("traj-A", PreviousOf(toB.Json));
+        Assert.Equal("traj-B", PreviousOf(backToA.Json));
+        Assert.Equal("traj-A", CascadeIdOf(backToA.Json));
+    }
+
+    [Fact]
+    public async Task Failed_ask_does_not_advance_the_switch_state()
+    {
+        await using var rig = await SwitchRig.StartAsync(("conv-A", "traj-A"), ("conv-B", "traj-B"));
+        await rig.AskAsync();                       // delivered in A
+        rig.Fake.MakeMostRecent("conv-B");
+        rig.Fake.FailNextSendTo("conv-B");
+        await rig.AskAsync();                       // goes to B and fails: nothing is delivered
+        var third = await rig.AskAsync();           // B again, now delivered
+        Assert.Equal("traj-A", PreviousOf(third.Json));   // the last DELIVERED reply was A's, not the failed B ask
+        Assert.Equal("traj-B", CascadeIdOf(third.Json));
+    }
+
+    [Fact]
+    public async Task Switch_records_one_conv_switch_event()
+    {
+        await using var rig = await SwitchRig.StartAsync(("conv-A", "traj-A"), ("conv-B", "traj-B"));
+        await rig.AskAsync();
+        rig.Fake.MakeMostRecent("conv-B");
+        await rig.AskAsync();
+        var events = SwitchEvents(rig.View);
+        var only = Assert.Single(events);
+        Assert.Equal("traj-A->traj-B", only.GetProperty("outcome").GetString());
+    }
 }
