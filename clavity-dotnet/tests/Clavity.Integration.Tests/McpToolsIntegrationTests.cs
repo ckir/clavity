@@ -509,6 +509,23 @@ public class McpToolsIntegrationTests
         private readonly Dictionary<string, Conv> _convs = new(StringComparer.Ordinal);
         private readonly HashSet<string> _failNext = new(StringComparer.Ordinal);
         private int _tick;
+        private TaskCompletionSource? _waitEntered;
+
+        /// <summary>While true, WaitForConversationFullyIdle blocks until the caller's window or token cancels it, so the
+        /// ask is still inside its wait (stalled, cancelled or timed out), never delivered.</summary>
+        public volatile bool HangWaits;
+
+        /// <summary>While true, appended assistant steps carry the DONE status, so a hung wait ends the TURN and the
+        /// reply is delivered as PeerStillBusy instead of stalling.</summary>
+        public volatile bool AssistantDone;
+
+        // Armed by the test, completed when a wait begins: lets a test cancel an ask that is PROVABLY inside its wait.
+        public Task ArmWaitSignal()
+        {
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_gate) _waitEntered = tcs;
+            return tcs.Task;
+        }
 
         public SwitchableLs(params (string Key, string TrajectoryId)[] conversations)
         {
@@ -579,14 +596,22 @@ public class McpToolsIntegrationTests
                 var conv = _convs[request.CascadeId];
                 var text = request.Items.Count > 0 ? request.Items[0].Text : "";
                 conv.Steps.Add(new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = text } });
-                conv.Steps.Add(new CascadeStep { Kind = 15, AssistantOutput = new CascadeAssistantOutput { Text = "ok" } });
+                var reply = new CascadeStep { Kind = 15, AssistantOutput = new CascadeAssistantOutput { Text = "ok" } };
+                if (AssistantDone) reply.Status = StepKind.DoneStatus;
+                conv.Steps.Add(reply);
             }
             return Task.FromResult(new SendUserCascadeMessageResponse());
         }
 
-        public override Task<WaitForConversationFullyIdleResponse> WaitForConversationFullyIdle(
+        public override async Task<WaitForConversationFullyIdleResponse> WaitForConversationFullyIdle(
             WaitForConversationFullyIdleRequest request, ServerCallContext context)
-            => Task.FromResult(new WaitForConversationFullyIdleResponse());
+        {
+            TaskCompletionSource? signal;
+            lock (_gate) { signal = _waitEntered; _waitEntered = null; }
+            signal?.TrySetResult();
+            if (HangWaits) await Task.Delay(Timeout.Infinite, context.CancellationToken);   // ends when the client cancels
+            return new WaitForConversationFullyIdleResponse();
+        }
     }
 
     // A fake LS plus a real AgyView pointed at it. AskAsync never assumes the ask succeeded: a failed ask comes back as the
@@ -597,6 +622,8 @@ public class McpToolsIntegrationTests
         private readonly string _dir;
         public SwitchableLs Fake { get; }
         public AgyView View { get; }
+        /// <summary>A file with a substantive last line, for a discipline ask's echo check.</summary>
+        public string ArtifactPath { get; }
 
         private SwitchRig(WebApplication app, string dir, SwitchableLs fake, AgyView view)
         {
@@ -604,20 +631,33 @@ public class McpToolsIntegrationTests
             _dir = dir;
             Fake = fake;
             View = view;
+            ArtifactPath = Path.Combine(dir, "artifact.md");
+            File.WriteAllText(ArtifactPath, "# artifact\nthe last substantive line of the artifact under review\n");
         }
 
-        public static async Task<SwitchRig> StartAsync(params (string Key, string TrajectoryId)[] conversations)
+        public static Task<SwitchRig> StartAsync(params (string Key, string TrajectoryId)[] conversations)
+            => StartCoreAsync(null, conversations);
+
+        /// <summary>A short idle-stall window, so an ask whose wait hangs ends in a stall (or, with a DONE reply, a
+        /// PeerStillBusy delivery) in well under a second.</summary>
+        public static Task<SwitchRig> StartWithStallWindowAsync(TimeSpan stallWindow, params (string Key, string TrajectoryId)[] conversations)
+            => StartCoreAsync(stallWindow, conversations);
+
+        private static async Task<SwitchRig> StartCoreAsync(TimeSpan? stallWindow, (string Key, string TrajectoryId)[] conversations)
         {
             var fake = new SwitchableLs(conversations);
             var app = await FakeLsHost.StartAsync(fake);
             var cliLog = WriteCliLog(PortOf(app));
-            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
-            return new SwitchRig(app, Path.GetDirectoryName(cliLog)!, fake, view);
+            var options = new AgyViewOptions { CliLogPath = cliLog };
+            if (stallWindow is { } w) options = new AgyViewOptions { CliLogPath = cliLog, IdleStallWindow = w, IdleAbsoluteMax = TimeSpan.Zero };
+            return new SwitchRig(app, Path.GetDirectoryName(cliLog)!, fake, new AgyView(options));
         }
 
-        public async Task<(string Json, List<string> Blocks)> AskAsync(string message = "q")
+        public async Task<(string Json, List<string> Blocks)> AskAsync(
+            string message = "q", string? discipline = null, string? artifactPath = null, CancellationToken cancellationToken = default)
         {
-            var result = await McpTools.AgyAsk(View, message, new CollectingProgress<ProgressNotificationValue>());
+            var result = await McpTools.AgyAsk(View, message, new CollectingProgress<ProgressNotificationValue>(),
+                discipline, artifactPath, cancellationToken);
             var blocks = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
             return (blocks[0], blocks);
         }
@@ -727,6 +767,7 @@ public class McpToolsIntegrationTests
         var events = SwitchEvents(rig.View);
         var only = Assert.Single(events);
         Assert.Equal("traj-A->traj-B", only.GetProperty("outcome").GetString());
+        Assert.Equal("agy_ask", only.GetProperty("tool").GetString());
     }
 
     private static List<string> ConvBlocks(List<string> blocks)
@@ -742,6 +783,7 @@ public class McpToolsIntegrationTests
         var block = Assert.Single(ConvBlocks(second.Blocks));
         // One substring, so a notice with the two ids swapped cannot pass.
         Assert.Contains("[conv] CONVERSATION CHANGED: traj-A -> traj-B;", block);
+        Assert.Contains("may lack the earlier rounds", block);
         Assert.Contains("treat it as a first brief unless you know they are in this conversation.", block);
 
         var third = await rig.AskAsync();   // same conversation again: the switch was already reported
@@ -773,5 +815,84 @@ public class McpToolsIntegrationTests
         Assert.Empty(ConvBlocks(first.Blocks));
         Assert.Empty(ConvBlocks(control.Blocks));
         Assert.Empty(ConvBlocks(renewed.Blocks));
+    }
+
+    // ---- test-audit gaps G1-G3 (2026-11-18) ----
+
+    [Fact]
+    public async Task Switch_after_in_conversation_renewal_reports_the_renewed_id_as_previous()
+    {
+        await using var rig = await SwitchRig.StartAsync(("conv-A", "traj-A"), ("conv-B", "traj-B"));
+        await rig.AskAsync();
+        rig.Fake.RenewTrajectory("conv-A", "traj-A2");
+        await rig.AskAsync();                       // same conversation: not a switch, but its reply carried traj-A2
+        rig.Fake.MakeMostRecent("conv-B");
+        var toB = await rig.AskAsync();
+        // The id the driver last RECEIVED is traj-A2; a stored id refreshed only on a switch would still say traj-A.
+        Assert.Equal("traj-A2", PreviousOf(toB.Json));
+        Assert.Contains("[conv] CONVERSATION CHANGED: traj-A2 -> traj-B;", Assert.Single(ConvBlocks(toB.Blocks)));
+    }
+
+    [Fact]
+    public async Task Stalled_ask_does_not_advance_the_switch_state()
+    {
+        await using var rig = await SwitchRig.StartWithStallWindowAsync(TimeSpan.FromMilliseconds(150),
+            ("conv-A", "traj-A"), ("conv-B", "traj-B"));
+        await rig.AskAsync();                       // delivered in A
+        rig.Fake.MakeMostRecent("conv-B");
+        rig.Fake.HangWaits = true;
+        var stalled = await rig.AskAsync();         // goes to B, its wait stalls: nothing is delivered
+        Assert.DoesNotContain("\"Answer\"", stalled.Json);
+        rig.Fake.HangWaits = false;
+        var third = await rig.AskAsync();           // B again, now delivered
+        Assert.Equal("traj-A", PreviousOf(third.Json));   // the last DELIVERED reply was A's, not the stalled B ask
+    }
+
+    [Fact]
+    public async Task Cancelled_ask_does_not_advance_the_switch_state()
+    {
+        await using var rig = await SwitchRig.StartAsync(("conv-A", "traj-A"), ("conv-B", "traj-B"));
+        await rig.AskAsync();                       // delivered in A
+        rig.Fake.MakeMostRecent("conv-B");
+        rig.Fake.HangWaits = true;
+        var inWait = rig.Fake.ArmWaitSignal();
+        using var cts = new CancellationTokenSource();
+        var pending = rig.AskAsync(cancellationToken: cts.Token);
+        await inWait.WaitAsync(TimeSpan.FromSeconds(30));   // the ask is PROVABLY inside its wait, after the send
+        cts.Cancel();
+        try { await pending; }
+        catch (Exception ex) when (ex is OperationCanceledException or RpcException { StatusCode: StatusCode.Cancelled })
+        {
+            // A caller cancel surfaces as the cancellation itself or as the gRPC Cancelled status (measured: the latter).
+        }
+        rig.Fake.HangWaits = false;
+        var third = await rig.AskAsync();           // B again, now delivered
+        Assert.Equal("traj-A", PreviousOf(third.Json));
+    }
+
+    [Fact]
+    public async Task Conv_block_coexists_with_a_13b_truncated_reply_notice()
+    {
+        await using var rig = await SwitchRig.StartAsync(("conv-A", "traj-A"), ("conv-B", "traj-B"));
+        await rig.AskAsync();
+        rig.Fake.MakeMostRecent("conv-B");
+        // A discipline ask whose reply ("ok") lacks the terminal token: the [13b] chain emits TRUNCATED REPLY.
+        var second = await rig.AskAsync("q", discipline: "agy-first", artifactPath: rig.ArtifactPath);
+        Assert.Contains(second.Blocks, b => b.StartsWith("[13b] TRUNCATED REPLY", StringComparison.Ordinal));
+        Assert.Contains("[conv] CONVERSATION CHANGED: traj-A -> traj-B;", Assert.Single(ConvBlocks(second.Blocks)));
+    }
+
+    [Fact]
+    public async Task Conv_block_coexists_with_a_peer_still_busy_notice()
+    {
+        await using var rig = await SwitchRig.StartWithStallWindowAsync(TimeSpan.FromMilliseconds(150),
+            ("conv-A", "traj-A"), ("conv-B", "traj-B"));
+        rig.Fake.AssistantDone = true;
+        rig.Fake.HangWaits = true;                  // the turn ends but the conversation never goes idle
+        await rig.AskAsync();                       // delivered in A, flagged busy
+        rig.Fake.MakeMostRecent("conv-B");
+        var second = await rig.AskAsync();
+        Assert.Contains(second.Blocks, b => b.StartsWith("[PEER STILL BUSY]", StringComparison.Ordinal));
+        Assert.Contains("[conv] CONVERSATION CHANGED: traj-A -> traj-B;", Assert.Single(ConvBlocks(second.Blocks)));
     }
 }
