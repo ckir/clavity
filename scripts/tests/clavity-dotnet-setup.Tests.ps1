@@ -46,6 +46,11 @@ exit 0
             FAKE_AGY = $Fake; FAKE_LOG = ($Fx.Log -replace '\\', '/'); HOME = $Fx.Home; CLAVITY_GOLDEN_HEADER = (Join-Path $Fx.Home '.clavity')
         }
         $errFile = [IO.Path]::GetTempFileName()
+        # HOME is among $vars, so the host value is put back afterwards, not removed: in a one-process run
+        # (`just test-scripts-fast`) every later suite would otherwise start without a HOME (same pattern as
+        # fetch-clavity-ls.Tests.ps1).
+        $saved = @{}
+        foreach ($k in $vars.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k) }
         try {
             foreach ($k in $vars.Keys) { Set-Item -Path "Env:$k" -Value $vars[$k] }
             # -NoAgy drops every PATH directory holding an agy, so the hook sees no agy CLI at all.
@@ -59,7 +64,9 @@ exit 0
             $calls = if (Test-Path -LiteralPath $Fx.Log) { @(Get-Content -LiteralPath $Fx.Log) } else { @() }
             return [pscustomobject]@{ ExitCode = $code; StdErr = "$(Get-Content -Raw -LiteralPath $errFile)".Trim(); Calls = $calls }
         } finally {
-            foreach ($k in $vars.Keys) { Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue }
+            foreach ($k in $vars.Keys) {
+                if ($null -eq $saved[$k]) { Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue } else { Set-Item -Path "Env:$k" -Value $saved[$k] }
+            }
             Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue
         }
     }
