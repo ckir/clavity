@@ -279,6 +279,82 @@ public sealed class ReviewFindingsTests
         Assert.True(r.TimedOut);
     }
 
+    // ---- the real launch path: Run and RunScriptHere (ROADMAP section 107, last bullet) ----
+    // RunCaptured is pinned above. These pin the two other real process launches StartFlow makes: the foreground Claude
+    // session (Run) and the posix agy script run in the current terminal (RunScriptHere). Linux only: they need /bin/sh.
+
+    private static string NewTempDir()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "clavity-run-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    [Fact]
+    public void Run_waits_for_the_child_and_returns_its_exit_code()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var cmd = new LaunchCommand("/bin/sh", ["-c", "exit 7"], Path.GetTempPath(), new Dictionary<string, string>());
+        Assert.Equal(7, new RealStartEffects().Run(cmd, wait: true));
+    }
+
+    [Fact]
+    public void Run_gives_the_child_its_working_directory_environment_and_arguments()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var dir = NewTempDir();
+        try
+        {
+            var outFile = Path.Combine(dir, "out.txt");
+            var cmd = new LaunchCommand("/bin/sh",
+                ["-c", "printf '%s|%s|%s' \"$1\" \"$CLAVITY_RUN_TEST\" \"$(pwd -P)\" > \"$CLAVITY_RUN_OUT\"", "sh", "arg with spaces"],
+                dir,
+                new Dictionary<string, string> { ["CLAVITY_RUN_TEST"] = "v1", ["CLAVITY_RUN_OUT"] = outFile });
+            Assert.Equal(0, new RealStartEffects().Run(cmd, wait: true));
+            Assert.Equal($"arg with spaces|v1|{Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir))}", File.ReadAllText(outFile));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void Run_without_wait_returns_zero_without_waiting_for_the_child()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        // The child outlives the call by seconds; a Run that waited anyway would return 9, never 0, so the exit code alone
+        // proves it did not wait, with no timing bound to flake on a loaded machine.
+        var cmd = new LaunchCommand("/bin/sh", ["-c", "sleep 1; exit 9"], Path.GetTempPath(), new Dictionary<string, string>());
+        Assert.Equal(0, new RealStartEffects().Run(cmd, wait: false));
+    }
+
+    [Fact]
+    public void Run_lets_a_missing_program_surface_as_Win32Exception_for_StartFlow_to_report()
+    {
+        var cmd = new LaunchCommand("/no/such/clavity-program", [], Path.GetTempPath(), new Dictionary<string, string>());
+        Assert.Throws<Win32Exception>(() => new RealStartEffects().Run(cmd, wait: true));
+    }
+
+    [Fact]
+    public void RunScriptHere_runs_the_script_with_the_here_flag_and_returns_its_exit_code()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var dir = NewTempDir();
+        try
+        {
+            var outFile = Path.Combine(dir, "arg.txt");
+            var script = Path.Combine(dir, "agy.sh");
+            File.WriteAllText(script, $"printf '%s' \"$1\" > '{outFile}'\nexit 5\n");
+            Assert.Equal(5, new RealStartEffects().RunScriptHere(script));
+            Assert.Equal("--here", File.ReadAllText(outFile));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public void TakeProfileLock_turns_an_unusable_name_into_an_IOException_not_a_crash()
     {
