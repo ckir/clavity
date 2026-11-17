@@ -101,7 +101,7 @@ Upgrading from an old `<member>-setup-<version>.exe` installer? See
 
 **One ships a standalone Windows installer** — clavity-classic:
 
-1. Go to the [Releases](../../releases) page. The `clavity-v<N>` umbrella release carries the installer.
+1. Go to the [Releases](https://github.com/ckir/clavity/releases) page. The `clavity-v<N>` umbrella release carries the installer.
 2. Download it — the asset is named `clavity-classic-setup-<version>.exe`, with a `.sha256`.
 3. Run it. It registers the product's plugin locally with every agent it detects (Claude Code and/or
    `agy`) and puts its binary on your PATH.
