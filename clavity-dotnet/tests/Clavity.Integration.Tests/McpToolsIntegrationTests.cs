@@ -728,4 +728,50 @@ public class McpToolsIntegrationTests
         var only = Assert.Single(events);
         Assert.Equal("traj-A->traj-B", only.GetProperty("outcome").GetString());
     }
+
+    private static List<string> ConvBlocks(List<string> blocks)
+        => blocks.Where(b => b.StartsWith("[conv]", StringComparison.Ordinal)).ToList();
+
+    [Fact]
+    public async Task Switch_appends_a_directed_conv_block_naming_both_trajectory_ids()
+    {
+        await using var rig = await SwitchRig.StartAsync(("conv-A", "traj-A"), ("conv-B", "traj-B"));
+        await rig.AskAsync();
+        rig.Fake.MakeMostRecent("conv-B");
+        var second = await rig.AskAsync();
+        var block = Assert.Single(ConvBlocks(second.Blocks));
+        // One substring, so a notice with the two ids swapped cannot pass.
+        Assert.Contains("[conv] CONVERSATION CHANGED: traj-A -> traj-B;", block);
+        Assert.Contains("treat it as a first brief unless you know they are in this conversation.", block);
+
+        var third = await rig.AskAsync();   // same conversation again: the switch was already reported
+        Assert.Empty(ConvBlocks(third.Blocks));
+    }
+
+    [Fact]
+    public async Task Switching_back_names_the_last_delivered_id_in_the_conv_block()
+    {
+        await using var rig = await SwitchRig.StartAsync(("conv-A", "traj-A"), ("conv-B", "traj-B"));
+        await rig.AskAsync();
+        rig.Fake.MakeMostRecent("conv-B");
+        var toB = await rig.AskAsync();
+        rig.Fake.MakeMostRecent("conv-A");
+        var backToA = await rig.AskAsync();
+        // Index by prefix, not position: block positions differ from ask to ask.
+        Assert.Contains("[conv] CONVERSATION CHANGED: traj-A -> traj-B;", Assert.Single(ConvBlocks(toB.Blocks)));
+        Assert.Contains("[conv] CONVERSATION CHANGED: traj-B -> traj-A;", Assert.Single(ConvBlocks(backToA.Blocks)));
+    }
+
+    [Fact]
+    public async Task No_conv_block_on_first_ask_control_or_renewal()
+    {
+        await using var rig = await SwitchRig.StartAsync(("conv-A", "traj-A"), ("conv-B", "traj-B"));
+        var first = await rig.AskAsync();
+        var control = await rig.AskAsync();
+        rig.Fake.RenewTrajectory("conv-A", "traj-A2");
+        var renewed = await rig.AskAsync();
+        Assert.Empty(ConvBlocks(first.Blocks));
+        Assert.Empty(ConvBlocks(control.Blocks));
+        Assert.Empty(ConvBlocks(renewed.Blocks));
+    }
 }
