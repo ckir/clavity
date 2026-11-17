@@ -6,9 +6,9 @@
 
 # clavity monorepo git hooks (lefthook). Install once per clone: `lefthook install`.
 #
-# pre-push: full lint gate across every tool (mirrors each tool's CI lint) — catches fmt/clippy/compile
-#   breaks locally BEFORE a CI bounce, which matters in an agent-driven repo. Requires each tool's lint
-#   tools. No Rust/.NET pre-commit friction. (ghidrust was fully retired 2026-09-14.)
+# pre-push: fast (seconds-range) consistency gates only. The full lint and script-test gates run in CI, not
+#   here (see the note above `pre-push:` below for why). No Rust/.NET pre-commit friction. (ghidrust was
+#   fully retired 2026-09-14.)
 #
 # pre-commit: Python-bridge hygiene, folded here from the former clavity-classic/lefthook.yml — ruff
 #   check --fix + format on staged Python files only (pure Rust/.NET commits untouched). lint + format
