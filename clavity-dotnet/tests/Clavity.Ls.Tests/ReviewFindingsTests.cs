@@ -348,10 +348,100 @@ public sealed class ReviewFindingsTests
             var cmd = new LaunchCommand("/bin/sh", ["-c", $"sleep 3; : > '{marker}'; exit 9"], dir, new Dictionary<string, string>());
             Assert.Equal(0, new RealStartEffects().Run(cmd, wait: false));
             Assert.False(File.Exists(marker), "Run returned only after the child finished");
+            // ...and it WAS launched: a Run that returned 0 without starting anything would pass both checks above.
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            while (!File.Exists(marker) && DateTime.UtcNow < deadline)
+                Thread.Sleep(50);
+            Assert.True(File.Exists(marker), "the child was never started");
         }
         finally
         {
-            Directory.Delete(dir, true);   // the child may still be asleep: its late write then fails harmlessly
+            Directory.Delete(dir, true);
+        }
+    }
+
+    // The link target of one of THIS process's standard streams, as /proc reports it ("pipe:[123]", "/dev/null", "/dev/pts/4").
+    // A child that inherited the stream reports the same string; one given a fresh pipe reports a different one. Linux only.
+    private static string? OwnFdTarget(int fd) => new FileInfo($"/proc/self/fd/{fd}").LinkTarget;
+
+    private static T WithEnvironmentVariable<T>(string name, string value, Func<T> action)
+    {
+        var before = Environment.GetEnvironmentVariable(name);
+        Environment.SetEnvironmentVariable(name, value);
+        try { return action(); }
+        finally { Environment.SetEnvironmentVariable(name, before); }
+    }
+
+    [Fact]
+    public void Run_inherits_the_ambient_environment_and_lets_a_launch_value_override_an_inherited_one()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var dir = NewTempDir();
+        var inheritedName = "CLAVITY_RUN_INHERIT_" + Guid.NewGuid().ToString("N");
+        var overriddenName = "CLAVITY_RUN_OVERRIDE_" + Guid.NewGuid().ToString("N");
+        try
+        {
+            var outFile = Path.Combine(dir, "env.txt");
+            var cmd = new LaunchCommand("/bin/sh",
+                ["-c", $"printf '%s|%s' \"${inheritedName}\" \"${overriddenName}\" > \"$CLAVITY_RUN_OUT\""],
+                dir,
+                new Dictionary<string, string> { [overriddenName] = "from-the-launch", ["CLAVITY_RUN_OUT"] = outFile });
+            // CLAUDE_CONFIG_DIR is the real case: the shell may already have it set and the launch value has to win (StartFlow).
+            var exit = WithEnvironmentVariable(inheritedName, "from-the-shell",
+                () => WithEnvironmentVariable(overriddenName, "from-the-shell", () => new RealStartEffects().Run(cmd, wait: true)));
+            Assert.Equal(0, exit);
+            Assert.Equal("from-the-shell|from-the-launch", File.ReadAllText(outFile));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void Run_gives_the_child_this_processs_own_standard_input_and_output()
+    {
+        // StartFlow runs the foreground Claude session through Run: it must talk to the user's terminal, not to a pipe.
+        if (!OperatingSystem.IsLinux()) return;
+        var dir = NewTempDir();
+        try
+        {
+            var outFile = Path.Combine(dir, "fds.txt");
+            // fd 3 is a copy of the shell's stdout taken before any redirection, so it names the stream Run handed over.
+            var cmd = new LaunchCommand("/bin/sh",
+                ["-c", "exec 3>&1; printf '%s|%s' \"$(readlink /proc/self/fd/0)\" \"$(readlink /proc/self/fd/3)\" > \"$CLAVITY_RUN_OUT\""],
+                dir, new Dictionary<string, string> { ["CLAVITY_RUN_OUT"] = outFile });
+            Assert.Equal(0, new RealStartEffects().Run(cmd, wait: true));
+            Assert.Equal($"{OwnFdTarget(0)}|{OwnFdTarget(1)}", File.ReadAllText(outFile));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void RunScriptHere_inherits_the_environment_and_stdin_and_copes_with_a_space_in_the_script_path()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var dir = NewTempDir();
+        var name = "CLAVITY_RUN_INHERIT_" + Guid.NewGuid().ToString("N");
+        try
+        {
+            var scriptDir = Path.Combine(dir, "a dir with spaces");
+            Directory.CreateDirectory(scriptDir);
+            var outFile = Path.Combine(dir, "script.txt");
+            var script = Path.Combine(scriptDir, "agy.sh");
+            // The stdin line is Linux-only (/proc); on macOS the script still proves the environment, the argument and the path.
+            var stdin = OperatingSystem.IsLinux() ? "$(readlink /proc/self/fd/0)" : "-";
+            File.WriteAllText(script, $"printf '%s|%s|%s' \"${name}\" \"$1\" \"{stdin}\" > '{outFile}'\nexit 5\n");
+            var exit = WithEnvironmentVariable(name, "from-the-shell", () => new RealStartEffects().RunScriptHere(script));
+            Assert.Equal(5, exit);
+            Assert.Equal($"from-the-shell|--here|{(OperatingSystem.IsLinux() ? OwnFdTarget(0) : "-")}", File.ReadAllText(outFile));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
         }
     }
 
