@@ -310,6 +310,12 @@ internal sealed class Fake : IStartEffects
     public readonly List<(string Line, TimeSpan Timeout)> TimeoutLog = new();
     /// <summary>The wait of every profile-lock request, in call order.</summary>
     public readonly List<TimeSpan> LockWaits = new();
+    /// <summary>What had been written to <see cref="Err"/> at the moment each profile-lock request arrived, in call order: lets a test
+    /// say WHEN a message was printed relative to a lock wait, not only that it was.</summary>
+    public readonly List<string> ErrAtLockCall = new();
+    /// <summary>How many profile-lock requests are refused before one succeeds (a holder that finishes while a second run waits).
+    /// <see cref="ProfileLockHeld"/> still refuses every request.</summary>
+    public int LockMisses { get; init; }
 
     public static string Line(LaunchCommand cmd) => string.Join(' ', new[] { cmd.FileName }.Concat(cmd.Arguments));
 
@@ -331,9 +337,12 @@ internal sealed class Fake : IStartEffects
     {
         Calls.Add("profile-lock");
         LockWaits.Add(wait);
+        ErrAtLockCall.Add(Err.ToString());
         if (ProfileLockFails is not null)
             throw ProfileLockFails;
-        return ProfileLockHeld ? null : new Release(Calls, "profile-release");
+        if (ProfileLockHeld || LockWaits.Count <= LockMisses)
+            return null;
+        return new Release(Calls, "profile-release");
     }
 
     private sealed class Release(List<string> calls, string name) : IDisposable

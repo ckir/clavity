@@ -571,6 +571,28 @@ public sealed class ProfileSetupTests
     }
 
     [Fact]
+    public void A_contended_lock_acquired_on_the_wait_configures_under_it_without_a_timeout()
+    {
+        // The usual contended outcome: the holder finishes while this run waits. The probe is refused, the wait is granted.
+        var fx = new Fake { LockMisses = 1, Script = NewFake(BothEnabled()).Script };
+        Assert.Equal(Dir, ProfileSetup.Run(fx, "work"));
+        Assert.Equal([TimeSpan.Zero, ProfileSetup.LockWait], fx.LockWaits);
+        Assert.DoesNotContain("timed out", fx.Err.ToString());
+        Assert.Single(fx.Calls, c => c == "profile-release");
+        Assert.True(fx.Calls.IndexOf("profile-release") > fx.Calls.IndexOf("cmd:" + Doctor), "Configure must run under the lock it waited for");
+    }
+
+    [Fact]
+    public void The_waiting_notice_is_printed_before_the_long_wait_begins()
+    {
+        // The notice exists so a long wait does not look like a hang; printed after the wait it would be useless.
+        var fx = new Fake { LockMisses = 1, Script = NewFake(BothEnabled()).Script };
+        Assert.Equal(Dir, ProfileSetup.Run(fx, "work"));
+        Assert.Equal(string.Empty, fx.ErrAtLockCall[0]);   // the silent probe
+        Assert.Contains("clavity: waiting for profile 'work' setup", fx.ErrAtLockCall[1]);   // already visible when the wait starts
+    }
+
+    [Fact]
     public void An_uncontended_lock_prints_no_waiting_notice()
     {
         var fx = NewFake(BothEnabled());
