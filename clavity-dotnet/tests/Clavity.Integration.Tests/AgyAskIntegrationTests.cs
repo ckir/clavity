@@ -233,6 +233,13 @@ public class AgyAskIntegrationTests
         // our own window timer - is what ended the wait. Without it that case cannot be constructed: the
         // clamped window always wins the race, which is exactly what an earlier probe run measured.
         private readonly TimeSpan _probeDelay;
+        // ROADMAP section 113: when set, the probe delay runs on THIS clock (its own timer) instead of a real Task.Delay, so a test can
+        // spend it with a virtual-clock advance. Null keeps today's behaviour for every other caller.
+        private readonly TimeProvider? _time;
+        private int _probeDelaysArmed;
+        /// <summary>Probe delays whose timer EXISTS and is waiting (counted after the timer was created, so a virtual-clock advance made
+        /// once this has grown always lands on an armed timer). Only counts when the fake was given a <c>time</c> provider.</summary>
+        public int ProbeDelaysArmed => Volatile.Read(ref _probeDelaysArmed);
         // Gap-1 (idle-wait caller-cancel): signalled the instant a "never idle this window" WaitForConversationFullyIdle
         // call is genuinely BLOCKED server-side, so a test can cancel the CALLER token only once it is certain the
         // client is truly parked inside that RPC — never racing a fixed delay against cold gRPC-channel setup time.
@@ -243,7 +250,7 @@ public class AgyAskIntegrationTests
             string cascadeId, string replyText, TimeSpan idleDelay, IEnumerable<CascadeStep> initial,
             FetchAvailableModelsResponse? catalog = null, IReadOnlyList<WaitStep>? waitPlan = null,
             bool throwOnProbeTrajectory = false, bool throwCatalogUnavailable = false,
-            TimeSpan probeDelay = default)
+            TimeSpan probeDelay = default, TimeProvider? time = null)
         {
             _cascadeId = cascadeId;
             _replyText = replyText;
@@ -254,6 +261,7 @@ public class AgyAskIntegrationTests
             _throwOnProbeTrajectory = throwOnProbeTrajectory;
             _throwCatalogUnavailable = throwCatalogUnavailable;
             _probeDelay = probeDelay;
+            _time = time;
         }
 
         public string? LastSentText { get; private set; }
@@ -288,7 +296,17 @@ public class AgyAskIntegrationTests
             if (_throwOnProbeTrajectory && n > 1)
                 throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "probe dead"));
             if (_probeDelay > TimeSpan.Zero && n > 1)
-                await Task.Delay(_probeDelay, context.CancellationToken);
+            {
+                if (_time is null)
+                    await Task.Delay(_probeDelay, context.CancellationToken);
+                else
+                {
+                    var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    using var timer = _time.CreateTimer(_ => tcs.TrySetResult(), null, _probeDelay, Timeout.InfiniteTimeSpan);
+                    Interlocked.Increment(ref _probeDelaysArmed);   // AFTER the timer exists: an advance after this fires it
+                    await tcs.Task.WaitAsync(context.CancellationToken);
+                }
+            }
             lock (_gate)
             {
                 var traj = new CascadeTrajectory { CascadeId = _cascadeId };
@@ -1269,22 +1287,29 @@ public class AgyAskIntegrationTests
         // SECONDS when the budget is the thing that is exhausted and only CLAVITY_AGY_IDLE_MAX_SECONDS can
         // help - the same mislabel, one case over.
         //
-        // The 300ms probe delay is what makes this constructible at all. The label is decided AFTER the probe
+        // The probe delay is what makes this constructible at all. The label is decided AFTER the probe
         // returns, so a slow probe is what lets the budget expire while the server, not our window timer,
         // ended the wait. An earlier attempt without it measured limit=absolute_max for the wrong reason: the
         // clamped window won the race and windowElapsed was true, so the branch under test never ran.
         //
-        // Arithmetic, budget 1000ms / stall window 500ms / probe delay 300ms:
-        //   window 1  waits 500 (not clamped: remaining 1000 > 500), progresses, probe 300 -> elapsed ~800
-        //   window 2  remaining 200 <= 500 -> CLAMPED; server returns its own timeout at once (elapsed ~800),
-        //             probe 300 -> elapsed ~1100 >= 1000. Budget gone, windowElapsed false.
+        // ROADMAP section 113: the clock is VIRTUAL (the old 500 / 1000 / 300 ms, scaled to minutes and with the arithmetic chosen so
+        // the budget is spent EXACTLY, not "about"). The probe delay is a timer on the fake's own clock, so spending it is an advance.
+        // Arithmetic, stall window 5 min / budget 10 min / probe delay 2.5 min:
+        //   window 1  waits 5 (not clamped: remaining 10 > 5), progresses; probe delay 1 -> elapsed 7.5
+        //   window 2  remaining 2.5 <= 5 -> CLAMPED to 2.5; server returns its own timeout at once (windowElapsed false, elapsed 7.5);
+        //             probe delay 2 -> elapsed 10.0 >= 10. Budget gone, windowElapsed false: ONLY the label's right-hand side
+        //             `(_time.GetUtcNow() - start) >= absoluteMax` can say absolute_max here.
+        // Mutants: that right-hand side read from the real clock (the virtual clock starts five minutes before the real one and `start`
+        // is a virtual read, so the real read gives about 5 minutes against a 10 minute budget), or `>=` made `>` (elapsed is EXACTLY
+        // the budget), or dropped: each reports stall.
         var plan = new[]
         {
             new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false),
             new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, ServerTimesOut: true),
         };
+        var (time, _) = VirtualClock.NewClock();
         var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan,
-                                 probeDelay: TimeSpan.FromMilliseconds(300));
+                                 probeDelay: TimeSpan.FromMinutes(2.5), time: time);
         await using var app = await StartFakeAsync(fake);
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
@@ -1292,18 +1317,41 @@ public class AgyAskIntegrationTests
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                IdleStallWindow = TimeSpan.FromMilliseconds(500),
-                IdleAbsoluteMax = TimeSpan.FromMilliseconds(1000),
+                TimeProvider = time,
+                IdleStallWindow = TimeSpan.FromMinutes(5),
+                IdleAbsoluteMax = TimeSpan.FromMinutes(10),
             });
-            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("budget gone"));
-            // Assert the PRECONDITION too, so this test cannot pass for the wrong reason: if the budget were
-            // not actually exhausted at the decision, absolute_max would be the wrong answer and this would be
-            // pinning a bug rather than a fix.
-            Assert.True(ex.Report.Elapsed >= TimeSpan.FromMilliseconds(1000),
-                $"precondition: the budget must really be gone, was {ex.Report.Elapsed.TotalMilliseconds:F0}ms");
+            var ask = view.AskAsync("budget gone");
+            await VirtualClock.AwaitWindowAsync(fake, ask, window: 1);
+            time.Advance(TimeSpan.FromMinutes(5));       // window 1 ends by OUR timer and progressed
+            await AwaitProbeDelayAsync(fake, ask, 1);
+            time.Advance(TimeSpan.FromMinutes(2.5));     // probe delay 1 spent: elapsed 7.5
+            await AwaitProbeDelayAsync(fake, ask, 2);    // window 2 (clamped to 2.5) was answered at once by the server
+            time.Advance(TimeSpan.FromMinutes(2.5));     // probe delay 2 spent: elapsed exactly 10 = the budget
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => ask.WaitAsync(VirtualClock.RealBound));
             Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+            // The PRECONDITION, exact: the budget is gone to the tick, so this cannot pass for the wrong reason (it would be pinning a
+            // bug if the budget were not exhausted at the decision).
+            Assert.Equal(TimeSpan.FromMinutes(10), ex.Report.Elapsed);
+            Assert.Equal(2, fake.ProbeDelaysArmed);
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    /// <summary>Wait until the fake has ARMED probe delay number <paramref name="count"/> (its timer exists), failing fast with the ask's
+    /// own exception when the ask ends first, and ending in OperationCanceledException at <see cref="VirtualClock.RealBound"/>.</summary>
+    private static async Task AwaitProbeDelayAsync(FakeAskLs fake, Task ask, int count)
+    {
+        using var cts = new CancellationTokenSource(VirtualClock.RealBound);
+        while (fake.ProbeDelaysArmed < count)
+        {
+            if (ask.IsCompleted)
+            {
+                await ask;   // rethrows ITS exception when it faulted
+                throw new InvalidOperationException($"the ask finished before probe delay {count} was armed");
+            }
+            await Task.Delay(5, cts.Token);
+        }
     }
 
     [Fact]
