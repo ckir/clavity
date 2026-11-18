@@ -125,8 +125,12 @@ Describe 'check-control-bytes.ps1' {
             if ($m.Success) { $globs += $m.Groups[1].Value }
         }
         $globs.Count | Should -BeGreaterThan 0 -Because 'a glob list that parsed as empty would make the assertions below vacuous'
+        # lefthook's `**/` form matches files in sub-directories only: a root-level file (README.md, DevelopersCockpit.ps1) needs the
+        # bare `*.ext` form as well. Measured with lefthook 2.1.17 in a scratch repo: `**/*.ps1` alone skips a root `a.ps1`.
         $globs | Should -Contain '**/*.md'
+        $globs | Should -Contain '*.md' -Because 'a push that changes only a root-level Markdown file must still run the gate'
         $globs | Should -Contain '**/*.ps1' -Because 'a push that changes only a PowerShell script must still run the control-byte gate locally'
+        $globs | Should -Contain '*.ps1' -Because 'a root-level PowerShell script (DevelopersCockpit.ps1) is not matched by the **/ form'
         $globs | Should -Contain 'scripts/check-control-bytes.ps1' -Because 'breaking the gate itself must trigger it'
     }
 
