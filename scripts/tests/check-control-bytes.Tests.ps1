@@ -112,6 +112,24 @@ Describe 'check-control-bytes.ps1' {
         $out | Should -Not -Match 'b\.bin'
     }
 
+    It 'the pre-push hook runs the gate when a push touches a PowerShell script, as CI does' {
+        # The script scans tracked *.md AND *.ps1 (ROADMAP 93.9) and ci-control-bytes.yml triggers on both, but the local hook once
+        # globbed Markdown only, so a NUL committed in a *.ps1 reached CI before anything said so. The glob is the third list
+        # of "what this gate cares about"; this row compares it with the file types the script scans.
+        $lines = Get-Content -LiteralPath (Join-Path $script:RepoRoot 'lefthook.yml')
+        $start = [Array]::FindIndex($lines, [Predicate[string]]{ param($l) $l -match '^\s{4}control-bytes:\s*$' })
+        $start | Should -BeGreaterOrEqual 0 -Because 'the control-bytes command must exist in lefthook.yml, or this row proves nothing'
+        $globs = @()
+        for ($i = $start + 1; $i -lt $lines.Count -and $lines[$i] -notmatch '^\s{4}\S'; $i++) {
+            $m = [regex]::Match($lines[$i], '^\s*-\s*"(.+)"\s*$')
+            if ($m.Success) { $globs += $m.Groups[1].Value }
+        }
+        $globs.Count | Should -BeGreaterThan 0 -Because 'a glob list that parsed as empty would make the assertions below vacuous'
+        $globs | Should -Contain '**/*.md'
+        $globs | Should -Contain '**/*.ps1' -Because 'a push that changes only a PowerShell script must still run the control-byte gate locally'
+        $globs | Should -Contain 'scripts/check-control-bytes.ps1' -Because 'breaking the gate itself must trigger it'
+    }
+
     It 'fails closed outside a git repository' {
         $d = Join-Path $TestDrive 'nogit7'
         New-Item -ItemType Directory -Path $d | Out-Null
