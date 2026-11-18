@@ -169,6 +169,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 
@@ -367,6 +368,29 @@ public class AgyAskIntegrationTests
             if (_catalog is null)
                 throw new RpcException(new Status(StatusCode.Unimplemented, "older agy"));
             return Task.FromResult(new GetAvailableModelsResponse { AvailableModels = _catalog });
+        }
+    }
+
+    // ROADMAP section 106: tests that drive AgyViewOptions.TimeProvider with a FakeTimeProvider still wait on REAL RPC round
+    // trips, so every await is bounded by a real-time limit. A mutant that leaves a real timer in place then fails by this bound
+    // instead of passing slowly (a 10-minute window cannot finish inside it).
+    private static readonly TimeSpan RealBound = TimeSpan.FromSeconds(30);
+
+    /// <summary>Wait until the fake has received wait call number <paramref name="window"/>. The fake counts a call AFTER the client
+    /// armed that window's timer (the handler increments on entry), so a virtual-clock advance made after this returns always
+    /// lands on an armed timer. Fails fast, with the ask's own exception, when the ask ends before the window is reached, and
+    /// otherwise ends in OperationCanceledException at <see cref="RealBound"/>.</summary>
+    private static async Task AwaitWindowAsync(FakeAskLs fake, Task ask, int window)
+    {
+        using var cts = new CancellationTokenSource(RealBound);
+        while (fake.WaitCalls < window)
+        {
+            if (ask.IsCompleted)
+            {
+                await ask;   // rethrows ITS exception when it faulted
+                throw new InvalidOperationException($"the ask finished before wait window {window} was reached");
+            }
+            await Task.Delay(5, cts.Token);
         }
     }
 
@@ -1100,21 +1124,30 @@ public class AgyAskIntegrationTests
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
+            // ROADMAP section 106: the clock is VIRTUAL. The ratio that MAKES this test what it is - window 1 fits inside the
+            // budget and window 2 is clamped to the remainder - is kept (10 min / 15 min, the old 1000 ms / 1500 ms times 600), and
+            // nothing now depends on how long an RPC round trip takes: the fake clock moves only on Advance. The windows are
+            // minutes on purpose: a production timer that ignored the injected clock would need real minutes, so RealBound
+            // expires and the test fails, instead of passing after a real second. The fake starts at the real now because its
+            // default (the year 2000) would make a stray read of the real clock look "past" every fake deadline.
+            var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+            var progress = new CollectingProgress<AgyWaitProgress>();
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                // Scaled up from 150ms/250ms, keeping the ratio that MAKES this test what it is: window 1 must
-                // fit inside the budget and window 2 must be clamped to the remainder. Widening only the budget -
-                // the obvious-looking fix, and the one the capstone peer proposed - destroys the test: at a 2s
-                // budget window 2 is no longer clamped, the no-progress branch reports Stall instead of
-                // AbsoluteMax, and the assertion below fails. MEASURED, not reasoned: that exact edit turned this
-                // test red while the other 61 stayed green. Scaling BOTH preserves the clamp and still buys the
-                // jitter margin (see the sibling test above for why the margin matters).
-                IdleStallWindow = TimeSpan.FromMilliseconds(1000),
-                IdleAbsoluteMax = TimeSpan.FromMilliseconds(1500), // window 1 (1000ms) < 1500ms; window 2 clamps to the ~500ms remainder
+                TimeProvider = time,
+                IdleStallWindow = TimeSpan.FromMinutes(10),
+                IdleAbsoluteMax = TimeSpan.FromMinutes(15), // window 1 (10 min) < 15 min; window 2 clamps to the 5 min remainder
             });
-            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("progress then quit"));
+            var ask = view.AskAsync("progress then quit", progress: progress);
+            await AwaitWindowAsync(fake, ask, window: 1); time.Advance(TimeSpan.FromMinutes(10));   // window 1 ends by OUR timer, and progressed
+            await AwaitWindowAsync(fake, ask, window: 2); time.Advance(TimeSpan.FromMinutes(5));    // window 2 was clamped to the 5 min remainder: this elapses it
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => ask.WaitAsync(RealBound));
             Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+            // Exact under a virtual clock: the report's elapsed (AgyView BuildModalHang) and each progress report's elapsed
+            // are the clock reads the budget arithmetic used, so a read of the wrong clock cannot hide behind a tolerance.
+            Assert.Equal(TimeSpan.FromMinutes(15), ex.Report.Elapsed);
+            Assert.Equal(new[] { TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(15) }, progress.Reports.Select(r => r.Elapsed));
             // The SECOND absolute-max route (AgyView.cs:323, the no-progress branch, which passes `probe`). Its
             // sibling above covers :244 only, and a fix applied to one route while the other kept shipping a
             // blind diagnostic is precisely the half-fix this suite keeps re-learning.
@@ -1151,14 +1184,28 @@ public class AgyAskIntegrationTests
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
+            // ROADMAP section 106: this test failed 2 of 3 attempts on the windows-latest runner with `absolute_max` (CI run
+            // 44232436767). With real 1000 ms / 1500 ms windows it tolerated only 500 ms of RPC overhead across three round
+            // trips before the label test read the real clock past the budget. The clock is VIRTUAL now, so the label depends on
+            // what the test advanced, never on how slow the runner was. 10 min / 15 min keep the old ratio (window 2 clamps to the
+            // remainder); minutes rather than milliseconds so that a timer which ignored the injected clock fails by RealBound
+            // instead of passing slowly; the fake starts at the real now because its default (year 2000) would make a stray read
+            // of the real clock look "past" every fake deadline.
+            var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                IdleStallWindow = TimeSpan.FromMilliseconds(1000),
-                IdleAbsoluteMax = TimeSpan.FromMilliseconds(1500), // window 2 clamps to the ~500ms remainder
+                TimeProvider = time,
+                IdleStallWindow = TimeSpan.FromMinutes(10),
+                IdleAbsoluteMax = TimeSpan.FromMinutes(15), // window 2 clamps to the 5 min remainder
             });
-            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("server quits early"));
+            var ask = view.AskAsync("server quits early");
+            await AwaitWindowAsync(fake, ask, window: 1);   // window 1 is parked server-side, so the client already armed its timer
+            time.Advance(TimeSpan.FromMinutes(10));         // window 1 ends and progressed; window 2 is clamped and the server quits at once
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => ask.WaitAsync(RealBound));
             Assert.Equal(IdleLimit.Stall, ex.Report.Limit);
+            // The fake clock moves only on Advance, so at the label it reads exactly 10 min: 10 min >= 15 min is false, whatever the runner did.
+            Assert.Equal(TimeSpan.FromMinutes(10), ex.Report.Elapsed);
             Assert.NotNull(ex.Diagnostic);
         }
         finally { Directory.Delete(dir, true); }
