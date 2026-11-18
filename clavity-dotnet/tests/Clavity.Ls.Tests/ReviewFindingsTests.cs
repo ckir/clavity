@@ -250,7 +250,7 @@ public sealed class ReviewFindingsTests
         var r = new RealStartEffects().RunCaptured(cmd, TimeSpan.FromSeconds(30));
         Assert.Equal(0, r.ExitCode);
         Assert.False(r.TimedOut);
-        Assert.Equal($"arg with spaces; and 'quotes'|v1|{Path.TrimEndingDirectorySeparator(Path.GetFullPath(cwd))}", r.StdOut);
+        Assert.Equal($"arg with spaces; and 'quotes'|v1|{PhysicalPath(cwd)}", r.StdOut);
     }
 
     [Fact]
@@ -281,7 +281,22 @@ public sealed class ReviewFindingsTests
 
     // ---- the real launch path: Run and RunScriptHere (ROADMAP section 107, last bullet) ----
     // RunCaptured is pinned above. These pin the two other real process launches StartFlow makes: the foreground Claude
-    // session (Run) and the posix agy script run in the current terminal (RunScriptHere). Linux only: they need /bin/sh.
+    // session (Run) and the posix agy script run in the current terminal (RunScriptHere). POSIX only (they need /bin/sh):
+    // each returns early on Windows, so on macOS and Linux alike they run.
+
+    // The PHYSICAL path of a directory, as the shell sees it. `pwd -P` resolves symlinks, and the temp directory is behind one
+    // on macOS (/var -> /private/var), so comparing it with Path.GetFullPath (lexical) fails there. Asking the same question of
+    // an independent plain process gives the expected value without assuming how the platform lays its temp directory out.
+    private static string PhysicalPath(string dir)
+    {
+        var psi = new ProcessStartInfo("/bin/sh") { WorkingDirectory = dir, RedirectStandardOutput = true, UseShellExecute = false };
+        psi.ArgumentList.Add("-c");
+        psi.ArgumentList.Add("pwd -P");
+        using var process = Process.Start(psi)!;
+        var output = process.StandardOutput.ReadToEnd().Trim();
+        process.WaitForExit();
+        return output;
+    }
 
     private static string NewTempDir()
     {
@@ -311,7 +326,7 @@ public sealed class ReviewFindingsTests
                 dir,
                 new Dictionary<string, string> { ["CLAVITY_RUN_TEST"] = "v1", ["CLAVITY_RUN_OUT"] = outFile });
             Assert.Equal(0, new RealStartEffects().Run(cmd, wait: true));
-            Assert.Equal($"arg with spaces|v1|{Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir))}", File.ReadAllText(outFile));
+            Assert.Equal($"arg with spaces|v1|{PhysicalPath(dir)}", File.ReadAllText(outFile));
         }
         finally
         {
@@ -323,8 +338,9 @@ public sealed class ReviewFindingsTests
     public void Run_without_wait_returns_zero_without_waiting_for_the_child()
     {
         if (OperatingSystem.IsWindows()) return;
-        // The child outlives the call by seconds; a Run that waited anyway would return 9, never 0, so the exit code alone
-        // proves it did not wait, with no timing bound to flake on a loaded machine.
+        // The child outlives the call. A Run that ignored wait:false and waited would return the child's exit code, 9, not 0
+        // (the mutant that waits and then returns 0 anyway is not caught here: proving it would need a timing bound, and a
+        // bound flakes on a loaded machine). Measured trade, accepted: the common mutant is caught with no timing at all.
         var cmd = new LaunchCommand("/bin/sh", ["-c", "sleep 1; exit 9"], Path.GetTempPath(), new Dictionary<string, string>());
         Assert.Equal(0, new RealStartEffects().Run(cmd, wait: false));
     }
