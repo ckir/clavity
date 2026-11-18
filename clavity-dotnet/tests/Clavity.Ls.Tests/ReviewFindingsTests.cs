@@ -338,11 +338,21 @@ public sealed class ReviewFindingsTests
     public void Run_without_wait_returns_zero_without_waiting_for_the_child()
     {
         if (OperatingSystem.IsWindows()) return;
-        // The child outlives the call. A Run that ignored wait:false and waited would return the child's exit code, 9, not 0
-        // (the mutant that waits and then returns 0 anyway is not caught here: proving it would need a timing bound, and a
-        // bound flakes on a loaded machine). Measured trade, accepted: the common mutant is caught with no timing at all.
-        var cmd = new LaunchCommand("/bin/sh", ["-c", "sleep 1; exit 9"], Path.GetTempPath(), new Dictionary<string, string>());
-        Assert.Equal(0, new RealStartEffects().Run(cmd, wait: false));
+        var dir = NewTempDir();
+        try
+        {
+            // The child writes its marker only after 3 seconds and exits 9. Two independent witnesses that Run did not wait:
+            // it returns 0 (a Run that waited and passed the exit code on would return 9), and the marker does not exist yet
+            // (a Run that waited and then returned 0 anyway would find it). The 3 s margin is for a stalled test thread.
+            var marker = Path.Combine(dir, "child-finished");
+            var cmd = new LaunchCommand("/bin/sh", ["-c", $"sleep 3; : > '{marker}'; exit 9"], dir, new Dictionary<string, string>());
+            Assert.Equal(0, new RealStartEffects().Run(cmd, wait: false));
+            Assert.False(File.Exists(marker), "Run returned only after the child finished");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);   // the child may still be asleep: its late write then fails harmlessly
+        }
     }
 
     [Fact]
