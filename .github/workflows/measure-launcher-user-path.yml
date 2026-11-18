@@ -1,0 +1,66 @@
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
+name: measure-launcher-user-path
+
+permissions:
+  contents: read
+
+# ROADMAP section 110: measure, on a real Windows runner and the real powershell.exe 5.1, what the launcher's user-PATH
+# append does to an existing REG_EXPAND_SZ value. Seeds HKCU\Environment\Path with %USERPROFILE%\bin, runs the launcher
+# library standalone, and asserts the entry survives byte-for-byte, the registry kind is still ExpandString and a new
+# process built from the registry resolves clavity-ls. The runner is thrown away after each run, so no backup is needed.
+on:
+  push:
+    branches: [fix/launcher-user-path-expand]
+    paths:
+      - 'clavity-dotnet/plugin/hooks/clavity-ls-launcher-lib.sh'
+      - '.github/workflows/measure-launcher-user-path.yml'
+  workflow_dispatch:
+
+jobs:
+  measure:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Seed the user PATH as REG_EXPAND_SZ
+        shell: pwsh
+        run: |
+          $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+          $k.SetValue('Path', '%USERPROFILE%\bin;C:\seedtools', [Microsoft.Win32.RegistryValueKind]::ExpandString)
+          $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
+          "BEFORE kind=$($k.GetValueKind('Path')) raw=$($k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames))"
+          "powershell.exe 5.1 version: $(powershell.exe -NoProfile -Command '$PSVersionTable.PSVersion.ToString()')"
+      - name: Run the launcher library under git-bash
+        shell: bash
+        run: |
+          set -x
+          echo "OSTYPE=$OSTYPE"
+          bin="$RUNNER_TEMP/clavity-bin"
+          mkdir -p "$bin"
+          cp "$(command -v cmd.exe)" "$bin/clavity-ls.exe"
+          bash clavity-dotnet/plugin/hooks/clavity-ls-launcher-lib.sh "$bin/clavity-ls.exe" "$bin" 0.0.0-s110; echo "launcher exit=$?"
+      - name: Assert the registry afterwards
+        shell: pwsh
+        run: |
+          $bin = Join-Path $env:RUNNER_TEMP 'clavity-bin'
+          $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
+          $kind = $k.GetValueKind('Path').ToString()
+          $raw = $k.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+          "AFTER  kind=$kind raw=$raw"
+          $want = '%USERPROFILE%\bin;C:\seedtools;' + $bin
+          $fails = @()
+          if ($kind -ne 'ExpandString') { $fails += "kind is $kind, expected ExpandString" }
+          if ($raw -ne $want) { $fails += "value differs: expected [$want]" }
+          # A new process built from the registry (machine, then user, expanded) must resolve clavity-ls.
+          $m = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey('SYSTEM\CurrentControlSet\Control\Session Manager\Environment').GetValue('Path')
+          $u = [Environment]::ExpandEnvironmentVariables($raw)
+          $env:Path = [Environment]::ExpandEnvironmentVariables($m) + ';' + $u
+          $hit = Get-Command clavity-ls -ErrorAction SilentlyContinue
+          "new-process resolves clavity-ls: $($null -ne $hit) ($($hit.Source))"
+          if (-not $hit) { $fails += 'a process built from the registry PATH does not resolve clavity-ls' }
+          if ($fails) { $fails | ForEach-Object { "MEASURED FAIL: $_" }; exit 1 }
+          'MEASURED PASS'
