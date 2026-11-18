@@ -214,6 +214,12 @@ public sealed class AgyViewOptions
     /// <see cref="LsEventLog.LogVar"/> file. The default records to memory only, so a test that injects
     /// <see cref="Diagnostics"/> sees no extra lines.</summary>
     public LsEventLog Events { get; init; } = new();
+
+    /// <summary>The clock every deadline, window timer and elapsed figure in <see cref="AgyView"/>'s idle wait and boot race
+    /// reads (ROADMAP section 106). Production leaves the default; tests inject a <c>FakeTimeProvider</c> so a deadline test
+    /// no longer waits real time or depends on how long an RPC round trip takes. <see cref="LsClient"/> transport deadlines
+    /// are NOT driven by it: a gRPC deadline is real by nature.</summary>
+    public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 }
 
 /// <summary>
@@ -224,6 +230,7 @@ public sealed class AgyViewOptions
 public sealed class AgyView
 {
     private readonly AgyViewOptions _options;
+    private readonly TimeProvider _time;   // AgyViewOptions.TimeProvider: every clock read and window timer below goes through it
     private int _uncheckedNoticeDelivered;
 
     /// <summary>The event log the MCP tools record to and fault replies read from.</summary>
@@ -349,6 +356,7 @@ public sealed class AgyView
     public AgyView(AgyViewOptions options, IListeningPorts? listening = null, IModalGuard? modalGuard = null)
     {
         _options = options;
+        _time = options.TimeProvider;
         _listening = listening ?? new SystemListeningPorts();
         _modalGuard = modalGuard ?? new SurfacingModalGuard();
     }
@@ -620,13 +628,13 @@ public sealed class AgyView
     {
         var stallWindow = stallOverride ?? _options.IdleStallWindow;
         var absoluteMax = _options.IdleAbsoluteMax;   // TimeSpan.Zero => unbounded
-        var start = DateTime.UtcNow;
-        var lastProgress = before + 1;                // F5: +1 discounts our own injected Kind-14 user step.
+        var start = _time.GetUtcNow();
+        var lastProgress = before + 1;               // F5: +1 discounts our own injected Kind-14 user step.
         CascadeTrajectory? lastProbe = null;          // R5 F10: last successfully-fetched trajectory, reused for the diagnostic.
         var window = 0;                               // report counter: the ONLY monotonic value we can offer a progress sink.
         // ROADMAP section 108: when the wait first saw the CURRENT last step generating, and at which step count. A new step
         // (a different total) restarts the clock; a step that is no longer generating clears it.
-        (int Total, DateTime Since)? generating = null;
+        (int Total, DateTimeOffset Since)? generating = null;
 
         while (true)
         {
@@ -634,7 +642,7 @@ public sealed class AgyView
             var windowWasBudgetClamped = false;
             if (absoluteMax > TimeSpan.Zero)
             {
-                var remaining = absoluteMax - (DateTime.UtcNow - start);
+                var remaining = absoluteMax - (_time.GetUtcNow() - start);
                 if (remaining <= TimeSpan.Zero)
                 {
                     if (lastProbe is not null && TurnEnded(lastProbe, before)) return true;
@@ -656,8 +664,11 @@ public sealed class AgyView
                 windowSecs = windowWasBudgetClamped ? remaining : stallWindow;
             }
 
-            using var windowCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            windowCts.CancelAfter(windowSecs);
+            // The window timer runs on the injected clock (ROADMAP section 106): a source created with the provider is cancelled by
+            // the provider's timer, and the linked source below reflects either it or the caller's token. The catch filter further
+            // down still tells the two apart by the CALLER's token, so a caller cancel is never reclassified as a window end.
+            using var timerCts = new CancellationTokenSource(windowSecs, _time);
+            using var windowCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timerCts.Token);
             bool serverTimedOut;
             // Did OUR window timer end this wait, or did the server report its own inactivity timeout first?
             // The distinction is load-bearing for the limit label below: a clamped window that the server cut
@@ -709,7 +720,7 @@ public sealed class AgyView
             {
                 try
                 {
-                    progress.Report(new AgyWaitProgress(++window, total, Math.Max(0, total - (before + 1)), DateTime.UtcNow - start));
+                    progress.Report(new AgyWaitProgress(++window, total, Math.Max(0, total - (before + 1)), _time.GetUtcNow() - start));
                 }
                 catch
                 {
@@ -740,14 +751,14 @@ public sealed class AgyView
             // top and the clamp branch below, by IdleAbsoluteMax - this never overrides the budget).
             var isGenerating = IsGeneratingAssistantStep(probe, before);
             if (!isGenerating) generating = null;
-            else if (generating is not { } g || g.Total != total) generating = (total, DateTime.UtcNow);
+            else if (generating is not { } g || g.Total != total) generating = (total, _time.GetUtcNow());
             var generationCap = _options.GenerationCap;
             // A quota stop in agy's log since the send VETOES the extension: an exhausted peer can leave a step marked
             // generating forever (the status after a stop is unmeasured), and waiting the whole cap would delay by minutes the
             // report of a failure the operator can act on (and for which each blind retry pushes the reset further out).
             // The ask then ends exactly as it did before section 108: a stall at the ordinary window.
             var generationCapSpent = isGenerating && generationCap > TimeSpan.Zero
-                && DateTime.UtcNow - generating!.Value.Since >= generationCap;
+                && _time.GetUtcNow() - generating!.Value.Since >= generationCap;
             var generationAlive = isGenerating && generationCap > TimeSpan.Zero && !generationCapSpent
                 && !(quotaLogMark is { } qm && QuotaStopLog.FindSince(_options.CliLogPath, qm) is not null);
 
@@ -780,7 +791,7 @@ public sealed class AgyView
             // The clamp guard is what keeps this honest in the other direction: a NON-clamped window that
             // overruns the budget (a long pause) still reports `stall`, because the stall window really was
             // what bounded that wait.
-            else if (windowWasBudgetClamped && (windowElapsed || (DateTime.UtcNow - start) >= absoluteMax))
+            else if (windowWasBudgetClamped && (windowElapsed || (_time.GetUtcNow() - start) >= absoluteMax))
                 // Honest label (agy panel R3): a budget-clamped window that elapsed with no progress ended because the
                 // TOTAL budget ran out — NOT a stall. Reporting Stall would send the operator to the wrong knob
                 // (CLAVITY_AGY_IDLE_STALL_SECONDS) when CLAVITY_AGY_IDLE_MAX_SECONDS is the binding cap.
@@ -821,11 +832,11 @@ public sealed class AgyView
     /// <summary>Build the possible_modal exception from an ALREADY-FETCHED trajectory (null => null diagnostic). PURE
     /// + synchronous: it makes NO network call, so it cannot fail with a transient RpcException that would escape to
     /// the central channel_down catch (agy panel R4/R5 — F8/F10). Elapsed = the TOTAL wait since start.</summary>
-    private AgyModalHangException BuildModalHang(CascadeTrajectory? trajectory, int before, DateTime start, string limit)
+    private AgyModalHangException BuildModalHang(CascadeTrajectory? trajectory, int before, DateTimeOffset start, string limit)
     {
         var diag = trajectory is null ? null : BuildTimeoutDiagnostic(trajectory, before);
         return new AgyModalHangException(
-            _modalGuard.OnLsTimeout("WaitForConversationFullyIdle", DateTime.UtcNow - start, limit), diag);
+            _modalGuard.OnLsTimeout("WaitForConversationFullyIdle", _time.GetUtcNow() - start, limit), diag);
     }
 
     /// <summary>Where agy stopped, from an already-fetched trajectory: agy-produced step count (discounting our
@@ -858,7 +869,7 @@ public sealed class AgyView
     /// </summary>
     private async Task<(LsClient Client, string ConversationId)> ConnectAndResolveAsync(CancellationToken cancellationToken)
     {
-        var deadline = DateTime.UtcNow + _options.BootRaceTimeout;
+        var deadline = _time.GetUtcNow() + _options.BootRaceTimeout;
         var reachedLsButEmpty = false;   // did ANY poll reach the LS up-but-empty (E3 pending signal)?
         // Did any poll see a GENUINE channel death (a non-DeadlineExceeded RpcException)? A death AFTER a reached-empty
         // must win at the deadline (report channel_down, not waiting_for_human) — otherwise an LS that was reached
@@ -884,7 +895,7 @@ public sealed class AgyView
                 // block on the client's default 30s deadline and blow past the (shorter) boot-race budget. The
                 // resulting DeadlineExceeded flows through the RpcException catch below; the returned client keeps
                 // its normal per-call deadline for everything after connect.
-                var remaining = deadline - DateTime.UtcNow;
+                var remaining = deadline - _time.GetUtcNow();
                 if (remaining < TimeSpan.Zero) remaining = TimeSpan.Zero;
                 var conversations = await client.GetAllCascadeTrajectoriesAsync(
                     excludeSubtrajectories: true, cancellationToken, deadlineOverride: remaining);
@@ -942,7 +953,7 @@ public sealed class AgyView
                 client?.Dispose();
             }
 
-            if (DateTime.UtcNow >= deadline)
+            if (_time.GetUtcNow() >= deadline)
             {
                 // Reached-empty means "agy is up, waiting for the human to start a conversation" — UNLESS we later saw
                 // the channel die, in which case it's dead and the operator must restart (channel_down), not wait.
@@ -964,7 +975,7 @@ public sealed class AgyView
                 { StaleEndpointNote = staleEndpointNote };
             }
 
-            await Task.Delay(_options.BootRacePollInterval, cancellationToken);
+            await Task.Delay(_options.BootRacePollInterval, _time, cancellationToken);
         }
     }
 
