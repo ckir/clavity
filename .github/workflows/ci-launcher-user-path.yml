@@ -90,3 +90,4 @@ jobs:
           if ((& $get) -ne $before) { $fails += 'the stored value changed' }
           if ($fails) { $fails | ForEach-Object { "MEASURED FAIL: $_" }; exit 1 }
           'MEASURED PASS'
+          exit 0   # the constrained powershell.exe call above leaves $LASTEXITCODE at 1, which the step wrapper would return
