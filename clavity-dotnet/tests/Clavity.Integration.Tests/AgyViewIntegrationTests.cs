@@ -354,6 +354,7 @@ public class AgyViewIntegrationTests : IDisposable
     [Fact]
     public async Task LookAsync_retries_until_a_conversation_appears_then_succeeds()
     {
+        // ROADMAP section 113: stays on the REAL clock on purpose: it succeeds on poll 3 in milliseconds; the 5 s budget is only an upper bound that is never reached.
         // Map is empty for the first 2 polls (conversation not created yet), then non-empty.
         var fake = new FakeLs(cascadeId: "cascade-1", emptyMapPolls: 2);
         await using var app = await StartFakeAsync(fake);
@@ -377,6 +378,10 @@ public class AgyViewIntegrationTests : IDisposable
         await using var app = await StartFakeAsync(fake);
         var cliLog = WriteCliLog(PortOf(app));
 
+        // ROADMAP section 113: the boot race runs on a VIRTUAL clock (budget 10 min, poll 1 min; the pump advances one poll interval per armed
+        // timer, so ten polls reach the budget) and spends no real time. Every call that reaches the fake is answered at once (the last poll, at the deadline, gets a zero real deadline and never reaches it), so no real gRPC deadline is awaited.
+        // (The "realistic budget" note below describes the former real 5 s budget; it no longer applies to the virtual one.)
+        var (time, clock) = VirtualClock.NewClock();
         var view = new AgyView(new AgyViewOptions
         {
             CliLogPath = cliLog,
@@ -384,16 +389,19 @@ public class AgyViewIntegrationTests : IDisposable
             // deadline-kill the cold-channel call (a fresh channel is built per poll) before it returns the empty
             // map. 5s gives ample margin over cold establishment, so the "reachable-but-empty → pending" path is
             // what's actually exercised (the default-budget test proves establishment is well under that).
-            BootRaceTimeout = TimeSpan.FromSeconds(5),
-            BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            TimeProvider = clock,
+            BootRaceTimeout = TimeSpan.FromMinutes(10),
+            BootRacePollInterval = TimeSpan.FromMinutes(1),
         });
 
-        await Assert.ThrowsAsync<AgyConversationPendingException>(() => view.LookAsync());
+        await Assert.ThrowsAsync<AgyConversationPendingException>(
+            () => VirtualClock.PumpBootRaceAsync(() => view.LookAsync(), time, clock, TimeSpan.FromMinutes(1)));
     }
 
     [Fact]
     public async Task LookAsync_honors_the_boot_race_budget_when_GetAllCascadeTrajectories_hangs()
     {
+        // ROADMAP section 113: stays on the REAL clock on purpose: it asserts a REAL Stopwatch bound on a hung handler (the budget becomes a real gRPC deadline), so a virtual budget would prove nothing.
         // Round-3 finding B: a connected-but-hung peer must not block on the client's 30s default deadline —
         // the boot race bounds the call to its OWN (shorter) remaining budget and fails within it.
         await using var app = await StartFakeAsync(new HangingMapFakeLs());

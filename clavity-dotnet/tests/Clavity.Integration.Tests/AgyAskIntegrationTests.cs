@@ -169,6 +169,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 
@@ -181,7 +182,7 @@ namespace Clavity.Integration.Tests;
 // there (real assistant-text decode is deferred per T6 scope) — this is a test-only simplification.
 public class AgyAskIntegrationTests
 {
-    private sealed class FakeAskLs : LanguageServerService.LanguageServerServiceBase
+    internal sealed class FakeAskLs : LanguageServerService.LanguageServerServiceBase
     {
         private readonly object _gate = new();
         private readonly List<CascadeStep> _steps;
@@ -204,6 +205,10 @@ public class AgyAskIntegrationTests
         private readonly IReadOnlyList<WaitStep>? _waitPlan;
         private int _waitCalls;
         public int WaitCalls => _waitCalls;
+        // Wait windows PARKED server-side (the "never idle this window" case). Counted after the client armed its window timer, so a
+        // virtual-clock advance made once this has grown always lands on an armed timer, and never on a window that answered at once.
+        private int _blockedWindows;
+        public int BlockedWindows => Volatile.Read(ref _blockedWindows);
         // AGY-TEST-AUDIT 2026-08-30 (13b second pass): the stale-catalog refresh had no oracle. It needs
         // a send that FAILS with a non-Cancelled RpcException, and a way to see whether the catalog was
         // re-fetched afterwards. SETTABLE rather than a ctor flag because one test must fail a send and
@@ -228,6 +233,13 @@ public class AgyAskIntegrationTests
         // our own window timer - is what ended the wait. Without it that case cannot be constructed: the
         // clamped window always wins the race, which is exactly what an earlier probe run measured.
         private readonly TimeSpan _probeDelay;
+        // ROADMAP section 113: when set, the probe delay runs on THIS clock (its own timer) instead of a real Task.Delay, so a test can
+        // spend it with a virtual-clock advance. Null keeps today's behaviour for every other caller.
+        private readonly TimeProvider? _time;
+        private int _probeDelaysArmed;
+        /// <summary>Probe delays whose timer EXISTS and is waiting (counted after the timer was created, so a virtual-clock advance made
+        /// once this has grown always lands on an armed timer). Only counts when the fake was given a <c>time</c> provider.</summary>
+        public int ProbeDelaysArmed => Volatile.Read(ref _probeDelaysArmed);
         // Gap-1 (idle-wait caller-cancel): signalled the instant a "never idle this window" WaitForConversationFullyIdle
         // call is genuinely BLOCKED server-side, so a test can cancel the CALLER token only once it is certain the
         // client is truly parked inside that RPC — never racing a fixed delay against cold gRPC-channel setup time.
@@ -238,7 +250,7 @@ public class AgyAskIntegrationTests
             string cascadeId, string replyText, TimeSpan idleDelay, IEnumerable<CascadeStep> initial,
             FetchAvailableModelsResponse? catalog = null, IReadOnlyList<WaitStep>? waitPlan = null,
             bool throwOnProbeTrajectory = false, bool throwCatalogUnavailable = false,
-            TimeSpan probeDelay = default)
+            TimeSpan probeDelay = default, TimeProvider? time = null)
         {
             _cascadeId = cascadeId;
             _replyText = replyText;
@@ -249,6 +261,7 @@ public class AgyAskIntegrationTests
             _throwOnProbeTrajectory = throwOnProbeTrajectory;
             _throwCatalogUnavailable = throwCatalogUnavailable;
             _probeDelay = probeDelay;
+            _time = time;
         }
 
         public string? LastSentText { get; private set; }
@@ -283,7 +296,17 @@ public class AgyAskIntegrationTests
             if (_throwOnProbeTrajectory && n > 1)
                 throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "probe dead"));
             if (_probeDelay > TimeSpan.Zero && n > 1)
-                await Task.Delay(_probeDelay, context.CancellationToken);
+            {
+                if (_time is null)
+                    await Task.Delay(_probeDelay, context.CancellationToken);
+                else
+                {
+                    var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    using var timer = _time.CreateTimer(_ => tcs.TrySetResult(), null, _probeDelay, Timeout.InfiniteTimeSpan);
+                    Interlocked.Increment(ref _probeDelaysArmed);   // AFTER the timer exists: an advance after this fires it
+                    await tcs.Task.WaitAsync(context.CancellationToken);
+                }
+            }
             lock (_gate)
             {
                 var traj = new CascadeTrajectory { CascadeId = _cascadeId };
@@ -342,6 +365,7 @@ public class AgyAskIntegrationTests
                 return new WaitForConversationFullyIdleResponse { TimedOut = true };
 
             // Never idle this window: block until the client's per-window CancelAfter cancels the call.
+            Interlocked.Increment(ref _blockedWindows);
             _waitBlockedTcs.TrySetResult();
             await Task.Delay(Timeout.Infinite, context.CancellationToken);
             return new WaitForConversationFullyIdleResponse { TimedOut = false }; // unreachable
@@ -1100,21 +1124,30 @@ public class AgyAskIntegrationTests
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
+            // ROADMAP section 106: the clock is VIRTUAL. The ratio that MAKES this test what it is - window 1 fits inside the
+            // budget and window 2 is clamped to the remainder - is kept (10 min / 15 min, the old 1000 ms / 1500 ms times 600), and
+            // nothing now depends on how long an RPC round trip takes: the fake clock moves only on Advance. The windows are
+            // minutes on purpose: a production timer that ignored the injected clock would need real minutes, so VirtualClock.RealBound
+            // expires and the test fails, instead of passing after a real second. The fake starts at the real now because its
+            // default (the year 2000) would make a stray read of the real clock look "past" every fake deadline.
+            var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+            var progress = new CollectingProgress<AgyWaitProgress>();
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                // Scaled up from 150ms/250ms, keeping the ratio that MAKES this test what it is: window 1 must
-                // fit inside the budget and window 2 must be clamped to the remainder. Widening only the budget -
-                // the obvious-looking fix, and the one the capstone peer proposed - destroys the test: at a 2s
-                // budget window 2 is no longer clamped, the no-progress branch reports Stall instead of
-                // AbsoluteMax, and the assertion below fails. MEASURED, not reasoned: that exact edit turned this
-                // test red while the other 61 stayed green. Scaling BOTH preserves the clamp and still buys the
-                // jitter margin (see the sibling test above for why the margin matters).
-                IdleStallWindow = TimeSpan.FromMilliseconds(1000),
-                IdleAbsoluteMax = TimeSpan.FromMilliseconds(1500), // window 1 (1000ms) < 1500ms; window 2 clamps to the ~500ms remainder
+                TimeProvider = time,
+                IdleStallWindow = TimeSpan.FromMinutes(10),
+                IdleAbsoluteMax = TimeSpan.FromMinutes(15), // window 1 (10 min) < 15 min; window 2 clamps to the 5 min remainder
             });
-            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("progress then quit"));
+            var ask = view.AskAsync("progress then quit", progress: progress);
+            await VirtualClock.AwaitWindowAsync(fake, ask, window: 1); time.Advance(TimeSpan.FromMinutes(10));   // window 1 ends by OUR timer, and progressed
+            await VirtualClock.AwaitWindowAsync(fake, ask, window: 2); time.Advance(TimeSpan.FromMinutes(5));    // window 2 was clamped to the 5 min remainder: this elapses it
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => ask.WaitAsync(VirtualClock.RealBound));
             Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+            // Exact under a virtual clock: the report's elapsed (AgyView BuildModalHang) and each progress report's elapsed
+            // are the clock reads the budget arithmetic used, so a read of the wrong clock cannot hide behind a tolerance.
+            Assert.Equal(TimeSpan.FromMinutes(15), ex.Report.Elapsed);
+            Assert.Equal(new[] { TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(15) }, progress.Reports.Select(r => r.Elapsed));
             // The SECOND absolute-max route (AgyView.cs:323, the no-progress branch, which passes `probe`). Its
             // sibling above covers :244 only, and a fix applied to one route while the other kept shipping a
             // blind diagnostic is precisely the half-fix this suite keeps re-learning.
@@ -1151,15 +1184,136 @@ public class AgyAskIntegrationTests
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
+            // ROADMAP section 106: this test failed 2 of 3 attempts on the windows-latest runner with `absolute_max` (CI run
+            // 44232436767). With real 1000 ms / 1500 ms windows it tolerated only 500 ms of RPC overhead across three round
+            // trips before the label test read the real clock past the budget. The clock is VIRTUAL now, so the label depends on
+            // what the test advanced, never on how slow the runner was. 10 min / 15 min keep the old ratio (window 2 clamps to the
+            // remainder); minutes rather than milliseconds so that a timer which ignored the injected clock fails by VirtualClock.RealBound
+            // instead of passing slowly; the fake starts at the real now because its default (year 2000) would make a stray read
+            // of the real clock look "past" every fake deadline.
+            var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                IdleStallWindow = TimeSpan.FromMilliseconds(1000),
-                IdleAbsoluteMax = TimeSpan.FromMilliseconds(1500), // window 2 clamps to the ~500ms remainder
+                TimeProvider = time,
+                IdleStallWindow = TimeSpan.FromMinutes(10),
+                IdleAbsoluteMax = TimeSpan.FromMinutes(15), // window 2 clamps to the 5 min remainder
             });
-            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("server quits early"));
+            var ask = view.AskAsync("server quits early");
+            await VirtualClock.AwaitWindowAsync(fake, ask, window: 1);   // window 1 is parked server-side, so the client already armed its timer
+            time.Advance(TimeSpan.FromMinutes(10));         // window 1 ends and progressed; window 2 is clamped and the server quits at once
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => ask.WaitAsync(VirtualClock.RealBound));
             Assert.Equal(IdleLimit.Stall, ex.Report.Limit);
+            // The fake clock moves only on Advance, so at the label it reads exactly 10 min: 10 min >= 15 min is false, whatever the runner did.
+            Assert.Equal(TimeSpan.FromMinutes(10), ex.Report.Elapsed);
             Assert.NotNull(ex.Diagnostic);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_reports_absolute_max_when_the_stall_window_equals_the_budget_exactly()
+    {
+        // ROADMAP section 106 test audit (gap G1). The window is clamped when `remaining <= stallWindow`, and the boundary is
+        // EQUAL: with stall window == budget the very first window has remaining == stallWindow, so the budget IS the binding
+        // cap and a window that elapses with no progress must say absolute_max (the operator's knob is the budget, not the stall
+        // window). A real clock can never construct that equality - a real elapsed time is never exactly zero - so before the
+        // virtual clock `<=` could become `<` unseen. With `<` the window is not clamped and the label falls through to stall.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false) };   // no progress, never idle
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                TimeProvider = time,
+                IdleStallWindow = TimeSpan.FromMinutes(10),
+                IdleAbsoluteMax = TimeSpan.FromMinutes(10),   // EQUAL to the stall window
+            });
+            var ask = view.AskAsync("stall equals budget");
+            await VirtualClock.AwaitWindowAsync(fake, ask, window: 1);
+            time.Advance(TimeSpan.FromMinutes(10));           // the clamped window elapses; nothing progressed
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => ask.WaitAsync(VirtualClock.RealBound));
+            Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+            Assert.Equal(TimeSpan.FromMinutes(10), ex.Report.Elapsed);
+            Assert.Equal(1, fake.WaitCalls);                  // the budget ended the wait: no second window
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    /// <summary>Wraps a FakeTimeProvider so that every TIMER fires <c>early</c> before its due time on the shared clock: the clock a
+    /// read sees is then still short of the moment the timer claims (a slightly-early wakeup, the Windows ~15 ms timer resolution).</summary>
+    private sealed class EarlyWakeTimeProvider(FakeTimeProvider inner, TimeSpan early) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => inner.GetUtcNow();
+        public override long GetTimestamp() => inner.GetTimestamp();
+        public override long TimestampFrequency => inner.TimestampFrequency;
+        public override TimeZoneInfo LocalTimeZone => inner.LocalTimeZone;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+            => inner.CreateTimer(callback, state, dueTime > early ? dueTime - early : dueTime, period);
+    }
+
+    [Fact]
+    public async Task AskAsync_reports_absolute_max_when_the_clamped_window_timer_fires_before_the_clock_reaches_the_budget()
+    {
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false) };   // no progress, never idle
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var (time, _) = VirtualClock.NewClock();
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                TimeProvider = new EarlyWakeTimeProvider(time, TimeSpan.FromSeconds(1)),
+                IdleStallWindow = TimeSpan.FromMinutes(10),
+                IdleAbsoluteMax = TimeSpan.FromMinutes(10),
+            });
+            var ask = view.AskAsync("early wakeup");
+            await VirtualClock.AwaitWindowAsync(fake, ask, window: 1);
+            time.Advance(TimeSpan.FromMinutes(10) - TimeSpan.FromSeconds(1));   // our window timer fires, the clock is 1 s short
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => ask.WaitAsync(VirtualClock.RealBound));
+            Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+            Assert.Equal(TimeSpan.FromMinutes(10) - TimeSpan.FromSeconds(1), ex.Report.Elapsed);
+            Assert.Equal(1, fake.WaitCalls);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_ends_without_another_window_when_the_budget_is_spent_exactly_at_the_loop_top()
+    {
+        // ROADMAP section 106 test audit (gap G2). The loop-top budget check is `remaining <= Zero`: when the elapsed time EQUALS
+        // the budget the wait ends there, with no further window. With `<` an exactly-spent budget starts one more zero-length
+        // window (a timer of zero cancels at once, the server is asked again, the probe reports again). The virtual clock is what
+        // makes "exactly spent" constructible. The progress reports are the deterministic signal: one per window that ran. (The
+        // fake's wait counter is not: a zero-length window may be cancelled before the request reaches the handler.)
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false) };   // progresses in every window, never idle
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+            var progress = new CollectingProgress<AgyWaitProgress>();
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                TimeProvider = time,
+                IdleStallWindow = TimeSpan.FromMinutes(10),
+                IdleAbsoluteMax = TimeSpan.FromMinutes(10),
+            });
+            var ask = view.AskAsync("budget spent exactly", progress: progress);
+            await VirtualClock.AwaitWindowAsync(fake, ask, window: 1);
+            time.Advance(TimeSpan.FromMinutes(10));           // window 1 ends, progressed; the budget is now spent to the tick
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => ask.WaitAsync(VirtualClock.RealBound));
+            Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+            Assert.Equal(TimeSpan.FromMinutes(10), ex.Report.Elapsed);
+            Assert.Single(progress.Reports);                  // exactly one window reported; none after the budget was spent
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -1173,22 +1327,29 @@ public class AgyAskIntegrationTests
         // SECONDS when the budget is the thing that is exhausted and only CLAVITY_AGY_IDLE_MAX_SECONDS can
         // help - the same mislabel, one case over.
         //
-        // The 300ms probe delay is what makes this constructible at all. The label is decided AFTER the probe
+        // The probe delay is what makes this constructible at all. The label is decided AFTER the probe
         // returns, so a slow probe is what lets the budget expire while the server, not our window timer,
         // ended the wait. An earlier attempt without it measured limit=absolute_max for the wrong reason: the
         // clamped window won the race and windowElapsed was true, so the branch under test never ran.
         //
-        // Arithmetic, budget 1000ms / stall window 500ms / probe delay 300ms:
-        //   window 1  waits 500 (not clamped: remaining 1000 > 500), progresses, probe 300 -> elapsed ~800
-        //   window 2  remaining 200 <= 500 -> CLAMPED; server returns its own timeout at once (elapsed ~800),
-        //             probe 300 -> elapsed ~1100 >= 1000. Budget gone, windowElapsed false.
+        // ROADMAP section 113: the clock is VIRTUAL (the old 500 / 1000 / 300 ms, scaled to minutes and with the arithmetic chosen so
+        // the budget is spent EXACTLY, not "about"). The probe delay is a timer on the fake's own clock, so spending it is an advance.
+        // Arithmetic, stall window 5 min / budget 10 min / probe delay 2.5 min:
+        //   window 1  waits 5 (not clamped: remaining 10 > 5), progresses; probe delay 1 -> elapsed 7.5
+        //   window 2  remaining 2.5 <= 5 -> CLAMPED to 2.5; server returns its own timeout at once (windowElapsed false, elapsed 7.5);
+        //             probe delay 2 -> elapsed 10.0 >= 10. Budget gone, windowElapsed false: ONLY the label's right-hand side
+        //             `(_time.GetUtcNow() - start) >= absoluteMax` can say absolute_max here.
+        // Mutants: that right-hand side read from the real clock (the virtual clock starts five minutes before the real one and `start`
+        // is a virtual read, so the real read gives about 5 minutes against a 10 minute budget), or `>=` made `>` (elapsed is EXACTLY
+        // the budget), or dropped: each reports stall.
         var plan = new[]
         {
             new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false),
             new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, ServerTimesOut: true),
         };
+        var (time, _) = VirtualClock.NewClock();
         var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan,
-                                 probeDelay: TimeSpan.FromMilliseconds(300));
+                                 probeDelay: TimeSpan.FromMinutes(2.5), time: time);
         await using var app = await StartFakeAsync(fake);
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
@@ -1196,18 +1357,41 @@ public class AgyAskIntegrationTests
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                IdleStallWindow = TimeSpan.FromMilliseconds(500),
-                IdleAbsoluteMax = TimeSpan.FromMilliseconds(1000),
+                TimeProvider = time,
+                IdleStallWindow = TimeSpan.FromMinutes(5),
+                IdleAbsoluteMax = TimeSpan.FromMinutes(10),
             });
-            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("budget gone"));
-            // Assert the PRECONDITION too, so this test cannot pass for the wrong reason: if the budget were
-            // not actually exhausted at the decision, absolute_max would be the wrong answer and this would be
-            // pinning a bug rather than a fix.
-            Assert.True(ex.Report.Elapsed >= TimeSpan.FromMilliseconds(1000),
-                $"precondition: the budget must really be gone, was {ex.Report.Elapsed.TotalMilliseconds:F0}ms");
+            var ask = view.AskAsync("budget gone");
+            await VirtualClock.AwaitWindowAsync(fake, ask, window: 1);
+            time.Advance(TimeSpan.FromMinutes(5));       // window 1 ends by OUR timer and progressed
+            await AwaitProbeDelayAsync(fake, ask, 1);
+            time.Advance(TimeSpan.FromMinutes(2.5));     // probe delay 1 spent: elapsed 7.5
+            await AwaitProbeDelayAsync(fake, ask, 2);    // window 2 (clamped to 2.5) was answered at once by the server
+            time.Advance(TimeSpan.FromMinutes(2.5));     // probe delay 2 spent: elapsed exactly 10 = the budget
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => ask.WaitAsync(VirtualClock.RealBound));
             Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+            // The PRECONDITION, exact: the budget is gone to the tick, so this cannot pass for the wrong reason (it would be pinning a
+            // bug if the budget were not exhausted at the decision).
+            Assert.Equal(TimeSpan.FromMinutes(10), ex.Report.Elapsed);
+            Assert.Equal(2, fake.ProbeDelaysArmed);
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    /// <summary>Wait until the fake has ARMED probe delay number <paramref name="count"/> (its timer exists), failing fast with the ask's
+    /// own exception when the ask ends first, and ending in OperationCanceledException at <see cref="VirtualClock.RealBound"/>.</summary>
+    private static async Task AwaitProbeDelayAsync(FakeAskLs fake, Task ask, int count)
+    {
+        using var cts = new CancellationTokenSource(VirtualClock.RealBound);
+        while (fake.ProbeDelaysArmed < count)
+        {
+            if (ask.IsCompleted)
+            {
+                await ask;   // rethrows ITS exception when it faulted
+                throw new InvalidOperationException($"the ask finished before probe delay {count} was armed");
+            }
+            await Task.Delay(5, cts.Token);
+        }
     }
 
     [Fact]
@@ -1480,8 +1664,14 @@ public class AgyAskIntegrationTests
             new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false),
         };
 
+    // ROADMAP section 113: the generation clock is VIRTUAL. Every duration the callers pass is the old real one times 600 (100 ms
+    // is 1 minute, 150 ms 1.5 minutes, 200 ms 2 minutes, a 400 ms cap 4 minutes, ...), so every ratio the tests rely on is kept and
+    // the windows are exact: the pump advances `stall` once per window the fake receives, so a window ends by OUR timer, at a
+    // moment the test chose, never "about 100 ms later". The fake starts five minutes before the real now (VirtualClock.NewClock), so
+    // a generation clock read from the REAL clock can neither agree with the virtual one nor look past a fake deadline: a stall
+    // window of minutes means a timer that ignored the injected clock fails by RealBound instead of passing after a real second.
     private static async Task<(FakeAskLs Fake, AskReply? Reply, AgyModalHangException? Hang)> AskGeneratingAsync(
-        FakeAskLs.WaitStep[] plan, TimeSpan generationCap, TimeSpan absoluteMax, int stallMs = 150,
+        FakeAskLs.WaitStep[] plan, TimeSpan generationCap, TimeSpan absoluteMax, TimeSpan stall,
         bool quotaLineBeforeAsk = false, bool quotaLineDuringAsk = false)
     {
         var fake = new FakeAskLs("conv-1", "the reply", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
@@ -1491,14 +1681,18 @@ public class AgyAskIntegrationTests
         {
             if (quotaLineBeforeAsk) File.AppendAllText(cliLog, QuotaLine);                       // before the mark: must NOT veto
             if (quotaLineDuringAsk) fake.OnSend = _ => File.AppendAllText(cliLog, QuotaLine);    // after the mark: MUST veto
+            var (time, _) = VirtualClock.NewClock();
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                IdleStallWindow = TimeSpan.FromMilliseconds(stallMs),
+                TimeProvider = time,
+                IdleStallWindow = stall,
                 IdleAbsoluteMax = absoluteMax,
                 GenerationCap = generationCap,
             });
-            try { return (fake, await view.AskAsync("write a long essay"), null); }
+            var ask = view.AskAsync("write a long essay");
+            await VirtualClock.PumpWindowsAsync(fake, ask, time, stall);
+            try { return (fake, await ask.WaitAsync(VirtualClock.RealBound), null); }
             catch (AgyModalHangException ex) { return (fake, null, ex); }
         }
         finally { Directory.Delete(dir, true); }
@@ -1510,9 +1704,10 @@ public class AgyAskIntegrationTests
         // Window 0: the step appears (count grows = progress). Window 1: NOTHING changes in the count, but the last step is
         // status 8. Without the extension that is a stall at window 1; with it the wait goes on and window 2 delivers.
         var (fake, reply, hang) = await AskGeneratingAsync(
-            GeneratingThen(Generating("partial"), finishes: true), TimeSpan.FromSeconds(30), TimeSpan.Zero);
+            GeneratingThen(Generating("partial"), finishes: true), TimeSpan.FromHours(5), TimeSpan.Zero, stall: TimeSpan.FromMinutes(1.5));
         Assert.Null(hang);
         Assert.EndsWith("the reply", reply!.Answer);   // the ask waited for window 2 and delivered the final reply
+        // Exact: plan windows 0 (step appears), 1 (flat, kept alive by the generating step), 2 (idle) = 3 calls; the cap (5 h) is never reached.
         Assert.Equal(3, fake.WaitCalls);
     }
 
@@ -1522,26 +1717,29 @@ public class AgyAskIntegrationTests
         // The CONTROL for the test above: the identical plan with the extension off. This is what proves the test above
         // exercises the extension and not some other path that happens to deliver.
         var (fake, reply, hang) = await AskGeneratingAsync(
-            GeneratingThen(Generating("partial"), finishes: true), TimeSpan.Zero, TimeSpan.Zero);
+            GeneratingThen(Generating("partial"), finishes: true), TimeSpan.Zero, TimeSpan.Zero, stall: TimeSpan.FromMinutes(1.5));
         Assert.Null(reply);
         Assert.Equal(IdleLimit.Stall, hang!.Report.Limit);
-        Assert.Equal(2, fake.WaitCalls);
+        Assert.Equal(2, fake.WaitCalls);   // window 0 progressed (the step count grew), window 1 is flat with no extension: stall
     }
 
     [Fact]
     public async Task A_generating_step_that_outlives_the_cap_is_reported_with_its_own_limit_label()
     {
         var (fake, reply, hang) = await AskGeneratingAsync(
-            GeneratingThen(Generating("partial"), finishes: false), TimeSpan.FromMilliseconds(400), TimeSpan.Zero, stallMs: 100);
+            GeneratingThen(Generating("partial"), finishes: false), TimeSpan.FromMinutes(4), TimeSpan.Zero, stall: TimeSpan.FromMinutes(1));
         Assert.Null(reply);
         Assert.Equal(IdleLimit.GenerationCap, hang!.Report.Limit);
         Assert.Equal("generation_cap", hang.Report.Limit);                 // the wire value
         Assert.Contains("CLAVITY_AGY_GENERATION_CAP_SECONDS", hang.Report.Hint);
         Assert.Equal(GeneratingStatus, hang.Diagnostic!.LastStepStatus);   // the report says what it saw
-        // AGY-TEST-AUDIT MG-2: with a 400 ms cap and 100 ms windows the extension survives the probes after windows 0 to 2 and is
-        // spent after window 3 or 4 (window 3 only if a window costs 33 ms more than its stall time): 4 or 5 calls. The lower
-        // bound 4 is therefore robust, and 3 would let a cap that is half as long pass.
-        Assert.InRange(fake.WaitCalls, 4, 12);                              // it kept waiting, and it is BOUNDED
+        // ROADMAP section 113, exact on a virtual clock (cap 4 min, window 1 min; the old 400 ms / 100 ms times 600). The step appears in
+        // window 0, so the first probe is at t = 1 min and the generation clock starts there (elapsed 0). Each later window ends 1 min on:
+        // window 1 probes at elapsed 1, window 2 at 2, window 3 at 3, window 4 at 4, and `>=` makes 4 >= 4 SPENT: five calls, the fifth
+        // ends the ask. `>=` mutated to `>` spends it one window later (six calls). A generation clock read from the REAL clock (which is
+        // five minutes ahead of the virtual one) disagrees by those five minutes: the cap spent at first sight when the comparison reads it
+        // (two calls), spent only after ten calls when the start does. The old InRange(4, 12) could not tell any of these apart.
+        Assert.Equal(5, fake.WaitCalls);                                    // it kept waiting, and it is BOUNDED
     }
 
     [Theory]
@@ -1553,7 +1751,7 @@ public class AgyAskIntegrationTests
     public async Task Only_a_kind_15_step_with_status_8_extends_the_wait(int kind, int status)
     {
         var (fake, reply, hang) = await AskGeneratingAsync(
-            GeneratingThen(Generating("x", kind, status), finishes: true), TimeSpan.FromSeconds(30), TimeSpan.Zero);
+            GeneratingThen(Generating("x", kind, status), finishes: true), TimeSpan.FromHours(5), TimeSpan.Zero, stall: TimeSpan.FromMinutes(1.5));
         Assert.Null(reply);
         Assert.Equal(IdleLimit.Stall, hang!.Report.Limit);
         Assert.Equal(2, fake.WaitCalls);
@@ -1562,9 +1760,12 @@ public class AgyAskIntegrationTests
     [Fact]
     public async Task The_generation_cap_is_measured_from_the_first_window_that_saw_the_step_generating_not_from_the_send()
     {
-        // AGY-CAPSTONE r2 MG-1. Twelve progress-only windows (>= 1200 ms at a 100 ms stall window) pass BEFORE the generating
-        // step first appears; the cap is 1000 ms. Measured from the SEND the cap would already be spent at first sight and the
-        // ask would end in generation_cap; measured from first sight (correct) two flat windows follow and the reply is delivered.
+        // AGY-CAPSTONE r2 MG-1. Twelve progress-only windows (12 minutes at a 1 minute stall window) pass BEFORE the generating
+        // step first appears; the cap is 10 minutes (the old 1000 ms / 100 ms times 600). Measured from the SEND the cap would already be
+        // spent at first sight (13 minutes in) and the ask would end in generation_cap; measured from first sight (correct) two
+        // windows follow (one flat at elapsed 1, then the idle one) and the reply is delivered. Mutants: the clock started at the send
+        // (`generating = (total, start)`) ends in generation_cap. The real-clock mutants do not fail HERE (the five-minute offset leaves
+        // the cap unspent on both sides of this plan); the cap-outlived test's exact count catches them.
         var plan = Enumerable.Range(0, 12).Select(_ => new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false))
             .Concat(new[]
             {
@@ -1572,29 +1773,27 @@ public class AgyAskIntegrationTests
                 new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false),
                 new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),
             }).ToArray();
-        var (fake, reply, hang) = await AskGeneratingAsync(plan, TimeSpan.FromMilliseconds(1000), TimeSpan.Zero, stallMs: 100);
+        var (fake, reply, hang) = await AskGeneratingAsync(plan, TimeSpan.FromMinutes(10), TimeSpan.Zero, stall: TimeSpan.FromMinutes(1));
         Assert.Null(hang);
         Assert.EndsWith("the reply", reply!.Answer);
-        Assert.Equal(15, fake.WaitCalls);
+        Assert.Equal(15, fake.WaitCalls);   // exact: 12 progress windows + the generating window + one flat window + the idle window
     }
 
     [Fact]
     public async Task The_generation_clock_restarts_when_a_different_step_starts_generating()
     {
         // AGY-CAPSTONE r2 MG-1 / the case ROADMAP section 108 declared untested. Step A appears at window 0; step B (a DIFFERENT
-        // step count) appears at window 10 (>= 2000 ms at a 200 ms window); then 14 flat windows follow. The cap is 4000 ms:
-        // from A the whole wait is >= 4800 ms (spent), from B it is about 3000 ms (alive). Only a clock that RESTARTS on a
-        // new generating step delivers the reply.
+        // step count) appears at window 10; then 13 flat windows follow and the idle one. ROADMAP section 113: virtual time, stall window
+        // 2 minutes and cap 44 minutes (the old 200 ms / 4400 ms times 600). A first appears at the probe after window 0 (t = 2 min),
+        // B at the probe after window 10 (t = 22 min), and the last flat probe is after window 23 (t = 48 min). From A that probe is
+        // 46 minutes in: SPENT (>= 44), so a clock that does NOT restart on a new generating step ends in generation_cap. From B it is
+        // 26 minutes in: alive, and the idle window 24 delivers the reply. Only a clock that RESTARTS on a new step delivers it.
         var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, AppendAfter: Generating("step A")) }
             .Concat(Enumerable.Range(0, 9).Select(_ => new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false)))
             .Concat(new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, AppendAfter: Generating("step B")) })
             .Concat(Enumerable.Range(0, 13).Select(_ => new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false)))
             .Concat(new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) }).ToArray();
-        // AGY-TEST-AUDIT MG-1: the cap is 4400 ms. Mutant side: the final probe is >= 23 windows x 200 ms = 4600 ms after A first
-        // appeared (a window never ends before its stall time, so jitter only ADDS elapsed time): spent by at least 200 ms. Correct
-        // side: 13 flat windows after B take 2600 ms + 13 x the per-window overhead, alive while that stays under 4400 ms, so the
-        // test tolerates up to about 138 ms of overhead per window (two RPCs) before it could flake.
-        var (fake, reply, hang) = await AskGeneratingAsync(plan, TimeSpan.FromMilliseconds(4400), TimeSpan.Zero, stallMs: 200);
+        var (fake, reply, hang) = await AskGeneratingAsync(plan, TimeSpan.FromMinutes(44), TimeSpan.Zero, stall: TimeSpan.FromMinutes(2));
         Assert.Null(hang);
         Assert.EndsWith("the reply", reply!.Answer);
         Assert.Equal(1 + 9 + 1 + 13 + 1, fake.WaitCalls);
@@ -1605,7 +1804,7 @@ public class AgyAskIntegrationTests
     {
         // An exhausted peer may leave its step marked generating; the extension must not delay that report by the whole cap.
         var (fake, reply, hang) = await AskGeneratingAsync(
-            GeneratingThen(Generating("partial"), finishes: true), TimeSpan.FromSeconds(30), TimeSpan.Zero, quotaLineDuringAsk: true);
+            GeneratingThen(Generating("partial"), finishes: true), TimeSpan.FromHours(5), TimeSpan.Zero, stall: TimeSpan.FromMinutes(1.5), quotaLineDuringAsk: true);
         Assert.Null(reply);
         Assert.Equal(IdleLimit.Stall, hang!.Report.Limit);
         Assert.Equal(2, fake.WaitCalls);
@@ -1616,7 +1815,7 @@ public class AgyAskIntegrationTests
     {
         // The mark is taken at the send, so an old stop in the same log is not this ask's.
         var (fake, reply, hang) = await AskGeneratingAsync(
-            GeneratingThen(Generating("partial"), finishes: true), TimeSpan.FromSeconds(30), TimeSpan.Zero, quotaLineBeforeAsk: true);
+            GeneratingThen(Generating("partial"), finishes: true), TimeSpan.FromHours(5), TimeSpan.Zero, stall: TimeSpan.FromMinutes(1.5), quotaLineBeforeAsk: true);
         Assert.Null(hang);
         Assert.EndsWith("the reply", reply!.Answer);
         Assert.Equal(3, fake.WaitCalls);
@@ -1627,7 +1826,7 @@ public class AgyAskIntegrationTests
     {
         // A step stuck in the generating state (a blocked prompt, a dropped stream) is indistinguishable from a long reply.
         var (_, _, hang) = await AskGeneratingAsync(
-            GeneratingThen(Generating("partial"), finishes: false), TimeSpan.FromMilliseconds(300), TimeSpan.Zero, stallMs: 100);
+            GeneratingThen(Generating("partial"), finishes: false), TimeSpan.FromMinutes(3), TimeSpan.Zero, stall: TimeSpan.FromMinutes(1));
         Assert.DoesNotContain("NOT a hang", hang!.Report.Hint);
         Assert.Contains("stuck", hang.Report.Hint);
         Assert.Contains("agy_look", hang.Report.Hint);
@@ -1636,6 +1835,7 @@ public class AgyAskIntegrationTests
     [Fact]
     public async Task A_generating_step_from_BEFORE_our_send_does_not_extend_the_wait()
     {
+        // ROADMAP section 113: stays on the REAL clock on purpose: it is not a caller of AskGeneratingAsync and ends in the very first 150 ms window (WaitCalls == 1), so there is no window arithmetic for jitter to disturb.
         // The PREVIOUS turn's last step is still generating and our own user step has not appeared yet, so the last step is
         // not ours to wait on. A check that looked at the last step without the past-our-own-step guard would treat it as
         // our reply being written and wait on it; the correct answer is the ordinary stall at the first window.
@@ -1672,7 +1872,7 @@ public class AgyAskIntegrationTests
     {
         // The black hole the peer warned about: a generating step must not buy more than the total budget.
         var (_, reply, hang) = await AskGeneratingAsync(
-            GeneratingThen(Generating("partial"), finishes: false), TimeSpan.FromSeconds(60), TimeSpan.FromMilliseconds(500), stallMs: 100);
+            GeneratingThen(Generating("partial"), finishes: false), TimeSpan.FromHours(10), TimeSpan.FromMinutes(5), stall: TimeSpan.FromMinutes(1));
         Assert.Null(reply);
         Assert.Equal(IdleLimit.AbsoluteMax, hang!.Report.Limit);
     }
@@ -1893,6 +2093,7 @@ public class AgyAskIntegrationTests
     [Fact]
     public async Task AskAsync_propagates_a_caller_cancel_during_the_boot_race()
     {
+        // ROADMAP section 113: stays on the REAL clock on purpose: the caller cancels after about 20 ms; the 30 s budget is only an upper bound that is never reached.
         // Gap-1 (boot-race / capstone F1): the fake's GetAllCascadeTrajectories blocks forever, so AskAsync is
         // parked in ConnectAndResolveAsync. Cancelling the CALLER token must propagate as a cancellation, never be
         // swallowed into channel_down/LsDiscoveryException. A LONG BootRaceTimeout keeps the boot-race deadline

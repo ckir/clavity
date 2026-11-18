@@ -15,6 +15,9 @@
     <!-- Host an in-proc FAKE LS (Kestrel h2c) for transport integration tests — the .NET analog of
          clavity-classic's test-fakes feature. Not shipped; lives only in this test project. -->
     <PackageReference Include="Grpc.AspNetCore.Server" Version="2.80.0" />
+    <!-- FakeTimeProvider: drives AgyViewOptions.TimeProvider so a deadline test advances a virtual clock instead of
+         waiting real time (ROADMAP section 106). Test-only. -->
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>

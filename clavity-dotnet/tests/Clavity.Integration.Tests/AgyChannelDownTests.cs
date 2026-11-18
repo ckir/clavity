@@ -169,6 +169,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Clavity.Integration.Tests;
 
@@ -453,13 +454,17 @@ public class AgyChannelDownTests
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
+            // ROADMAP section 113: the boot race runs on a VIRTUAL clock (budget 10 min, poll 1 min; the pump advances one poll interval per armed
+            // timer, so ten polls reach the budget) and spends no real time. Every call that reaches the fake is answered at once (the last poll, at the deadline, gets a zero real deadline and never reaches it), so no real gRPC deadline is awaited.
+            var (time, clock) = VirtualClock.NewClock();
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                BootRaceTimeout = TimeSpan.FromSeconds(2),
-                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+                TimeProvider = clock,
+                BootRaceTimeout = TimeSpan.FromMinutes(10),
+                BootRacePollInterval = TimeSpan.FromMinutes(1),
             });
-            var json = await McpTools.AgyStatus(view);
+            var json = await VirtualClock.PumpBootRaceAsync(() => McpTools.AgyStatus(view), time, clock, TimeSpan.FromMinutes(1));
             using var doc = JsonDocument.Parse(json);
             // Fixed: reachedLsButEmpty reflects only the LAST poll (a death) -> LsDiscoveryException at the deadline
             // -> channel_down AgyStatus (Diagnostic.StatusCode "LsDiscovery"). Buggy (latched): the stale empty-poll
@@ -478,19 +483,24 @@ public class AgyChannelDownTests
         // Gap-4: discovery (GetAllCascadeTrajectories) NEVER succeeds -- every poll throws the dead status, so
         // ConnectAndResolveAsync never obtains a client and hits the boot-race deadline with sawChannelDeath=true,
         // throwing LsDiscoveryException -> channel_down (NOT waiting_for_human, since reachedLsButEmpty never gets
-        // set when every poll dies pre-flight). A SHORT BootRaceTimeout keeps this test fast.
+        // set when every poll dies pre-flight). The budget is virtual (10 minutes, one poll per minute), so it costs no real time.
         var fake = new FakeChannelDownLs("conv-1", StatusCode.Unavailable, throwOnDiscovery: true);
         await using var app = await StartAsync(fake);
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
+            // ROADMAP section 113: the boot race runs on a VIRTUAL clock (budget 10 min, poll 1 min; the pump advances one poll interval per armed
+            // timer, so ten polls reach the budget) and spends no real time. Every call that reaches the fake is answered at once (the last poll, at the deadline, gets a zero real deadline and never reaches it), so no real gRPC deadline is awaited.
+            var (time, clock) = VirtualClock.NewClock();
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                BootRaceTimeout = TimeSpan.FromSeconds(2),
-                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+                TimeProvider = clock,
+                BootRaceTimeout = TimeSpan.FromMinutes(10),
+                BootRacePollInterval = TimeSpan.FromMinutes(1),
             });
-            var result = await McpTools.AgyAsk(view, "hi", new CollectingProgress<ProgressNotificationValue>());
+            var result = await VirtualClock.PumpBootRaceAsync(
+                () => McpTools.AgyAsk(view, "hi", new CollectingProgress<ProgressNotificationValue>()), time, clock, TimeSpan.FromMinutes(1));
             var text = ((TextContentBlock)result.Content[0]).Text;
             using var doc = JsonDocument.Parse(text);
             Assert.Equal("channel_down", doc.RootElement.GetProperty("status").GetString());
@@ -508,7 +518,17 @@ public class AgyChannelDownTests
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
-            var json = await McpTools.AgyStatus(ViewFor(cliLog));
+            // ROADMAP section 113: the boot race runs on a VIRTUAL clock (budget 10 min, poll 1 min; the pump advances one poll interval per armed
+            // timer, so ten polls reach the budget) and spends no real time. Every call that reaches the fake is answered at once (the last poll, at the deadline, gets a zero real deadline and never reaches it), so no real gRPC deadline is awaited.
+            var (time, clock) = VirtualClock.NewClock();
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                TimeProvider = clock,
+                BootRaceTimeout = TimeSpan.FromMinutes(10),
+                BootRacePollInterval = TimeSpan.FromMinutes(1),
+            });
+            var json = await VirtualClock.PumpBootRaceAsync(() => McpTools.AgyStatus(view), time, clock, TimeSpan.FromMinutes(1));
             using var doc = JsonDocument.Parse(json);
             Assert.Equal("channel_down", doc.RootElement.GetProperty("State").GetString());
             Assert.Equal("LsUnanswered", doc.RootElement.GetProperty("Diagnostic").GetProperty("StatusCode").GetString());
@@ -548,13 +568,17 @@ public class AgyChannelDownTests
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
+            // ROADMAP section 113: the boot race runs on a VIRTUAL clock (budget 10 min, poll 1 min; the pump advances one poll interval per armed
+            // timer, so ten polls reach the budget) and spends no real time. Every call that reaches the fake is answered at once (the last poll, at the deadline, gets a zero real deadline and never reaches it), so no real gRPC deadline is awaited.
+            var (time, clock) = VirtualClock.NewClock();
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                BootRaceTimeout = TimeSpan.FromSeconds(2),
-                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+                TimeProvider = clock,
+                BootRaceTimeout = TimeSpan.FromMinutes(10),
+                BootRacePollInterval = TimeSpan.FromMinutes(1),
             });
-            var json = await McpTools.AgyStatus(view);
+            var json = await VirtualClock.PumpBootRaceAsync(() => McpTools.AgyStatus(view), time, clock, TimeSpan.FromMinutes(1));
             using var doc = JsonDocument.Parse(json);
             Assert.Equal("channel_down", doc.RootElement.GetProperty("State").GetString());
             Assert.Equal("LsDiscovery", doc.RootElement.GetProperty("Diagnostic").GetProperty("StatusCode").GetString());
@@ -582,13 +606,17 @@ public class AgyChannelDownTests
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
+            // ROADMAP section 113: the boot race runs on a VIRTUAL clock (budget 10 min, poll 1 min; the pump advances one poll interval per armed
+            // timer, so ten polls reach the budget) and spends no real time. Every call that reaches the fake is answered at once (the last poll, at the deadline, gets a zero real deadline and never reaches it), so no real gRPC deadline is awaited.
+            var (time, clock) = VirtualClock.NewClock();
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                BootRaceTimeout = TimeSpan.FromSeconds(2),
-                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+                TimeProvider = clock,
+                BootRaceTimeout = TimeSpan.FromMinutes(10),
+                BootRacePollInterval = TimeSpan.FromMinutes(1),
             }, new PortOpenThenClosed(1));
-            var json = await McpTools.AgyStatus(view);
+            var json = await VirtualClock.PumpBootRaceAsync(() => McpTools.AgyStatus(view), time, clock, TimeSpan.FromMinutes(1));
             using var doc = JsonDocument.Parse(json);
             Assert.Equal("channel_down", doc.RootElement.GetProperty("State").GetString());
             Assert.Equal("LsDiscovery", doc.RootElement.GetProperty("Diagnostic").GetProperty("StatusCode").GetString());
@@ -607,13 +635,17 @@ public class AgyChannelDownTests
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
+            // ROADMAP section 113: the boot race runs on a VIRTUAL clock (budget 10 min, poll 1 min; the pump advances one poll interval per armed
+            // timer, so ten polls reach the budget) and spends no real time. Every call that reaches the fake is answered at once (the last poll, at the deadline, gets a zero real deadline and never reaches it), so no real gRPC deadline is awaited.
+            var (time, clock) = VirtualClock.NewClock();
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                BootRaceTimeout = TimeSpan.FromSeconds(2),
-                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+                TimeProvider = clock,
+                BootRaceTimeout = TimeSpan.FromMinutes(10),
+                BootRacePollInterval = TimeSpan.FromMinutes(1),
             }, new PortOpenThenClosed(1));
-            var json = await McpTools.AgyStatus(view);
+            var json = await VirtualClock.PumpBootRaceAsync(() => McpTools.AgyStatus(view), time, clock, TimeSpan.FromMinutes(1));
             using var doc = JsonDocument.Parse(json);
             // channel_down AgyStatus shape ("State"); the waiting_for_human envelope has a lowercase "status" instead.
             Assert.Equal("channel_down", doc.RootElement.GetProperty("State").GetString());
@@ -628,10 +660,16 @@ public class AgyChannelDownTests
     {
         private int _calls;
         public string? CliLogPath { get; set; } // set once the test knows the path (the app starts first)
+        /// <summary>The gRPC deadline (UTC) the client attached to the FIRST call: the boot race's REAL deadline for poll 1.</summary>
+        public DateTime? FirstCallDeadlineUtc { get; private set; }
         public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
             GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
         {
-            if (System.Threading.Interlocked.Increment(ref _calls) == 1 && CliLogPath is { } p) File.Delete(p);
+            if (System.Threading.Interlocked.Increment(ref _calls) == 1)
+            {
+                FirstCallDeadlineUtc = context.Deadline;
+                if (CliLogPath is { } p) File.Delete(p);
+            }
             return Task.FromResult(new GetAllCascadeTrajectoriesResponse());
         }
     }
@@ -648,16 +686,37 @@ public class AgyChannelDownTests
         fake.CliLogPath = cliLog;
         try
         {
+            // ROADMAP section 106: the boot race runs on a VIRTUAL clock, so the budget costs no real time and the reach cannot
+            // depend on how fast the first gRPC call runs on a loaded runner (a real 2 s budget failed 2 of 3 under load, which is
+            // why this was 10 real seconds). Poll 1 reaches the fake (empty) and the fake deletes the log; every later poll then
+            // fails to READ the log, which is the case under test. The verdict is only issued at the deadline by design, so the
+            // pump advances ONE poll interval per armed timer: 10 polls of 1 minute reach the 10-minute budget, nine of them
+            // after the log vanished. (A single advance of the whole budget would end the test right after poll 1 and never
+            // exercise the unreadable log at all.) The fake starts FIVE MINUTES BEFORE the real now, for two reasons that pull
+            // the same way: its default (year 2000) would make a stray read of the real clock look "past" every fake deadline, so
+            // the fake deadline must stay in the real future (it is real now + 5 min, never reached by the real clock inside the
+            // test's bound); and a budget remainder computed from the WRONG clock would then come out near 5 minutes instead of
+            // 10, which the deadline assertion below sees. Started at the real now the two clocks would agree to the millisecond
+            // and that mutant could not be told apart.
+            var (time, clock) = VirtualClock.NewClock();
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                // Generous on purpose: the fake answers poll 1 at once and deletes the log, so the REACH must not depend on
-                // how fast the first gRPC call runs on a loaded runner (a 2s budget failed 2 of 3 under load). The verdict
-                // is only issued at the deadline by design, so this costs the test the budget, not the runner's speed.
-                BootRaceTimeout = TimeSpan.FromSeconds(10),
-                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+                TimeProvider = clock,
+                BootRaceTimeout = TimeSpan.FromMinutes(10),
+                BootRacePollInterval = TimeSpan.FromMinutes(1),
             });
-            var json = await McpTools.AgyStatus(view);
+            var beforeCall = DateTime.UtcNow;
+            var json = await VirtualClock.PumpBootRaceAsync(() => McpTools.AgyStatus(view), time, clock, TimeSpan.FromMinutes(1));
+            // Exactly 10 polls armed a delay: poll 11 found the deadline reached (`>=`, with the deadline taken from the same
+            // clock) and ended the race. 11 would mean the verdict came a poll late (a `>` or a deadline from another clock).
+            Assert.Equal(10, clock.TimersCreated);
+            // The one place AgyView's virtual time becomes a REAL deadline: poll 1's gRPC call is bounded by the boot race's
+            // remaining budget, 10 minutes on the virtual clock, so the deadline the server saw is about real now + 10 min. A
+            // remainder read from the wrong clock gives about 5 minutes here (the fake started 5 minutes in the past).
+            var grpcDeadline = fake.FirstCallDeadlineUtc!.Value;
+            Assert.InRange(grpcDeadline, beforeCall + TimeSpan.FromMinutes(10) - TimeSpan.FromSeconds(2),
+                                          DateTime.UtcNow + TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(2));
             using var doc = JsonDocument.Parse(json);
             // waiting_for_human envelope (lowercase "status"); channel_down would be the AgyStatus shape with "State".
             Assert.True(doc.RootElement.TryGetProperty("status", out var st), json);
@@ -684,6 +743,7 @@ public class AgyChannelDownTests
     [Fact]
     public async Task Boot_race_reached_empty_whose_final_poll_is_clamped_still_reports_waiting_for_human()
     {
+        // ROADMAP section 113: stays on the REAL clock on purpose: its fake sleeps 400 ms on every later poll, so the REAL transport deadline must expire; a virtual budget would turn that wait into minutes.
         // Capstone Branch C R2 (pins the REJECTED finding R2-1): the final poll of a healthy always-empty LS times out
         // because the remaining budget is clamped to a sliver - that DeadlineExceeded is the clamp expiring, not
         // evidence about the peer, so it must not demote reached-empty to "busy" (LsUnanswered) or channel_down.
@@ -732,13 +792,17 @@ public class AgyChannelDownTests
         fake.CliLogPath = cliLog;
         try
         {
+            // ROADMAP section 113: the boot race runs on a VIRTUAL clock (budget 10 min, poll 1 min; the pump advances one poll interval per armed
+            // timer, so ten polls reach the budget) and spends no real time. Every call that reaches the fake is answered at once (the last poll, at the deadline, gets a zero real deadline and never reaches it), so no real gRPC deadline is awaited.
+            var (time, clock) = VirtualClock.NewClock();
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                BootRaceTimeout = TimeSpan.FromSeconds(2),
-                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+                TimeProvider = clock,
+                BootRaceTimeout = TimeSpan.FromMinutes(10),
+                BootRacePollInterval = TimeSpan.FromMinutes(1),
             });
-            var json = await McpTools.AgyStatus(view);
+            var json = await VirtualClock.PumpBootRaceAsync(() => McpTools.AgyStatus(view), time, clock, TimeSpan.FromMinutes(1));
             using var doc = JsonDocument.Parse(json);
             Assert.True(doc.RootElement.TryGetProperty("status", out var st), json);
             Assert.Equal("waiting_for_human", st.GetString());
@@ -784,6 +848,7 @@ public class AgyChannelDownTests
     [Fact]
     public async Task Dead_channel_agy_status_reports_auth_failed_not_channel_down_on_unauthenticated()
     {
+        // ROADMAP section 113: stays on the REAL clock on purpose: the auth refusal ends the boot race on poll 1 in milliseconds, so the real default budget is never spent.
         var fake = new UnauthLs();
         await using var app = await StartAsync(fake);
         var dir = SetUpAgyDir(PortOf(app), out var cliLog); // no endpoint file -> cli.log path, no token.
@@ -809,13 +874,17 @@ public class AgyChannelDownTests
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
+            // ROADMAP section 113: the boot race runs on a VIRTUAL clock (budget 10 min, poll 1 min; the pump advances one poll interval per armed
+            // timer, so ten polls reach the budget) and spends no real time. Every call that reaches the fake is answered at once (the last poll, at the deadline, gets a zero real deadline and never reaches it), so no real gRPC deadline is awaited.
+            var (time, clock) = VirtualClock.NewClock();
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                BootRaceTimeout = TimeSpan.FromSeconds(2),
-                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+                TimeProvider = clock,
+                BootRaceTimeout = TimeSpan.FromMinutes(10),
+                BootRacePollInterval = TimeSpan.FromMinutes(1),
             });
-            var json = await McpTools.AgyStatus(view);
+            var json = await VirtualClock.PumpBootRaceAsync(() => McpTools.AgyStatus(view), time, clock, TimeSpan.FromMinutes(1));
             using var doc = JsonDocument.Parse(json);
             // waiting_for_human is the RunAsync error envelope (lowercase "status"); channel_down would be the
             // AgyStatus shape ("State"). Asserting the envelope pins that the transient death did NOT latch.
@@ -829,6 +898,7 @@ public class AgyChannelDownTests
     [Fact]
     public async Task Dead_channel_agy_status_carries_the_ring_ending_in_its_own_fault()
     {
+        // ROADMAP section 113: stays on the REAL clock on purpose: the dead channel is hit on the first RPC after the endpoint resolves, in milliseconds, so the real default budget is never spent.
         var fake = new FakeChannelDownLs("conv-1", StatusCode.Unavailable);
         await using var app = await StartAsync(fake);
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
