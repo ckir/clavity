@@ -250,7 +250,7 @@ public sealed class ReviewFindingsTests
         var r = new RealStartEffects().RunCaptured(cmd, TimeSpan.FromSeconds(30));
         Assert.Equal(0, r.ExitCode);
         Assert.False(r.TimedOut);
-        Assert.Equal($"arg with spaces; and 'quotes'|v1|{Path.TrimEndingDirectorySeparator(Path.GetFullPath(cwd))}", r.StdOut);
+        Assert.Equal($"arg with spaces; and 'quotes'|v1|{PhysicalPath(cwd)}", r.StdOut);
     }
 
     [Fact]
@@ -277,6 +277,198 @@ public sealed class ReviewFindingsTests
         var cmd = new LaunchCommand("/bin/sh", ["-c", "sleep 60"], Path.GetTempPath(), new Dictionary<string, string>());
         var r = new RealStartEffects().RunCaptured(cmd, TimeSpan.FromSeconds(1));
         Assert.True(r.TimedOut);
+    }
+
+    // ---- the real launch path: Run and RunScriptHere (ROADMAP section 107, last bullet) ----
+    // RunCaptured is pinned above. These pin the two other real process launches StartFlow makes: the foreground Claude
+    // session (Run) and the posix agy script run in the current terminal (RunScriptHere). POSIX only (they need /bin/sh):
+    // each returns early on Windows, so on macOS and Linux alike they run.
+
+    // The PHYSICAL path of a directory, as the shell sees it. `pwd -P` resolves symlinks, and the temp directory is behind one
+    // on macOS (/var -> /private/var), so comparing it with Path.GetFullPath (lexical) fails there. Asking the same question of
+    // an independent plain process gives the expected value without assuming how the platform lays its temp directory out.
+    private static string PhysicalPath(string dir)
+    {
+        var psi = new ProcessStartInfo("/bin/sh") { WorkingDirectory = dir, RedirectStandardOutput = true, UseShellExecute = false };
+        psi.ArgumentList.Add("-c");
+        psi.ArgumentList.Add("pwd -P");
+        using var process = Process.Start(psi)!;
+        var output = process.StandardOutput.ReadToEnd().Trim();
+        process.WaitForExit();
+        return output;
+    }
+
+    private static string NewTempDir()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "clavity-run-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    [Fact]
+    public void Run_waits_for_the_child_and_returns_its_exit_code()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var cmd = new LaunchCommand("/bin/sh", ["-c", "exit 7"], Path.GetTempPath(), new Dictionary<string, string>());
+        Assert.Equal(7, new RealStartEffects().Run(cmd, wait: true));
+    }
+
+    [Fact]
+    public void Run_gives_the_child_its_working_directory_environment_and_arguments()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var dir = NewTempDir();
+        try
+        {
+            var outFile = Path.Combine(dir, "out.txt");
+            var cmd = new LaunchCommand("/bin/sh",
+                ["-c", "printf '%s|%s|%s' \"$1\" \"$CLAVITY_RUN_TEST\" \"$(pwd -P)\" > \"$CLAVITY_RUN_OUT\"", "sh", "arg with spaces"],
+                dir,
+                new Dictionary<string, string> { ["CLAVITY_RUN_TEST"] = "v1", ["CLAVITY_RUN_OUT"] = outFile });
+            Assert.Equal(0, new RealStartEffects().Run(cmd, wait: true));
+            Assert.Equal($"arg with spaces|v1|{PhysicalPath(dir)}", File.ReadAllText(outFile));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void Run_without_wait_returns_zero_without_waiting_for_the_child()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var dir = NewTempDir();
+        try
+        {
+            // The child writes its marker only after 3 seconds and exits 9. Two independent witnesses that Run did not wait:
+            // it returns 0 (a Run that waited and passed the exit code on would return 9), and the marker does not exist yet
+            // (a Run that waited and then returned 0 anyway would find it). The 3 s margin is for a stalled test thread.
+            var marker = Path.Combine(dir, "child-finished");
+            var cmd = new LaunchCommand("/bin/sh", ["-c", $"sleep 3; : > '{marker}'; exit 9"], dir, new Dictionary<string, string>());
+            Assert.Equal(0, new RealStartEffects().Run(cmd, wait: false));
+            Assert.False(File.Exists(marker), "Run returned only after the child finished");
+            // ...and it WAS launched: a Run that returned 0 without starting anything would pass both checks above.
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            while (!File.Exists(marker) && DateTime.UtcNow < deadline)
+                Thread.Sleep(50);
+            Assert.True(File.Exists(marker), "the child was never started");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    // The link target of one of THIS process's standard streams, as /proc reports it ("pipe:[123]", "/dev/null", "/dev/pts/4").
+    // A child that inherited the stream reports the same string; one given a fresh pipe reports a different one. Linux only.
+    private static string? OwnFdTarget(int fd) => new FileInfo($"/proc/self/fd/{fd}").LinkTarget;
+
+    private static T WithEnvironmentVariable<T>(string name, string value, Func<T> action)
+    {
+        var before = Environment.GetEnvironmentVariable(name);
+        Environment.SetEnvironmentVariable(name, value);
+        try { return action(); }
+        finally { Environment.SetEnvironmentVariable(name, before); }
+    }
+
+    [Fact]
+    public void Run_inherits_the_ambient_environment_and_lets_a_launch_value_override_an_inherited_one()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var dir = NewTempDir();
+        var inheritedName = "CLAVITY_RUN_INHERIT_" + Guid.NewGuid().ToString("N");
+        var overriddenName = "CLAVITY_RUN_OVERRIDE_" + Guid.NewGuid().ToString("N");
+        try
+        {
+            var outFile = Path.Combine(dir, "env.txt");
+            var cmd = new LaunchCommand("/bin/sh",
+                ["-c", $"printf '%s|%s' \"${inheritedName}\" \"${overriddenName}\" > \"$CLAVITY_RUN_OUT\""],
+                dir,
+                new Dictionary<string, string> { [overriddenName] = "from-the-launch", ["CLAVITY_RUN_OUT"] = outFile });
+            // CLAUDE_CONFIG_DIR is the real case: the shell may already have it set and the launch value has to win (StartFlow).
+            var exit = WithEnvironmentVariable(inheritedName, "from-the-shell",
+                () => WithEnvironmentVariable(overriddenName, "from-the-shell", () => new RealStartEffects().Run(cmd, wait: true)));
+            Assert.Equal(0, exit);
+            Assert.Equal("from-the-shell|from-the-launch", File.ReadAllText(outFile));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void Run_gives_the_child_this_processs_own_standard_input_and_output()
+    {
+        // StartFlow runs the foreground Claude session through Run: it must talk to the user's terminal, not to a pipe.
+        if (!OperatingSystem.IsLinux()) return;
+        var dir = NewTempDir();
+        try
+        {
+            var outFile = Path.Combine(dir, "fds.txt");
+            // fd 3 is a copy of the shell's stdout taken before any redirection, so it names the stream Run handed over.
+            var cmd = new LaunchCommand("/bin/sh",
+                ["-c", "exec 3>&1; printf '%s|%s' \"$(readlink /proc/self/fd/0)\" \"$(readlink /proc/self/fd/3)\" > \"$CLAVITY_RUN_OUT\""],
+                dir, new Dictionary<string, string> { ["CLAVITY_RUN_OUT"] = outFile });
+            Assert.Equal(0, new RealStartEffects().Run(cmd, wait: true));
+            Assert.Equal($"{OwnFdTarget(0)}|{OwnFdTarget(1)}", File.ReadAllText(outFile));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void RunScriptHere_inherits_the_environment_and_stdin_and_copes_with_a_space_in_the_script_path()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var dir = NewTempDir();
+        var name = "CLAVITY_RUN_INHERIT_" + Guid.NewGuid().ToString("N");
+        try
+        {
+            var scriptDir = Path.Combine(dir, "a dir with spaces");
+            Directory.CreateDirectory(scriptDir);
+            var outFile = Path.Combine(dir, "script.txt");
+            var script = Path.Combine(scriptDir, "agy.sh");
+            // The stdin line is Linux-only (/proc); on macOS the script still proves the environment, the argument and the path.
+            var stdin = OperatingSystem.IsLinux() ? "$(readlink /proc/self/fd/0)" : "-";
+            File.WriteAllText(script, $"printf '%s|%s|%s' \"${name}\" \"$1\" \"{stdin}\" > '{outFile}'\nexit 5\n");
+            var exit = WithEnvironmentVariable(name, "from-the-shell", () => new RealStartEffects().RunScriptHere(script));
+            Assert.Equal(5, exit);
+            Assert.Equal($"from-the-shell|--here|{(OperatingSystem.IsLinux() ? OwnFdTarget(0) : "-")}", File.ReadAllText(outFile));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void Run_lets_a_missing_program_surface_as_Win32Exception_for_StartFlow_to_report()
+    {
+        var cmd = new LaunchCommand("/no/such/clavity-program", [], Path.GetTempPath(), new Dictionary<string, string>());
+        Assert.Throws<Win32Exception>(() => new RealStartEffects().Run(cmd, wait: true));
+    }
+
+    [Fact]
+    public void RunScriptHere_runs_the_script_with_the_here_flag_and_returns_its_exit_code()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var dir = NewTempDir();
+        try
+        {
+            var outFile = Path.Combine(dir, "arg.txt");
+            var script = Path.Combine(dir, "agy.sh");
+            File.WriteAllText(script, $"printf '%s' \"$1\" > '{outFile}'\nexit 5\n");
+            Assert.Equal(5, new RealStartEffects().RunScriptHere(script));
+            Assert.Equal("--here", File.ReadAllText(outFile));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
     }
 
     // ---- the real per-profile lock (ProfileSetup takes it with a Zero probe first, then LockWait) ----
