@@ -1212,6 +1212,73 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
+    public async Task AskAsync_reports_absolute_max_when_the_stall_window_equals_the_budget_exactly()
+    {
+        // ROADMAP section 106 test audit (gap G1). The window is clamped when `remaining <= stallWindow`, and the boundary is
+        // EQUAL: with stall window == budget the very first window has remaining == stallWindow, so the budget IS the binding
+        // cap and a window that elapses with no progress must say absolute_max (the operator's knob is the budget, not the stall
+        // window). A real clock can never construct that equality - a real elapsed time is never exactly zero - so before the
+        // virtual clock `<=` could become `<` unseen. With `<` the window is not clamped and the label falls through to stall.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false) };   // no progress, never idle
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                TimeProvider = time,
+                IdleStallWindow = TimeSpan.FromMinutes(10),
+                IdleAbsoluteMax = TimeSpan.FromMinutes(10),   // EQUAL to the stall window
+            });
+            var ask = view.AskAsync("stall equals budget");
+            await AwaitWindowAsync(fake, ask, window: 1);
+            time.Advance(TimeSpan.FromMinutes(10));           // the clamped window elapses; nothing progressed
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => ask.WaitAsync(RealBound));
+            Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+            Assert.Equal(TimeSpan.FromMinutes(10), ex.Report.Elapsed);
+            Assert.Equal(1, fake.WaitCalls);                  // the budget ended the wait: no second window
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_ends_without_another_window_when_the_budget_is_spent_exactly_at_the_loop_top()
+    {
+        // ROADMAP section 106 test audit (gap G2). The loop-top budget check is `remaining <= Zero`: when the elapsed time EQUALS
+        // the budget the wait ends there, with no further window. With `<` an exactly-spent budget starts one more zero-length
+        // window (a timer of zero cancels at once, the server is asked again, the probe reports again). The virtual clock is what
+        // makes "exactly spent" constructible. The progress reports are the deterministic signal: one per window that ran. (The
+        // fake's wait counter is not: a zero-length window may be cancelled before the request reaches the handler.)
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false) };   // progresses in every window, never idle
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+            var progress = new CollectingProgress<AgyWaitProgress>();
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                TimeProvider = time,
+                IdleStallWindow = TimeSpan.FromMinutes(10),
+                IdleAbsoluteMax = TimeSpan.FromMinutes(10),
+            });
+            var ask = view.AskAsync("budget spent exactly", progress: progress);
+            await AwaitWindowAsync(fake, ask, window: 1);
+            time.Advance(TimeSpan.FromMinutes(10));           // window 1 ends, progressed; the budget is now spent to the tick
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => ask.WaitAsync(RealBound));
+            Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+            Assert.Equal(TimeSpan.FromMinutes(10), ex.Report.Elapsed);
+            Assert.Single(progress.Reports);                  // exactly one window reported; none after the budget was spent
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public async Task AskAsync_reports_absolute_max_when_the_budget_is_GONE_even_though_the_server_ended_the_window()
     {
         // The case the clamp-and-elapsed rule gets wrong on its own. Window 2 IS budget-clamped, the SERVER
