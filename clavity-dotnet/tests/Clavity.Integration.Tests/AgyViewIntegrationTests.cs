@@ -379,7 +379,7 @@ public class AgyViewIntegrationTests : IDisposable
         var cliLog = WriteCliLog(PortOf(app));
 
         // ROADMAP section 113: the boot race runs on a VIRTUAL clock (budget 10 min, poll 1 min; the pump advances one poll interval per armed
-        // timer, so ten polls reach the budget) and spends no real time. Every poll's fake answers at once, so no real gRPC deadline is awaited.
+        // timer, so ten polls reach the budget) and spends no real time. Every call that reaches the fake is answered at once (the last poll, at the deadline, gets a zero real deadline and never reaches it), so no real gRPC deadline is awaited.
         // (The "realistic budget" note below describes the former real 5 s budget; it no longer applies to the virtual one.)
         var (time, clock) = VirtualClock.NewClock();
         var view = new AgyView(new AgyViewOptions
