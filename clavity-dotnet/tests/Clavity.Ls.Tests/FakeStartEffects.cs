@@ -305,8 +305,17 @@ internal sealed class Fake : IStartEffects
     public Exception? ProfileLockFails { get; init; }
     /// <summary>The timeout each captured command line was given (test audit MG-01: the fake used to drop it).</summary>
     public readonly Dictionary<string, TimeSpan> Timeouts = new();
-    /// <summary>The wait the profile lock was asked for.</summary>
-    public TimeSpan? LockWait { get; private set; }
+    /// <summary>Every captured command with the timeout it was given, in call order. <see cref="Timeouts"/> keeps only the
+    /// last timeout per command LINE, so a command run several times (`plugin list`) is counted once there; a sum needs this.</summary>
+    public readonly List<(string Line, TimeSpan Timeout)> TimeoutLog = new();
+    /// <summary>The wait of every profile-lock request, in call order.</summary>
+    public readonly List<TimeSpan> LockWaits = new();
+    /// <summary>What had been written to <see cref="Err"/> at the moment each profile-lock request arrived, in call order: lets a test
+    /// say WHEN a message was printed relative to a lock wait, not only that it was.</summary>
+    public readonly List<string> ErrAtLockCall = new();
+    /// <summary>How many profile-lock requests are refused before one succeeds (a holder that finishes while a second run waits).
+    /// <see cref="ProfileLockHeld"/> still refuses every request.</summary>
+    public int LockMisses { get; init; }
 
     public static string Line(LaunchCommand cmd) => string.Join(' ', new[] { cmd.FileName }.Concat(cmd.Arguments));
 
@@ -316,6 +325,7 @@ internal sealed class Fake : IStartEffects
         Calls.Add("cmd:" + line);
         CapturedRan.Add(cmd);
         Timeouts[line] = timeout;
+        TimeoutLog.Add((line, timeout));
         if (!Script.TryGetValue(line, out var r))
             return DefaultResult;
         if (r is Func<CommandResult> f)
@@ -326,10 +336,13 @@ internal sealed class Fake : IStartEffects
     public IDisposable? TakeProfileLock(string profileName, TimeSpan wait)
     {
         Calls.Add("profile-lock");
-        LockWait = wait;
+        LockWaits.Add(wait);
+        ErrAtLockCall.Add(Err.ToString());
         if (ProfileLockFails is not null)
             throw ProfileLockFails;
-        return ProfileLockHeld ? null : new Release(Calls, "profile-release");
+        if (ProfileLockHeld || LockWaits.Count <= LockMisses)
+            return null;
+        return new Release(Calls, "profile-release");
     }
 
     private sealed class Release(List<string> calls, string name) : IDisposable
