@@ -625,38 +625,6 @@ public class AgyChannelDownTests
 
     // Boot-race fake: reachable-but-EMPTY, and on its FIRST discovery poll it deletes the cli.log (a rotation, a
     // cleanup, a transient unreadable file). Every later poll is an IOException from ReadCliLogText.
-    /// <summary>A FakeTimeProvider that tells the test every time AgyView ARMS a timer (each <c>Task.Delay</c> creates one). The
-    /// boot-race loop re-arms its poll delay once per poll, so waiting for a new timer is how the test knows the loop is parked
-    /// and a virtual-clock advance will land on it - no sleeping, no guessing (ROADMAP section 106).</summary>
-    private sealed class TimerCountingTimeProvider : TimeProvider
-    {
-        private readonly FakeTimeProvider _inner;
-        private readonly SemaphoreSlim _armed = new(0);
-        private int _timersCreated;
-
-        public TimerCountingTimeProvider(FakeTimeProvider inner) => _inner = inner;
-
-        public int TimersCreated => Volatile.Read(ref _timersCreated);
-        public Task WaitForTimerAsync(CancellationToken cancellationToken) => _armed.WaitAsync(cancellationToken);
-
-        public override DateTimeOffset GetUtcNow() => _inner.GetUtcNow();
-        public override long GetTimestamp() => _inner.GetTimestamp();
-        public override long TimestampFrequency => _inner.TimestampFrequency;
-        public override TimeZoneInfo LocalTimeZone => _inner.LocalTimeZone;
-
-        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
-        {
-            var timer = _inner.CreateTimer(callback, state, dueTime, period);   // exists BEFORE the signal, so an advance after it fires it
-            Interlocked.Increment(ref _timersCreated);
-            _armed.Release();
-            return timer;
-        }
-    }
-
-    // Every await on the virtual-clock path is bounded in REAL time: a mutant that leaves a real timer or a real clock read
-    // in AgyView then fails by this bound instead of hanging or passing slowly.
-    private static readonly TimeSpan RealBound = TimeSpan.FromSeconds(30);
-
     private sealed class FakeEmptyThenLogVanishesLs : LanguageServerService.LanguageServerServiceBase
     {
         private int _calls;
@@ -699,8 +667,7 @@ public class AgyChannelDownTests
             // test's bound); and a budget remainder computed from the WRONG clock would then come out near 5 minutes instead of
             // 10, which the deadline assertion below sees. Started at the real now the two clocks would agree to the millisecond
             // and that mutant could not be told apart.
-            var time = new FakeTimeProvider(DateTimeOffset.UtcNow - TimeSpan.FromMinutes(5));
-            var clock = new TimerCountingTimeProvider(time);
+            var (time, clock) = VirtualClock.NewClock();
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
@@ -709,14 +676,7 @@ public class AgyChannelDownTests
                 BootRacePollInterval = TimeSpan.FromMinutes(1),
             });
             var beforeCall = DateTime.UtcNow;
-            var status = McpTools.AgyStatus(view);
-            using var pumpBound = new CancellationTokenSource(RealBound);
-            for (var step = 0; step < 50 && !status.IsCompleted; step++)   // the cap: a runaway loop fails, it never spins
-            {
-                if (await Task.WhenAny(clock.WaitForTimerAsync(pumpBound.Token), status) == status) break;
-                time.Advance(TimeSpan.FromMinutes(1));
-            }
-            var json = await status.WaitAsync(RealBound);
+            var json = await VirtualClock.PumpBootRaceAsync(() => McpTools.AgyStatus(view), time, clock, TimeSpan.FromMinutes(1));
             // Exactly 10 polls armed a delay: poll 11 found the deadline reached (`>=`, with the deadline taken from the same
             // clock) and ended the race. 11 would mean the verdict came a poll late (a `>` or a deadline from another clock).
             Assert.Equal(10, clock.TimersCreated);
