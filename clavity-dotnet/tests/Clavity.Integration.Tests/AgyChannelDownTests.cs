@@ -169,6 +169,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Clavity.Integration.Tests;
 
@@ -624,6 +625,38 @@ public class AgyChannelDownTests
 
     // Boot-race fake: reachable-but-EMPTY, and on its FIRST discovery poll it deletes the cli.log (a rotation, a
     // cleanup, a transient unreadable file). Every later poll is an IOException from ReadCliLogText.
+    /// <summary>A FakeTimeProvider that tells the test every time AgyView ARMS a timer (each <c>Task.Delay</c> creates one). The
+    /// boot-race loop re-arms its poll delay once per poll, so waiting for a new timer is how the test knows the loop is parked
+    /// and a virtual-clock advance will land on it - no sleeping, no guessing (ROADMAP section 106).</summary>
+    private sealed class TimerCountingTimeProvider : TimeProvider
+    {
+        private readonly FakeTimeProvider _inner;
+        private readonly SemaphoreSlim _armed = new(0);
+        private int _timersCreated;
+
+        public TimerCountingTimeProvider(FakeTimeProvider inner) => _inner = inner;
+
+        public int TimersCreated => Volatile.Read(ref _timersCreated);
+        public Task WaitForTimerAsync(CancellationToken cancellationToken) => _armed.WaitAsync(cancellationToken);
+
+        public override DateTimeOffset GetUtcNow() => _inner.GetUtcNow();
+        public override long GetTimestamp() => _inner.GetTimestamp();
+        public override long TimestampFrequency => _inner.TimestampFrequency;
+        public override TimeZoneInfo LocalTimeZone => _inner.LocalTimeZone;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = _inner.CreateTimer(callback, state, dueTime, period);   // exists BEFORE the signal, so an advance after it fires it
+            Interlocked.Increment(ref _timersCreated);
+            _armed.Release();
+            return timer;
+        }
+    }
+
+    // Every await on the virtual-clock path is bounded in REAL time: a mutant that leaves a real timer or a real clock read
+    // in AgyView then fails by this bound instead of hanging or passing slowly.
+    private static readonly TimeSpan RealBound = TimeSpan.FromSeconds(30);
+
     private sealed class FakeEmptyThenLogVanishesLs : LanguageServerService.LanguageServerServiceBase
     {
         private int _calls;
@@ -648,16 +681,34 @@ public class AgyChannelDownTests
         fake.CliLogPath = cliLog;
         try
         {
+            // ROADMAP section 106: the boot race runs on a VIRTUAL clock, so the budget costs no real time and the reach cannot
+            // depend on how fast the first gRPC call runs on a loaded runner (a real 2 s budget failed 2 of 3 under load, which is
+            // why this was 10 real seconds). Poll 1 reaches the fake (empty) and the fake deletes the log; every later poll then
+            // fails to READ the log, which is the case under test. The verdict is only issued at the deadline by design, so the
+            // pump advances ONE poll interval per armed timer: 10 polls of 1 minute reach the 10-minute budget, nine of them
+            // after the log vanished. (A single advance of the whole budget would end the test right after poll 1 and never
+            // exercise the unreadable log at all.) The fake starts at the real now because its default (year 2000) would make a
+            // stray read of the real clock look "past" every fake deadline.
+            var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+            var clock = new TimerCountingTimeProvider(time);
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                // Generous on purpose: the fake answers poll 1 at once and deletes the log, so the REACH must not depend on
-                // how fast the first gRPC call runs on a loaded runner (a 2s budget failed 2 of 3 under load). The verdict
-                // is only issued at the deadline by design, so this costs the test the budget, not the runner's speed.
-                BootRaceTimeout = TimeSpan.FromSeconds(10),
-                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+                TimeProvider = clock,
+                BootRaceTimeout = TimeSpan.FromMinutes(10),
+                BootRacePollInterval = TimeSpan.FromMinutes(1),
             });
-            var json = await McpTools.AgyStatus(view);
+            var status = McpTools.AgyStatus(view);
+            using var pumpBound = new CancellationTokenSource(RealBound);
+            for (var step = 0; step < 50 && !status.IsCompleted; step++)   // the cap: a runaway loop fails, it never spins
+            {
+                if (await Task.WhenAny(clock.WaitForTimerAsync(pumpBound.Token), status) == status) break;
+                time.Advance(TimeSpan.FromMinutes(1));
+            }
+            var json = await status.WaitAsync(RealBound);
+            // Exactly 10 polls armed a delay: poll 11 found the deadline reached (`>=`, with the deadline taken from the same
+            // clock) and ended the race. 11 would mean the verdict came a poll late (a `>` or a deadline from another clock).
+            Assert.Equal(10, clock.TimersCreated);
             using var doc = JsonDocument.Parse(json);
             // waiting_for_human envelope (lowercase "status"); channel_down would be the AgyStatus shape with "State".
             Assert.True(doc.RootElement.TryGetProperty("status", out var st), json);
