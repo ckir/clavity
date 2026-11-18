@@ -4,25 +4,34 @@
 # You may obtain a copy of the License at:
 # https://polyformproject.org/licenses/noncommercial/1.0.0/
 
-name: measure-launcher-user-path
+name: ci-launcher-user-path
 
 permissions:
   contents: read
 
-# ROADMAP section 110: measure, on a real Windows runner and the real powershell.exe 5.1, what the launcher's user-PATH
-# append does to an existing REG_EXPAND_SZ value. Seeds HKCU\Environment\Path with %USERPROFILE%\bin, runs the launcher
+# ROADMAP section 110: on a real Windows runner and the real powershell.exe 5.1, check what the launcher's user-PATH
+# append does to an existing REG_EXPAND_SZ value. The fake powershell.exe rows in clavity-ls-launcher-lib.Tests.ps1 pin
+# the script text only; this is the one check that sees the registry. Seeds HKCU\Environment\Path with %USERPROFILE%\bin, runs the launcher
 # library standalone, and asserts the entry survives byte-for-byte, the registry kind is still ExpandString and a new
 # process built from the registry resolves clavity-ls. The runner is thrown away after each run, so no backup is needed.
 on:
   push:
-    branches: [fix/launcher-user-path-expand]
+    branches: [main]
     paths:
       - 'clavity-dotnet/plugin/hooks/clavity-ls-launcher-lib.sh'
-      - '.github/workflows/measure-launcher-user-path.yml'
+      - '.github/workflows/ci-launcher-user-path.yml'
+  pull_request:
+    paths:
+      - 'clavity-dotnet/plugin/hooks/clavity-ls-launcher-lib.sh'
+      - '.github/workflows/ci-launcher-user-path.yml'
   workflow_dispatch:
 
+concurrency:
+  group: ci-launcher-user-path-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  measure:
+  user-path:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -65,16 +74,19 @@ jobs:
           if (-not $hit) { $fails += 'a process built from the registry PATH does not resolve clavity-ls' }
           if ($fails) { $fails | ForEach-Object { "MEASURED FAIL: $_" }; exit 1 }
           'MEASURED PASS'
-      - name: Probe Constrained Language Mode (informational)
+      - name: Constrained Language Mode fails safe
         shell: pwsh
-        continue-on-error: true
         run: |
-          # What the launcher's script does when the session is constrained: it must FAIL (so the launcher reports exit 2)
-          # and never write a half value. Run in a constrained powershell.exe 5.1 session.
-          $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
-          $before = $k.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
-          $cmd = '$ExecutionContext.SessionState.LanguageMode = ''ConstrainedLanguage''; $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(''Environment'', $true); $k.GetValue(''Path'',''x'',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)'
+          # In a constrained powershell.exe 5.1 session the registry call is refused, so the launcher's script ends in an
+          # error (the launcher then reports exit 2 and the manual note) and the stored value must be untouched.
+          $get = { [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment').GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) }
+          $before = & $get
+          $cmd = '$ExecutionContext.SessionState.LanguageMode = ''ConstrainedLanguage''; $ErrorActionPreference = ''Stop''; $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(''Environment'', $true); $k.SetValue(''Path'', ''x'')'
           $out = powershell.exe -NoProfile -NonInteractive -Command $cmd 2>&1
-          "CLM exit=$LASTEXITCODE out=$($out -join ' | ')"
-          $k2 = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
-          "value unchanged: $($before -eq $k2.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames))"
+          $code = $LASTEXITCODE
+          "CLM exit=$code out=$($out -join ' | ')"
+          $fails = @()
+          if ($code -eq 0) { $fails += 'the constrained session was allowed to write the registry' }
+          if ((& $get) -ne $before) { $fails += 'the stored value changed' }
+          if ($fails) { $fails | ForEach-Object { "MEASURED FAIL: $_" }; exit 1 }
+          'MEASURED PASS'
