@@ -661,10 +661,16 @@ public class AgyChannelDownTests
     {
         private int _calls;
         public string? CliLogPath { get; set; } // set once the test knows the path (the app starts first)
+        /// <summary>The gRPC deadline (UTC) the client attached to the FIRST call: the boot race's REAL deadline for poll 1.</summary>
+        public DateTime? FirstCallDeadlineUtc { get; private set; }
         public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
             GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
         {
-            if (System.Threading.Interlocked.Increment(ref _calls) == 1 && CliLogPath is { } p) File.Delete(p);
+            if (System.Threading.Interlocked.Increment(ref _calls) == 1)
+            {
+                FirstCallDeadlineUtc = context.Deadline;
+                if (CliLogPath is { } p) File.Delete(p);
+            }
             return Task.FromResult(new GetAllCascadeTrajectoriesResponse());
         }
     }
@@ -687,9 +693,13 @@ public class AgyChannelDownTests
             // fails to READ the log, which is the case under test. The verdict is only issued at the deadline by design, so the
             // pump advances ONE poll interval per armed timer: 10 polls of 1 minute reach the 10-minute budget, nine of them
             // after the log vanished. (A single advance of the whole budget would end the test right after poll 1 and never
-            // exercise the unreadable log at all.) The fake starts at the real now because its default (year 2000) would make a
-            // stray read of the real clock look "past" every fake deadline.
-            var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+            // exercise the unreadable log at all.) The fake starts FIVE MINUTES BEFORE the real now, for two reasons that pull
+            // the same way: its default (year 2000) would make a stray read of the real clock look "past" every fake deadline, so
+            // the fake deadline must stay in the real future (it is real now + 5 min, never reached by the real clock inside the
+            // test's bound); and a budget remainder computed from the WRONG clock would then come out near 5 minutes instead of
+            // 10, which the deadline assertion below sees. Started at the real now the two clocks would agree to the millisecond
+            // and that mutant could not be told apart.
+            var time = new FakeTimeProvider(DateTimeOffset.UtcNow - TimeSpan.FromMinutes(5));
             var clock = new TimerCountingTimeProvider(time);
             var view = new AgyView(new AgyViewOptions
             {
@@ -698,6 +708,7 @@ public class AgyChannelDownTests
                 BootRaceTimeout = TimeSpan.FromMinutes(10),
                 BootRacePollInterval = TimeSpan.FromMinutes(1),
             });
+            var beforeCall = DateTime.UtcNow;
             var status = McpTools.AgyStatus(view);
             using var pumpBound = new CancellationTokenSource(RealBound);
             for (var step = 0; step < 50 && !status.IsCompleted; step++)   // the cap: a runaway loop fails, it never spins
@@ -709,6 +720,12 @@ public class AgyChannelDownTests
             // Exactly 10 polls armed a delay: poll 11 found the deadline reached (`>=`, with the deadline taken from the same
             // clock) and ended the race. 11 would mean the verdict came a poll late (a `>` or a deadline from another clock).
             Assert.Equal(10, clock.TimersCreated);
+            // The one place AgyView's virtual time becomes a REAL deadline: poll 1's gRPC call is bounded by the boot race's
+            // remaining budget, 10 minutes on the virtual clock, so the deadline the server saw is about real now + 10 min. A
+            // remainder read from the wrong clock gives about 5 minutes here (the fake started 5 minutes in the past).
+            var grpcDeadline = fake.FirstCallDeadlineUtc!.Value;
+            Assert.InRange(grpcDeadline, beforeCall + TimeSpan.FromMinutes(10) - TimeSpan.FromSeconds(2),
+                                          DateTime.UtcNow + TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(2));
             using var doc = JsonDocument.Parse(json);
             // waiting_for_human envelope (lowercase "status"); channel_down would be the AgyStatus shape with "State".
             Assert.True(doc.RootElement.TryGetProperty("status", out var st), json);
