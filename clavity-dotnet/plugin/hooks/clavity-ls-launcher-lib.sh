@@ -79,17 +79,25 @@ _clavity_ls_launcher_windows() {
     _launcher_say "$msg"
     return 2
   fi
-  # One PowerShell string. The user PATH is read and written through [Environment] - never setx, which truncates the
-  # value at 1024 characters. Append only when no entry equals the dir case-insensitively (a trailing backslash
+  # One PowerShell string. The user PATH is read and written through HKCU\Environment directly - never setx, which
+  # truncates the value at 1024 characters, and never [Environment]::Get/SetEnvironmentVariable for the value itself:
+  # the read expands a REG_EXPAND_SZ entry (%USERPROFILE%\bin becomes a literal path) and the write stores REG_SZ
+  # (ROADMAP section 110, measured on a Windows runner). So the value is read WITHOUT expansion, the dir is appended,
+  # and it is written back as ExpandString. [Environment]::SetEnvironmentVariable is then used only on a throwaway
+  # variable, because its user-scope write broadcasts WM_SETTINGCHANGE (no Add-Type, which Constrained Language Mode
+  # blocks). Append only when no entry equals the dir case-insensitively, as written or expanded (a trailing backslash
   # ignored), keeping the existing value as it is. It prints `added` or `present` so the caller knows which note to
   # give. The dir goes in a single-quoted PowerShell literal: ' is doubled.
   wq=${win//\'/\'\'}
   ps_script="\$ErrorActionPreference = 'Stop'; \$d = '$wq'; "
-  ps_script+="\$p = [Environment]::GetEnvironmentVariable('Path','User'); "
+  ps_script+="\$k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', \$true); "
+  ps_script+="try { \$p = \$k.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); "
   ps_script+="\$e = @(if (\$p) { \$p -split ';' }); "
-  ps_script+="if (\$e | Where-Object { \$_.TrimEnd('\\') -ieq \$d.TrimEnd('\\') }) { 'present' } else { "
+  ps_script+="if (\$e | Where-Object { \$_.TrimEnd('\\') -ieq \$d.TrimEnd('\\') -or [Environment]::ExpandEnvironmentVariables(\$_).TrimEnd('\\') -ieq \$d.TrimEnd('\\') }) { 'present' } else { "
   ps_script+="\$new = if (\$p) { \$p.TrimEnd(';') + ';' + \$d } else { \$d }; "
-  ps_script+="[Environment]::SetEnvironmentVariable('Path', \$new, 'User'); 'added' }"
+  ps_script+="\$k.SetValue('Path', \$new, [Microsoft.Win32.RegistryValueKind]::ExpandString); "
+  ps_script+="[Environment]::SetEnvironmentVariable('CLAVITY_LS_PATH_BROADCAST', '1', 'User'); "
+  ps_script+="[Environment]::SetEnvironmentVariable('CLAVITY_LS_PATH_BROADCAST', \$null, 'User'); 'added' } } finally { \$k.Close() }"
   r=$(powershell.exe -NoProfile -NonInteractive -Command "$ps_script" 2>/dev/null) || r=
   r=${r//$'\r'/}; r=${r//$'\n'/}   # PowerShell ends its output with CRLF
   case "$r" in

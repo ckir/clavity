@@ -55,6 +55,7 @@ jobs:
           $fails = @()
           if ($kind -ne 'ExpandString') { $fails += "kind is $kind, expected ExpandString" }
           if ($raw -ne $want) { $fails += "value differs: expected [$want]" }
+          if ($null -ne $k.GetValue('CLAVITY_LS_PATH_BROADCAST')) { $fails += 'the throwaway broadcast variable was left behind' }
           # A new process built from the registry (machine, then user, expanded) must resolve clavity-ls.
           $m = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey('SYSTEM\CurrentControlSet\Control\Session Manager\Environment').GetValue('Path')
           $u = [Environment]::ExpandEnvironmentVariables($raw)
@@ -64,3 +65,16 @@ jobs:
           if (-not $hit) { $fails += 'a process built from the registry PATH does not resolve clavity-ls' }
           if ($fails) { $fails | ForEach-Object { "MEASURED FAIL: $_" }; exit 1 }
           'MEASURED PASS'
+      - name: Probe Constrained Language Mode (informational)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          # What the launcher's script does when the session is constrained: it must FAIL (so the launcher reports exit 2)
+          # and never write a half value. Run in a constrained powershell.exe 5.1 session.
+          $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
+          $before = $k.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+          $cmd = '$ExecutionContext.SessionState.LanguageMode = ''ConstrainedLanguage''; $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(''Environment'', $true); $k.GetValue(''Path'',''x'',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)'
+          $out = powershell.exe -NoProfile -NonInteractive -Command $cmd 2>&1
+          "CLM exit=$LASTEXITCODE out=$($out -join ' | ')"
+          $k2 = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
+          "value unchanged: $($before -eq $k2.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames))"
