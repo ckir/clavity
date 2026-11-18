@@ -4646,6 +4646,22 @@ Agreed fix (option B): read `HKCU\Environment\Path` WITHOUT expansion (`Registry
 
 Decided and closed at the same consult, no work: the exit-3 no-link launch line keeps `clavity-ls.exe start <folder>` (the binary carries that name on every OS); `INSTALL.md` and `install.sh` stay in `$DevOnlyPaths` with the comment at `scripts/lib/release-lib.ps1` lines 101-105 as the rationale.
 
+### §111 — `GoldenHeader.Commit` publishes the header and its `.sha256` sidecar in two separate steps, so a crash between them degrades the cheatsheet
+
+**Status:** OPEN 2026-11-18 - found while reviewing the cheatsheet consolidation design (2026-11-17) and verified by reading `clavity-dotnet/src/Clavity.Ls/GoldenHeader.cs`: `Commit` moves the temp header over the target first (`AtomicMoveWithRetry(tmp, path)`), and only afterwards writes and moves the sidecar (`AtomicMoveWithRetry(sidecarTmp, sidecarPath)`, about line 463). Each move is atomic, the PAIR is not.
+
+A crash, power loss or kill between the two moves leaves the new header beside the OLD sidecar. The reader then sees a digest mismatch and degrades to the compiled baseline floor with a warning prefix until `curate-commit` is run again; the published cheatsheet is silently not delivered in the meantime. Not reproduced by a real crash; the window is two file moves wide. Related, different cause: `docs/backlog/goldenheader-commit-fails-under-concurrent-writes-on-windows.md`.
+
+Decide when picked up: write the sidecar FIRST for the new content (a reader that sees the new sidecar with the old header degrades the same way, so order alone does not close it), or publish one file that carries its own digest, or accept the window and document that the recovery is re-running `curate-commit`. Any change needs a test that kills the process between the two steps (a fault-injecting `AtomicMoveWithRetry`), which is the part not built.
+
+### §112 — the dotnet test suites run on `windows-latest` only, so every POSIX-guarded test is skipped in CI
+
+**Status:** OPEN 2026-11-18 - verified while reviewing the `RealStartEffects` launch-path tests: `.github/workflows/ci-dotnet.yml` sets `runs-on: windows-latest` for the `test` job (`just test`, both `Clavity.Ls.Tests` and `Clavity.Integration.Tests`), and `.github/workflows/build-dotnet.yml` only builds and smoke-tests the Linux and macOS packages; no workflow runs `dotnet test` on Linux or macOS.
+
+Consequence: a test that begins `if (OperatingSystem.IsWindows()) return;` (the `RunCaptured`, `Run` and `RunScriptHere` rows in `clavity-dotnet/tests/Clavity.Ls.Tests/ReviewFindingsTests.cs`, and others) passes vacuously on the only CI runner, so the POSIX behaviour they pin has no CI gate; it is checked only when someone runs `just test` on Linux or macOS. The same holds for any Linux-only fix. Not measured: how many tests early-return on Windows, and how long a Linux leg of the `test` job would add (the Windows leg takes about 2.5 minutes).
+
+Decide when picked up: add `ubuntu-latest` to the `test` job as a matrix leg (the suites use loopback gRPC fakes with no external dependency, and already run on Linux locally), after measuring that the full suite is green there; keep the Windows leg.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
