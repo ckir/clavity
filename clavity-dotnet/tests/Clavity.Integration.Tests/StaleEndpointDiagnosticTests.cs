@@ -183,6 +183,7 @@ public class StaleEndpointDiagnosticTests
     [Fact]
     public async Task Channel_down_names_the_stale_endpoint_file_and_its_dead_port()
     {
+        // ROADMAP section 113: stays on the REAL clock on purpose: the verdict comes from a real socket connect failure within 300 ms, which a virtual clock cannot shorten.
         var dir = Path.Combine(Path.GetTempPath(), "clavity-stale-ep-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         try

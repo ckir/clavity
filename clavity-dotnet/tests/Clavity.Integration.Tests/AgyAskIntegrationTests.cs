@@ -1795,6 +1795,7 @@ public class AgyAskIntegrationTests
     [Fact]
     public async Task A_generating_step_from_BEFORE_our_send_does_not_extend_the_wait()
     {
+        // ROADMAP section 113: stays on the REAL clock on purpose: it is not a caller of AskGeneratingAsync and ends in the very first 150 ms window (WaitCalls == 1), so there is no window arithmetic for jitter to disturb.
         // The PREVIOUS turn's last step is still generating and our own user step has not appeared yet, so the last step is
         // not ours to wait on. A check that looked at the last step without the past-our-own-step guard would treat it as
         // our reply being written and wait on it; the correct answer is the ordinary stall at the first window.
@@ -2052,6 +2053,7 @@ public class AgyAskIntegrationTests
     [Fact]
     public async Task AskAsync_propagates_a_caller_cancel_during_the_boot_race()
     {
+        // ROADMAP section 113: stays on the REAL clock on purpose: the caller cancels after about 20 ms; the 30 s budget is only an upper bound that is never reached.
         // Gap-1 (boot-race / capstone F1): the fake's GetAllCascadeTrajectories blocks forever, so AskAsync is
         // parked in ConnectAndResolveAsync. Cancelling the CALLER token must propagate as a cancellation, never be
         // swallowed into channel_down/LsDiscoveryException. A LONG BootRaceTimeout keeps the boot-race deadline
