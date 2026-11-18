@@ -212,7 +212,9 @@ internal static class VirtualClock
         using var pumpBound = new CancellationTokenSource(RealBound);
         for (var step = 0; step < maxSteps && !task.IsCompleted; step++)   // the cap: a runaway loop fails, it never spins
         {
-            if (await Task.WhenAny(clock.WaitForTimerAsync(pumpBound.Token), task) == task) break;
+            var winner = await Task.WhenAny(clock.WaitForTimerAsync(pumpBound.Token), task);
+            if (winner == task) break;
+            await winner;   // a timer wait that expired at RealBound throws here; without it the loop fell through to up to 49 more advances and the deadline arrived (test audit G2)
             time.Advance(pollInterval);
         }
         return await task.WaitAsync(RealBound);

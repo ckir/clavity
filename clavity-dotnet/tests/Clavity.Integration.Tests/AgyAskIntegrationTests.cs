@@ -1244,6 +1244,46 @@ public class AgyAskIntegrationTests
         finally { Directory.Delete(dir, true); }
     }
 
+    /// <summary>Wraps a FakeTimeProvider so that every TIMER fires <c>early</c> before its due time on the shared clock: the clock a
+    /// read sees is then still short of the moment the timer claims (a slightly-early wakeup, the Windows ~15 ms timer resolution).</summary>
+    private sealed class EarlyWakeTimeProvider(FakeTimeProvider inner, TimeSpan early) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => inner.GetUtcNow();
+        public override long GetTimestamp() => inner.GetTimestamp();
+        public override long TimestampFrequency => inner.TimestampFrequency;
+        public override TimeZoneInfo LocalTimeZone => inner.LocalTimeZone;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+            => inner.CreateTimer(callback, state, dueTime > early ? dueTime - early : dueTime, period);
+    }
+
+    [Fact]
+    public async Task AskAsync_reports_absolute_max_when_the_clamped_window_timer_fires_before_the_clock_reaches_the_budget()
+    {
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false) };   // no progress, never idle
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var (time, _) = VirtualClock.NewClock();
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                TimeProvider = new EarlyWakeTimeProvider(time, TimeSpan.FromSeconds(1)),
+                IdleStallWindow = TimeSpan.FromMinutes(10),
+                IdleAbsoluteMax = TimeSpan.FromMinutes(10),
+            });
+            var ask = view.AskAsync("early wakeup");
+            await VirtualClock.AwaitWindowAsync(fake, ask, window: 1);
+            time.Advance(TimeSpan.FromMinutes(10) - TimeSpan.FromSeconds(1));   // our window timer fires, the clock is 1 s short
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => ask.WaitAsync(VirtualClock.RealBound));
+            Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+            Assert.Equal(TimeSpan.FromMinutes(10) - TimeSpan.FromSeconds(1), ex.Report.Elapsed);
+            Assert.Equal(1, fake.WaitCalls);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     [Fact]
     public async Task AskAsync_ends_without_another_window_when_the_budget_is_spent_exactly_at_the_loop_top()
     {
