@@ -483,7 +483,7 @@ public class AgyChannelDownTests
         // Gap-4: discovery (GetAllCascadeTrajectories) NEVER succeeds -- every poll throws the dead status, so
         // ConnectAndResolveAsync never obtains a client and hits the boot-race deadline with sawChannelDeath=true,
         // throwing LsDiscoveryException -> channel_down (NOT waiting_for_human, since reachedLsButEmpty never gets
-        // set when every poll dies pre-flight). A SHORT BootRaceTimeout keeps this test fast.
+        // set when every poll dies pre-flight). The budget is virtual (10 minutes, one poll per minute), so it costs no real time.
         var fake = new FakeChannelDownLs("conv-1", StatusCode.Unavailable, throwOnDiscovery: true);
         await using var app = await StartAsync(fake);
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
