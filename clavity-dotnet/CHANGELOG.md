@@ -1,4 +1,17 @@
 # dotnet changelog
+## 0.20.0 - 2026-11-18
+
+### Features
+- feat(ls): AgyViewOptions.TimeProvider drives AgyView's idle wait and boot race
+- feat(mcp): agy_ask appends a [conv] notice when the conversation changed
+- feat(ls): agy_ask records the last delivered conversation and reports a switch
+- feat(ls): AskReply.PreviousCascadeId, serialized only when set
+
+### Fixes
+- fix(plugin): append to the Windows user PATH without expanding or retyping it
+- fix(ls): cover BoundedProcess's per-step exit slack in the profile lock wait
+- fix(ls): a second start --profile waits as long as the holder can legitimately run, and says it is waiting
+
 ## 0.19.0 - 2026-11-12
 
 ### Features
