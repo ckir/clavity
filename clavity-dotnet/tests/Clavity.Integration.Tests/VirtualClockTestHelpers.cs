@@ -218,11 +218,13 @@ internal static class VirtualClock
         return await task.WaitAsync(RealBound);
     }
 
-    /// <summary>Advances <paramref name="stall"/> once per window the fake has received, until <paramref name="ask"/> ends, under
-    /// <see cref="RealBound"/> and a step cap. For the generation-cap and label tests. It does NOT call
-    /// <see cref="AwaitWindowAsync"/>, which throws when the ask ended first; the CALLER awaits <c>ask.WaitAsync(RealBound)</c> and
-    /// inspects the reply or the exception. A window whose server answers at once (idle, or its own timeout) arms no timer; the
-    /// advance is then harmless.</summary>
+    /// <summary>Advances <paramref name="stall"/> once per window that is PARKED on the server (<c>FakeAskLs.BlockedWindows</c>), until
+    /// <paramref name="ask"/> ends, under <see cref="RealBound"/> and a step cap. For the generation-cap and label tests. It does NOT
+    /// call <see cref="AwaitWindowAsync"/>, which throws when the ask ended first; the CALLER awaits <c>ask.WaitAsync(RealBound)</c> and
+    /// inspects the reply or the exception. It gates on the parked count and NOT on <c>WaitCalls</c> on purpose: AgyView arms a window
+    /// timer for EVERY window, so an advance onto a window whose server answers at once (idle, or its own timeout) can fire that timer
+    /// before the client reads the reply, and the client then runs an extra window (measured: WaitCalls 26 to 28 against a plan of
+    /// 25). A parked window's handler is running, so the client armed its timer first and the advance lands on it.</summary>
     public static async Task PumpWindowsAsync(
         AgyAskIntegrationTests.FakeAskLs fake, Task ask, FakeTimeProvider time, TimeSpan stall, int maxWindows = 200)
     {
@@ -230,7 +232,7 @@ internal static class VirtualClock
         var advanced = 0;
         while (!ask.IsCompleted && advanced < maxWindows)
         {
-            while (fake.WaitCalls <= advanced && !ask.IsCompleted)
+            while (fake.BlockedWindows <= advanced && !ask.IsCompleted)
                 await Task.Delay(5, cts.Token);
             if (ask.IsCompleted) break;
             time.Advance(stall);
