@@ -471,6 +471,72 @@ public sealed class ReviewFindingsTests
         }
     }
 
+    // ---- the real per-profile lock (ProfileSetup takes it with a Zero probe first, then LockWait) ----
+    // A unique profile name keeps each test's lock file its own: the lock lives under the real user profile directory
+    // (RealStartEffects.TakeProfileLock), and the file is deleted afterwards.
+
+    private static string ProfileLockPath(string name) =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".clavity", $"agy-profile.{name}.lock");
+
+    private static string NewProfileLockName() => "plw-test-" + Guid.NewGuid().ToString("N");
+
+    [Fact]
+    public void TakeProfileLock_zero_wait_on_a_free_lock_returns_a_handle_that_excludes_a_second_taker()
+    {
+        var name = NewProfileLockName();
+        try
+        {
+            var fx = new RealStartEffects();
+            using var held = fx.TakeProfileLock(name, TimeSpan.Zero);
+            Assert.NotNull(held);
+            Assert.Null(fx.TakeProfileLock(name, TimeSpan.Zero));   // the handle really holds it
+        }
+        finally
+        {
+            File.Delete(ProfileLockPath(name));
+        }
+    }
+
+    [Fact]
+    public void TakeProfileLock_zero_wait_on_a_held_lock_makes_one_attempt_and_returns_without_sleeping()
+    {
+        var name = NewProfileLockName();
+        try
+        {
+            using var holder = SessionLock.TryTakeChecked(ProfileLockPath(name));
+            Assert.NotNull(holder);
+            var clock = Stopwatch.StartNew();
+            Assert.Null(new RealStartEffects().TakeProfileLock(name, TimeSpan.Zero));
+            // The poll interval is 250 ms. A probe that slept before checking its deadline would take at least that; 200 ms is
+            // loose enough for a loaded machine and still below it. (ProfileSetup's probe must be instant: it runs on every start.)
+            Assert.True(clock.Elapsed < TimeSpan.FromMilliseconds(200), $"a zero-wait probe took {clock.Elapsed}");
+        }
+        finally
+        {
+            File.Delete(ProfileLockPath(name));
+        }
+    }
+
+    [Fact]
+    public void TakeProfileLock_polls_until_the_holder_releases_it()
+    {
+        var name = NewProfileLockName();
+        try
+        {
+            var holder = SessionLock.TryTakeChecked(ProfileLockPath(name));
+            Assert.NotNull(holder);
+            var release = Task.Run(() => { Thread.Sleep(400); holder!.Dispose(); });
+            // A 10 s wait against a 400 ms holder: this passes only if the loop keeps polling instead of giving up at once.
+            using var got = new RealStartEffects().TakeProfileLock(name, TimeSpan.FromSeconds(10));
+            release.Wait();
+            Assert.NotNull(got);
+        }
+        finally
+        {
+            File.Delete(ProfileLockPath(name));
+        }
+    }
+
     [Fact]
     public void TakeProfileLock_turns_an_unusable_name_into_an_IOException_not_a_crash()
     {

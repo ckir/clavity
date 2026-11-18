@@ -44,11 +44,14 @@ pre-push:
     # removed at the owner's anomaly triage the same day. CI (ci-injected-context.yml) runs it on every push; run
     # `just check-injected-context` by hand before pushing plugin/seed content.
     control-bytes:
-      # Only when a push touches Markdown or the gate itself - a pwsh cold start alone costs ~6s (the
-      # installer-ascii note), so an unconditional entry would tax every push. YAML ARRAY form for multi-pattern globs.
+      # Only when a push touches Markdown, a PowerShell script (the gate scans both: ROADMAP 93.9) or the gate itself - a pwsh
+      # cold start alone costs ~6s (the installer-ascii note), so an unconditional entry would tax every push. YAML ARRAY form for
+      # multi-pattern globs. scripts/tests/check-control-bytes.Tests.ps1 pins these entries.
       glob:
         - "**/*.md"
         - "*.md"
+        - "**/*.ps1"
+        - "*.ps1"
         - "scripts/check-control-bytes.ps1"
       run: just check-control-bytes
     agent-rules-ignore:

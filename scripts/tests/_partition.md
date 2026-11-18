@@ -1081,7 +1081,7 @@ check-seed-artifacts-synced.Tests.ps1            74,0s   12 tests   <- re-measur
 check-seed-budget.Tests.ps1                       8,4s    4 tests   <- FAST, re-measured 2026-08-05
 check-user-facing-docs.Tests.ps1                 10,4s   15 tests   <- FAST, re-measured 2026-08-05
 compute-release.Tests.ps1                        25,0s   11 tests   <- SLOW, re-measured 2026-08-06
-check-control-bytes.Tests.ps1                    42,7s    10 tests  <- SLOW, NEW 2026-09-30 (ROADMAP §49, sweep Branch 1); 8 -> 9 the same day (AGY-TEST-AUDIT: the C0 range bound), runtime NOT re-measured; 9 -> 10 2026-10-27 (hygiene branch: +tracked *.ps1 is scanned, ROADMAP 93.9).
+check-control-bytes.Tests.ps1                    42,7s    13 tests  <- SLOW, NEW 2026-09-30 (ROADMAP §49, sweep Branch 1); 8 -> 9 the same day (AGY-TEST-AUDIT: the C0 range bound), runtime NOT re-measured; 9 -> 10 2026-10-27 (hygiene branch: +tracked *.ps1 is scanned, ROADMAP 93.9); 10 -> 11 2026-11-18 (the pre-push hook glob row), 11 -> 13 the same day (AGY-TEST-AUDIT: the hook's placement and arming, and its globs against the script and CI), runtime NOT re-measured.
   MEASURED at top level, two sequential runs, each its own pwsh + Pester cold start: 42,7s and 50,6s; background
   load not controlled. SLOW because the fast recipe was last measured at 480,5s against the 600s cap, so ~45s
   more would crowd it; rows 6-7 start child pwsh processes and row 8 scans every tracked *.md and *.ps1.

@@ -252,7 +252,7 @@ public sealed class ProfileSetupTests
         Assert.Equal(network, fx.Timeouts[MktAddSuper]);
         Assert.Equal(network, fx.Timeouts[InstallClavity]);
         Assert.Equal(network, fx.Timeouts[InstallSuper]);
-        Assert.Equal(network, fx.LockWait);
+        Assert.Equal([TimeSpan.Zero], fx.LockWaits);   // uncontended: one non-blocking probe took the lock
     }
 
     [Fact]
@@ -526,7 +526,79 @@ public sealed class ProfileSetupTests
         var held = new Fake { ProfileLockHeld = true, Script = fx.Script };
         Assert.Null(ProfileSetup.Run(held, "work"));
         Assert.Contains("timed out waiting for profile 'work' setup", held.Err.ToString());
-        Assert.Equal(L("cmd:" + Create, "profile-lock"), Cmds(held));
+        Assert.Equal(L("cmd:" + Create, "profile-lock", "profile-lock"), Cmds(held));   // the probe, then the wait
+    }
+
+    [Fact]
+    public void Lock_wait_covers_everything_the_holder_can_run_while_it_holds_the_lock()
+    {
+        // The worst case a holder can hit: a fresh profile, both marketplaces added and both plugins installed. The wait of a
+        // second run must outlast ALL of it, or that run reports a timeout for a holder that is working within its own limits.
+        var fx = NewFake(new()
+        {
+            [List] = Seq(Ok("[]"), Ok(Plugins(("clavity@clavity", "true"))),
+                Ok(Plugins(("clavity@clavity", "true"))),
+                Ok(Plugins(("clavity@clavity", "true"), ("superpowers@superpowers-marketplace", "true")))),
+            [MktList] = Ok("[]"),
+        });
+        Assert.Equal(Dir, ProfileSetup.Run(fx, "work"));
+        var steps = fx.TimeoutLog.Where(t => t.Line != Create).ToList();
+        var timeouts = steps.Aggregate(TimeSpan.Zero, (sum, t) => sum + t.Timeout);
+        // BoundedProcess waits up to ReaderGrace after every step exits, and a step that times out gets a 5 s kill wait plus one
+        // more grace before it is reported. A timed-out step fails the whole setup, so at most ONE step pays the kill wait.
+        var slack = steps.Count * BoundedProcess.ReaderGrace + TimeSpan.FromSeconds(5) + BoundedProcess.ReaderGrace;
+        var heldFor = timeouts + slack;
+        Assert.True(ProfileSetup.LockWait >= heldFor, $"a holder can run {heldFor} but the wait is {ProfileSetup.LockWait}");
+        // Independent figures, so the invariant above cannot be satisfied by an inflated copy of itself:
+        // the step timeouts are doctor 30 + 2 plugins x (3 local steps x 30 + 2 network steps x 120) = 690 seconds, and the
+        // wait is those plus a 60 second margin for the process-exit slack (11 steps x 2 + 7 = 29 seconds).
+        Assert.Equal(TimeSpan.FromSeconds(690), timeouts);
+        Assert.Equal(11, steps.Count);
+        Assert.Equal(TimeSpan.FromSeconds(750), ProfileSetup.LockWait);
+    }
+
+    [Fact]
+    public void A_contended_lock_prints_a_waiting_notice_then_waits_the_derived_length()
+    {
+        var held = new Fake { ProfileLockHeld = true, Script = NewFake().Script };
+        Assert.Null(ProfileSetup.Run(held, "work"));
+        Assert.Equal([TimeSpan.Zero, ProfileSetup.LockWait], held.LockWaits);
+        var err = held.Err.ToString();
+        var notice = err.IndexOf("clavity: waiting for profile 'work' setup", StringComparison.Ordinal);
+        var timedOut = err.IndexOf("timed out waiting for profile 'work' setup", StringComparison.Ordinal);
+        Assert.True(notice >= 0, "no waiting notice: " + err);
+        Assert.True(timedOut > notice, "the timeout must come after the notice: " + err);
+    }
+
+    [Fact]
+    public void A_contended_lock_acquired_on_the_wait_configures_under_it_without_a_timeout()
+    {
+        // The usual contended outcome: the holder finishes while this run waits. The probe is refused, the wait is granted.
+        var fx = new Fake { LockMisses = 1, Script = NewFake(BothEnabled()).Script };
+        Assert.Equal(Dir, ProfileSetup.Run(fx, "work"));
+        Assert.Equal([TimeSpan.Zero, ProfileSetup.LockWait], fx.LockWaits);
+        Assert.DoesNotContain("timed out", fx.Err.ToString());
+        Assert.Single(fx.Calls, c => c == "profile-release");
+        Assert.True(fx.Calls.IndexOf("profile-release") > fx.Calls.IndexOf("cmd:" + Doctor), "Configure must run under the lock it waited for");
+    }
+
+    [Fact]
+    public void The_waiting_notice_is_printed_before_the_long_wait_begins()
+    {
+        // The notice exists so a long wait does not look like a hang; printed after the wait it would be useless.
+        var fx = new Fake { LockMisses = 1, Script = NewFake(BothEnabled()).Script };
+        Assert.Equal(Dir, ProfileSetup.Run(fx, "work"));
+        Assert.Equal(string.Empty, fx.ErrAtLockCall[0]);   // the silent probe
+        Assert.Contains("clavity: waiting for profile 'work' setup", fx.ErrAtLockCall[1]);   // already visible when the wait starts
+    }
+
+    [Fact]
+    public void An_uncontended_lock_prints_no_waiting_notice()
+    {
+        var fx = NewFake(BothEnabled());
+        Assert.Equal(Dir, ProfileSetup.Run(fx, "work"));
+        Assert.DoesNotContain("waiting for profile", fx.Err.ToString());
+        Assert.Equal([TimeSpan.Zero], fx.LockWaits);
     }
 
     [Fact]
