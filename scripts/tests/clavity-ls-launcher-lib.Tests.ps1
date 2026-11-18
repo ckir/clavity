@@ -243,8 +243,12 @@ Describe 'clavity-ls-launcher-lib' {
                 Test-Path -LiteralPath $fx.PsLog | Should -BeTrue -Because "BIN_DIR=$bin must reach powershell.exe"
                 $log = Get-Content -Raw -LiteralPath $fx.PsLog
                 @($log -split "`n" | Where-Object { $_ -like 'COMMAND *' }).Count | Should -Be 1 -Because 'one powershell call'
-                $log | Should -Match ([regex]::Escape("GetEnvironmentVariable('Path','User')"))
-                $log | Should -Match ([regex]::Escape("[Environment]::SetEnvironmentVariable('Path', `$new, 'User')")) -Because 'the USER scope, never Machine or Process'
+                $log | Should -Match ([regex]::Escape("CurrentUser.OpenSubKey('Environment', `$true)")) -Because 'the USER hive (HKCU), never Machine or Process'
+                $log | Should -Match ([regex]::Escape('RegistryValueOptions]::DoNotExpandEnvironmentNames')) -Because 'ROADMAP section 110: the existing value must be read unexpanded'
+                $log | Should -Match ([regex]::Escape('RegistryValueKind]::ExpandString')) -Because 'ROADMAP section 110: the value must stay REG_EXPAND_SZ'
+                $log | Should -Not -Match ([regex]::Escape("GetEnvironmentVariable('Path'")) -Because 'the [Environment] read expands the entries'
+                $log | Should -Not -Match ([regex]::Escape("SetEnvironmentVariable('Path'")) -Because 'the [Environment] write stores REG_SZ'
+                $log | Should -Match ([regex]::Escape("SetEnvironmentVariable('CLAVITY_LS_PATH_BROADCAST'")) -Because 'a throwaway user variable broadcasts WM_SETTINGCHANGE'
                 $log | Should -Match ([regex]::Escape('C:\Users\u\d\bin')) -Because 'the Windows form of the data dir is what reaches the user PATH'
                 $log | Should -Match '(?m)^ARG -NoProfile$'
                 $log | Should -Match '(?m)^ARG -NonInteractive$'
