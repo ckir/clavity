@@ -542,12 +542,19 @@ public sealed class ProfileSetupTests
             [MktList] = Ok("[]"),
         });
         Assert.Equal(Dir, ProfileSetup.Run(fx, "work"));
-        var heldFor = fx.TimeoutLog.Where(t => t.Line != Create).Aggregate(TimeSpan.Zero, (sum, t) => sum + t.Timeout);
+        var steps = fx.TimeoutLog.Where(t => t.Line != Create).ToList();
+        var timeouts = steps.Aggregate(TimeSpan.Zero, (sum, t) => sum + t.Timeout);
+        // BoundedProcess waits up to ReaderGrace after every step exits, and a step that times out gets a 5 s kill wait plus one
+        // more grace before it is reported. A timed-out step fails the whole setup, so at most ONE step pays the kill wait.
+        var slack = steps.Count * BoundedProcess.ReaderGrace + TimeSpan.FromSeconds(5) + BoundedProcess.ReaderGrace;
+        var heldFor = timeouts + slack;
         Assert.True(ProfileSetup.LockWait >= heldFor, $"a holder can run {heldFor} but the wait is {ProfileSetup.LockWait}");
-        // An independent figure, so the invariant above cannot be satisfied by an inflated copy of itself:
-        // doctor 30 + 2 plugins x (3 local steps x 30 + 2 network steps x 120) = 690 seconds.
-        Assert.Equal(TimeSpan.FromSeconds(690), ProfileSetup.LockWait);
-        Assert.Equal(TimeSpan.FromSeconds(690), heldFor);
+        // Independent figures, so the invariant above cannot be satisfied by an inflated copy of itself:
+        // the step timeouts are doctor 30 + 2 plugins x (3 local steps x 30 + 2 network steps x 120) = 690 seconds, and the
+        // wait is those plus a 60 second margin for the process-exit slack (11 steps x 2 + 7 = 29 seconds).
+        Assert.Equal(TimeSpan.FromSeconds(690), timeouts);
+        Assert.Equal(11, steps.Count);
+        Assert.Equal(TimeSpan.FromSeconds(750), ProfileSetup.LockWait);
     }
 
     [Fact]

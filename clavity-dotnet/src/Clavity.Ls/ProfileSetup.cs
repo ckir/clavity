@@ -185,14 +185,20 @@ public static class ProfileSetup
         new("superpowers@superpowers-marketplace", "superpowers-marketplace", "obra/superpowers-marketplace"),
     ];
 
+    /// <summary>Headroom on top of the step timeouts for what <see cref="BoundedProcess"/> adds around each step: up to
+    /// <see cref="BoundedProcess.ReaderGrace"/> after a step exits, and (for the one step that may time out, which ends the setup)
+    /// a 5 s kill wait plus another grace. With 11 steps that is 11 x 2 + 7 = 29 s; the margin is 60 s so a small change in those
+    /// figures does not silently reopen the false timeout. The invariant test computes the slack from the real values.</summary>
+    private static readonly TimeSpan LockWaitMargin = TimeSpan.FromSeconds(60);
+
     /// <summary>How long a second run waits for the per-profile lock: the longest a holder can legitimately keep it. Under the lock
     /// <see cref="Configure"/> runs `doctor` (one local step) and, for EACH plugin, `plugin list` and `marketplace list` and a final
     /// `plugin list` (three local steps) plus `marketplace add` and `install` (two network steps); every step is bounded by its own
     /// timeout, so the holder always ends. The wait used to be one network timeout (120 s), so a second run reported a timeout for a
-    /// holder that was working within its own limits (ROADMAP section 107). Today 30 + 2 x (3 x 30 + 2 x 120) = 690 s. Declared after
+    /// holder that was working within its own limits (ROADMAP section 107). Today 30 + 2 x (3 x 30 + 2 x 120) = 690 s of timeouts plus <see cref="LockWaitMargin"/>, 750 s. Declared after
     /// <see cref="Plugins"/>: static initialisers run in textual order. A step added to <see cref="Configure"/> must be added here;
     /// the test `Lock_wait_covers_everything_the_holder_can_run_while_it_holds_the_lock` fails if it is not.</summary>
-    public static readonly TimeSpan LockWait = StepTimeout + Plugins.Length * (3 * StepTimeout + 2 * NetworkTimeout);
+    public static readonly TimeSpan LockWait = StepTimeout + Plugins.Length * (3 * StepTimeout + 2 * NetworkTimeout) + LockWaitMargin;
 
     /// <summary>Returns the profile directory, or null after reporting why.</summary>
     public static string? Run(IStartEffects fx, string profile)
