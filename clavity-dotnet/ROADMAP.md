@@ -4669,6 +4669,8 @@ Decide when picked up: add `ubuntu-latest` to the `test` job as a matrix leg (th
 
 Next step: convert them the way `Boot_race_reached_empty_then_cli_log_unreadable_keeps_waiting_for_human` was (a virtual clock, the timer-counting provider, one poll interval per armed timer, an exact poll count) and give the generation-cap tests the same minute-long windows and a real bound, each with a mutant that turns it red. The budget-gone test needs its probe delay driven by the same clock as `AgyView`, which `FakeAskLs` does not share yet.
 
+Two findings of the section 106 test audit belong here. (1) In the boot-race test the remaining-budget read (the `deadlineOverride` value) runs on poll 1 only: polls 2 to 10 fail to read the vanished log before any RPC, so a fake that keeps answering RPCs after the virtual clock has advanced is the only way to pin a later poll's deadline. (2) The class "a stray `DateTime.UtcNow` compiles and passes" (a `DateTime` converts implicitly to `DateTimeOffset`) could be closed mechanically instead of site by site: a `Microsoft.CodeAnalysis.BannedApiAnalyzers` ban on `DateTime.UtcNow` in the two `AgyView` methods would catch the three sites above, but `Clavity.Ls` reads the real clock legitimately elsewhere (`LsClient`), so the ban needs a scoped suppression; weigh it against converting the tests.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
