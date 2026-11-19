@@ -11,9 +11,10 @@
 #   license-copies   a tracked LICENSE copy differs, byte for byte, from the root LICENSE
 #   polyform-pin     the PolyForm text inside the root LICENSE no longer hashes to the pinned SHA-256
 #   long-header      the retired long file header (its marker text) is still present in a tracked file
-#   header-text      a source file's five-line header differs from the first five lines of header.txt
-#   header-missing   a PowerShell file has no header at all
-#   required-files   LICENSING.md, a licence template, a product LICENSE copy or the NOTICE title is missing
+#   header-text      a source file's header differs from the lines of header.txt (as many lines as header.txt has)
+#   header-missing   a source file (any extension in $script:HeaderExtensions) has no `Copyright (c)` header in its first 1000 bytes
+#   required-files   LICENSING.md, a licence template, a product LICENSE copy or the NOTICE title is missing, or a LICENSE copy
+#                    lost its copyright line or its `## Commercial Evaluation Grant` heading
 #
 # WHY pinned: the PolyForm Noncommercial text is third-party text we must not alter. Only the additional
 # terms after the `---` separator are ours to change, so only the part above it is hashed.
@@ -28,7 +29,6 @@ $script:PolyFormSha256 = '7779a554c40798f0f9c04960b82154d16dc0fa64349d401d24146e
 $script:LongHeaderMarker = 'ADDITIONAL TERMS (not part of PolyForm'
 $script:TemplateBanner = '> **TEMPLATE - NOT AN OFFER.** This document grants nothing until it is signed by the licensor and a named counterparty. It has not yet been reviewed by legal counsel.'
 $script:HeaderExtensions = '.cs', '.rs', '.proto', '.sh', '.yml', '.yaml', '.py', '.toml', '.ps1', '.psm1', '.psd1', '.html', '.js', '.css'
-$script:PowerShellExtensions = '.ps1', '.psm1', '.psd1'
 $script:ForeignHeaderAllowlist = @()
 $script:RequiredLicenseCopies = 'agy-autotrain/LICENSE', 'clavity-classic/LICENSE', 'clavity-classic/agy-mcp-bridge/LICENSE', 'clavity-dotnet/LICENSE', 'commonmemory/LICENSE', 'review-relay/LICENSE'
 $script:SelfPaths = 'scripts/check-licensing-consistent.ps1', 'scripts/tests/check-licensing-consistent.Tests.ps1'

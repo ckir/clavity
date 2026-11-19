@@ -29,7 +29,7 @@ directly.
 | `check-tracker-status.ps1` | Enforce `docs/tracker-format.md`: every ROADMAP section, backlog stub, fix-the-tool entry and the review-relay / agy-autotrain ROADMAP items has one valid `**Status:**` line with its evidence (`-List` prints the open items) | `just check-tracker-status` |
 | `check-member-docs.ps1` | Fail if any member is missing a required user-facing doc, or ships a CHANGELOG the release machinery can't inject into | `just check-member-docs` |
 | `check-user-facing-docs.ps1` | Fail if `docs/user-facing-docs.txt` lists a nonexistent or do-not-touch doc; warn if a user-facing-shaped doc is missing from the list | `just check-user-facing-docs` |
-| `check-licensing-consistent.ps1` | Fail if a LICENSE copy differs from the root, the PolyForm text changed, a file header differs from header.txt, a PowerShell file has no header, or LICENSING.md / a licence template is missing | `just check-licensing` |
+| `check-licensing-consistent.ps1` | Fail if a LICENSE copy differs from the root, the PolyForm text changed, a file header differs from header.txt, a source file has no header, or LICENSING.md / a licence template is missing | `just check-licensing` |
 | `check-installer-ascii.ps1` | Assert every `.ps1` in the Windows PowerShell 5.1 (end-user installer) domain is pure ASCII | `just check-installer-ascii` |
 | `check-register-hash-synced.ps1` | Fail if `register-plugin-hash.iss` is stale vs the current `register-plugin.ps1` (uninstaller tamper-check drift guard) | `just check-register-hash` |
 | `sync-register-hash.ps1` | Regenerate `register-plugin-hash.iss` with the current SHA-256 of `register-plugin.ps1` | `just sync-register-hash` |

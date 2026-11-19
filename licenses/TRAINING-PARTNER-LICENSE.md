@@ -49,7 +49,7 @@ term and the territory stated in Schedule A:
 
 1. To use the Software to prepare and deliver Seminars.
 2. To sublicense each Attendee to use the Software for Seminar Exercises on the scheduled days of the
-   Seminar for which the Attendee registered, and at no other time. The Partner must have each Attendee
+   Seminar that the Attendee registered for or attends, and at no other time. The Partner must have each Attendee
    accept the terms in Schedule B before the Attendee uses the Software. After the Seminar the Attendee
    has only the rights the Public Licence gives them. The sublicence covers the Attendee whoever the
    Attendee works for and on whatever machine the Attendee brings, and it neither starts nor uses up the
@@ -165,7 +165,7 @@ Signed for the Partner: `[__________]`   Date: `[__________]`
 The Partner has each Attendee accept these terms before using the Software at a Seminar.
 
 1. You may use the Software only for the Seminar Exercises, and only on the scheduled days of the Seminar
-   you registered for. You may not use it for production code or for work for a client.
+   you attend. You may not use it for production code or for work for a client.
 2. You may not copy or share the Software beyond what the Seminar Exercises need. After the Seminar you
    have only the rights the public licence gives you: the PolyForm Noncommercial License 1.0.0 and the
    additional terms in the file `LICENSE`.
