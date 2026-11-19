@@ -234,6 +234,17 @@ Describe 'header-missing' {
         $problems = @(Get-LicensingProblems $repo)
         ($problems -match '^header-missing: .*f\.cs') | Should -Not -BeNullOrEmpty
     }
+    It 'header-missing reports an empty tracked source file without throwing and still lists other problems' {
+        $repo = New-LicRepo
+        [IO.File]::WriteAllBytes((Join-Path $repo 'pkg.py'), [byte[]]@())
+        Write-RepoFile $repo 'c.ps1' "Write-Host 'no header'`n"
+        Add-RepoAll $repo
+        (Get-Item -LiteralPath (Join-Path $repo 'pkg.py')).Length | Should -Be 0
+        { $script:emptyRun = @(Get-LicensingProblems $repo) } | Should -Not -Throw
+        $problems = $script:emptyRun
+        ($problems -match '^header-missing: pkg\.py ') | Should -Not -BeNullOrEmpty
+        ($problems -match '^header-missing: c\.ps1 ') | Should -Not -BeNullOrEmpty
+    }
     It 'a file outside the header extensions is not checked' {
         $repo = New-LicRepo
         Write-RepoFile $repo 'notes.txt' "no header here`n"

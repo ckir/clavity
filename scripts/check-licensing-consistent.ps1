@@ -60,6 +60,7 @@ function Get-PolyFormHash([string]$LicensePath) {
 function Read-HeaderWindow([byte[]]$First1000) {
     # The decoded first 1000 bytes split into lines (BOM dropped, CR removed) and the index of the first line containing
     # `Copyright (c)` (-1 when there is none). Get-HeaderLines is its only caller today; it is a separate function so a second reader of the window cannot drift from it.
+    if ($null -eq $First1000) { $First1000 = [byte[]]@() }
     $text = [Text.UTF8Encoding]::new($false).GetString($First1000)
     if ($text.Length -gt 0 -and $text[0] -eq [char]0xFEFF) { $text = $text.Substring(1) }
     $lines = @($text -split "`n" | ForEach-Object { $_.TrimEnd("`r") })
@@ -105,7 +106,8 @@ function Read-First1000([string]$FullPath) {
     try {
         $buf = [byte[]]::new(1000)
         $n = $fs.Read($buf, 0, 1000)
-        if ($n -eq 0) { return [byte[]]@() }
+        # The unary comma keeps an empty array from being unrolled to $null by `return`.
+        if ($n -eq 0) { return ,([byte[]]@()) }
         return [byte[]]$buf[0..($n - 1)]
     }
     finally { $fs.Dispose() }
