@@ -100,7 +100,10 @@ whatever its end date and whether or not it has one, the report and the payment 
 each calendar quarter in which the Event was held, sold or available, within the number of days that
 Schedule A states for the report deadline, counted from the end of that quarter. Each such report
 covers only that quarter's Seminar Revenue, Attendees and Allowed Direct Costs, and Seminar Profit is
-worked out per quarter: never less than zero, and a loss in one quarter is not carried to another.
+worked out per quarter: never less than zero, and a loss in one quarter is not carried to another. In
+these quarterly reports an Attendee counts once per Event: a person already counted in an earlier report
+for the same Event is not counted again. Revenue for the Event received after the last quarter in which
+it was held, sold or available is reported in a report for the quarter in which it is received.
 
 The Partner keeps the records behind each report for the retention period stated in Schedule A. The
 Licensor may audit those records on written notice. The Partner pays any shortfall an audit finds. If the
@@ -131,10 +134,11 @@ is not a Seminar because the Licensor was not told of it in time under section 7
 
 A Seminar that is under way when termination takes effect may finish, and its Attendees' sublicences
 last until its scheduled end. The designation and every other right granted by this agreement stop at
-termination. Sections 5 and 6 continue to apply to Seminars held before termination or finished after it,
-and to every other Event held, sold or available before termination, for as long as it continues to be
-sold or available. Sections 9 and 10 and any accrued payment obligation survive termination. The same
-applies, with the same in-flight rule, when the term stated in Schedule A ends.
+termination. Sections 5 and 6 continue to apply to every Seminar and every other Event that was held, sold
+or available at any time before termination: they apply to it for as long as it continues to be held, sold
+or available after termination, and after that for the final report and payment for it and for the audit
+of it. Sections 9 and 10 and any accrued payment obligation survive termination. The same applies, with
+the same in-flight rule, when the term stated in Schedule A ends.
 
 ## 9. Warranty Disclaimer and Limitation of Liability
 
@@ -162,7 +166,7 @@ The governing law and the courts that decide disputes are those stated in Schedu
 | Royalty Base | Seminar Profit |
 | Minimum Royalty per Attendee | `[__________]` (Set this above zero. Seminar Profit can be reduced to nothing by costs; this minimum is what guarantees payment.) |
 | Advance notice of each Seminar (days) | `[__________]` |
-| Report and payment deadline (days after a Seminar ends) | `[__________]` |
+| Report and payment deadline (days after a Seminar ends, or after a calendar quarter ends for an Event that is not a Seminar) | `[__________]` |
 | Record-retention period | `[__________]` |
 | Audit underpayment threshold | `[__________]` |
 | Governing law and venue | The laws of Greece; the courts of Athens, Greece |

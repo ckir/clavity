@@ -75,15 +75,18 @@ written notice if the Licensee does not pay a fee within 15 days after written n
 
 When the Licensor terminates under this section, the rights in section 3 end, whatever the licence type.
 When the Licensee terminates under this section because the Licensor materially breached this agreement
-and did not cure the breach, the rights in section 3 continue: for a subscription licence to the end of
-the Term, and for a perpetual licence without an end date for the Licensed Versions. That continuing right
-stays subject to the restrictions in section 3, the definitions in section 2 (including the seat count in
-the definition of Authorised User) and section 4. At the end of the Term of a subscription licence the
-rights in section 3 also end. At the end of the Term of a perpetual licence the rights in section 3
-continue for the Licensed Versions, but new versions are no longer included. When the rights end the
-Licensee stops using the Software under this agreement and may continue to use it only as the Public
-Licence permits. Sections 2 and 4, the restrictions in section 3, sections 6, 9 and 10 and any accrued
-payment obligation survive termination.
+and did not cure the breach, the rights in section 3 continue, subject to payment of any fees already due
+and any instalment that falls due for the period up to the end of the Term: for a subscription licence to
+the end of the Term, and for a perpetual licence without an end date for the Licensed Versions. Versions
+of the Software released after that termination but before the end of the Term are Licensed Versions.
+That continuing right stays subject to the restrictions in section 3, the definitions in section 2
+(including the seat count in the definition of Authorised User) and section 4. At the end of the Term of
+a subscription licence the rights in section 3 also end. At the end of the Term of a perpetual licence the
+rights in section 3 continue for the Licensed Versions, but new versions are no longer included. When the
+rights end the Licensee stops using the Software under this agreement and may continue to use it only as
+the Public Licence permits. Sections 2 and 4, sections 6, 9 and 10 and any accrued payment obligation
+survive termination, and the restrictions in section 3 apply to the extent the rights in section 3
+continue.
 
 ## 9. Warranty Disclaimer and Limitation of Liability
 
