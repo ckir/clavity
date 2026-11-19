@@ -102,7 +102,10 @@ $script:DevOnlyPaths = @(
     # the README sentence names, never through a member installer or a release asset: install.sh installs
     # whatever plugin version the release branch serves and fetches its launcher library from the same raw base.
     # So a change to them ships at merge and bumps nobody - the plugin they install carries its own version.
-    'INSTALL.md', 'install.sh'
+    'INSTALL.md', 'install.sh',
+    # Three licences (2026-11-19). 'LICENSING.md' explains the public, commercial and training-partner
+    # licences; 'licenses/' holds the two agreement templates. Neither reaches a member artifact.
+    'LICENSING.md', 'licenses/'
 )
 function Get-DevOnlyPaths { $script:DevOnlyPaths }
 

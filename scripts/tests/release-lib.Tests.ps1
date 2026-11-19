@@ -646,4 +646,12 @@ Describe 'Get-PathBucket ($DevOnlyPaths coverage for site/, marketing/, header.t
         Get-PathBucket 'UNINSTALL.md' | Should -BeExactly 'unclassified'
         Get-PathBucket 'install.ps1' | Should -BeExactly 'unclassified'
     }
+
+    It 'classifies LICENSING.md and the licenses/ templates as dev-only, and a sibling root file nobody listed as unclassified' {
+        Get-PathBucket 'LICENSING.md' | Should -BeExactly 'dev-only'
+        Get-PathBucket 'licenses/COMMERCIAL-LICENSE.md' | Should -BeExactly 'dev-only'
+        Get-PathBucket 'licenses/TRAINING-PARTNER-LICENSE.md' | Should -BeExactly 'dev-only'
+        # Distractor: a sibling root file nobody listed still refuses, so the rows above cannot pass on a wildcard.
+        Get-PathBucket 'LICENSES.md' | Should -BeExactly 'unclassified'
+    }
 }
