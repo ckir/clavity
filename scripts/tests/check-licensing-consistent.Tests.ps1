@@ -313,10 +313,13 @@ Describe 'header rules at the edges (test-audit gaps)' {
         # Spelled out on purpose: deriving the list from $script:HeaderExtensions would shrink with a regression that drops one.
         $exts = @('.cs', '.rs', '.proto', '.sh', '.yml', '.yaml', '.py', '.toml', '.ps1', '.psm1', '.psd1', '.html', '.js', '.css', '.CS')
         @($script:HeaderExtensions).Count | Should -Be 14
-        foreach ($e in $exts) { Write-RepoFile $repo ("noheader/x$e") "no header here`n" }
+        # One distinct stem per extension: .cs and .CS in one stem would collide on a case-insensitive file system (the Windows runner),
+        # and a case-insensitive -match would let the .cs problem satisfy the .CS check.
+        $n = 0
+        foreach ($e in $exts) { $n++; Write-RepoFile $repo ("noheader/e$n$e") "no header here`n" }
         Add-RepoAll $repo
         $problems = @(Get-LicensingProblems $repo)
-        $missing = @($exts | Where-Object { $e = $_; -not (@($problems | Where-Object { $_ -match ('^header-missing: noheader/x' + [regex]::Escape($e) + ' ') })) })
+        $missing = @(1..$exts.Count | Where-Object { $e = $exts[$_ - 1]; $i = $_; -not (@($problems | Where-Object { $_ -cmatch ('^header-missing: noheader/e' + $i + [regex]::Escape($e) + ' ') })) } | ForEach-Object { $exts[$_ - 1] })
         ($missing -join ',') | Should -BeExactly '' -Because 'every extension in HeaderExtensions, and an upper-case one, must be checked'
     }
     It 'a header that starts after the first 1000 bytes counts as missing' {
@@ -350,6 +353,7 @@ Describe 'header rules at the edges (test-audit gaps)' {
         & git -C $repo rm -q -f 'header.txt' 2>&1 | Out-Null
         $problems = @(Get-LicensingProblems $repo)
         ($problems -match '^header-text: header\.txt is missing') | Should -Not -BeNullOrEmpty
+        $problems.Count | Should -Be 1 -Because 'a missing header.txt must not make every valid file report a header-text error as well'
     }
     It 'header-text fails when header.txt is empty or only blank lines' {
         $repo = New-LicRepo
@@ -357,6 +361,15 @@ Describe 'header rules at the edges (test-audit gaps)' {
         Add-RepoAll $repo
         $problems = @(Get-LicensingProblems $repo)
         ($problems -match '^header-text: header\.txt is empty') | Should -Not -BeNullOrEmpty
+        $problems.Count | Should -Be 1 -Because 'an empty header.txt must not make every valid file report a header-text error as well'
+    }
+    It 'header-text fails when header.txt is a zero-byte file' {
+        $repo = New-LicRepo
+        Write-RepoFile $repo 'header.txt' ''
+        Add-RepoAll $repo
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match '^header-text: header\.txt is empty') | Should -Not -BeNullOrEmpty
+        $problems.Count | Should -Be 1
     }
     It 'trailing blank lines and CRLF in header.txt do not change the expected header' {
         $repo = New-LicRepo
@@ -429,6 +442,26 @@ Describe 'rules at the edges (test-audit gaps)' {
     }
 }
 
+Describe 'constants and the real repository (test-audit round 2)' {
+    It 'the template banner constant is the exact banner text' {
+        $script:TemplateBanner | Should -BeExactly '> **TEMPLATE - NOT AN OFFER.** This document grants nothing until it is signed by the licensor and a named counterparty. It has not yet been reviewed by legal counsel.'
+    }
+    It 'required-files names every one of the ten required paths when none is tracked' {
+        $repo = New-LicRepo
+        # Spelled out on purpose: deriving the list from $script:RequiredLicenseCopies would shrink with a regression that drops one.
+        $paths = @('LICENSING.md', 'licenses/COMMERCIAL-LICENSE.md', 'licenses/TRAINING-PARTNER-LICENSE.md', 'LICENSE',
+            'agy-autotrain/LICENSE', 'clavity-classic/LICENSE', 'clavity-classic/agy-mcp-bridge/LICENSE', 'clavity-dotnet/LICENSE',
+            'commonmemory/LICENSE', 'review-relay/LICENSE')
+        foreach ($rel in $paths) { & git -C $repo rm -q -f $rel 2>&1 | Out-Null }
+        $problems = @(Get-LicensingProblems $repo)
+        $missing = @($paths | Where-Object { $rel = $_; -not (@($problems | Where-Object { $_ -ceq "required-files: $rel is not tracked" })) })
+        ($missing -join ',') | Should -BeExactly ''
+    }
+    It 'the real repository is consistent, so the exempt paths and the real templates are exercised' {
+        @(Get-LicensingProblems $script:realRoot).Count | Should -Be 0
+    }
+}
+
 Describe 'run directly' {
     It 'run directly it exits 1 and prints the problem' {
         $repo = New-LicRepo
@@ -442,6 +475,12 @@ Describe 'run directly' {
         $repo = New-LicRepo
         $pwsh = (Get-Process -Id $PID).Path
         $out = & $pwsh -NoProfile -File $script:GateScript -Root $repo 2>&1 | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $out | Should -Match 'check-licensing-consistent: OK'
+    }
+    It 'run directly with no -Root checks the repository the script lives in and exits 0' {
+        $pwsh = (Get-Process -Id $PID).Path
+        $out = & $pwsh -NoProfile -File $script:GateScript 2>&1 | Out-String
         $LASTEXITCODE | Should -Be 0
         $out | Should -Match 'check-licensing-consistent: OK'
     }
