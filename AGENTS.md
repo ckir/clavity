@@ -112,8 +112,9 @@ Skip this section if your session is review-only.
   `clavity-classic/src/driver_cheatsheet.rs` and `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs` together.
 - After changing `installer/_shared/register-plugin.ps1`, run `just sync-register-hash`.
 - Keep seed agent artifacts byte-identical across the two driver plugins (`just seed-sync-check`).
-- **Licence header:** every first-party source file carries the text of [header.txt](header.txt)
-  (CI: `ci-license-headers.yml`).
+- **Licence header:** every first-party source file carries the text of [header.txt](header.txt), and
+  every `LICENSE` copy equals the root one (`just check-licensing`; CI: `ci-license-headers.yml`). How
+  the project is licensed: [LICENSING.md](LICENSING.md).
 - **Commits:** Conventional Commits (`feat(scope): …`, `fix(plugin): …`, `docs: …`); release notes and
   version bumps are computed from them. External contributors also sign off (DCO) — see CONTRIBUTING.md.
 - **Windows installer surface** must stay pure ASCII (`just check-installer-ascii`) — it runs on stock

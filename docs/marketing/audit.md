@@ -155,7 +155,7 @@ Only capabilities verified in source code and existing documentation are listed:
 - **Core Repository License:** PolyForm Noncommercial License 1.0.0 (`LICENSE`).
   - Permitted: Free non-commercial use, modification, and distribution.
   - Prohibited: Commercial use without a separate commercial license from the licensor.
-- **Copyright Holder:** (c) 2026 Costas Kirgoussios and the clavity authors.
+- **Copyright Holder:** (c) 2026 Costas Kirgoussios; contributors keep the copyright in their own contributions.
 - **Third-Party Dependencies:** Permissively licensed (MIT, Apache-2.0, BSD, ISC). Zero copyleft (GPL/AGPL/LGPL) dependencies.
 - **Trademarks:** "Antigravity" is a trademark of Google LLC; "Claude" and "Claude Code" are trademarks of Anthropic; "Ghidra" is a trademark of the NSA. Clavity is independent and unaffiliated with these entities.
 

@@ -8,7 +8,8 @@ name: ci-license-headers
 
 # Every first-party source file must carry the header in /header.txt. `addlicense -check` lists files
 # without it and exits non-zero. No `paths:` filter, for the reason spelled out in ci-scripts.yml: a
-# filter is the only way a gate gets bypassed, and this job takes seconds.
+# filter is the only way a gate gets bypassed, and this job takes seconds. A second step runs
+# scripts/check-licensing-consistent.ps1, which checks that the header text and LICENSE copies agree.
 #
 # The -ignore list is the set of files that must NOT be stamped:
 #   - build output / vendored / scratch trees (.venv, bin, obj, target, node_modules, .clavity, .superpowers)
@@ -49,3 +50,10 @@ jobs:
             -ignore '**/register-plugin.ps1' -ignore 'docs/USER_GUIDE.html' \
             -ignore '**/fixtures/**' -ignore 'testResults.xml' \
             .
+
+      # addlicense -check only looks for the word "copyright" near the top of a file and has no entry
+      # for PowerShell extensions, so it cannot see a stale or wrong header. This gate compares the
+      # header text, the LICENSE copies and the pinned PolyForm text. This workflow has no `just`.
+      - name: Licence files and headers are consistent
+        shell: pwsh
+        run: ./scripts/check-licensing-consistent.ps1

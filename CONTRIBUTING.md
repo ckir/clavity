@@ -12,9 +12,16 @@ Thanks for helping out. Contributions are very welcome. The flagship bridge (`cl
 
 ## Contributions & license (read before opening a PR)
 
-By contributing, you agree that your contributions are licensed under the project's **PolyForm
-Noncommercial License 1.0.0** — inbound = outbound, the same terms as the code you are modifying. Do
-not submit code you cannot license under those terms.
+You keep the copyright in what you contribute. By contributing, you grant Costas Kirgoussios (the
+project's copyright holder) and any successor a perpetual, worldwide, non-exclusive, royalty-free,
+irrevocable licence to use, reproduce, modify, distribute, sublicense and relicense your contribution
+under any terms, including the project's public licence (PolyForm Noncommercial 1.0.0) and commercial
+licences.
+
+**In plain words: your contribution can be included in copies of clavity that are licensed
+commercially, and you will not be paid for that.** If you are not comfortable with this, or you cannot
+grant these rights (for example because your employer owns the work), please do not submit it. See
+[LICENSING.md](LICENSING.md) for how the project is licensed.
 
 Sign off every commit with the **Developer Certificate of Origin (DCO)**: add a
 `Signed-off-by: Your Name <you@example.com>` trailer to each commit message (`git commit -s`),

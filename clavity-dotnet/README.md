@@ -214,4 +214,4 @@ above.
 
 ## License
 
-PolyForm Noncommercial License 1.0.0 — see [LICENSE](../LICENSE).
+PolyForm Noncommercial License 1.0.0 — see [LICENSE](../LICENSE). Commercial and training partner licences: see [LICENSING.md](https://github.com/ckir/clavity/blob/main/LICENSING.md).

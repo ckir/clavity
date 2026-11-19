@@ -153,4 +153,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## License
 
 [PolyForm Noncommercial License 1.0.0](LICENSE) (`PolyForm-Noncommercial-1.0.0`) — free for
-non-commercial use. See [NOTICE](NOTICE) for the copyright line.
+non-commercial use. See [NOTICE](NOTICE) for the copyright line. Commercial and training partner licences: see [LICENSING.md](https://github.com/ckir/clavity/blob/main/LICENSING.md).

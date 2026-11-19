@@ -77,4 +77,4 @@ into any folder that holds anything but its own files.
 
 ## License
 
-PolyForm Noncommercial 1.0.0 - see [LICENSE](LICENSE).
+PolyForm Noncommercial 1.0.0 - see [LICENSE](LICENSE). Commercial and training partner licences: see [LICENSING.md](https://github.com/ckir/clavity/blob/main/LICENSING.md).

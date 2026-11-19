@@ -1,9 +1,14 @@
 clavity
-Copyright (c) 2026 Costas Kirgoussios and the clavity authors.
+Copyright (c) 2026 Costas Kirgoussios
+Contributions remain the copyright of their authors and are licensed to the project under the
+terms in CONTRIBUTING.md.
 
-This project — all five products (clavity-dotnet, clavity-classic, agy-autotrain, commonmemory,
-review-relay) — is licensed under the PolyForm Noncommercial License 1.0.0. The full terms are in
-the LICENSE file at the repository root (each product folder carries an identical copy).
+This project - all five products (clavity-dotnet, clavity-classic, agy-autotrain, commonmemory,
+review-relay) - is publicly licensed under the PolyForm Noncommercial License 1.0.0 with one
+additional term, a 30-day commercial evaluation grant. The full terms are in the LICENSE file at the
+repository root; each product folder carries an identical copy. Commercial licences and authorized
+training partner licences are granted separately by the copyright holder; see LICENSING.md
+(https://github.com/ckir/clavity/blob/main/LICENSING.md).
 
 Trademarks
 ----------
@@ -11,6 +16,9 @@ Trademarks
 "Ghidra" is a trademark of the National Security Agency. This is an independent project, not
 affiliated with, endorsed by, or sponsored by Google, Anthropic, or the NSA. These names are used
 only to identify the external tools this project interoperates with.
+
+"Authorized Clavity Training Partner" may be used only by a party that holds a signed training
+partner agreement with the copyright holder that is in force.
 
 Third-party components
 ----------------------

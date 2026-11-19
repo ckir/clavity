@@ -1,10 +1,11 @@
 review-relay - a tool hosted in the clavity umbrella.
 
 Licensed under the PolyForm Noncommercial License 1.0.0.
-Full terms: https://polyformproject.org/licenses/noncommercial/1.0.0
+Full terms: the LICENSE file in this folder (PolyForm Noncommercial License 1.0.0 plus one additional term, a 30-day commercial evaluation grant).
 The complete license text is in the umbrella LICENSE file at the repository root.
 
-Copyright the review-relay authors.
+Copyright (c) 2026 Costas Kirgoussios. Contributions remain the copyright of their authors.
+Commercial and training partner licences: https://github.com/ckir/clavity/blob/main/LICENSING.md
 
 The bundled capture extension in extension/aisavedev (AiSaveDev) is derived from AiSave
 (https://github.com/ckir/AiSave), by the same author, and is covered by the same license.
