@@ -19,10 +19,13 @@ This agreement is made on `[__________]` (the "Effective Date") between:
   clavity-classic, agy-autotrain, commonmemory, review-relay), with their documentation.
 - **Public Licence**: the PolyForm Noncommercial License 1.0.0 and the additional terms in the file
   `LICENSE` of the Software.
-- **Event**: any instructional event about the Software that the Partner or its Affiliates run or advertise.
-- **Seminar**: an Event held in person or online, with a start and an end date announced in advance, lasting
-  no more than the maximum number of consecutive days set in Schedule A, of which the Licensor was told in
-  time under section 7. An Event that is not a Seminar is dealt with in sections 5, 7 and 8.
+- **Event**: any course or instructional event about the Software, live, recorded or self-paced, that the
+  Partner or its Affiliates run, or advertise as run by or with them.
+- **Seminar**: an Event held live, in person or online, with a start and an end date announced in advance,
+  lasting no more than the maximum number of consecutive days set in Schedule A, of which the Licensor was
+  told in time under section 7. A recorded or self-paced Event is never a Seminar, so it carries no
+  sublicence; the royalty under section 5 still applies to it. An Event that is not a Seminar is dealt
+  with in sections 5, 6, 7 and 8.
 - **Affiliate**: a person or entity that controls, is controlled by or is under common control with the
   Partner, where control means owning more than half of the voting rights or the power to direct
   management. An individual who owns or controls the Partner is an Affiliate.
@@ -32,7 +35,8 @@ This agreement is made on `[__________]` (the "Effective Date") between:
   production code, or on a deliverable for a client, is not a Seminar Exercise.
 - **Seminar Revenue**: everything the Partner or its Affiliates receive for a Seminar. When a Seminar is
   sold together with other goods or services, or given away as part of another deal, Seminar Revenue is
-  the price the Partner charges for a comparable Seminar sold alone.
+  the price the Partner charges for a comparable Seminar sold alone or, if the Partner sells no comparable
+  Seminar alone, the fair market value of the Seminar.
 - **Allowed Direct Costs**: the following costs of a Seminar, each supported by a third-party receipt, and
   nothing else: venue; catering; travel and lodging for instructors; fees paid to instructors who are not
   Affiliates of the Partner; payment-processing charges; printing. Partner salaries, overhead and
@@ -49,13 +53,14 @@ term and the territory stated in Schedule A:
 
 1. To use the Software to prepare and deliver Seminars.
 2. To sublicense each Attendee to use the Software for Seminar Exercises on the scheduled days of the
-   Seminar that the Attendee registered for or attends, and at no other time. The Partner must have each Attendee
-   accept the terms in Schedule B before the Attendee uses the Software. After the Seminar the Attendee
+   Seminar that the Attendee registered for or attends, and at no other time. The sublicence of an
+   Attendee starts only when that Attendee accepts the terms in Schedule B, and the Partner must have each
+   Attendee accept them before the Attendee uses the Software. After the Seminar the Attendee
    has only the rights the Public Licence gives them. The sublicence covers the Attendee whoever the
    Attendee works for and on whatever machine the Attendee brings, and it neither starts nor uses up the
    30-day evaluation period of the Attendee's employer under the Public Licence.
-3. To reproduce and adapt the Software's documentation as course material, with attribution to the
-   Licensor and without implying that the Licensor wrote the Partner's material.
+3. To reproduce and adapt the Software's documentation as course material for Seminars, with attribution
+   to the Licensor and without implying that the Licensor wrote the Partner's material.
 4. To describe itself as an "Authorized Clavity Training Partner" while this agreement is in force.
 5. To use the name "Clavity" in plain text to describe accurately what a Seminar teaches (for example in
    its title and in advertising), without the project's logo or mark and without implying that the
@@ -90,7 +95,9 @@ Partner bears unless the law requires otherwise.
 
 Within the number of days stated in Schedule A after a Seminar ends, the Partner sends the Licensor a
 report for that Seminar: the dates, the number of Attendees, the Seminar Revenue, each Allowed Direct
-Cost with its receipt, the Seminar Profit and the royalty due.
+Cost with its receipt, the Seminar Profit and the royalty due. For an Event with no scheduled end date,
+the report and the payment are due for each calendar quarter, within the number of days that Schedule A
+states for the report deadline, counted from the end of the quarter.
 
 The Partner keeps the records behind each report for the retention period stated in Schedule A. The
 Licensor may audit those records on written notice. The Partner pays any shortfall an audit finds. If the
@@ -116,7 +123,8 @@ Event has taken place; paying the royalty for it does not remove the breach.
 Either party may terminate this agreement on written notice if the other party materially breaches it
 and does not cure the breach within 30 days of written notice of it. The Licensor may terminate
 immediately on written notice if the Partner does not pay after written notice that a payment is overdue,
-or misuses the designation in item 4 of section 3.
+misuses the designation in item 4 of section 3, or runs an Event that is not a Seminar because the
+Licensor was not told of it in time under section 7.
 
 A Seminar that is under way when termination takes effect may finish, and its Attendees' sublicences
 last until its scheduled end. The designation and every other right granted by this agreement stop at
@@ -162,13 +170,17 @@ Signed for the Partner: `[__________]`   Date: `[__________]`
 
 ## Schedule B - Attendee Terms
 
-The Partner has each Attendee accept these terms before using the Software at a Seminar.
+Partner: `[__________]`   Seminar and dates: `[__________]`
+
+The Partner named above has each person attending the Seminar named above accept these terms before that
+person uses the Software. Here "Software" means the Clavity software shown at the Seminar, and "Seminar
+Exercises" means the tasks the Partner sets during it.
 
 1. You may use the Software only for the Seminar Exercises, and only on the scheduled days of the Seminar
    you attend. You may not use it for production code or for work for a client.
 2. You may not copy or share the Software beyond what the Seminar Exercises need. After the Seminar you
    have only the rights the public licence gives you: the PolyForm Noncommercial License 1.0.0 and the
-   additional terms in the file `LICENSE`.
+   additional terms in the file `LICENSE`, at https://github.com/ckir/clavity/blob/main/LICENSE.
 3. The "No Liability" terms of that licence apply to your use at the Seminar.
-4. The licensor of clavity, Costas Kirgoussios or the successor entity named in the Partner's agreement,
-   may enforce these terms against you directly.
+4. The licensor of clavity named in the licence agreement between the Partner and the licensor (Costas
+   Kirgoussios or the successor entity named there) may enforce these terms against you directly.

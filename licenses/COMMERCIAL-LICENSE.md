@@ -11,20 +11,22 @@ This agreement is made on `[__________]` (the "Effective Date") between:
 
 - **the Licensor**: Costas Kirgoussios, the copyright holder, or the successor entity named in Schedule A;
   and
-- **the Licensee**: the legal entity named in Schedule A.
+- **the Licensee**: the legal entity or individual named in Schedule A.
 
 ## 2. Definitions
 
 - **Software**: clavity and the products in the repository at https://github.com/ckir/clavity (clavity-dotnet,
   clavity-classic, agy-autotrain, commonmemory, review-relay), with their documentation.
-- **Licensed Versions**: the versions of the Software that the Licensor releases during the Term.
+- **Licensed Versions**: the version of the Software that is current on the Effective Date and the versions
+  the Licensor releases during the Term.
 - **Public Licence**: the PolyForm Noncommercial License 1.0.0 and the additional terms in the file
   `LICENSE` of the Software.
 - **Affiliate**: an entity that controls, is controlled by or is under common control with the Licensee,
   and that Schedule A lists as covered.
-- **Authorised User**: an employee of the Licensee or of a covered Affiliate, or an individual contractor
-  who works on the Licensee's own projects under the Licensee's direction. The number of Authorised Users
-  at one time may not exceed the seat count in Schedule A, and a contractor counts against it.
+- **Authorised User**: the Licensee itself, if the Licensee is an individual; an employee of the Licensee or
+  of a covered Affiliate; or an individual contractor who works on the Licensee's own projects under the
+  Licensee's direction. The number of Authorised Users at one time may not exceed the seat count in
+  Schedule A, and a contractor counts against it.
 - **Term**: the period stated in Schedule A. For a subscription licence it is the subscription period. For a
   perpetual licence it is the update period during which new versions are included.
 
@@ -71,7 +73,10 @@ Either party may terminate this agreement on written notice if the other party m
 and does not cure the breach within 30 days of written notice of it. The Licensor may terminate on
 written notice if the Licensee does not pay a fee within 15 days after written notice that it is overdue.
 
-On termination under this section the rights in section 3 end, whatever the licence type. At the end of the
+When the Licensor terminates under this section, the rights in section 3 end, whatever the licence type.
+When the Licensee terminates under this section because the Licensor materially breached this agreement
+and did not cure the breach, the rights in section 3 continue: for a subscription licence to the end of
+the Term, and for a perpetual licence without an end date for the Licensed Versions. At the end of the
 Term of a subscription licence the rights in section 3 also end. At the end of the Term of a perpetual
 licence the rights in section 3 continue for the Licensed Versions, but new versions are no longer
 included. When the rights end the Licensee stops using the Software under this agreement and may continue
