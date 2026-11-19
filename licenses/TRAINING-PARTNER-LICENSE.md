@@ -23,10 +23,11 @@ This agreement is made on `[__________]` (the "Effective Date") between:
 - **Seminar**: an Event held in person or online, with a start and an end date announced in advance, lasting
   no more than the maximum number of consecutive days set in Schedule A, of which the Licensor was told in
   time under section 7. An Event that is not a Seminar is dealt with in sections 5, 7 and 8.
-- **Affiliate**: an entity that controls, is controlled by or is under common control with the Partner,
-  where control means owning more than half of the voting rights or the power to direct management.
-- **Attendee**: a person registered for a specific Seminar, as shown by the Partner's registration record
-  for that Seminar.
+- **Affiliate**: a person or entity that controls, is controlled by or is under common control with the
+  Partner, where control means owning more than half of the voting rights or the power to direct
+  management. An individual who owns or controls the Partner is an Affiliate.
+- **Attendee**: a person who is registered for or who attends a specific Seminar, whether or not the
+  Partner's registration record shows that person.
 - **Seminar Exercises**: instructional tasks set by the Partner during a Seminar. Work on anyone's
   production code, or on a deliverable for a client, is not a Seminar Exercise.
 - **Seminar Revenue**: everything the Partner or its Affiliates receive for a Seminar. When a Seminar is
