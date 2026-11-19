@@ -10,7 +10,7 @@
 # header-text, header-missing, required-files), the header reader across comment styles, and the exit code when run directly.
 #
 # Every row that needs a repository builds its own with New-LicRepo (a real `git init` in a scratch directory), so rows
-# share no state. Only the last row starts a child pwsh.
+# share no state. Only the two rows under "run directly" start a child pwsh.
 BeforeAll {
     . ([IO.Path]::Combine($PSScriptRoot, 'TestTemp.ps1'))
     $script:GateScript = [IO.Path]::GetFullPath([IO.Path]::Combine($PSScriptRoot, '..', 'check-licensing-consistent.ps1'))
@@ -307,6 +307,128 @@ Describe 'required-files' {
     }
 }
 
+Describe 'header rules at the edges (test-audit gaps)' {
+    It 'header-missing fires for every extension in the in-scope list, in either case' {
+        $repo = New-LicRepo
+        # Spelled out on purpose: deriving the list from $script:HeaderExtensions would shrink with a regression that drops one.
+        $exts = @('.cs', '.rs', '.proto', '.sh', '.yml', '.yaml', '.py', '.toml', '.ps1', '.psm1', '.psd1', '.html', '.js', '.css', '.CS')
+        @($script:HeaderExtensions).Count | Should -Be 14
+        foreach ($e in $exts) { Write-RepoFile $repo ("noheader/x$e") "no header here`n" }
+        Add-RepoAll $repo
+        $problems = @(Get-LicensingProblems $repo)
+        $missing = @($exts | Where-Object { $e = $_; -not (@($problems | Where-Object { $_ -match ('^header-missing: noheader/x' + [regex]::Escape($e) + ' ') })) })
+        ($missing -join ',') | Should -BeExactly '' -Because 'every extension in HeaderExtensions, and an upper-case one, must be checked'
+    }
+    It 'a header that starts after the first 1000 bytes counts as missing' {
+        $repo = New-LicRepo
+        $filler = ((1..40 | ForEach-Object { '// filler line number ' + $_ + ' ........' }) -join "`n") + "`n"
+        $late = $filler + (Get-LineHeaderText $script:hdr '//') + "class Late {}`n"
+        ($late.Length -gt 1100) | Should -BeTrue
+        Write-RepoFile $repo 'late.cs' $late
+        Add-RepoAll $repo
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match '^header-missing: late\.cs') | Should -Not -BeNullOrEmpty
+    }
+    It 'a correct header followed by a long body is accepted' {
+        $repo = New-LicRepo
+        $body = ((1..200 | ForEach-Object { '// body line number ' + $_ }) -join "`n") + "`n"
+        Write-RepoFile $repo 'big.cs' ((Get-LineHeaderText $script:hdr '//') + $body)
+        Add-RepoAll $repo
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match 'big\.cs') | Should -BeNullOrEmpty
+    }
+    It 'a header written with a BOM and CRLF line ends is accepted' {
+        $repo = New-LicRepo
+        $crlf = ([string][char]0xFEFF) + ((Get-LineHeaderText $script:hdr '//') + "class C {}`n").Replace("`n", "`r`n")
+        Write-RepoFile $repo 'crlf.cs' $crlf
+        Add-RepoAll $repo
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match 'crlf\.cs') | Should -BeNullOrEmpty
+    }
+    It 'header-text fails when header.txt is missing' {
+        $repo = New-LicRepo
+        & git -C $repo rm -q -f 'header.txt' 2>&1 | Out-Null
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match '^header-text: header\.txt is missing') | Should -Not -BeNullOrEmpty
+    }
+    It 'header-text fails when header.txt is empty or only blank lines' {
+        $repo = New-LicRepo
+        Write-RepoFile $repo 'header.txt' "`n`n"
+        Add-RepoAll $repo
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match '^header-text: header\.txt is empty') | Should -Not -BeNullOrEmpty
+    }
+    It 'trailing blank lines and CRLF in header.txt do not change the expected header' {
+        $repo = New-LicRepo
+        Write-RepoFile $repo 'header.txt' ((($script:hdr -join "`r`n")) + "`r`n`r`n`r`n")
+        Add-RepoAll $repo
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match 'header-text') | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Test-IgnoredPath (test-audit gaps)' {
+    It 'ignores every rule in the set' {
+        $ignored = @('.venv/x.py', 'a/node_modules/x.js', 'target/x.rs', 'a/bin/x.cs', 'a/obj/x.cs', 'a/fixtures/x.cs',
+            '.clavity/x.ps1', '.superpowers/x.ps1', 'installer/_shared/register-plugin.ps1', 'docs/USER_GUIDE.html', 'sub/testResults.xml')
+        $wrong = @($ignored | Where-Object { -not (Test-IgnoredPath $_) })
+        ($wrong -join ',') | Should -BeExactly ''
+    }
+    It 'does not ignore look-alike paths' {
+        $kept = @('binary/x.cs', 'xfixtures/x.cs', 'src/targets/x.rs', 'docs/USER_GUIDE.htm', 'a/.clavity/x.ps1', 'a/b/c.cs')
+        $wrong = @($kept | Where-Object { Test-IgnoredPath $_ })
+        ($wrong -join ',') | Should -BeExactly ''
+    }
+}
+
+Describe 'rules at the edges (test-audit gaps)' {
+    It 'polyform-pin fails in the full run when LICENSE has no PolyForm heading' {
+        $repo = New-LicRepo
+        $lic = Read-RepoFile $repo 'LICENSE'
+        Set-AllLicenses $repo ($lic.Replace('# PolyForm Noncommercial License 1.0.0', '# Some Other Licence'))
+        Add-RepoAll $repo
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match '^polyform-pin: LICENSE has no PolyForm heading') | Should -Not -BeNullOrEmpty
+    }
+    It 'required-files fails when NOTICE is deleted' {
+        $repo = New-LicRepo
+        & git -C $repo rm -q -f 'NOTICE' 2>&1 | Out-Null
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match '^required-files: NOTICE is missing') | Should -Not -BeNullOrEmpty
+    }
+    It 'required-files fails when the training template lacks the banner' {
+        $repo = New-LicRepo
+        Write-RepoFile $repo 'licenses/TRAINING-PARTNER-LICENSE.md' "# Training with no banner`n"
+        Add-RepoAll $repo
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match '^required-files: licenses/TRAINING-PARTNER-LICENSE\.md does not start with the template banner') | Should -Not -BeNullOrEmpty
+    }
+    It 'a template written with a BOM and CRLF line ends still passes the banner check' {
+        $repo = New-LicRepo
+        $text = ([string][char]0xFEFF) + ($script:TemplateBanner + "`r`n`r`n# Commercial`r`n")
+        Write-RepoFile $repo 'licenses/COMMERCIAL-LICENSE.md' $text
+        Add-RepoAll $repo
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match 'COMMERCIAL-LICENSE') | Should -BeNullOrEmpty
+    }
+    It 'long-header tolerates a repository with no marker text anywhere (git grep exits 1)' {
+        $repo = New-LicRepo
+        $lic = Read-RepoFile $repo 'LICENSE'
+        Set-AllLicenses $repo ($lic.Replace('ADDITIONAL TERMS (not part', 'ADDITIONAL (not part'))
+        Add-RepoAll $repo
+        { $null = Get-LicensingProblems $repo } | Should -Not -Throw
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match '^long-header:') | Should -BeNullOrEmpty
+    }
+    It 'a tracked file that is missing on disk is skipped, not a crash' {
+        $repo = New-LicRepo
+        Remove-Item -LiteralPath (Join-Path $repo 'b.cs') -Force
+        { $null = Get-LicensingProblems $repo } | Should -Not -Throw
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match 'b\.cs') | Should -BeNullOrEmpty
+    }
+}
+
 Describe 'run directly' {
     It 'run directly it exits 1 and prints the problem' {
         $repo = New-LicRepo
@@ -315,5 +437,12 @@ Describe 'run directly' {
         $out = & $pwsh -NoProfile -File $script:GateScript -Root $repo 2>&1 | Out-String
         $LASTEXITCODE | Should -Be 1
         $out | Should -Match 'required-files: .*LICENSING\.md'
+    }
+    It 'run directly on a consistent repository exits 0 and prints the OK line' {
+        $repo = New-LicRepo
+        $pwsh = (Get-Process -Id $PID).Path
+        $out = & $pwsh -NoProfile -File $script:GateScript -Root $repo 2>&1 | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $out | Should -Match 'check-licensing-consistent: OK'
     }
 }
