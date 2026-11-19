@@ -1,5 +1,11 @@
 # clavity
 
+[![Release](https://img.shields.io/github/v/release/ckir/clavity)](https://github.com/ckir/clavity/releases)
+[![ci-dotnet](https://github.com/ckir/clavity/actions/workflows/ci-dotnet.yml/badge.svg?branch=main)](https://github.com/ckir/clavity/actions/workflows/ci-dotnet.yml)
+[![ci-classic](https://github.com/ckir/clavity/actions/workflows/ci-classic.yml/badge.svg?branch=main)](https://github.com/ckir/clavity/actions/workflows/ci-classic.yml)
+[![ci-scripts](https://github.com/ckir/clavity/actions/workflows/ci-scripts.yml/badge.svg?branch=main)](https://github.com/ckir/clavity/actions/workflows/ci-scripts.yml)
+[![Pages](https://github.com/ckir/clavity/actions/workflows/pages.yml/badge.svg?branch=main)](https://ckir.github.io/clavity/)
+[![Last commit](https://img.shields.io/github/last-commit/ckir/clavity/main)](https://github.com/ckir/clavity/commits/main)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
 [![Platform: Windows | Linux | macOS](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 
