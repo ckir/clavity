@@ -22,7 +22,7 @@ This agreement is made on `[__________]` (the "Effective Date") between:
 - **Event**: any instructional event about the Software that the Partner or its Affiliates run or advertise.
 - **Seminar**: an Event held in person or online, with a start and an end date announced in advance, lasting
   no more than the maximum number of consecutive days set in Schedule A, of which the Licensor was told in
-  time under section 7. An Event that is not a Seminar carries the consequences stated in section 7.
+  time under section 7. An Event that is not a Seminar is dealt with in sections 5, 7 and 8.
 - **Affiliate**: an entity that controls, is controlled by or is under common control with the Partner,
   where control means owning more than half of the voting rights or the power to direct management.
 - **Attendee**: a person registered for a specific Seminar, as shown by the Partner's registration record
@@ -69,12 +69,15 @@ reserved.
 
 ## 5. Royalty and Payment
 
-For each Seminar, and for each Event that is not a Seminar and for which the Partner or its Affiliates
-receive any payment, the Partner pays the Licensor the Royalty Percentage stated in Schedule A of the
-Royalty Base for it. For an Event that is not a Seminar, the terms in this agreement that refer to a
-Seminar (Seminar Revenue, Allowed Direct Costs, Seminar Profit, the report, the minimum royalty and the
-audit) apply to it as if it were a Seminar. This payment obligation grants no right. The royalty for a Seminar is never less than the Minimum Royalty per Attendee
-stated in Schedule A multiplied by the number of Attendees of that Seminar.
+For each Seminar, and for each other Event whether it is paid, free or given away as part of another
+deal, the Partner pays the Licensor the Royalty Percentage stated in Schedule A of the Royalty Base for
+it. For an Event that is not a Seminar, the terms in this agreement that refer to a Seminar (Seminar
+Revenue, Allowed Direct Costs, Seminar Profit, Attendee, the report, the minimum royalty and the audit)
+apply to it as if it were a Seminar, and the people who attend it count as Attendees for the minimum
+royalty. This payment obligation grants no right.
+
+The royalty for a Seminar is never less than the Minimum Royalty per Attendee stated in Schedule A
+multiplied by the number of Attendees of that Seminar.
 
 No person may be an Attendee for more than the number of Seminar days per twelve months stated in
 Schedule A, counted across all of the Partner's Seminars.
@@ -104,7 +107,8 @@ The Partner:
 
 An Event of which the Licensor was not told in time is not a Seminar. The Software may not be used at it
 under this agreement, no Attendee has a sublicence for it, and it is not protected by the in-flight rule in
-section 8. Running such an Event is a breach of this agreement.
+section 8. Running such an Event is a material breach of this agreement that cannot be cured after the
+Event has taken place; paying the royalty for it does not remove the breach.
 
 ## 8. Termination
 
@@ -115,8 +119,8 @@ or misuses the designation in item 4 of section 3.
 
 A Seminar that is under way when termination takes effect may finish, and its Attendees' sublicences
 last until its scheduled end. The designation and every other right granted by this agreement stop at
-termination. Sections 5 and 6 continue to apply to Seminars held before termination or finished after it,
-and sections 9 and 10 survive termination. The same applies, with the same in-flight rule, when the term
+termination. Sections 5 and 6 continue to apply to Seminars and other Events held before termination or finished after
+it, and sections 9 and 10 and any accrued payment obligation survive termination. The same applies, with the same in-flight rule, when the term
 stated in Schedule A ends.
 
 ## 9. Warranty Disclaimer and Limitation of Liability

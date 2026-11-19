@@ -76,7 +76,7 @@ Term of a subscription licence the rights in section 3 also end. At the end of t
 licence the rights in section 3 continue for the Licensed Versions, but new versions are no longer
 included. When the rights end the Licensee stops using the Software under this agreement and may continue
 to use it only as the Public Licence permits. Sections 6, 9 and 10 and any accrued payment obligation
-survive.
+survive termination.
 
 ## 9. Warranty Disclaimer and Limitation of Liability
 
