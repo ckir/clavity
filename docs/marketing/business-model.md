@@ -25,7 +25,7 @@ Exploratory framework for future sustainability, dual-edition licensing hypothes
 
 ### Edition 1: Community Edition (Free & Open)
 - **Target Audience:** Individual software developers, students, researchers, and open-source contributors.
-- **Licensing:** PolyForm Noncommercial 1.0.0 (or permissive open-source alternative if evaluated viable).
+- **Licensing:** PolyForm Noncommercial 1.0.0; see [LICENSING.md](../../LICENSING.md).
 - **Distribution:** Public GitHub repository, Claude plugin marketplace, and standalone binaries.
 - **Included Capabilities:**
   - Complete local pairing engine (`clavity-dotnet`, `clavity-classic`).
