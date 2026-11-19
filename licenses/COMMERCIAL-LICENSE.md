@@ -3,7 +3,7 @@
 # Clavity Commercial Software Licence Agreement
 
 Blanks are written `[__________]` and are filled in on the signed copy. Section 10 and Schedule A may be
-changed per agreement; the other sections are the owner's standard terms.
+changed per agreement; the other sections are the Licensor's standard terms.
 
 ## 1. Parties and Effective Date
 
@@ -16,8 +16,8 @@ This agreement is made on `[__________]` (the "Effective Date") between:
 ## 2. Definitions
 
 - **Software**: clavity and the products in the repository at https://github.com/ckir/clavity (clavity-dotnet,
-  clavity-classic, agy-autotrain, commonmemory, review-relay), in the versions the Licensor releases
-  during the Term, with their documentation.
+  clavity-classic, agy-autotrain, commonmemory, review-relay), with their documentation.
+- **Licensed Versions**: the versions of the Software that the Licensor releases during the Term.
 - **Public Licence**: the PolyForm Noncommercial License 1.0.0 and the additional terms in the file
   `LICENSE` of the Software.
 - **Affiliate**: an entity that controls, is controlled by or is under common control with the Licensee,
@@ -25,21 +25,24 @@ This agreement is made on `[__________]` (the "Effective Date") between:
 - **Authorised User**: an employee of the Licensee or of a covered Affiliate, or an individual contractor
   who works on the Licensee's own projects under the Licensee's direction. The number of Authorised Users
   at one time may not exceed the seat count in Schedule A, and a contractor counts against it.
-- **Term**: the period stated in Schedule A.
+- **Term**: the period stated in Schedule A. For a subscription licence it is the subscription period. For a
+  perpetual licence it is the update period during which new versions are included.
 
 ## 3. Grant
 
 Subject to this agreement and payment of the fees, the Licensor grants the Licensee a non-exclusive,
-non-transferable right during the Term for its Authorised Users to install and use the Software for any
-purpose, including commercial purposes, and to modify the Software for the Licensee's internal use.
+non-transferable right for its Authorised Users to install and use the Licensed Versions for any purpose,
+including commercial purposes, and to modify them for the Licensee's internal use. Schedule A states
+whether this right lasts for the Term only (a subscription licence) or continues without an end date for
+the Licensed Versions after the Term (a perpetual licence).
 
 The Licensee may not redistribute the Software or a modified version of it, may not sublicense it, and
-may not offer it, or a service built on it, to third parties.
+may not offer it as a service to third parties.
 
 ## 4. Scope
 
-The licence covers the Licensee, its covered Affiliates and their Authorised Users, and the versions of
-the Software that the Licensor releases during the Term.
+The licence covers the Licensee, its covered Affiliates and their Authorised Users, and the Licensed
+Versions.
 
 An outsourcing or consulting firm that uses the Software for its own work or for other clients' work is
 not covered by a licence granted to one of those clients and needs its own licence. An individual
@@ -48,9 +51,9 @@ of the Licensee.
 
 ## 5. Fees and Term
 
-The Licensee pays the fees at the times stated in Schedule A. Schedule A states whether the licence is a
-subscription for a period or perpetual for the versions released during the Term. Fees are exclusive of
-taxes, which the Licensee bears unless the law requires otherwise.
+The Licensee pays the fees at the times stated in Schedule A. Schedule A states the licence type, a
+subscription licence or a perpetual licence, and the Term. Fees are exclusive of taxes, which the Licensee
+bears unless the law requires otherwise.
 
 ## 6. Relationship to the Public Licence
 
@@ -68,9 +71,12 @@ Either party may terminate this agreement on written notice if the other party m
 and does not cure the breach within 30 days of written notice of it. The Licensor may terminate on
 written notice if the Licensee does not pay a fee within 15 days after written notice that it is overdue.
 
-On termination, or at the end of the Term, the rights in section 3 end. The Licensee then stops using the
-Software under this agreement and may continue to use it only as the Public Licence permits. Sections 6,
-9 and 10 and any accrued payment obligation survive termination.
+On termination under this section the rights in section 3 end, whatever the licence type. At the end of the
+Term of a subscription licence the rights in section 3 also end. At the end of the Term of a perpetual
+licence the rights in section 3 continue for the Licensed Versions, but new versions are no longer
+included. When the rights end the Licensee stops using the Software under this agreement and may continue
+to use it only as the Public Licence permits. Sections 6, 9 and 10 and any accrued payment obligation
+survive.
 
 ## 9. Warranty Disclaimer and Limitation of Liability
 
@@ -93,7 +99,8 @@ The governing law and the courts that decide disputes are those stated in Schedu
 | Affiliates covered | `[__________]` |
 | Number of seats | `[__________]` |
 | Fee and payment schedule | `[__________]` |
-| Term (subscription period or perpetual) | `[__________]` |
+| Licence type (subscription or perpetual) | `[__________]` |
+| Term (subscription period, or for a perpetual licence the update period) | `[__________]` |
 | Support | None |
 | Governing law and venue | The laws of Greece; the courts of Athens, Greece |
 | Licensor entity | Costas Kirgoussios |

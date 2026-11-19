@@ -3,7 +3,7 @@
 # Clavity Authorized Training Partner Licence Agreement
 
 Blanks are written `[__________]` and are filled in on the signed copy. Section 10 and Schedule A may be
-changed per agreement; the other sections are the owner's standard terms.
+changed per agreement; the other sections are the Licensor's standard terms.
 
 ## 1. Parties and Effective Date
 
@@ -19,21 +19,23 @@ This agreement is made on `[__________]` (the "Effective Date") between:
   clavity-classic, agy-autotrain, commonmemory, review-relay), with their documentation.
 - **Public Licence**: the PolyForm Noncommercial License 1.0.0 and the additional terms in the file
   `LICENSE` of the Software.
-- **Seminar**: a scheduled instructional event about the Software, held in person or online, with a start
-  and an end date announced in advance, lasting no more than the maximum number of consecutive days set in
-  Schedule A, and of which the Licensor was told in time under section 7. An event of which the Licensor
-  was not told in time is not a Seminar.
+- **Event**: any instructional event about the Software that the Partner or its Affiliates run or advertise.
+- **Seminar**: an Event held in person or online, with a start and an end date announced in advance, lasting
+  no more than the maximum number of consecutive days set in Schedule A, of which the Licensor was told in
+  time under section 7. An Event that is not a Seminar carries the consequences stated in section 7.
+- **Affiliate**: an entity that controls, is controlled by or is under common control with the Partner,
+  where control means owning more than half of the voting rights or the power to direct management.
 - **Attendee**: a person registered for a specific Seminar, as shown by the Partner's registration record
   for that Seminar.
 - **Seminar Exercises**: instructional tasks set by the Partner during a Seminar. Work on anyone's
   production code, or on a deliverable for a client, is not a Seminar Exercise.
-- **Seminar Revenue**: everything the Partner or its affiliates receive for a Seminar. When a Seminar is
+- **Seminar Revenue**: everything the Partner or its Affiliates receive for a Seminar. When a Seminar is
   sold together with other goods or services, or given away as part of another deal, Seminar Revenue is
   the price the Partner charges for a comparable Seminar sold alone.
 - **Allowed Direct Costs**: the following costs of a Seminar, each supported by a third-party receipt, and
   nothing else: venue; catering; travel and lodging for instructors; fees paid to instructors who are not
-  affiliates of the Partner; payment-processing charges; printing. Partner salaries, overhead and
-  payments to affiliates are never Allowed Direct Costs.
+  Affiliates of the Partner; payment-processing charges; printing. Partner salaries, overhead and
+  payments to Affiliates are never Allowed Direct Costs.
 - **Seminar Profit**: Seminar Revenue minus Allowed Direct Costs for that Seminar, never less than zero.
   A loss on one Seminar is not carried to another.
 - **Royalty Base**: the amount named as the royalty base in Schedule A: Seminar Profit, unless Schedule A
@@ -67,8 +69,11 @@ reserved.
 
 ## 5. Royalty and Payment
 
-For each Seminar the Partner pays the Licensor the Royalty Percentage stated in Schedule A of the Royalty
-Base for that Seminar. The royalty for a Seminar is never less than the Minimum Royalty per Attendee
+For each Seminar, and for each Event that is not a Seminar and for which the Partner or its Affiliates
+receive any payment, the Partner pays the Licensor the Royalty Percentage stated in Schedule A of the
+Royalty Base for it. For an Event that is not a Seminar, the terms in this agreement that refer to a
+Seminar (Seminar Revenue, Allowed Direct Costs, Seminar Profit, the report, the minimum royalty and the
+audit) apply to it as if it were a Seminar. This payment obligation grants no right. The royalty for a Seminar is never less than the Minimum Royalty per Attendee
 stated in Schedule A multiplied by the number of Attendees of that Seminar.
 
 No person may be an Attendee for more than the number of Seminar days per twelve months stated in
@@ -84,8 +89,8 @@ report for that Seminar: the dates, the number of Attendees, the Seminar Revenue
 Cost with its receipt, the Seminar Profit and the royalty due.
 
 The Partner keeps the records behind each report for the retention period stated in Schedule A. The
-Licensor may audit those records on written notice. If an audit finds an underpayment above the
-threshold stated in Schedule A, the Partner bears the cost of the audit and pays the shortfall.
+Licensor may audit those records on written notice. The Partner pays any shortfall an audit finds. If the
+shortfall is above the threshold stated in Schedule A, the Partner also bears the cost of the audit.
 
 ## 7. Partner Obligations
 
@@ -94,8 +99,12 @@ The Partner:
 - teaches a current release of the Software;
 - gives no warranty on the Licensor's behalf;
 - does not present a Seminar as run or endorsed by Google or Anthropic;
-- tells the Licensor in writing of each Seminar, with its dates, at least the number of days before it
+- tells the Licensor in writing of each Event, with its dates, at least the number of days before it
   starts that Schedule A states.
+
+An Event of which the Licensor was not told in time is not a Seminar. The Software may not be used at it
+under this agreement, no Attendee has a sublicence for it, and it is not protected by the in-flight rule in
+section 8. Running such an Event is a breach of this agreement.
 
 ## 8. Termination
 
@@ -107,7 +116,8 @@ or misuses the designation in item 4 of section 3.
 A Seminar that is under way when termination takes effect may finish, and its Attendees' sublicences
 last until its scheduled end. The designation and every other right granted by this agreement stop at
 termination. Sections 5 and 6 continue to apply to Seminars held before termination or finished after it,
-and sections 9 and 10 survive termination.
+and sections 9 and 10 survive termination. The same applies, with the same in-flight rule, when the term
+stated in Schedule A ends.
 
 ## 9. Warranty Disclaimer and Limitation of Liability
 
@@ -152,7 +162,8 @@ The Partner has each Attendee accept these terms before using the Software at a 
 1. You may use the Software only for the Seminar Exercises, and only on the scheduled days of the Seminar
    you registered for. You may not use it for production code or for work for a client.
 2. You may not copy or share the Software beyond what the Seminar Exercises need. After the Seminar you
-   have only the rights the PolyForm Noncommercial License 1.0.0 (the file `LICENSE`) gives you.
+   have only the rights the public licence gives you: the PolyForm Noncommercial License 1.0.0 and the
+   additional terms in the file `LICENSE`.
 3. The "No Liability" terms of that licence apply to your use at the Seminar.
-4. The Licensor, Costas Kirgoussios or the successor named in Schedule A, may enforce these terms
-   against you directly.
+4. The licensor of clavity, Costas Kirgoussios or the successor entity named in the Partner's agreement,
+   may enforce these terms against you directly.
