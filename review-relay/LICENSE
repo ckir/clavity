@@ -1,3 +1,11 @@
+Copyright (c) 2026 Costas Kirgoussios
+
+This file holds the PolyForm Noncommercial License 1.0.0, followed by additional terms from the
+licensor. The software is source-available. It is not open source.
+
+Commercial licences and authorized training partner licences are described at
+https://github.com/ckir/clavity/blob/main/LICENSING.md
+
 # PolyForm Noncommercial License 1.0.0
 
 <https://polyformproject.org/licenses/noncommercial/1.0.0>
@@ -129,3 +137,14 @@ software under these terms.
 
 **Use** means anything you do with the software requiring one
 of your licenses.
+
+---
+
+# ADDITIONAL TERMS (not part of PolyForm Noncommercial 1.0.0)
+
+## Commercial Evaluation Grant
+
+Any organisation, including one that is not a Noncommercial Organization, may use the software
+for internal testing and evaluation for 30 days from first use, royalty-free. Use beyond that
+period, and any production or other commercial use, requires a commercial licence from the
+licensor. See https://github.com/ckir/clavity/blob/main/LICENSING.md
