@@ -173,5 +173,5 @@ CLAUDE_CONFIG_DIR=~/.claude-profiles/test clavity-ls start ~/path/to/your/projec
 
 ## Άδεια χρήσης
 
-PolyForm Noncommercial License 1.0.0 — δείτε το [LICENSE](../LICENSE).
+PolyForm Noncommercial License 1.0.0 — δείτε το [LICENSE](../LICENSE). Εμπορικές άδειες και άδειες συνεργατών εκπαίδευσης: δείτε το [LICENSING.md](https://github.com/ckir/clavity/blob/main/LICENSING.md).
 

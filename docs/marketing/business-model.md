@@ -17,7 +17,7 @@ Exploratory framework for future sustainability, dual-edition licensing hypothes
 | **Source Code Availability** | **Confirmed** | Public GitHub repository with open commit history. |
 | **Dual-Edition Split** | *Hypothesis* | Commercial edition for enterprise/team features; Community for solo developers. |
 | **Pricing Tiers & Seat Fees** | *Hypothesis* | Subject to customer willingness-to-pay research. No pricing is established. |
-| **License Transition Model** | *Hypothesis* | Potential dual-licensing (Open Source / PolyForm + Proprietary Commercial). |
+| **License Transition Model** | *Decided 2026-11-19* | Dual licensing of one codebase: public PolyForm Noncommercial 1.0.0, a commercial licence, and an Authorized Training Partner licence. See [LICENSING.md](../../LICENSING.md). |
 
 ---
 

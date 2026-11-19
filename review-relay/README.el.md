@@ -74,5 +74,5 @@
 
 ## Άδεια χρήσης
 
-PolyForm Noncommercial 1.0.0 - δείτε το [LICENSE](LICENSE).
+PolyForm Noncommercial 1.0.0 - δείτε το [LICENSE](LICENSE). Εμπορικές άδειες και άδειες συνεργατών εκπαίδευσης: δείτε το [LICENSING.md](https://github.com/ckir/clavity/blob/main/LICENSING.md).
 

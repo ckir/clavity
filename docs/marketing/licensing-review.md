@@ -27,11 +27,9 @@ Per the audit of `NOTICE` and crate/project manifests:
 
 ## 3. Contribution Ownership & Contributor Agreements
 
-- **Current State:** The repository does not currently enforce a formal Contributor License Agreement (CLA) or Developer Certificate of Origin (DCO) beyond standard GitHub pull request submission terms.
-- **Impact on Commercialization:** To re-license or dual-license software with commercial exemptions, the copyright holders must possess the legal authority to do so.
-  - If all significant contributions are authored by the primary maintainer, commercial licensing remains straightforward.
-  - If external contributors submit code under PolyForm Noncommercial without a CLA/DCO granting commercial relicensing rights, relicensing external contributions commercially could require contributor consent.
-- **Recommendation:** Implement a Developer Certificate of Origin (DCO) or lightweight Contributor License Agreement for external pull requests.
+- **Current State:** Contributors are asked for a DCO sign-off in `CONTRIBUTING.md`, which no hook or bot enforces. Since 2026-11-19 `CONTRIBUTING.md` also carries a contributor licence grant that lets the copyright holder relicense contributions, including commercially. As of that date every commit is by the maintainer or dependabot.
+- **Impact on Commercialization:** Commercial licensing of the whole codebase is therefore not blocked by outside contributions.
+- **Recommendation:** Decide whether to enforce the sign-off mechanically once outside contributions begin.
 
 ## 4. Commercial Dual-Licensing Alternatives
 

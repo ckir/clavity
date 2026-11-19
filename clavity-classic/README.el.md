@@ -199,5 +199,5 @@ clavity ask "refactor foo() to return Result"          # -> απάντηση agy
 ## Άδεια χρήσης
 
 [PolyForm Noncommercial License 1.0.0](LICENSE) © Costas Kirgoussios — δωρεάν για μη εμπορική χρήση
-(προσωπική, ακαδημαϊκή, μη κερδοσκοπική).
+(προσωπική, ακαδημαϊκή, μη κερδοσκοπική). Εμπορικές άδειες και άδειες συνεργατών εκπαίδευσης: δείτε το [LICENSING.md](https://github.com/ckir/clavity/blob/main/LICENSING.md).
 

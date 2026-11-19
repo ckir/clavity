@@ -88,5 +88,5 @@ agy    plugin install ./commonmemory
 ## Άδεια χρήσης
 
 [PolyForm Noncommercial License 1.0.0](LICENSE) (`PolyForm-Noncommercial-1.0.0`) — δωρεάν για
-μη εμπορική χρήση. Δείτε το [NOTICE](NOTICE) για τη σημείωση πνευματικών δικαιωμάτων.
+μη εμπορική χρήση. Δείτε το [NOTICE](NOTICE) για τη σημείωση πνευματικών δικαιωμάτων. Εμπορικές άδειες και άδειες συνεργατών εκπαίδευσης: δείτε το [LICENSING.md](https://github.com/ckir/clavity/blob/main/LICENSING.md).
 

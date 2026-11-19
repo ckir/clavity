@@ -119,7 +119,7 @@ Pre-commit runs `ruff` on staged Python files, plus `curate-in-progress` and `ch
 
 ### License
 
-This project is licensed under the **PolyForm Noncommercial License 1.0.0** — free for non-commercial use (personal, academic, non-profit). See [LICENSE](LICENSE). All five products (clavity-dotnet, clavity-classic, agy-autotrain, commonmemory, review-relay) ship under the same licence.
+clavity is source-available, not open source. It is offered under three licences: the public **PolyForm Noncommercial License 1.0.0** (free for personal, academic and non-profit use, with a 30-day evaluation for any organisation; see [LICENSE](LICENSE)), a **commercial licence** for commercial use, and an **Authorized Training Partner licence** for running paid seminars. [LICENSING.md](LICENSING.md) says which one applies to you and how to get the paid ones. All five products (clavity-dotnet, clavity-classic, agy-autotrain, commonmemory, review-relay) are covered by the same licences.
 
 _Trademarks:_ Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of Anthropic. This is an independent project — not affiliated with, endorsed by, or sponsored by Google or Anthropic.
 
