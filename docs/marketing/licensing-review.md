@@ -12,7 +12,7 @@ Research and analysis of current licensing constraints, dependency compliance, a
 - **Governing Repository License:** PolyForm Noncommercial License 1.0.0 (`LICENSE`).
   - **Permitted Uses:** Noncommercial evaluation, research, personal study, open-source development that generates no commercial revenue.
   - **Restrictions:** Explicitly prohibits commercial use, meaning businesses generating revenue cannot deploy Clavity for commercial software development without an exemption.
-- **Copyright Ownership:** Held by Costas Kirgoussios and the clavity authors (per `NOTICE`).
+- **Copyright Ownership:** Held by Costas Kirgoussios; contributors keep the copyright in their own contributions (per `NOTICE`).
 
 ## 2. Third-Party Dependency Analysis
 
