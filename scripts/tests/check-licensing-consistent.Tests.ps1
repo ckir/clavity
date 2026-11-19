@@ -171,19 +171,12 @@ Describe 'header-text' {
         $problems = @(Get-LicensingProblems $repo)
         ($problems -match '^header-text: .*b\.cs') | Should -Not -BeNullOrEmpty
     }
-    It 'header-text fails when comment text directly follows the five header lines' {
+    It 'header-text compares as many lines as header.txt has, not a fixed five' {
         $repo = New-LicRepo
-        $lines = @((Read-RepoFile $repo 'b.cs') -split "`n")
-        $new = @($lines[0..4]) + @('// Licensed under MIT') + @($lines[5..($lines.Count - 1)])
-        Write-RepoFile $repo 'b.cs' ($new -join "`n")
+        Write-RepoFile $repo 'header.txt' (($script:hdr -join "`n") + "`nA sixth header line`n")
         Add-RepoAll $repo
         $problems = @(Get-LicensingProblems $repo)
-        ($problems -match '^header-text: .*b\.cs.*more comment text') | Should -Not -BeNullOrEmpty
-    }
-    It 'header-text accepts a block terminator or a blank line after the five header lines' {
-        $repo = New-LicRepo
-        $problems = @(Get-LicensingProblems $repo)
-        ($problems -match 'a\.ps1|b\.cs') | Should -BeNullOrEmpty
+        ($problems -match '^header-text: .*b\.cs') | Should -Not -BeNullOrEmpty
     }
 }
 

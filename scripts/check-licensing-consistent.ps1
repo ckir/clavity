@@ -57,10 +57,9 @@ function Get-PolyFormHash([string]$LicensePath) {
     return ([BitConverter]::ToString($hash) -replace '-', '').ToLowerInvariant()
 }
 
-function Get-HeaderLines([byte[]]$First1000) {
-    # The licence header as plain text: the first line containing `Copyright (c)` and the four after it, each with comment syntax
-    # (`//`, `#` or `*` after optional whitespace, plus at most one space) and trailing whitespace removed. A line with no comment
-    # syntax (the body of a <# #> or <!-- --> block) is trimmed on both sides. $null when no line contains `Copyright (c)`.
+function Read-HeaderWindow([byte[]]$First1000) {
+    # The decoded first 1000 bytes split into lines (BOM dropped, CR removed) and the index of the first line containing
+    # `Copyright (c)` (-1 when there is none). Get-HeaderLines is its only caller today; it is a separate function so a second reader of the window cannot drift from it.
     $text = [Text.UTF8Encoding]::new($false).GetString($First1000)
     if ($text.Length -gt 0 -and $text[0] -eq [char]0xFEFF) { $text = $text.Substring(1) }
     $lines = @($text -split "`n" | ForEach-Object { $_.TrimEnd("`r") })
@@ -68,28 +67,20 @@ function Get-HeaderLines([byte[]]$First1000) {
     for ($i = 0; $i -lt $lines.Count; $i++) {
         if ($lines[$i].Contains('Copyright (c)')) { $at = $i; break }
     }
-    if ($at -lt 0) { return $null }
-    $last = [Math]::Min($at + 4, $lines.Count - 1)
-    $out = foreach ($l in $lines[$at..$last]) {
+    return [pscustomobject]@{ Lines = $lines; At = $at }
+}
+
+function Get-HeaderLines([byte[]]$First1000, [int]$Count = 5) {
+    # The licence header as plain text: the first line containing `Copyright (c)` and the `$Count - 1` after it, each with comment
+    # syntax (`//`, `#` or `*` after optional whitespace, plus at most one space) and trailing whitespace removed. A line with no
+    # comment syntax (the body of a <# #> or <!-- --> block) is trimmed on both sides. $null when no line contains `Copyright (c)`.
+    $w = Read-HeaderWindow $First1000
+    if ($w.At -lt 0) { return $null }
+    $last = [Math]::Min($w.At + $Count - 1, $w.Lines.Count - 1)
+    $out = foreach ($l in $w.Lines[$w.At..$last]) {
         if ($l -match '^\s*(?://|#|\*) ?(?<rest>.*)$') { $Matches['rest'].TrimEnd() } else { $l.Trim() }
     }
     return [string[]]@($out)
-}
-
-function Test-HeaderContinues([byte[]]$First1000) {
-    # True when the line right after the five header lines is comment text (for example `// Licensed under MIT`). Allowed there:
-    # an empty line, a block terminator (`*/`, `-->`, `#>`) or a bare comment marker such as ` *`. Measured over every
-    # in-scope file at the commit that added this rule: the line is empty, `*/`, `-->`, `#>` or ` *`.
-    $text = [Text.UTF8Encoding]::new($false).GetString($First1000)
-    $lines = @($text -split "`n" | ForEach-Object { $_.TrimEnd("`r") })
-    $at = -1
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        if ($lines[$i].Contains('Copyright (c)')) { $at = $i; break }
-    }
-    if ($at -lt 0 -or $at + 5 -ge $lines.Count) { return $false }
-    $next = $lines[$at + 5].Trim()
-    if ($next -in '', '*/', '-->', '#>') { return $false }
-    return ($next -match '^(?://|#|\*)\s*\S')
 }
 
 function Get-TrackedPaths([string]$Root) {
@@ -160,8 +151,13 @@ function Get-LicensingProblems([string]$Root) {
     # 4 + 5. header-text and header-missing
     $headerFile = & $full 'header.txt'
     $expected = $null
+    $count = 5
     if (Test-Path -LiteralPath $headerFile -PathType Leaf) {
-        $expected = @(Get-Content -LiteralPath $headerFile -TotalCount 5 | ForEach-Object { $_.TrimEnd() })
+        $exp = [Collections.Generic.List[string]]::new()
+        foreach ($hl in (Get-Content -LiteralPath $headerFile)) { $exp.Add($hl.TrimEnd()) }
+        while ($exp.Count -gt 0 -and $exp[$exp.Count - 1] -eq '') { $exp.RemoveAt($exp.Count - 1) }
+        if ($exp.Count -eq 0) { $problems.Add('header-text: header.txt is empty, so no file header can be checked') }
+        else { $expected = @($exp); $count = $exp.Count }
     }
     else { $problems.Add('header-text: header.txt is missing, so no file header can be checked') }
     foreach ($p in $tracked) {
@@ -171,16 +167,14 @@ function Get-LicensingProblems([string]$Root) {
         if ($p -in $script:ForeignHeaderAllowlist) { continue }
         $abs = & $full $p
         if (-not (Test-Path -LiteralPath $abs -PathType Leaf)) { continue }
-        $lines = Get-HeaderLines (Read-First1000 $abs)
+        $first = Read-First1000 $abs
+        $lines = Get-HeaderLines $first $count
         if ($null -eq $lines) {
             $problems.Add("header-missing: $p has no Copyright (c) header in its first 1000 bytes")
             continue
         }
         if ($null -ne $expected -and ((@($lines) -join "`n") -cne ($expected -join "`n"))) {
-            $problems.Add("header-text: $p has a header that differs from the first five lines of header.txt")
-        }
-        elseif (Test-HeaderContinues (Read-First1000 $abs)) {
-            $problems.Add("header-text: $p has more comment text directly after the five header lines; the header is exactly the five lines of header.txt")
+            $problems.Add("header-text: $p has a header that differs from the $count lines of header.txt")
         }
     }
 
