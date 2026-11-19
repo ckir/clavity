@@ -95,9 +95,12 @@ Partner bears unless the law requires otherwise.
 
 Within the number of days stated in Schedule A after a Seminar ends, the Partner sends the Licensor a
 report for that Seminar: the dates, the number of Attendees, the Seminar Revenue, each Allowed Direct
-Cost with its receipt, the Seminar Profit and the royalty due. For an Event with no scheduled end date,
-the report and the payment are due for each calendar quarter, within the number of days that Schedule A
-states for the report deadline, counted from the end of the quarter.
+Cost with its receipt, the Seminar Profit and the royalty due. For an Event that is not a Seminar,
+whatever its end date and whether or not it has one, the report and the payment are instead due for
+each calendar quarter in which the Event was held, sold or available, within the number of days that
+Schedule A states for the report deadline, counted from the end of that quarter. Each such report
+covers only that quarter's Seminar Revenue, Attendees and Allowed Direct Costs, and Seminar Profit is
+worked out per quarter: never less than zero, and a loss in one quarter is not carried to another.
 
 The Partner keeps the records behind each report for the retention period stated in Schedule A. The
 Licensor may audit those records on written notice. The Partner pays any shortfall an audit finds. If the
@@ -123,14 +126,15 @@ Event has taken place; paying the royalty for it does not remove the breach.
 Either party may terminate this agreement on written notice if the other party materially breaches it
 and does not cure the breach within 30 days of written notice of it. The Licensor may terminate
 immediately on written notice if the Partner does not pay after written notice that a payment is overdue,
-misuses the designation in item 4 of section 3, or runs an Event that is not a Seminar because the
-Licensor was not told of it in time under section 7.
+or misuses the designation in item 4 of section 3, or if the Partner or its Affiliates run an Event that
+is not a Seminar because the Licensor was not told of it in time under section 7.
 
 A Seminar that is under way when termination takes effect may finish, and its Attendees' sublicences
 last until its scheduled end. The designation and every other right granted by this agreement stop at
-termination. Sections 5 and 6 continue to apply to Seminars and other Events held before termination or finished after
-it, and sections 9 and 10 and any accrued payment obligation survive termination. The same applies, with the same in-flight rule, when the term
-stated in Schedule A ends.
+termination. Sections 5 and 6 continue to apply to Seminars held before termination or finished after it,
+and to every other Event held, sold or available before termination, for as long as it continues to be
+sold or available. Sections 9 and 10 and any accrued payment obligation survive termination. The same
+applies, with the same in-flight rule, when the term stated in Schedule A ends.
 
 ## 9. Warranty Disclaimer and Limitation of Liability
 
@@ -182,5 +186,5 @@ Exercises" means the tasks the Partner sets during it.
    have only the rights the public licence gives you: the PolyForm Noncommercial License 1.0.0 and the
    additional terms in the file `LICENSE`, at https://github.com/ckir/clavity/blob/main/LICENSE.
 3. The "No Liability" terms of that licence apply to your use at the Seminar.
-4. The licensor of clavity named in the licence agreement between the Partner and the licensor (Costas
-   Kirgoussios or the successor entity named there) may enforce these terms against you directly.
+4. The licensor of clavity (Costas Kirgoussios, or the successor entity named in the Partner's agreement
+   with the licensor) may enforce these terms against you directly.
