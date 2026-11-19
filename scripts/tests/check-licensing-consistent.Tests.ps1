@@ -171,6 +171,20 @@ Describe 'header-text' {
         $problems = @(Get-LicensingProblems $repo)
         ($problems -match '^header-text: .*b\.cs') | Should -Not -BeNullOrEmpty
     }
+    It 'header-text fails when comment text directly follows the five header lines' {
+        $repo = New-LicRepo
+        $lines = @((Read-RepoFile $repo 'b.cs') -split "`n")
+        $new = @($lines[0..4]) + @('// Licensed under MIT') + @($lines[5..($lines.Count - 1)])
+        Write-RepoFile $repo 'b.cs' ($new -join "`n")
+        Add-RepoAll $repo
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match '^header-text: .*b\.cs.*more comment text') | Should -Not -BeNullOrEmpty
+    }
+    It 'header-text accepts a block terminator or a blank line after the five header lines' {
+        $repo = New-LicRepo
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match 'a\.ps1|b\.cs') | Should -BeNullOrEmpty
+    }
 }
 
 Describe 'Get-HeaderLines' {
@@ -213,12 +227,26 @@ Describe 'header-missing' {
         $problems = @(Get-LicensingProblems $repo)
         ($problems -match '^header-missing: .*c\.ps1') | Should -Not -BeNullOrEmpty
     }
-    It 'header-missing does not apply to other extensions' {
+    It 'header-missing applies to every in-scope extension, not only PowerShell' {
         $repo = New-LicRepo
         Write-RepoFile $repo 'd.cs' "class D {}`n"
         Add-RepoAll $repo
         $problems = @(Get-LicensingProblems $repo)
-        ($problems -match 'd\.cs') | Should -BeNullOrEmpty
+        ($problems -match '^header-missing: .*d\.cs') | Should -Not -BeNullOrEmpty
+    }
+    It 'header-missing catches a foreign copyright line that has no (c)' {
+        $repo = New-LicRepo
+        Write-RepoFile $repo 'f.cs' "// Copyright 2026 Someone Else - MIT`nclass F {}`n"
+        Add-RepoAll $repo
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match '^header-missing: .*f\.cs') | Should -Not -BeNullOrEmpty
+    }
+    It 'a file outside the header extensions is not checked' {
+        $repo = New-LicRepo
+        Write-RepoFile $repo 'notes.txt' "no header here`n"
+        Add-RepoAll $repo
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match 'notes\.txt') | Should -BeNullOrEmpty
     }
     It 'a file under a fixtures folder is ignored by both header rules' {
         $repo = New-LicRepo
@@ -249,6 +277,22 @@ Describe 'required-files' {
         Add-RepoAll $repo
         $problems = @(Get-LicensingProblems $repo)
         ($problems -match '^required-files: .*COMMERCIAL-LICENSE\.md') | Should -Not -BeNullOrEmpty
+    }
+    It 'required-files fails when the LICENSE copies lose the Commercial Evaluation Grant' {
+        $repo = New-LicRepo
+        $lic = Read-RepoFile $repo 'LICENSE'
+        Set-AllLicenses $repo ($lic.Replace('## Commercial Evaluation Grant', '## Grant'))
+        Add-RepoAll $repo
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match "^required-files: LICENSE does not contain '## Commercial Evaluation Grant'") | Should -Not -BeNullOrEmpty
+    }
+    It 'required-files fails when the LICENSE copies lose the copyright line' {
+        $repo = New-LicRepo
+        $lic = Read-RepoFile $repo 'LICENSE'
+        Set-AllLicenses $repo ($lic.Replace('Copyright (c) 2026 Costas Kirgoussios', 'Copyright (c) 2026 Somebody'))
+        Add-RepoAll $repo
+        $problems = @(Get-LicensingProblems $repo)
+        ($problems -match "^required-files: LICENSE does not contain 'Copyright \(c\) 2026 Costas Kirgoussios'") | Should -Not -BeNullOrEmpty
     }
     It 'required-files fails when NOTICE lacks the reserved title' {
         $repo = New-LicRepo

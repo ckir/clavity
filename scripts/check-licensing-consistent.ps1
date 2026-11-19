@@ -76,6 +76,22 @@ function Get-HeaderLines([byte[]]$First1000) {
     return [string[]]@($out)
 }
 
+function Test-HeaderContinues([byte[]]$First1000) {
+    # True when the line right after the five header lines is comment text (for example `// Licensed under MIT`). Allowed there:
+    # an empty line, a block terminator (`*/`, `-->`, `#>`) or a bare comment marker such as ` *`. Measured over every
+    # in-scope file at the commit that added this rule: the line is empty, `*/`, `-->`, `#>` or ` *`.
+    $text = [Text.UTF8Encoding]::new($false).GetString($First1000)
+    $lines = @($text -split "`n" | ForEach-Object { $_.TrimEnd("`r") })
+    $at = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i].Contains('Copyright (c)')) { $at = $i; break }
+    }
+    if ($at -lt 0 -or $at + 5 -ge $lines.Count) { return $false }
+    $next = $lines[$at + 5].Trim()
+    if ($next -in '', '*/', '-->', '#>') { return $false }
+    return ($next -match '^(?://|#|\*)\s*\S')
+}
+
 function Get-TrackedPaths([string]$Root) {
     $raw = (& git -C $Root ls-files -z) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw "git ls-files failed in $Root" }
@@ -157,11 +173,14 @@ function Get-LicensingProblems([string]$Root) {
         if (-not (Test-Path -LiteralPath $abs -PathType Leaf)) { continue }
         $lines = Get-HeaderLines (Read-First1000 $abs)
         if ($null -eq $lines) {
-            if ($ext -in $script:PowerShellExtensions) { $problems.Add("header-missing: $p has no Copyright (c) header in its first 1000 bytes") }
+            $problems.Add("header-missing: $p has no Copyright (c) header in its first 1000 bytes")
             continue
         }
         if ($null -ne $expected -and ((@($lines) -join "`n") -cne ($expected -join "`n"))) {
             $problems.Add("header-text: $p has a header that differs from the first five lines of header.txt")
+        }
+        elseif (Test-HeaderContinues (Read-First1000 $abs)) {
+            $problems.Add("header-text: $p has more comment text directly after the five header lines; the header is exactly the five lines of header.txt")
         }
     }
 
@@ -176,6 +195,14 @@ function Get-LicensingProblems([string]$Root) {
         $first = ([IO.File]::ReadAllText($abs, [Text.UTF8Encoding]::new($false)) -split "`n", 2)[0].TrimEnd("`r")
         if ($first.Length -gt 0 -and $first[0] -eq [char]0xFEFF) { $first = $first.Substring(1) }
         if ($first -cne $script:TemplateBanner) { $problems.Add("required-files: $t does not start with the template banner line") }
+    }
+    foreach ($lp in @('LICENSE') + @($script:RequiredLicenseCopies)) {
+        $labs = & $full $lp
+        if (-not $trackedSet.Contains($lp) -or -not (Test-Path -LiteralPath $labs -PathType Leaf)) { continue }
+        $ltext = [IO.File]::ReadAllText($labs, [Text.UTF8Encoding]::new($false))
+        foreach ($need in 'Copyright (c) 2026 Costas Kirgoussios', '## Commercial Evaluation Grant') {
+            if (-not $ltext.Contains($need)) { $problems.Add("required-files: $lp does not contain '$need'") }
+        }
     }
     $notice = & $full 'NOTICE'
     if (-not (Test-Path -LiteralPath $notice -PathType Leaf)) { $problems.Add('required-files: NOTICE is missing') }
