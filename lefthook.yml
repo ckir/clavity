@@ -76,6 +76,19 @@ pre-push:
       run: just check-agent-rules-ignore
     register-hash:
       run: just check-register-hash
+    licensing:
+      # One pwsh start (~6s), so only when a push touches a licence-related path. CI
+      # (ci-license-headers.yml) runs the same script on every push and pull request and is the
+      # complete trigger: a header broken in an ordinary source file is caught there, not here.
+      glob:
+        - "LICENSE"
+        - "**/LICENSE"
+        - "NOTICE"
+        - "header.txt"
+        - "LICENSING.md"
+        - "licenses/**"
+        - "scripts/check-licensing-consistent.ps1"
+      run: just check-licensing
     knowledge-store:
       # Seconds-range, as this hook's header requires: one pwsh start plus a `git log` over one directory.
       # Placed here rather than pre-commit deliberately - a pre-commit glob does not reliably fire on a
