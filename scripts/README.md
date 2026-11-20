@@ -96,13 +96,13 @@ The README "tests" badge: each CI lane extracts its runner's passed/skipped coun
   - `gate-lib.ps1` — the shared `Fail` helper (`<gate>: FAIL: <msg>`, exit 1) for the check-* gates whose copies were identical; set `$script:GateName` before dot-sourcing.
   - `injected-context-lib.ps1` — the reference-index and ASCII / hook-message functions of `check-injected-context.ps1`, dot-sourced by it (moved verbatim; not usable standalone).
   - `path-lib.ps1` — the one sanctioned way to turn an absolute path into a repo-relative one.
-  - `test-count-lib.ps1` — the suite metadata and one extractor per test runner's summary format (.NET, cargo, pytest junit, Pester runner, bash tally, Node TAP, unittest) behind `emit-test-count.ps1`; every extractor throws rather than return a wrong count.
     `New-RootRelativePathResolver -Root $r` normalises the root ONCE (8.3 short form, casing, a PSDrive, a
     provider prefix) and returns a resolver whose `.Resolve($path)` is pure string math — and **throws if
     the path is not under the root**, rather than silently returning a mangled string. **Build the resolver
     before a loop, never inside one.** `Get-RootRelativePath -Root -Path` is a one-off convenience that
     builds a fresh resolver per call; in a per-file loop that re-runs `Get-Item` every time, which a
     capstone measured at ~64 s per gate run. ROADMAP section 28; `scripts/tests/path-lib.Tests.ps1` pins it.
+  - `test-count-lib.ps1` — the suite metadata and one extractor per test runner's summary format (.NET, cargo, pytest junit, Pester runner, bash tally, Node TAP, unittest) behind `emit-test-count.ps1`; every extractor throws rather than return a wrong count.
   - `rule-runner.ps1` — `Invoke-Rules -Rules -Contexts` runs every rule against every context, and no rule
     can stop the runner, or cut itself short, without a diagnostic: each rule runs behind a
     `do { } while ($false)` barrier, because PowerShell resolves `break`/`continue` dynamically and one
