@@ -119,6 +119,22 @@ Describe 'test-count extractors' {
         $xml = Write-Junit ('<testcase classname="test_agy_bus" name="a"/><testcase classname="test_other" name="b"/>')
         { Get-PytestCounts $xml @('test_agy_bus') } | Should -Throw '*pytest*'
     }
+    It 'attributes a pytest case to the listed module its classname starts with, whatever the class is called' {
+        # pytest collects unittest.TestCase subclasses whatever their name, so the class part need not start with Test.
+        $xml = Write-Junit ('<testcase classname="test_agy_bus.PlainCase" name="a"/><testcase classname="tests.test_mcp_wiring.TestWiring.test_x" name="b"/>')
+        $r = Get-PytestCounts $xml @('test_agy_bus', 'tests.test_mcp_wiring')
+        $r.Passed | Should -Be 2
+        # A module that merely shares a prefix, or a different module, is still no listed module.
+        foreach ($cn in 'other_module.TestX', 'test_agy_bus_extra.TestX', 'test_agy') {
+            $xml = Write-Junit ('<testcase classname="test_agy_bus" name="a"/>' + "<testcase classname=`"$cn`" name=`"b`"/>")
+            { Get-PytestCounts $xml @('test_agy_bus') } | Should -Throw '*belongs to no listed module*' -Because $cn
+        }
+        # With nested module names the longest listed module takes the case.
+        $xml = Write-Junit ('<testcase classname="tests" name="a"/><testcase classname="tests.sub.PlainCase" name="b"><skipped/></testcase><testcase classname="tests.sub" name="c"/>')
+        $r = Get-PytestCounts $xml @('tests', 'tests.sub')
+        $r.Passed | Should -Be 2
+        $r.Skipped | Should -Be 1
+    }
     It 'throws when the pytest file is missing or not XML' {
         { Get-PytestCounts (New-TestTempPath -Prefix 'tc-missing') @('test_agy_bus') } | Should -Throw '*pytest*'
         $p = New-TestTempPath -Prefix 'tc-bad' -Suffix '.xml'

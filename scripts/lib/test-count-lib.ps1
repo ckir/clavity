@@ -114,10 +114,12 @@ function Get-PytestCounts {
     foreach ($case in @($doc.SelectNodes('//testcase'))) {
         $cn = $case.GetAttribute('classname')
         $mod = $null
-        if ($passedBy.ContainsKey($cn)) { $mod = $cn }
-        else {
-            $i = $cn.IndexOf('.Test', [StringComparison]::Ordinal)
-            if ($i -gt 0 -and $passedBy.ContainsKey($cn.Substring(0, $i))) { $mod = $cn.Substring(0, $i) }
+        # The classname is the module itself or <module>.<anything>: pytest also collects unittest.TestCase subclasses
+        # whatever their name, so the class part cannot be required to start with Test. Longest listed module wins.
+        foreach ($cand in $Modules) {
+            if ($cn -ceq $cand -or $cn.StartsWith($cand + '.', [StringComparison]::Ordinal)) {
+                if ($null -eq $mod -or $cand.Length -gt $mod.Length) { $mod = $cand }
+            }
         }
         if ($null -eq $mod) { throw "test-count: pytest: case '$($case.GetAttribute('name'))' (classname '$cn') belongs to no listed module" }
         if ($case.SelectSingleNode('failure') -or $case.SelectSingleNode('error')) { $failed++ }

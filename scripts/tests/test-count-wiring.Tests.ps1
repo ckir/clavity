@@ -108,6 +108,10 @@ BeforeAll {
         if ($Node -isnot [System.Collections.IDictionary]) { return @() }
         return @($Node.Keys | ForEach-Object { [string]$_ } | Sort-Object)
     }
+    # Tee-Object is a cmdlet, so its name is case-insensitive (Tee-object works); tee is the bash command, lowercase only,
+    # and must not be read out of Tee-Object (the negative lookahead rejects tee-object and tee_x).
+    $script:teeObject = '(?i)\|\s*Tee-Object\b'
+    $script:teeBash = '\|\s*tee(?![-\w])'
     function Expr([string]$Inner) { return '${{ ' + $Inner + ' }}' }
 
     # Every step of every job of the four workflows that exist, with where it sits.
@@ -198,11 +202,16 @@ Describe 'test-count workflow wiring' {
                 Get-Key $doc 'jobs', $Job, 'outputs', $name | Should -BeExactly (Expr "steps.$stepId.outputs.$name")
             }
         }
-        It 'test-count.yml site-checks exposes site_checks from step count' {
+        It 'test-count.yml site-checks exposes site_checks from the step id of its emitter' {
             $doc = Use-Workflow 'test-count.yml'
+            $hits = Get-Emitter 'site_checks'
+            $hits.Count | Should -Be 1 -Because 'exactly one step emits site_checks'
+            $hits[0].Job | Should -BeExactly 'site-checks'
+            $stepId = Get-Key $hits[0].Step 'id'
+            $stepId | Should -Not -BeNullOrEmpty -Because 'the site_checks emitter step needs an id so the job output can read it'
             foreach ($kind in 'passed', 'skipped') {
                 $name = "site_checks_$kind"
-                Get-Key $doc 'jobs', 'site-checks', 'outputs', $name | Should -BeExactly (Expr "steps.count.outputs.$name")
+                Get-Key $doc 'jobs', 'site-checks', 'outputs', $name | Should -BeExactly (Expr "steps.$stepId.outputs.$name")
             }
             (Get-Keys (Get-Key $doc 'jobs', 'site-checks', 'outputs')) | Should -Be @('site_checks_passed', 'site_checks_skipped')
         }
@@ -262,12 +271,25 @@ Describe 'test-count workflow wiring' {
             # And derived: the caller must grant exactly the workflow-level permissions ci-classic.yml itself asks for
             # (every one whose value is not none), so a change to either file is flagged.
             $classic = Use-Workflow 'ci-classic.yml'
-            $callee = Get-Key $classic 'permissions'
-            $callee | Should -BeOfType [System.Collections.IDictionary] -Because 'ci-classic.yml declares workflow-level permissions'
-            $asked = @($callee.Keys | Where-Object { $callee[$_] -cne 'none' } | ForEach-Object { [string]$_ } | Sort-Object)
-            $asked.Count | Should -BeGreaterThan 0
-            (Get-Keys $p) | Should -Be $asked -Because 'test-count.yml classic must grant what ci-classic.yml asks for'
-            foreach ($k in $asked) { Get-Key $p $k | Should -BeExactly $callee[$k] -Because "permission $k" }
+            # The union of the workflow-level block and every job-level block: the caller must grant at least the most any
+            # called job asks for (a `none` entry asks for nothing; write outranks read).
+            $rank = @{ read = 1; write = 2 }
+            $blocks = @((Get-Key $classic 'permissions'))
+            foreach ($jn in (Get-Key $classic 'jobs').Keys) { $blocks += , (Get-Key $classic 'jobs', $jn, 'permissions') }
+            (Get-Key $classic 'permissions') | Should -BeOfType [System.Collections.IDictionary] -Because 'ci-classic.yml declares workflow-level permissions'
+            $want = @{}
+            foreach ($b in $blocks) {
+                if ($b -isnot [System.Collections.IDictionary]) { continue }
+                foreach ($k in $b.Keys) {
+                    $v = [string]$b[$k]
+                    if ($v -ceq 'none') { continue }
+                    if (-not $rank.ContainsKey($v)) { throw "ci-classic.yml permission ${k}: unexpected value '$v'" }
+                    if (-not $want.ContainsKey($k) -or $rank[$v] -gt $rank[$want[$k]]) { $want[$k] = $v }
+                }
+            }
+            $want.Count | Should -BeGreaterThan 0
+            (Get-Keys $p) | Should -Be @($want.Keys | Sort-Object) -Because 'test-count.yml classic must grant what ci-classic.yml (workflow and job level) asks for'
+            foreach ($k in $want.Keys) { Get-Key $p $k | Should -BeExactly $want[$k] -Because "permission $k" }
         }
     }
 
@@ -299,20 +321,55 @@ Describe 'test-count workflow wiring' {
     Context 'tee keeps exit codes' {
         It '<Wf> pipes at least one test log into a tee' -ForEach $teeFiles {
             $null = Use-Workflow $Wf
-            $n = @(Get-AllSteps | Where-Object { $_.File -ceq $Wf -and ((Get-Key $_.Step 'run') -is [string]) -and (((Get-Key $_.Step 'run') -cmatch '\|\s*Tee-Object\b') -or ((Get-Key $_.Step 'run') -cmatch '\|\s*tee\b')) }).Count
+            $n = @(Get-AllSteps | Where-Object { $_.File -ceq $Wf -and ((Get-Key $_.Step 'run') -is [string]) -and (((Get-Key $_.Step 'run') -cmatch $teeObject) -or ((Get-Key $_.Step 'run') -cmatch $teeBash)) }).Count
             $n | Should -BeGreaterThan 0 -Because "$Wf is expected to tee a test log for the emitter to read"
         }
         It '<Wf> steps piping into Tee-Object run under pwsh' -ForEach $teeFiles {
             $null = Use-Workflow $Wf
-            foreach ($e in @(Get-RunSteps $Wf '\|\s*Tee-Object\b')) {
+            foreach ($e in @(Get-RunSteps $Wf $teeObject)) {
                 Get-EffectiveShell $e | Should -BeExactly 'pwsh' -Because "step '$(Get-Key $e.Step 'name')' (job $($e.Job)) pipes into Tee-Object: only pwsh leaves the test command's exit code as the step's"
             }
         }
         It '<Wf> steps piping into tee run under an explicit shell: bash' -ForEach $teeFiles {
             $null = Use-Workflow $Wf
-            foreach ($e in @(Get-RunSteps $Wf '\|\s*tee\b')) {
+            foreach ($e in @(Get-RunSteps $Wf $teeBash)) {
                 Get-Key $e.Step 'shell' | Should -BeExactly 'bash' -Because "step '$(Get-Key $e.Step 'name')' (job $($e.Job)) pipes into tee: only an explicit shell: bash runs with -eo pipefail"
             }
+        }
+    }
+
+    Context 'logs the emitters read' {
+        # An emitter that reads a file only counts what something wrote there: the basename must show up in the emitter call
+        # AND in at least one more place of the same job's run texts (a tee, --junitxml=, Set-Content). Counting occurrences,
+        # not steps, because the Node step writes and reads in one run. Derived from the emitter lines themselves.
+        It '<Id> reads <Base>, which its job also writes' -ForEach @(
+            foreach ($id in $script:TestCountSuiteIds) {
+                $wf = $meta[$id].Workflow
+                $text = Get-Content -Raw -LiteralPath (Join-Path $root ".github/workflows/$wf")
+                $m = [regex]::Match($text, '-Suite\s+' + [regex]::Escape($id) + '\b[^\r\n]*-Path\s[^\r\n]*?''([A-Za-z0-9_.-]+\.(?:log|xml|tap))''')
+                if ($m.Success) { @{ Id = $id; Wf = $wf; Job = $meta[$id].Job; Base = $m.Groups[1].Value } }
+            }
+        ) {
+            $hits = Get-Emitter $Id
+            $hits.Count | Should -Be 1
+            $jobSteps = @(Get-AllSteps | Where-Object { $_.File -ceq $hits[0].File -and $_.Job -ceq $hits[0].Job })
+            $n = 0
+            foreach ($st in $jobSteps) {
+                $run = Get-Key $st.Step 'run'
+                if ($run -is [string]) { $n += [regex]::Matches($run, [regex]::Escape($Base)).Count }
+            }
+            $n | Should -BeGreaterOrEqual 2 -Because "$Base must be named by the emitter and by a step of job $($hits[0].Job) that writes it (found $n mention(s))"
+        }
+        It 'every emitter that reads a file is covered by a row above' {
+            $files = @($script:TestCountSuiteIds | Where-Object { $_ -cne 'pester_install' })
+            $files.Count | Should -Be 8
+            $covered = 0
+            foreach ($id in $files) {
+                $wf = $script:Meta[$id].Workflow
+                $text = Get-Content -Raw -LiteralPath (Join-Path $script:Root ".github/workflows/$wf")
+                if ([regex]::IsMatch($text, '-Suite\s+' + [regex]::Escape($id) + '\b[^\r\n]*-Path\s[^\r\n]*?''[A-Za-z0-9_.-]+\.(?:log|xml|tap)''')) { $covered++ }
+            }
+            $covered | Should -Be 8 -Because 'every file-reading emitter names a .log, .xml or .tap basename in single quotes'
         }
     }
 
@@ -411,10 +468,12 @@ Describe 'test-count workflow wiring' {
             # The publisher's ancestry check needs full history: a shallow main/ makes every publish refuse as "not a descendant".
             $mainCo = @(@(Get-Key $doc 'jobs', 'publish', 'steps') | Where-Object { ((Get-Key $_ 'uses') -like 'actions/checkout@*') -and ((Get-Key $_ 'with', 'path') -ceq 'main') })
             $mainCo.Count | Should -Be 1 -Because 'publish checks out the repo to main/ exactly once'
-            # An integer, not just -eq 0: in PowerShell `$false -eq 0` is true, so `fetch-depth: false` would pass a bare -Be 0.
+            # The integer 0 or the string '0' (both are valid in Actions YAML), checked by type: in PowerShell `$false -eq 0` is
+            # true, so `fetch-depth: false` would pass a bare -Be 0. An absent key is $null and fails cleanly.
             $depth = Get-Key $mainCo[0] 'with', 'fetch-depth'
-            ($depth -is [int] -or $depth -is [long]) | Should -BeTrue -Because "fetch-depth must be the integer 0, not a boolean or a string (got $($depth.GetType().Name))"
-            $depth | Should -Be 0 -Because 'a shallow main/ cannot answer the descendant check'
+            $got = if ($null -eq $depth) { '<absent>' } else { "$($depth.GetType().Name) $depth" }
+            $isZero = (($depth -is [int] -or $depth -is [long]) -and $depth -eq 0) -or (($depth -is [string]) -and $depth -ceq '0')
+            $isZero | Should -BeTrue -Because "fetch-depth must be 0 (integer or the string '0'), not a boolean or absent: a shallow main/ cannot answer the descendant check (got $got)"
         }
         It 'publish probes for the badges branch with the full ref, so a branch named like a/badges cannot match' {
             $doc = Use-Workflow 'test-count.yml'
