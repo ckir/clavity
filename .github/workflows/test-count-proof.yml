@@ -71,3 +71,59 @@ jobs:
         run: |
           env | grep '^TC_' | sort
           echo "proof: ok"
+  # TEMP: the exact shell shapes the emitter steps use, with a failing command, on the runner images the lanes use.
+  # Each continue-on-error step must report outcome failure (the pipe to Tee-Object/tee must not hide the exit code);
+  # the control steps must report success.
+  exit-proof-windows:
+    runs-on: windows-latest
+    steps:
+      - id: ps_native_fail
+        shell: pwsh
+        continue-on-error: true
+        run: pwsh -NoProfile -Command "exit 3" | Tee-Object "$env:RUNNER_TEMP/a.log"
+      - id: ps_cmd_fail
+        shell: pwsh
+        continue-on-error: true
+        run: cmd /c "echo hello & exit 5" | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'b.log')
+      - id: ps_control
+        shell: pwsh
+        continue-on-error: true
+        run: pwsh -NoProfile -Command "Write-Output ok" | Tee-Object "$env:RUNNER_TEMP/c.log"
+      - id: bash_fail
+        shell: bash
+        continue-on-error: true
+        run: bash -c 'echo out; exit 4' | tee "$RUNNER_TEMP/d.log"
+      - shell: pwsh
+        env:
+          A: ${{ steps.ps_native_fail.outcome }}
+          B: ${{ steps.ps_cmd_fail.outcome }}
+          C: ${{ steps.ps_control.outcome }}
+          D: ${{ steps.bash_fail.outcome }}
+        run: |
+          "native-fail=$env:A cmd-fail=$env:B control=$env:C bash-fail=$env:D"
+          Get-Content (Join-Path $env:RUNNER_TEMP 'b.log')
+          if ($env:A -ne 'failure' -or $env:B -ne 'failure' -or $env:D -ne 'failure' -or $env:C -ne 'success') { throw 'exit code was hidden by the pipe' }
+          if ((Get-Content (Join-Path $env:RUNNER_TEMP 'b.log') -Raw) -notmatch 'hello') { throw 'tee did not capture stdout' }
+  exit-proof-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - id: bash_fail
+        shell: bash
+        continue-on-error: true
+        run: bash -c 'echo out; exit 4' | tee "$RUNNER_TEMP/a.log"
+      - id: ps_native_fail
+        shell: pwsh
+        continue-on-error: true
+        run: pwsh -NoProfile -Command "exit 3" | Tee-Object "$env:RUNNER_TEMP/b.log"
+      - id: ps_control
+        shell: pwsh
+        continue-on-error: true
+        run: pwsh -NoProfile -Command "Write-Output ok" | Tee-Object (Join-Path $env:RUNNER_TEMP 'c.log')
+      - shell: bash
+        env:
+          A: ${{ steps.bash_fail.outcome }}
+          B: ${{ steps.ps_native_fail.outcome }}
+          C: ${{ steps.ps_control.outcome }}
+        run: |
+          echo "bash-fail=$A pwsh-native-fail=$B control=$C"
+          test "$A" = failure && test "$B" = failure && test "$C" = success
