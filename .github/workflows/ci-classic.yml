@@ -18,6 +18,26 @@ on:
       - 'clavity-classic/**'
       - '.github/workflows/ci-classic.yml'
       - '.github/workflows/build-classic.yml'
+  workflow_call:
+    inputs:
+      canonical_only:
+        description: 'Run only the canonical (ubuntu) lane and skip the linux release binary'
+        type: boolean
+        required: false
+        default: false
+    outputs:
+      rust_passed:
+        description: 'Rust tests passed (cargo test --all --features test-fakes)'
+        value: ${{ jobs.check.outputs.rust_passed }}
+      rust_skipped:
+        description: 'Rust tests skipped (cargo test --all --features test-fakes)'
+        value: ${{ jobs.check.outputs.rust_skipped }}
+      python_bridge_passed:
+        description: 'Python bridge tests passed'
+        value: ${{ jobs.check.outputs.python_bridge_passed }}
+      python_bridge_skipped:
+        description: 'Python bridge tests skipped'
+        value: ${{ jobs.check.outputs.python_bridge_skipped }}
 
 permissions:
   contents: read
@@ -37,13 +57,18 @@ jobs:
   check:
     name: build & test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    outputs:
+      rust_passed: ${{ steps.count.outputs.rust_passed }}
+      rust_skipped: ${{ steps.count.outputs.rust_skipped }}
+      python_bridge_passed: ${{ steps.count.outputs.python_bridge_passed }}
+      python_bridge_skipped: ${{ steps.count.outputs.python_bridge_skipped }}
     defaults:
       run:
         working-directory: clavity-classic
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: ${{ inputs.canonical_only && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest","windows-latest"]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.99.1
@@ -57,7 +82,8 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets --features test-fakes -- -D warnings
       - name: Test
-        run: cargo test --all --features test-fakes
+        shell: pwsh
+        run: cargo test --all --features test-fakes | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'cargo-test.log')
 
       # THE PYTHON BRIDGE'S 24 TESTS, WHICH NO WORKFLOW RAN UNTIL 2026-09-05. Measured that day:
       # `grep -rl "pytest\|uv run" .github/workflows/` returned NOTHING, while `just classic::pytest`
@@ -104,6 +130,14 @@ jobs:
           agy-mcp-bridge/test_agy_tmux.py
           agy-mcp-bridge/tests/test_mcp_wiring.py
           agy-mcp-bridge/tests/test_secret_scrub.py
+          --junitxml=${{ runner.temp }}/pytest.xml
+
+      - id: count
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          & scripts/emit-test-count.ps1 -Suite rust -Path (Join-Path $env:RUNNER_TEMP 'cargo-test.log')
+          & scripts/emit-test-count.ps1 -Suite python_bridge -Path (Join-Path $env:RUNNER_TEMP 'pytest.xml')
 
       - name: Build (release)
         run: cargo build --release   # no test-fakes -> the fake psmux never ships
@@ -112,6 +146,7 @@ jobs:
     name: linux release binary
     runs-on: ubuntu-latest
     needs: check
+    if: ${{ !inputs.canonical_only }}
     defaults:
       run:
         working-directory: clavity-classic
