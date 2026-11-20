@@ -17,11 +17,30 @@ on:
       - 'clavity-dotnet/**'
       - '.github/workflows/ci-dotnet.yml'
       - '.github/workflows/build-dotnet.yml'
+  workflow_call:
+    outputs:
+      dotnet_ls_passed:
+        description: 'Tests passed in Clavity.Ls.Tests'
+        value: ${{ jobs.test.outputs.dotnet_ls_passed }}
+      dotnet_ls_skipped:
+        description: 'Tests skipped in Clavity.Ls.Tests'
+        value: ${{ jobs.test.outputs.dotnet_ls_skipped }}
+      dotnet_integration_passed:
+        description: 'Tests passed in Clavity.Integration.Tests'
+        value: ${{ jobs.test.outputs.dotnet_integration_passed }}
+      dotnet_integration_skipped:
+        description: 'Tests skipped in Clavity.Integration.Tests'
+        value: ${{ jobs.test.outputs.dotnet_integration_skipped }}
 permissions:
   contents: read
 jobs:
   test:
     runs-on: windows-latest
+    outputs:
+      dotnet_ls_passed: ${{ steps.count.outputs.dotnet_ls_passed }}
+      dotnet_ls_skipped: ${{ steps.count.outputs.dotnet_ls_skipped }}
+      dotnet_integration_passed: ${{ steps.count.outputs.dotnet_integration_passed }}
+      dotnet_integration_skipped: ${{ steps.count.outputs.dotnet_integration_skipped }}
     defaults:
       run:
         working-directory: clavity-dotnet
@@ -55,4 +74,11 @@ jobs:
       # (measured: this file held the ONLY `dotnet test` line across all 21 workflows), which left every 13b surfacing guard - TRUNCATED,
       # ECHO MISSING, ECHO WEAK, NO ECHO, UNCHECKED, the stale-verdict control and the schema pin - with no oracle at all. It runs against
       # fake in-process gRPC servers on loopback, no external dependency, ~20s.
-      - run: just test
+      - shell: pwsh
+        run: just test | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'dotnet-test.log')
+      - id: count
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          & scripts/emit-test-count.ps1 -Suite dotnet_ls -Path (Join-Path $env:RUNNER_TEMP 'dotnet-test.log')
+          & scripts/emit-test-count.ps1 -Suite dotnet_integration -Path (Join-Path $env:RUNNER_TEMP 'dotnet-test.log')
