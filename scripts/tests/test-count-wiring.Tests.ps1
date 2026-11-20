@@ -43,7 +43,6 @@ BeforeDiscovery {
         'dependabot-automerge.yml'
         'merge-gate.yml'
         'pages.yml'                    # site checks counted through test-count.yml
-        'test-count-proof.yml'         # TEMP: proof workflow, remove with the revert before merge
         'republish-member.yml'
         'umbrella-release.yml'
         'validate-members.yml'
