@@ -81,6 +81,14 @@ because the check is worth re-running by hand when that area changes.
 | `check-rulings-recorded.ps1` | Assert each named `ROADMAP.md` entry carries an `OWNER RULING (` block. Written for the steps-0-1 plan after its first verifier - an inline `awk` one-liner - FAILED SILENTLY on the last of four entries: it bounded each section by scanning to the next `#### ` heading, but the entry after `§17b` is `### §18`, so the bound never matched, the loop ran to EOF, and it printed nothing. **No output read as "not ruled" to a human and as success to a pipeline.** Matching is case-SENSITIVE (`-cnotmatch`) on purpose: PowerShell's `-match` is case-insensitive, which had certified `§14f` as ruled because its prose says "needs an owner ruling, not a fix" | `pwsh -File scripts/check-rulings-recorded.ps1` |
 | `check-roadmap-claims.ps1` | Verify the ROADMAP's own mechanically checkable claims: every `` `path` (N lines) `` claim matches the tracked file it names (an ambiguous claim resolving to two tracked files with different counts is an error, not a coin flip), and every backticked 7-40 hex sha on a line carrying a closure token actually exists, and every backticked `path/with/slash:N` pointer is inside its file (an anchored `file:N` ("text") pointer must still hold its text) | run directly, no `just` recipe; read-only |
 
+## Test-count badge
+
+The README "tests" badge: each CI lane extracts its runner's passed/skipped counts and a publish job sums them.
+
+| Script | Purpose | Run via |
+|---|---|---|
+| `emit-test-count.ps1` | Extract one suite's passed/skipped counts from its runner output (`-Suite <id> -Path <file>`, or `-Passed/-Skipped` for `pester_install`), validate them, and append `<id>_passed` / `<id>_skipped` to `$GITHUB_OUTPUT`; throws on any unrecognised or failing summary | the emitter steps of the called CI workflows; no recipe |
+
 ## Subdirectories
 
 - `lib/` — shared PowerShell helpers, dot-sourced by the scripts above:
@@ -88,6 +96,7 @@ because the check is worth re-running by hand when that area changes.
   - `gate-lib.ps1` — the shared `Fail` helper (`<gate>: FAIL: <msg>`, exit 1) for the check-* gates whose copies were identical; set `$script:GateName` before dot-sourcing.
   - `injected-context-lib.ps1` — the reference-index and ASCII / hook-message functions of `check-injected-context.ps1`, dot-sourced by it (moved verbatim; not usable standalone).
   - `path-lib.ps1` — the one sanctioned way to turn an absolute path into a repo-relative one.
+  - `test-count-lib.ps1` — the suite metadata and one extractor per test runner's summary format (.NET, cargo, pytest junit, Pester runner, bash tally, Node TAP, unittest) behind `emit-test-count.ps1`; every extractor throws rather than return a wrong count.
     `New-RootRelativePathResolver -Root $r` normalises the root ONCE (8.3 short form, casing, a PSDrive, a
     provider prefix) and returns a resolver whose `.Resolve($path)` is pure string math — and **throws if
     the path is not under the root**, rather than silently returning a mangled string. **Build the resolver
