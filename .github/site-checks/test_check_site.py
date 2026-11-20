@@ -4,7 +4,7 @@
 # You may obtain a copy of the License at:
 # https://polyformproject.org/licenses/noncommercial/1.0.0/
 
-"""Unit tests for check_site.py (structural checks 1-5, README parity checks 6-7)."""
+"""Unit tests for check_site.py (structural checks 1-5, README parity check 6)."""
 
 import re
 import subprocess
@@ -25,7 +25,6 @@ from check_site import (
     fold,
     parse_page,
     readme_install_commands,
-    readme_quote_units,
 )
 
 SCRIPT = Path(__file__).with_name("check_site.py")
@@ -79,30 +78,12 @@ README_COMMANDS = [
     CLEAN_COMMANDS[3] + "          # clavity-dotnet",
     *CLEAN_COMMANDS[4:],
 ]
-WAIVER_1 = (
-    "All the above can be waived by prompts. "
-    'Say for example "Waive agy for this step" and claude will execute the step solo.'
-)
-WAIVER_2 = (
-    "In case you have problem to start agy (e.g. quota exhausted, Google's servers "
-    "are down) you can switch to subagents mode by prompt."
-)
-
 def make_readme(
     commands=README_COMMANDS,
-    waivers=(WAIVER_1, WAIVER_2),
     eol="\n",
 ) -> str:
-    """A README shaped like the real one (fenced install block, waivers)."""
-    lines = ["# Title", "", "## HUMAN ONLY", ""]
-    lines += [
-        "### What it does",
-        "Prose.",
-        "",
-        *waivers,
-        "",
-        "### How to start",
-    ]
+    """A README shaped like the real one (prose, then a fenced install block)."""
+    lines = ["# Title", "", "### What it does", "Prose.", "", "### How to start"]
     if commands is not None:
         lines += ["", "```", *commands, "```"]
     return eol.join(lines) + eol
@@ -117,25 +98,8 @@ def install_html(commands=CLEAN_COMMANDS) -> str:
     return f'<section id="install"><ul>{items}</ul></section>'
 
 
-def index_body(
-    install: str | None = None,
-    w1: str = WAIVER_1,
-    w2: str = WAIVER_2,
-) -> str:
-    return (
-        (install if install is not None else install_html())
-        + f"<p data-readme-quote='waiver-1'>{w1}</p>"
-        + f"<p data-readme-quote='waiver-2'>{w2}</p>"
-    )
-
-
-def quote1_body(quote_html: str) -> str:
-    """index_body with a hand-built waiver-1 element in place of the default <p>."""
-    return (
-        install_html()
-        + quote_html
-        + f"<p data-readme-quote='waiver-2'>{WAIVER_2}</p>"
-    )
+def index_body(install: str | None = None) -> str:
+    return install if install is not None else install_html()
 
 
 def run_checker(site: Path, readme: Path):
@@ -503,12 +467,11 @@ class ParityChecks(unittest.TestCase):
     def test_install_parity_clean(self):
         self.assertEqual(self.run_case(), [])
 
-    def test_problems_from_checks_1_6_and_7_are_reported_together(self):
+    def test_problems_from_checks_1_and_6_are_reported_together(self):
         body = '<a href="/root-relative">x</a>' + index_body(
-            install_html(CLEAN_COMMANDS + ["claude plugin install extra@clavity"]),
-            w1="Changed waiver sentence.",
+            install_html(CLEAN_COMMANDS + ["claude plugin install extra@clavity"])
         )
-        self.assertEqual(self.numbers(body), [1, 6, 7])
+        self.assertEqual(self.numbers(body), [1, 6])
 
     def test_comment_stripped_from_readme_line_before_comparing(self):
         self.assertIn("# clavity-dotnet", make_readme())
@@ -721,12 +684,12 @@ class ParityChecks(unittest.TestCase):
                 self.assertEqual([n for n, _ in problems], [6])
                 self.assertIn(f"{where} mentions `claude plugin`", problems[0][1])
 
-    def test_attribute_inside_a_readme_quote_is_flagged_and_quote_still_equal(self):
-        quote = quote1_body(
-            f"<p data-readme-quote='waiver-1'>{WAIVER_1[:10]}"
-            f'<b title="claude plugin install x">{WAIVER_1[10:]}</b></p>'
+    def test_attribute_inside_a_paragraph_is_flagged(self):
+        carrier = (
+            "<p>All the above"
+            '<b title="claude plugin install x"> can be waived by prompts.</b></p>'
         )
-        self.assertEqual(self.numbers(quote), [6])
+        self.assertEqual(self.numbers(index_body() + carrier), [6])
 
     def test_attribute_values_never_join_the_surrounding_text(self):
         # Capstone round 1 (PP-1): an attribute value is a string of its own.
@@ -808,19 +771,6 @@ class ParityChecks(unittest.TestCase):
         )
         self.assertEqual([n for n, _ in problems], [6])
 
-    def test_readme_backticks_match_plain_page_text(self):
-        readme = make_readme(
-            waivers=(
-                WAIVER_1.replace('"Waive agy for this step"', "`Waive agy for this step`"),
-                WAIVER_2,
-            )
-        )
-        self.assertNotEqual(readme, make_readme())
-        code = WAIVER_1.replace(
-            '"Waive agy for this step"', "<code>Waive agy for this step</code>"
-        )
-        self.assertEqual(self.run_case(index_body(w1=code), readme), [])
-
     def test_install_block_is_the_one_with_marketplace_add(self):
         readme = make_readme().replace(
             "### How to start\n",
@@ -829,80 +779,11 @@ class ParityChecks(unittest.TestCase):
         self.assertEqual(readme_install_commands(readme), CLEAN_COMMANDS)
         self.assertEqual(self.numbers(readme=readme), [])
 
-    # -- check 7 -----------------------------------------------------------
-
-    def test_exactly_two_quote_elements_required(self):
-        two = index_body(w2="")
-        two = two.replace("<p data-readme-quote='waiver-2'></p>", "")
-        self.assertEqual(self.numbers(two), [7])
-        four = index_body() + "<p data-readme-quote='waiver-2'>" + WAIVER_2 + "</p>"
-        self.assertEqual(self.numbers(four), [7])
-        dup = index_body().replace(
-            "data-readme-quote='waiver-2'", "data-readme-quote='waiver-1'"
-        )
-        dup = dup.replace(WAIVER_2, WAIVER_1)
-        self.assertEqual(self.numbers(dup), [7])
-
-    def test_stray_warning_quote_key_flagged(self):
-        stray = index_body() + "<div data-readme-quote='warning'><p>x</p></div>"
-        self.assertEqual(self.numbers(stray), [7])
-
-    def test_quote_matches_after_folding(self):
-        w1 = "All the above can be waived by prompts. Say “Waive agy” it’s **fine** now."
-        readme = make_readme(waivers=(w1, WAIVER_2), eol="\r\n")
-        page_w1 = (
-            "All the above can be waived by prompts. Say &quot;Waive agy&quot; it's <b>fine</b> now."
-        )
-        self.assertEqual(self.run_case(index_body(w1=page_w1), readme), [])
-
-    def test_one_word_edit_flagged(self):
-        body = index_body(w1=WAIVER_1.replace("solo", "alone"))
-        self.assertEqual(self.numbers(body), [7])
-
-    def test_block_boundaries_separate_words(self):
-        readme = make_readme(
-            waivers=(
-                "All the above can be waived by prompts. Say it **[simply](https://github.com/ckir/clavity)** now.",
-                WAIVER_2,
-            )
-        )
-        tight = (
-            "<div data-readme-quote='waiver-1'><p>All the above can be waived by prompts.</p>"
-            f"<p>Say it <a href='https://github.com/ckir/clavity'>sim</a><b>ply</b> now.</p></div>"
-        )
-        self.assertEqual(self.run_case(quote1_body(tight), readme), [])
-
-    def test_text_after_child_element_is_kept(self):
-        readme = make_readme(
-            waivers=("All the above can be waived by prompts. See [repo](https://github.com/ckir/clavity) for the rest of it.", WAIVER_2)
-        )
-        full = (
-            "<p data-readme-quote='waiver-1'>All the above can be waived by prompts. See "
-            f"<a href='https://github.com/ckir/clavity'>repo</a> for the rest of it.</p>"
-        )
-        self.assertEqual(self.run_case(quote1_body(full), readme), [])
-        cut = full.replace(" for the rest of it.", "")
-        self.assertEqual(self.numbers(quote1_body(cut), readme), [7])
-
-    def test_empty_or_truncated_quote_flagged(self):
-        for text in ("", "All", WAIVER_1[: len(WAIVER_1) // 2]):
-            with self.subTest(text=text):
-                self.assertEqual(self.numbers(index_body(w1=text)), [7])
-
-    def test_waiver_lines_in_one_paragraph_extracted_separately(self):
-        units = readme_quote_units(make_readme())
-        self.assertEqual(units["waiver-1"], fold(WAIVER_1))
-        self.assertEqual(units["waiver-2"], fold(WAIVER_2))
-        self.assertNotIn("In case you have problem", units["waiver-1"])
-        adjacent = f"{WAIVER_1}\n{WAIVER_2}\n"
-        self.assertIn(adjacent, make_readme())
-
     # -- README parsers ----------------------------------------------------
 
     def test_readme_parsers(self):
         text = make_readme()
         self.assertEqual(readme_install_commands(text), CLEAN_COMMANDS)
-        self.assertEqual(sorted(readme_quote_units(text)), ["waiver-1", "waiver-2"])
         self.assertEqual(fold("a  &quot;b&quot;\n‘c’"), "a \"b\" 'c'")
 
     def test_missing_readme_block_exits_2_via_cli(self):
@@ -957,7 +838,7 @@ class SweepPins(unittest.TestCase):
 
     # -- G1 void elements stay off the stack -------------------------------
 
-    def test_unclosed_void_elements_do_not_disturb_quote_text(self):
+    def test_unclosed_void_elements_do_not_disturb_the_page(self):
         voids = '<img src="./assets/a.webp" alt=""><br><meta name="m" content="c">'
         body = voids + index_body()
         self.assertEqual(self.parity(body, files={"assets/a.webp": b"x"}), [])
@@ -986,9 +867,6 @@ class SweepPins(unittest.TestCase):
     def test_inline_end_tag_adds_no_space(self):
         extra = "cla<b>ude</b> plugin install x"
         self.assertTrue(self.text_flagged(self.parity(index_body() + extra)))
-        readme = make_readme(waivers=("All the above can be waived by prompts. Intro abc now.", WAIVER_2))
-        quote = "<p data-readme-quote='waiver-1'>All the above can be waived by prompts. Intro a<b>b</b>c now.</p>"
-        self.assertEqual(self.parity(quote1_body(quote), readme), [])
 
     # -- G3 stray end tags -------------------------------------------------
 
@@ -996,13 +874,22 @@ class SweepPins(unittest.TestCase):
         extra = "<div><p>claude plugin install x</p></span>more</div>"
         self.assertTrue(self.text_flagged(self.parity(index_body() + extra)))
 
+    def split_command(self, inserted):
+        """install_html whose first displayed command has `inserted` mid-text."""
+        command = CLEAN_COMMANDS[0]
+        shown = f"<code data-cmd>{command}</code>"
+        self.assertEqual(install_html().count(shown), 1)
+        return install_html().replace(
+            shown, f"<code data-cmd>{command[:10]}{inserted}{command[10:]}</code>"
+        )
+
     def test_stray_end_tag_does_not_close_open_element(self):
-        w1 = f"{WAIVER_1[:10]}</span>{WAIVER_1[10:]}"
-        self.assertEqual(self.parity(index_body(w1=w1)), [])
+        html = self.split_command("</span>")
+        self.assertEqual(self.parity(index_body(html)), [])
 
     def test_end_tag_of_void_element_is_ignored(self):
-        w1 = f"{WAIVER_1[:10]}</br></img>{WAIVER_1[10:]}"
-        self.assertEqual(self.parity(index_body(w1=w1)), [])
+        html = self.split_command("</br></img>")
+        self.assertEqual(self.parity(index_body(html)), [])
 
     # -- G5 trailing text --------------------------------------------------
 
@@ -1304,12 +1191,6 @@ class SweepPins(unittest.TestCase):
             self.parity(index_body(), readme)
         self.assertIn("only ``` backtick fences are understood", str(ctx.exception))
 
-    def test_readme_underscore_emphasis_is_not_understood(self):
-        waiver = WAIVER_1.replace("Say for example", "Say __for example__")
-        self.assertNotEqual(waiver, WAIVER_1)
-        problems = self.parity(index_body(), make_readme(waivers=(waiver, WAIVER_2)))
-        self.assertEqual(self.numbers(problems), [7])
-
     def test_readme_install_comment_may_change_freely(self):
         commands = [c + "   # any new words" for c in CLEAN_COMMANDS]
         self.assertEqual(self.parity(index_body(), make_readme(commands=commands)), [])
@@ -1325,25 +1206,6 @@ class SweepPins(unittest.TestCase):
         self.assertEqual(self.structure(page("", head)), [])
 
     # -- case sensitivity of the parity gates ------------------------------
-
-    def test_waiver_quote_differing_in_internal_case_is_flagged(self):
-        w1 = WAIVER_1.replace("Say for example", "say for example")
-        self.assertNotEqual(w1, WAIVER_1)
-        problems = self.parity(index_body(w1=w1))
-        self.assertEqual(self.numbers(problems), [7])
-        self.assertIn("quote 'waiver-1'", problems[0][1])
-
-    def test_waiver_quote_differing_only_in_case_is_flagged(self):
-        problems = self.parity(index_body(w1=WAIVER_1.replace("All the", "all the")))
-        self.assertEqual(self.numbers(problems), [7])
-        self.assertIn("quote 'waiver-1'", problems[0][1])
-
-    def test_readme_unit_differing_only_in_case_is_flagged(self):
-        readme = make_readme(waivers=(WAIVER_1.replace("Say for", "say for"), WAIVER_2))
-        self.assertNotEqual(readme, make_readme())
-        problems = self.parity(index_body(), readme)
-        self.assertEqual(self.numbers(problems), [7])
-        self.assertIn("quote 'waiver-1'", problems[0][1])
 
     def test_install_command_differing_only_in_case_is_flagged(self):
         upper = "CLAUDE plugin install clavity@clavity"
@@ -1377,6 +1239,121 @@ class SweepPins(unittest.TestCase):
 
 
 REAL_SITE = Path(__file__).resolve().parents[2] / "site"
+
+
+class HumanBlockIsNotRead(unittest.TestCase):
+    """Owner ruling 2026-11-20: the README's HUMAN ONLY block is free text for
+    humans and no check may depend on it. If a check ever needs that block to
+    hold a specific line again, these tests must go red."""
+
+    BLOCK_A = (
+        "<!-- HUMAN ONLY SECTION START -->\n"
+        "## Why \u201cclavity\u201d?\n\n"
+        "It\u2019s a pairing of two agents.  First paragraph.\n\n"
+        "### Notes\n"
+        "Second paragraph, with *emphasis*, `code`, and a [link](https://example.com).\n\n"
+        "claude plugin install not-a-fenced-command@nowhere\n\n"
+        "> A \u201cquoted\u201d aside.\n"
+        "<!-- HUMAN ONLY SECTION END -->\n"
+    )
+    BLOCK_B = (
+        "<!-- HUMAN ONLY SECTION START -->\n"
+        "Completely different words.\n"
+        "<!-- HUMAN ONLY SECTION END -->\n"
+    )
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+        self.site = make_site(self.tmp, page(index_body()))
+
+    def readme(self, name: str, block: str) -> Path:
+        install = make_readme().split("### How to start\n", 1)[1]
+        path = self.tmp / name
+        path.write_text(
+            f"# Title\n\n{block}\n### How to start\n{install}", encoding="utf-8"
+        )
+        return path
+
+    def outcome(self, readme: Path):
+        result = run_checker(self.site, readme)
+        return (
+            check_site(self.site, readme),
+            result.returncode,
+            result.stdout,
+            result.stderr,
+        )
+
+    def test_any_block_text_is_clean_in_process_and_via_the_cli(self):
+        readme = self.readme("a.md", self.BLOCK_A)
+        self.assertIn("claude plugin install not-a-fenced-command", readme.read_text())
+        self.assertEqual(self.outcome(readme), ([], 0, "", ""))
+
+    def test_changing_the_block_text_changes_nothing(self):
+        first = self.outcome(self.readme("a.md", self.BLOCK_A))
+        second = self.outcome(self.readme("b.md", self.BLOCK_B))
+        empty = self.outcome(self.readme("c.md", ""))
+        self.assertEqual(first, second)
+        self.assertEqual(first, empty)
+        self.assertEqual(first, ([], 0, "", ""))
+
+    def wrapped(self, inner: str) -> str:
+        return (
+            "<!-- HUMAN ONLY SECTION START - AI AGENTS DO NOT EDIT THIS SECTION -->\n"
+            + inner
+            + "<!-- HUMAN ONLY SECTION END -->\n"
+        )
+
+    def test_fences_inside_the_block_never_matter(self):
+        cases = {
+            "fenced marketplace add": "```\nclaude plugin marketplace add somebody/else\n```\n",
+            "fenced install with language": "```bash\nclaude plugin install x@y\n```\n",
+            "unbalanced backtick fence": "```\nsome text\n",
+            "unbalanced tilde fence": "~~~\nsome text\n",
+        }
+        for name, inner in cases.items():
+            with self.subTest(name=name):
+                readme = self.readme("case.md", self.wrapped(inner))
+                self.assertIn(inner, readme.read_text())
+                self.assertEqual(self.outcome(readme), ([], 0, "", ""))
+
+    def test_crlf_readme_with_a_block_is_clean(self):
+        text = self.readme("lf.md", self.wrapped("```\nclaude plugin marketplace add a/b\n")).read_text()
+        crlf = self.tmp / "crlf.md"
+        crlf.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+        self.assertIn(b"\r\n", crlf.read_bytes())
+        self.assertEqual(self.outcome(crlf), ([], 0, "", ""))
+
+    def test_readme_without_markers_parses_as_before(self):
+        path = self.tmp / "plain.md"
+        path.write_text(make_readme(), encoding="utf-8")
+        self.assertNotIn("HUMAN ONLY", path.read_text())
+        self.assertEqual(self.outcome(path), ([], 0, "", ""))
+
+    def test_a_single_marker_changes_nothing(self):
+        for marker in ("HUMAN ONLY SECTION START", "HUMAN ONLY SECTION END"):
+            with self.subTest(marker=marker):
+                path = self.tmp / "one.md"
+                path.write_text(
+                    f"<!-- {marker} -->\n" + make_readme(), encoding="utf-8"
+                )
+                self.assertEqual(self.outcome(path), ([], 0, "", ""))
+
+    def test_the_only_install_fence_inside_the_block_fails_loudly(self):
+        install = make_readme().split("### How to start\n", 1)[1]
+        path = self.tmp / "inside.md"
+        path.write_text(
+            "# Title\n\n" + self.wrapped(install) + "\n### How to start\n",
+            encoding="utf-8",
+        )
+        self.assertIn("claude plugin marketplace add", path.read_text())
+        with self.assertRaises(CannotAnswer):
+            check_site(self.site, path)
+        result = run_checker(self.site, path)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+        self.assertTrue(result.stderr.startswith("CANNOT_ANSWER: "), result.stderr)
 
 
 class RealPageContract(unittest.TestCase):
