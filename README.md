@@ -13,29 +13,64 @@
 
 <!-- HUMAN ONLY SECTION START - AI AGENTS DO NOT EDIT THIS SECTION -->
 
-## HUMAN ONLY
+HUMAN ONLY
 
-### What it does
-Starts a Claude Code and an Antigravity Code instance at the same folder.
-Once started Claude Code gets the role of driver (implement, verify) and Antigravity (agy) gets the role of peer (review, recommend).
+What it does
 
-### How it works
-Before use you MUST have [superpowers](https://github.com/obra/superpowers) installed.
-You MUST start by /brainstorming (Activates before writing code. Refines rough ideas through questions, explores alternatives, presents design in sections for validation. Saves design document). After the brainstorm you have a comprehensive design document.
-When claude creates the design document it will run the adversarial-panel-review and your design gets reviewed by "expert panels" via agy.
-After the specs review claude will write the implementation plan. Again same adversarial-panel-review treatment here (see the examples below).
+Starts a Claude Code and an Antigravity Code (agy) instance in the same folder (agy starts with --dangerously-skip-permissions by design. The prompts sent by Claude are safe).
+
+Preparation
+
+1. Grab the latest release of clavity-dotnet and put it somewhere in your PATH.
+2. If you want to use a Claude profile to try clavity-dotnet without touching your existing install, use the aiprofiles tool. It works for many agents and out of the box with clavity-dotnet (see below).
+3. Start your Claude (profile or not) and ask it to install the required plugins (see below).
+4. Install superpowers (Or from the Anthropic Directory) to your Claude.
+5. (Optional) Install rtk on both agents.
+6. Exit the Claude session and restart with the clavity-ls command (what you get from clavity-dotnet download).
+7. You are good to go. Enjoy!!
+
+Your first project
+
+Open your terminal in the folder of your project and run clavity-ls. Now you see both Claude and agy started in two tabs in your terminal.
+Feel free to start as many sessions as your box can handle to work on several projects in parallel.
+
+Once started, Claude Code gets the role of driver (implement, verify), and Antigravity (agy) gets the role of peer (review, recommend).
+
+You MUST start by /brainstorming (Activates before writing code. Refines rough ideas through questions, explores alternatives, presents design in sections for validation. Saves design document). After the brainstorm, you have a comprehensive design document; as best practice, set the strongest model and turn on the /advisor on Claude and agy (The latest Gemini 4 Neon at xhigh appears to be more productive).
+
+At this point, Claude will improve its own design by running the agy-first skill. After you approve the design, Claude will improve the specs by running the adversarial-panel-review skill, and your specs will be reviewed by “expert panels” via agy. You can change this by prompts (see below).
+
+Tip: Before starting the adversarial-panel-review, you can set a lower model on Claude main to save tokens. A Sonnet is enough as the load goes to agy. Remember to /compact before you change the model.
+
+Caveat: The adversarial-panel-review skill can produce many rounds of findings and fixing so there is a cap at six rounds yours to waive it if you want the process to continue.
+
+After the specs review, Claude will write the implementation plan. Again, same adversarial-panel-review treatment here (see the examples below).
+
 You choose the implementation mode (Subagent-Driven or Inline).
-After the implementation claude will run agy-capstone. Sit back and relax watching your code improving from naive to professional.
-After the agy-capstone the final step is the agy-test-audit. This will harden your test suites before claude declares the plan as completed.
+After the implementation claude will run agy-capstone skill. Sit back and relax, watching your code improve from naive to professional.
 
-All the above can be waived by prompts. Say for example "Waive agy for this step" and claude will execute the step solo.
-In case you have problem to start agy (e.g. quota exhausted, Google's servers are down) you can switch to subagents mode by prompt. Say for example "Waive agy for this and use subagents".
+The last step before delivery is the agy-capstone the agy-test-audit skill. This will harden your test suites before Claude declares the plan as completed.
 
-**Bonus** Automatic debugging for your repo. Claude will capture pre-existing defects in your code (both main and subagents). At the end of a plan just say "start the triage" and any defects found will be organized into a ranked backlog.
+All the above can be waived by prompts. Say for example, “Waive agy for this step,” and Claude will execute the step solo.
+In case you have a problem starting agy (e.g., quota exhausted, Google’s servers are down), you can switch to subagents mode by prompt. Say for example, “Waive agy for this and use subagents”.
 
-Tested using Opus 5 and Gemini 3.1 Pro (Other models should work but that's not tested).
-What if you don't like Gemini 3.1 Pro? Install the agy-autotrain and claude will learn to drive your favorite model by usage.
-Want claude and agy share memories? Install commonmemory (needs [`@agentmemory/agentmemory`](https://www.npmjs.com/package/@agentmemory/agentmemory))
+Bonus: Automatic debugging for your repo. Claude agents tend to ignore any pre-existing defects in your codebase, not anymore with clavity. Claude will capture any pre-existing defects in your code (both main and subagents). At the end of a plan, just say “run the triage,” and any defects found during the process will be organized into a ranked backlog (promoted to TODO.md / ROADMAP.md so you can start a new brainstorm to fix, like “/brainstorming sequencing fork open items”. This will start a new plan to fix any remaining defects.
+
+Tip: How to use agy for best performance? (As Agy answered during a session in this repo)
+
+For this specific workload — high-leverage adversarial design, fork, and implementation-plan reviews paired against Claude Code — yes, a flagship reasoning model from a different family (Gemini 4 Neon here) is about the best fit you can use.
+
+Where it is genuinely pulling its weight (grounded in this session):
+
+* Different blind spots from Claude: Cross-family review caught real defects that slipped past the first drafts — e.g., scripts/tests/test-suite-registration.Tests.ps1:417-418 rejecting -FilePath on ci-scripts.yml:497, git ls-remote ... origin badges executing outside path: main, Windows CRLF breaking $-anchored regexes, scripts/GitHub_Actions_Storage_Reset.ps1 deleting whole runs rather than artifacts, and the pivot from Option 2 to the refined workflow_call snapshot.
+* Strict protocol and epistemic discipline: Holding REVIEW-ONLY boundaries, quoting exact lines, refusing to fabricate unprovable GitHub Actions semantics (cannot determine), and converging cleanly (no new findings on clean seats rather than padding).
+
+Honest limits where no model is enough on its own:
+
+* Platform runtime behavior: No model can prove live GitHub Actions quirks (like fromJSON matrix outputs or inputs.* in concurrency on direct triggers) statically — your Task 8 PR proof run matters more than model choice there.
+* Same-session anchoring: After ~8 rounds in one thread on the same feature, any model starts carrying assumptions from earlier rounds. Keeping this thread for Plan Round 2 is fine, and starting a fresh/compacted context before AGY-CAPSTONE / AGY-TEST-AUDIT on the final committed code will give you sharper, less anchored eyes than switching models would.
+* Latency/quota trade-off: Lighter models (flash) are fine for routine lookups or mechanical checks, but for adversarial spec/plan/capstone panels, staying on a top-tier reasoning model is worth it.
+
 
 <!-- HUMAN ONLY SECTION END -->
 
