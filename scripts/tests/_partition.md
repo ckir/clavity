@@ -601,7 +601,7 @@ check-licensing-consistent.Tests.ps1                 ?    54 tests   <- FAST, NE
 test-count-lib.Tests.ps1                          17,4s   75 tests   <- FAST, NEW 2026-11-20 (test-count badge, tasks 1-2). Pester's own
                                                                       duration, solo, two runs 18,1s then 17,4s (warm figure named); background
                                                                       load was NOT controlled.
-test-count-wiring.Tests.ps1                       5,7s  114 tests   <- FAST, NEW 2026-11-20 (test-count badge, task 3). Pester's own
+test-count-wiring.Tests.ps1                       5,7s  118 tests   <- FAST, NEW 2026-11-20 (test-count badge, task 3). Pester's own
                                                                       duration, solo, two runs 5,7s then 6,7s; background load was NOT controlled.
 agy-discipline-reaching.Tests.ps1                15,2s   28 tests   <- FAST. The row said 69,1s and it had
                                                                       been WRONG since 6b87f1f split capture

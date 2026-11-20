@@ -147,9 +147,10 @@ BeforeAll {
         return 'bash'
     }
     # Every `| tee` / `| Tee-Object` in a run of one workflow file, in any letter case (Tee-Object is a cmdlet and `tee` is
-    # its alias under PowerShell, so Tee-object and Tee work there; under bash only lowercase tee exists). Each use is
-    # classified by what runs it: Tee-Object, or any tee under a PowerShell shell, is a 'ps' use that needs effective
-    # shell pwsh exactly; a tee under any other shell is a 'bash' use that needs an explicit shell: bash.
+    # its alias on Windows only: on Linux pwsh a bare tee is /usr/bin/tee, which resets LASTEXITCODE; under bash only lowercase
+    # tee exists). Each use is classified by its TOKEN alone: Tee-Object is a 'ps' use that needs effective shell pwsh exactly;
+    # a bare tee/Tee is a 'bash' use that needs an explicit shell: bash (-eo pipefail) and lowercase, whatever shell the runner
+    # would default to, so a bare tee under pwsh, or a bash step that loses its shell: bash, goes red.
     function Get-TeeUses([string]$File) {
         $uses = foreach ($e in @(Get-AllSteps | Where-Object { $_.File -ceq $File })) {
             $run = Get-Key $e.Step 'run'
@@ -157,7 +158,7 @@ BeforeAll {
             foreach ($m in [regex]::Matches($run, '(?i)\|\s*(Tee-Object|Tee)(?![-\w])')) {
                 $eff = Get-EffectiveShell $e
                 $token = $m.Groups[1].Value
-                $kind = if ($token -ieq 'Tee-Object' -or $eff -match '^(pwsh|powershell)$') { 'ps' } else { 'bash' }
+                $kind = if ($token -ieq 'Tee-Object') { 'ps' } else { 'bash' }
                 [pscustomobject]@{ Job = $e.Job; Name = [string](Get-Key $e.Step 'name'); Token = $token; Kind = $kind; Effective = $eff; Explicit = Get-Key $e.Step 'shell' }
             }
         }
@@ -307,6 +308,40 @@ Describe 'test-count workflow wiring' {
         }
     }
 
+    Context 'called workflow permissions' {
+        # ci-classic.yml has its own exact derivation above. The other two called workflows must not ask for more than the
+        # caller job gets (its own block, else the test-count.yml workflow-level block): a GitHub Actions run that asks for more
+        # than its caller grants fails at startup on main, where no pull request run would show it.
+        It 'test-count.yml <Job> grants at least what <Wf> asks for' -ForEach @(
+            @{ Job = 'dotnet'; Wf = 'ci-dotnet.yml' }
+            @{ Job = 'scripts'; Wf = 'ci-scripts.yml' }
+        ) {
+            $rank = @{ read = 1; write = 2 }
+            $caller = Use-Workflow 'test-count.yml'
+            $grant = Get-Key $caller 'jobs', $Job, 'permissions'
+            if ($null -eq $grant) { $grant = Get-Key $caller 'permissions' }
+            $grant | Should -BeOfType [System.Collections.IDictionary] -Because "test-count.yml job $Job must hold a permissions mapping"
+            $called = Use-Workflow $Wf
+            $blocks = @((Get-Key $called 'permissions'))
+            foreach ($jn in (Get-Key $called 'jobs').Keys) { $blocks += , (Get-Key $called 'jobs', $jn, 'permissions') }
+            $asked = 0
+            foreach ($b in $blocks) {
+                if ($null -eq $b) { continue }
+                $b | Should -BeOfType [System.Collections.IDictionary] -Because "$Wf sets a blanket permissions level, not a mapping"
+                foreach ($k in $b.Keys) {
+                    $v = [string]$b[$k]
+                    if ($v -ceq 'none') { continue }
+                    $rank.ContainsKey($v) | Should -BeTrue -Because "$Wf permission ${k}: unexpected value '$v'"
+                    $asked++
+                    $have = [string](Get-Key $grant $k)
+                    $rank.ContainsKey($have) | Should -BeTrue -Because "$Wf asks for $k ($v) but test-count.yml job $Job grants none"
+                    $rank[$have] | Should -BeGreaterOrEqual $rank[$v] -Because "$Wf asks for $k ($v), test-count.yml job $Job grants $have"
+                }
+            }
+            $asked | Should -BeGreaterThan 0 -Because "$Wf declares workflow-level permissions"
+        }
+    }
+
     Context 'canonical_only' {
         It 'ci-classic.yml linux-binary is skipped when canonical_only' {
             $doc = Use-Workflow 'ci-classic.yml'
@@ -315,6 +350,14 @@ Describe 'test-count workflow wiring' {
         It 'ci-scripts.yml <Job> is skipped when canonical_only' -ForEach @(@{ Job = 'installer-5-1' }, @{ Job = 'dev-scripts-linux' }) {
             $doc = Use-Workflow 'ci-scripts.yml'
             Get-Key $doc 'jobs', $Job, 'if' | Should -BeExactly (Expr '!inputs.canonical_only')
+        }
+        It '<Wf> has no job that is neither listed as canonical nor skipped when canonical_only' -ForEach @(
+            @{ Wf = 'ci-classic.yml'; Known = @('check', 'linux-binary') }
+            @{ Wf = 'ci-scripts.yml'; Known = @('dev-scripts', 'dev-scripts-linux', 'installer-5-1', 'review-relay-extension') }
+        ) {
+            $doc = Use-Workflow $Wf
+            ((Get-Keys (Get-Key $doc 'jobs')) | Where-Object { $Known -cnotcontains $_ }) | Should -BeNullOrEmpty -Because "a new job in $Wf runs on every main snapshot unless it is listed here as canonical (no if) or gated by if: !inputs.canonical_only"
+            @($Known | Where-Object { -not (Test-Key $doc 'jobs', $_) }) | Should -BeNullOrEmpty -Because "$Wf must still have every job listed here"
         }
         It '<Wf> canonical job <Job> has no if' -ForEach @(
             @{ Wf = 'ci-dotnet.yml'; Job = 'test' }
@@ -337,13 +380,13 @@ Describe 'test-count workflow wiring' {
             $null = Use-Workflow $Wf
             (Get-TeeUses $Wf).Count | Should -BeGreaterThan 0 -Because "$Wf is expected to tee a test log for the emitter to read"
         }
-        It '<Wf> steps piping into Tee-Object, or into tee under PowerShell, run under pwsh' -ForEach $teeFiles {
+        It '<Wf> steps piping into Tee-Object run under pwsh' -ForEach $teeFiles {
             $null = Use-Workflow $Wf
             foreach ($u in @((Get-TeeUses $Wf) | Where-Object { $_.Kind -ceq 'ps' })) {
                 $u.Effective | Should -BeExactly 'pwsh' -Because "step '$($u.Name)' (job $($u.Job)) pipes into $($u.Token): only pwsh leaves the test command's exit code as the step's"
             }
         }
-        It '<Wf> steps piping into tee under a non-PowerShell shell use lowercase tee and an explicit shell: bash' -ForEach $teeFiles {
+        It '<Wf> steps piping into a bare tee use lowercase tee and an explicit shell: bash' -ForEach $teeFiles {
             $null = Use-Workflow $Wf
             foreach ($u in @((Get-TeeUses $Wf) | Where-Object { $_.Kind -ceq 'bash' })) {
                 $u.Explicit | Should -BeExactly 'bash' -Because "step '$($u.Name)' (job $($u.Job)) pipes into tee: only an explicit shell: bash runs with -eo pipefail"
@@ -370,11 +413,13 @@ Describe 'test-count workflow wiring' {
             $n = 0
             foreach ($st in $jobSteps) {
                 $run = Get-Key $st.Step 'run'
-                # Only lines that are NOT an emitter call count: two emitters (dotnet_ls, dotnet_integration) name the same
-                # log, so mentions on emitter lines alone would satisfy the pin with no writer at all.
+                # Only lines that are NOT an emitter call and NOT a comment count: two emitters (dotnet_ls, dotnet_integration)
+                # name the same log, so mentions on emitter lines alone would satisfy the pin with no writer at all. The basename
+                # must stand alone (no neighbouring word, dot or dash character), so all-x.log or x.log.bak is a different file.
                 if ($run -is [string]) {
                     foreach ($line in ($run -split '\r?\n')) {
-                        if ($line -notmatch 'emit-test-count\.ps1') { $n += [regex]::Matches($line, [regex]::Escape($Base)).Count }
+                        if ($line -match 'emit-test-count\.ps1' -or $line -match '^\s*#') { continue }
+                        $n += [regex]::Matches($line, '(?<![\w.-])' + [regex]::Escape($Base) + '(?![\w.-])').Count
                     }
                 }
             }
