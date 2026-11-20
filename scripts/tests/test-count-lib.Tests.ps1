@@ -595,6 +595,27 @@ Describe 'test-count publish' {
             (Read-Text (Join-Path $script:Badges 'endpoint.json')) | Should -Be '{"schemaVersion":1,"label":"tests","message":"4,046 passed","color":"brightgreen"}'
             Read-Out | Should -Be "changed=true`n"
         }
+        # PowerShell cmdlets resolve a relative path against $PWD but [IO.File] resolves it against the process directory, and
+        # Set-Location never moves the latter: the script has to make every path absolute before it mixes the two.
+        It 'resolves a relative -BadgesDir and -MainDir against the PowerShell location, not the process directory' {
+            $work = New-Scratch 'tc-cwd'
+            $elsewhere = New-Scratch 'tc-proc'
+            $null = New-Item -ItemType Directory -Path (Join-Path $work 'badges')
+            $savedProc = [Environment]::CurrentDirectory
+            Push-Location -LiteralPath $work
+            try {
+                [Environment]::CurrentDirectory = $elsewhere
+                $rel = [IO.Path]::GetRelativePath($work, $script:Main)
+                & $script:Publish -BadgesDir 'badges' -MainDir $rel -Commit $script:A -RunId 777 `
+                    -RunUrl 'https://github.com/o/r/actions/runs/777' -Date '2026-11-20' -Repo 'o/r' | Out-Null
+            }
+            finally {
+                [Environment]::CurrentDirectory = $savedProc
+                Pop-Location
+            }
+            Test-Path -LiteralPath (Join-Path $work 'badges' 'endpoint.json') | Should -BeTrue -Because 'the files belong in the badges dir the caller named'
+            @(Get-ChildItem -LiteralPath $elsewhere -Force).Count | Should -Be 0 -Because 'nothing may be written under the process directory'
+        }
         It 'treats a badges dir holding only .git as empty' {
             $null = New-Item -ItemType Directory -Path (Join-Path $script:Badges '.git')
             Invoke-Publish $script:A | Out-Null

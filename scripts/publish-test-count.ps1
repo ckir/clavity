@@ -30,6 +30,12 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib' 'test-count-lib.ps1')
 
 if (-not $env:GITHUB_OUTPUT) { throw 'test-count: GITHUB_OUTPUT is not set' }
+# Every path below is used both by PowerShell cmdlets (relative to $PWD) and by [IO.File] (relative to the process directory,
+# which Set-Location never moves), so make them absolute against $PWD once, before either sees them.
+$pathState = $ExecutionContext.SessionState.Path
+$BadgesDir = $pathState.GetUnresolvedProviderPathFromPSPath($BadgesDir)
+$MainDir = $pathState.GetUnresolvedProviderPathFromPSPath($MainDir)
+$outputFile = $pathState.GetUnresolvedProviderPathFromPSPath($env:GITHUB_OUTPUT)
 if (-not (Test-Path -LiteralPath $MainDir -PathType Container)) { throw "test-count: -MainDir is not a directory: $MainDir" }
 
 # Validate everything first; none of this touches the badges tree.
@@ -72,5 +78,5 @@ foreach ($name in $files.Keys) {
 }
 
 $flag = if ($changed) { 'true' } else { 'false' }
-[IO.File]::AppendAllText($env:GITHUB_OUTPUT, "changed=$flag`n", $utf8)
+[IO.File]::AppendAllText($outputFile, "changed=$flag`n", $utf8)
 "test-count publish $Commit changed=$flag"

@@ -127,11 +127,13 @@ BeforeAll {
             }
         }
     }
-    # The ONE step that emits a suite, wherever it is.
+    # The ONE step that emits a suite, wherever it is. The emitter must be CALLED: a line that starts with the call operator `&`
+    # and names the script before any `#`, so a commented-out call, or a mention behind a comment marker, is not an emitter.
     function Get-Emitter([string]$Id) {
+        $pattern = '^\s*&\s[^#]*scripts/emit-test-count\.ps1[^#]*-Suite\s+[''"]?' + [regex]::Escape($Id) + '(?![\w])'
         $hits = @(Get-AllSteps | Where-Object {
             $run = Get-Key $_.Step 'run'
-            ($run -is [string]) -and ($run -cmatch 'scripts/emit-test-count\.ps1') -and ($run -cmatch ('-Suite\s+[''"]?' + [regex]::Escape($Id) + '(?![\w])'))
+            ($run -is [string]) -and (@($run -split '\r?\n' | Where-Object { $_ -cmatch $pattern }).Count -gt 0)
         })
         return , $hits
     }
@@ -198,6 +200,9 @@ Describe 'test-count workflow wiring' {
             $hits.Count | Should -Be 1
             $run = Get-Key $hits[0].Step 'run'
             $run | Should -MatchExactly '(?m)^\s*\$r = Invoke-Pester \S+ .*-PassThru' -Because 'the counts come from the PassThru result of the run in this step'
+            # -PassThru does not fail the step when tests fail (-CI would), and the emitter takes no failed count: this throw is
+            # the only thing that keeps a red clavity-install run from exiting 0 and publishing its PassedCount.
+            $run | Should -MatchExactly '(?m)^\s*if \(\$r\.FailedCount -gt 0\) \{ throw ' -Because 'without it a failing install suite exits 0 and its passed count reaches the badge'
             $run | Should -MatchExactly '(?m)^\s*& scripts/emit-test-count\.ps1 -Suite pester_install -Passed \$r\.PassedCount -Skipped \$r\.SkippedCount\s*$' -Because 'a literal or TotalCount here would publish a wrong figure'
         }
     }
@@ -374,6 +379,11 @@ Describe 'test-count workflow wiring' {
             $doc = Use-Workflow $Wf
             foreach ($c in $Canonical) { Test-Key $doc 'jobs', $c | Should -BeTrue -Because "$Wf must still have canonical job $c" }
             $others = @((Get-Keys (Get-Key $doc 'jobs')) | Where-Object { $Canonical -cnotcontains $_ })
+            # A workflow that declares no canonical_only input never receives it, so `!inputs.canonical_only` is always true there
+            # and a guard on an extra job would look right while skipping nothing: such a workflow may only have its canonical jobs.
+            if (-not (Test-Key $doc 'on', 'workflow_call', 'inputs', 'canonical_only')) {
+                $others | Should -BeNullOrEmpty -Because "$Wf declares no canonical_only input, so a job besides $($Canonical -join ', ') could not be skipped on a snapshot: add the input here and pass it from test-count.yml first"
+            }
             foreach ($j in $others) {
                 Get-Key $doc 'jobs', $j, 'if' | Should -BeExactly (Expr '!inputs.canonical_only') -Because "job $j of $Wf is not canonical, so it must be gated by if: !inputs.canonical_only or it runs on every main snapshot"
             }
@@ -576,9 +586,12 @@ Describe 'test-count workflow wiring' {
             $run | Should -MatchExactly '(?m)\bgit\b.*\bpush\b' -Because 'the step that holds the token is the one that pushes'
             # The write token reaches only git commands on the badges checkout: no other client (gh, curl, python) and no command
             # chaining, so nothing in this step can write to another ref through the same token.
+            # The subcommand must follow `-C badges` directly and be one of four spelled out here (no `-c` option, no alias, no quoted
+            # or split subcommand, and `config` only for the commit identity), so git itself cannot be turned into another client.
+            $allowed = '^git -C badges (config user\.(name|email) |add -A$|commit -m |push )'
             $bad = @(($run -split '\r?\n') | Where-Object { $_.Trim() -and ($_.Trim() -cnotmatch '^#') } |
-                Where-Object { ($_.Trim() -cnotmatch '^git -C badges ') -or ($_ -cmatch '&&|\|\||;|\||`|\$\(|<\(|>\(') })
-            $bad | Should -BeNullOrEmpty -Because "every line of the step that holds GH_TOKEN must be a single git -C badges command (found: $($bad -join ' // '))"
+                Where-Object { ($_.Trim() -cnotmatch $allowed) -or ($_ -cmatch '&|\|\||;|\||`|\$\(|<\(|>\(') })
+            $bad | Should -BeNullOrEmpty -Because "every line of the step that holds GH_TOKEN must be one git -C badges command with an allowed subcommand (found: $($bad -join ' // '))"
         }
         It 'publish has one render step that runs the publisher, and the push step runs only on its changed output' {
             $doc = Use-Workflow 'test-count.yml'

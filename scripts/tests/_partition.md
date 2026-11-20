@@ -598,7 +598,7 @@ test-suite-registration.Tests.ps1                21,9s    9 tests   <- FAST. MEA
   this fold added checks the NUMBER in a row, never its prose - so nothing caught it.
 agy-anomaly-contract-stamp.Tests.ps1              5,5s   14 tests   <- FAST, re-measured 2026-08-05
 check-licensing-consistent.Tests.ps1                 ?    54 tests   <- FAST, NEW 2026-11-19. NO SOLO TIME
-test-count-lib.Tests.ps1                          17,4s   75 tests   <- FAST, NEW 2026-11-20 (test-count badge, tasks 1-2). Pester's own
+test-count-lib.Tests.ps1                          17,4s   76 tests   <- FAST, NEW 2026-11-20 (test-count badge, tasks 1-2). Pester's own
                                                                       duration, solo, two runs 18,1s then 17,4s (warm figure named); background
                                                                       load was NOT controlled.
 test-count-wiring.Tests.ps1                       5,7s  120 tests   <- FAST, NEW 2026-11-20 (test-count badge, task 3). Pester's own

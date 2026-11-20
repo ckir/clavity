@@ -87,7 +87,7 @@ The README "tests" badge: each CI lane extracts its runner's passed/skipped coun
 
 | Script | Purpose | Run via |
 |---|---|---|
-| `emit-test-count.ps1` | Extract one suite's passed/skipped counts from its runner output (`-Suite <id> -Path <file>`, or `-Passed/-Skipped` for `pester_install`), validate them, and append `<id>_passed` / `<id>_skipped` to `$GITHUB_OUTPUT`; throws on any unrecognised or failing summary | the emitter steps of the called CI workflows; no recipe |
+| `emit-test-count.ps1` | Extract one suite's passed/skipped counts from its runner output (`-Suite <id> -Path <file>`, or `-Passed/-Skipped` for `pester_install`), validate them, and append `<id>_passed` / `<id>_skipped` to `$GITHUB_OUTPUT`; throws on any unrecognised or failing summary | the emitter steps of the called CI workflows and the `site-checks` job of `test-count.yml`; no recipe |
 | `publish-test-count.ps1` | Render the `badges` branch files (`endpoint.json`, `ledger.json`, `README.md`) from the nine `TC_<ID>_PASSED` / `TC_<ID>_SKIPPED` env pairs (`-BadgesDir -MainDir -Commit -RunId -RunUrl -Date -Repo`): validates every value and the existing ledger, refuses a commit that is not a descendant of the ledger's, writes nothing on any failure, and appends `changed=true\|false` to `$GITHUB_OUTPUT` | the `publish` job of `test-count.yml`; no recipe |
 
 ### Recovery
