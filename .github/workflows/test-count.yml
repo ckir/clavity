@@ -96,7 +96,7 @@ jobs:
       - shell: bash
         run: |
           rc=0
-          git -C main ls-remote --exit-code --heads origin badges || rc=$?
+          git -C main ls-remote --exit-code --heads origin refs/heads/badges || rc=$?
           case "$rc" in
             0) git clone --single-branch --branch badges "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" badges ;;
             2) git init badges && git -C badges checkout --orphan badges ;;

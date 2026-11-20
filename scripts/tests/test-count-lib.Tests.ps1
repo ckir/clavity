@@ -476,8 +476,14 @@ Describe 'test-count publish' {
         }
     }
     It 'rejects a ledger with an unknown suite' {
-        $j = (Get-LedgerJson ('a' * 40)) -replace '"site_checks"', '"bogus"'
-        { Test-TestCountLedger $j } | Should -Throw '*suite*'
+        $good = Get-LedgerJson ('a' * 40)
+        # A tenth key next to all nine real suites: only the "unknown suite" throw can fire, not "missing suite".
+        $tenth = $good -replace '"suites":\{', '"suites":{"bogus":{"passed":1,"skipped":0},'
+        $tenth | Should -Not -Be $good -Because 'the substitution must have added the tenth key'
+        { Test-TestCountLedger $tenth } | Should -Throw "*unknown suite 'bogus'*"
+        # A renamed suite leaves one real suite missing and one unknown: the unknown check runs first.
+        $renamed = $good -replace '"site_checks"', '"bogus"'
+        { Test-TestCountLedger $renamed } | Should -Throw "*unknown suite 'bogus'*"
     }
     It 'rejects a ledger that is missing a suite, or has a bad count, schema, run id, date or shape' {
         $good = Get-LedgerJson ('a' * 40)

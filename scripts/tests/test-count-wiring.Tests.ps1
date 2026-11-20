@@ -158,7 +158,7 @@ Describe 'test-count workflow wiring' {
         # ONE row over the directory listing, not one row per file: a per-file ForEach would change Pester's discovered
         # test count whenever a workflow file is added, and the count is pinned in scripts/tests/_partition.md.
         It 'every workflow file is a counted workflow, the snapshot workflow, or listed as not counted' -ForEach @(@{ Classified = $classified }) {
-            $onDiskNow = @(Get-ChildItem -LiteralPath (Join-Path $script:Root '.github/workflows') -Filter '*.yml' | ForEach-Object { $_.Name })
+            $onDiskNow = @(Get-ChildItem -LiteralPath (Join-Path $script:Root '.github/workflows') -File | Where-Object { $_.Extension -cin '.yml', '.yaml' } | ForEach-Object { $_.Name })
             $onDiskNow.Count | Should -BeGreaterThan 0
             $unclassified = @($onDiskNow | Where-Object { $Classified -cnotcontains $_ })
             $unclassified | Should -BeNullOrEmpty -Because "classify $($unclassified -join ', '): add it to `$called or `$notCounted in test-count-wiring.Tests.ps1 (with the reason it is not counted)"
@@ -398,6 +398,26 @@ Describe 'test-count workflow wiring' {
                     $pc | Should -BeFalse -Because "job $job checkout"
                 }
             }
+            # The publisher's ancestry check needs full history: a shallow main/ makes every publish refuse as "not a descendant".
+            $mainCo = @(@(Get-Key $doc 'jobs', 'publish', 'steps') | Where-Object { ((Get-Key $_ 'uses') -like 'actions/checkout@*') -and ((Get-Key $_ 'with', 'path') -ceq 'main') })
+            $mainCo.Count | Should -Be 1 -Because 'publish checks out the repo to main/ exactly once'
+            Get-Key $mainCo[0] 'with', 'fetch-depth' | Should -Be 0 -Because 'a shallow main/ cannot answer the descendant check'
+        }
+        It 'publish probes for the badges branch with the full ref, so a branch named like a/badges cannot match' {
+            $doc = Use-Workflow 'test-count.yml'
+            $lines = @(@(Get-Key $doc 'jobs', 'publish', 'steps') | ForEach-Object { Get-Key $_ 'run' } | Where-Object { $_ } |
+                ForEach-Object { $_ -split '\r?\n' } | Where-Object { $_ -cmatch '\bgit\b.*\bls-remote\b' })
+            $lines.Count | Should -Be 1 -Because "exactly one ls-remote line in publish (found $($lines.Count))"
+            $lines[0] | Should -MatchExactly '--heads origin refs/heads/badges(\s|$)' -Because 'a bare `badges` pattern also matches refs/heads/<x>/badges'
+        }
+        It 'GH_TOKEN is in the env of exactly one publish step, the one that pushes, and in no job-level env' {
+            $doc = Use-Workflow 'test-count.yml'
+            Test-Key $doc 'jobs', 'publish', 'env', 'GH_TOKEN' | Should -BeFalse -Because 'the write token must not be job-wide'
+            Test-Key $doc 'env', 'GH_TOKEN' | Should -BeFalse -Because 'the write token must not be workflow-wide'
+            $withToken = @(@(Get-Key $doc 'jobs', 'publish', 'steps') | Where-Object { Test-Key $_ 'env', 'GH_TOKEN' })
+            $withToken.Count | Should -Be 1 -Because 'exactly one publish step may carry GH_TOKEN'
+            $run = Get-Key $withToken[0] 'run'
+            $run | Should -MatchExactly '(?m)\bgit\b.*\bpush\b' -Because 'the step that holds the token is the one that pushes'
         }
         It 'publish pushes exactly once, to badges, without force' {
             $doc = Use-Workflow 'test-count.yml'

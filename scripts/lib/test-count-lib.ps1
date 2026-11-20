@@ -42,7 +42,7 @@ function Get-TestCountSuiteMeta {
         @('node_relay', 'Node review-relay extension', 'ci-scripts.yml', 'review-relay-extension', 'windows-latest', 'Node 22',
           'cd review-relay/extension/test; npm ci; npm test'),
         @('site_checks', 'Site checks (unittest)', 'test-count.yml', 'site-checks', 'ubuntu-latest',
-          'stdlib only, no PyYAML (WorkflowShape tests skip)',
+          'ubuntu-latest system python3, which ships PyYAML, so the WorkflowShape tests run; without PyYAML 13 of them skip and the count is 124',
           'python3 -m unittest discover -s .github/site-checks')
     )
     $meta = [ordered]@{}
