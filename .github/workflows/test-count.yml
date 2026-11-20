@@ -1,0 +1,119 @@
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
+# Publishes the README "tests" badge: on every push to main it runs the three counted workflows and the site checks,
+# then one `publish` job turns the nine count pairs into endpoint.json / ledger.json / README.md on the orphan
+# `badges` branch (scripts/publish-test-count.ps1). Wiring contract: scripts/tests/test-count-wiring.Tests.ps1.
+name: test-count
+on:
+  # No `paths`: a path filter would let a push skip the run and leave the ledger stale.
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+# One run per ref at a time, and never cancel one in flight: a cancelled publish would leave the ledger behind main.
+concurrency:
+  group: test-count-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  # Every job is main-only so a workflow_dispatch from another ref cannot run the suites or reach the write token.
+  dotnet:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci-dotnet.yml
+  classic:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci-classic.yml
+    with:
+      canonical_only: true
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+  scripts:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci-scripts.yml
+    with:
+      canonical_only: true
+      concurrency_scope: snapshot
+  site-checks:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      site_checks_passed: ${{ steps.count.outputs.site_checks_passed }}
+      site_checks_skipped: ${{ steps.count.outputs.site_checks_skipped }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Same command as pages.yml. Explicit bash: only that shell runs with -eo pipefail, so the test exit code
+      # survives the pipe into tee.
+      - shell: bash
+        run: python3 -m unittest discover -s .github/site-checks 2>&1 | tee "$RUNNER_TEMP/site-checks.log"
+      - id: count
+        shell: pwsh
+        run: |
+          & scripts/emit-test-count.ps1 -Suite site_checks -Path (Join-Path $env:RUNNER_TEMP 'site-checks.log')
+  # The ONLY job that holds a write token. Counts reach it through env:, never through ${{ }} inside a run:.
+  publish:
+    if: github.ref == 'refs/heads/main'
+    needs: [dotnet, classic, scripts, site-checks]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TC_DOTNET_LS_PASSED: ${{ needs.dotnet.outputs.dotnet_ls_passed }}
+      TC_DOTNET_LS_SKIPPED: ${{ needs.dotnet.outputs.dotnet_ls_skipped }}
+      TC_DOTNET_INTEGRATION_PASSED: ${{ needs.dotnet.outputs.dotnet_integration_passed }}
+      TC_DOTNET_INTEGRATION_SKIPPED: ${{ needs.dotnet.outputs.dotnet_integration_skipped }}
+      TC_RUST_PASSED: ${{ needs.classic.outputs.rust_passed }}
+      TC_RUST_SKIPPED: ${{ needs.classic.outputs.rust_skipped }}
+      TC_PYTHON_BRIDGE_PASSED: ${{ needs.classic.outputs.python_bridge_passed }}
+      TC_PYTHON_BRIDGE_SKIPPED: ${{ needs.classic.outputs.python_bridge_skipped }}
+      TC_PESTER_SCRIPTS_PASSED: ${{ needs.scripts.outputs.pester_scripts_passed }}
+      TC_PESTER_SCRIPTS_SKIPPED: ${{ needs.scripts.outputs.pester_scripts_skipped }}
+      TC_PESTER_INSTALL_PASSED: ${{ needs.scripts.outputs.pester_install_passed }}
+      TC_PESTER_INSTALL_SKIPPED: ${{ needs.scripts.outputs.pester_install_skipped }}
+      TC_BASH_HOOKS_PASSED: ${{ needs.scripts.outputs.bash_hooks_passed }}
+      TC_BASH_HOOKS_SKIPPED: ${{ needs.scripts.outputs.bash_hooks_skipped }}
+      TC_NODE_RELAY_PASSED: ${{ needs.scripts.outputs.node_relay_passed }}
+      TC_NODE_RELAY_SKIPPED: ${{ needs.scripts.outputs.node_relay_skipped }}
+      TC_SITE_CHECKS_PASSED: ${{ needs.site-checks.outputs.site_checks_passed }}
+      TC_SITE_CHECKS_SKIPPED: ${{ needs.site-checks.outputs.site_checks_skipped }}
+    steps:
+      # Full history, no credentials: the publisher refuses a commit that is not a descendant of the ledger's, and
+      # that ancestry check cannot be answered from a shallow clone. The push step below carries its own token.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          path: main
+      # main/ is the only git repo in the workspace. `|| rc=$?` is required: shell: bash runs with -e and would abort
+      # on exit code 2 (no such ref) before the case below could see it.
+      - shell: bash
+        run: |
+          rc=0
+          git -C main ls-remote --exit-code --heads origin badges || rc=$?
+          case "$rc" in
+            0) git clone --single-branch --branch badges "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" badges ;;
+            2) git init badges && git -C badges checkout --orphan badges ;;
+            *) echo "ls-remote failed with exit code ${rc}" >&2; exit 1 ;;
+          esac
+      # The date is the commit's, not the runner clock's, so a later workflow_dispatch does not re-date it.
+      - id: render
+        shell: pwsh
+        run: |
+          main/scripts/publish-test-count.ps1 -BadgesDir badges -MainDir main -Commit $env:GITHUB_SHA -RunId $env:GITHUB_RUN_ID -RunUrl "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID" -Date (git -C main show -s --format=%cs $env:GITHUB_SHA) -Repo $env:GITHUB_REPOSITORY
+      - if: steps.render.outputs.changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git -C badges config user.name 'github-actions[bot]'
+          git -C badges config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C badges add -A
+          git -C badges commit -m "test-count: ${GITHUB_SHA}"
+          git -C badges push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/badges
