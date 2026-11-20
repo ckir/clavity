@@ -109,6 +109,12 @@ BeforeAll {
         return @($Node.Keys | ForEach-Object { [string]$_ } | Sort-Object)
     }
     function Expr([string]$Inner) { return '${{ ' + $Inner + ' }}' }
+    # Every place in a node's values (nested mappings and lists included) that names the workflow token: github.token or secrets.GITHUB_TOKEN.
+    function Test-NamesToken($Node) {
+        if ($Node -is [System.Collections.IDictionary]) { foreach ($k in $Node.Keys) { if (Test-NamesToken $Node[$k]) { return $true } }; return $false }
+        if ($Node -is [System.Collections.IEnumerable] -and $Node -isnot [string]) { foreach ($e in $Node) { if (Test-NamesToken $e) { return $true } }; return $false }
+        return ([string]$Node) -match '(?i)github\.token|secrets\.GITHUB_TOKEN'
+    }
 
     # Every step of every job of the four workflows that exist, with where it sits.
     function Get-AllSteps {
@@ -607,6 +613,65 @@ Describe 'test-count workflow wiring' {
             Get-Key $push[0] 'if' | Should -BeExactly "steps.render.outputs.changed == 'true'" -Because 'with another id or condition the push step silently never runs and the badge goes stale'
             Get-Key $push[0] 'env', 'GH_TOKEN' | Should -BeExactly (Expr 'github.token')
         }
+        It 'the push step commits what it adds, in that order, after the clone and the render step' {
+            $doc = Use-Workflow 'test-count.yml'
+            $steps = @(Get-Key $doc 'jobs', 'publish', 'steps')
+            $pushIdx = @(0..($steps.Count - 1) | Where-Object { ((Get-Key $steps[$_] 'run') -is [string]) -and ((Get-Key $steps[$_] 'run') -cmatch '(?m)\bgit\b.*\bpush\b') })
+            $pushIdx.Count | Should -Be 1 -Because 'exactly one publish step pushes'
+            $renderIdx = @(0..($steps.Count - 1) | Where-Object { (Get-Key $steps[$_] 'id') -ceq 'render' })
+            $renderIdx.Count | Should -Be 1
+            $renderIdx[0] | Should -BeLessThan $pushIdx[0] -Because 'a push step that runs before the render step pushes the previous run, or nothing'
+            $cloneIdx = @(0..($steps.Count - 1) | Where-Object { ((Get-Key $steps[$_] 'run') -is [string]) -and ((Get-Key $steps[$_] 'run') -cmatch '(?m)\bgit clone\b') })
+            $cloneIdx.Count | Should -Be 1 -Because 'exactly one step clones the badges branch'
+            $cloneIdx[0] | Should -BeLessThan $renderIdx[0] -Because 'the badges tree must exist before the publisher writes into it'
+            $checkoutIdx = @(0..($steps.Count - 1) | Where-Object { (Get-Key $steps[$_] 'uses') -like 'actions/checkout@*' })
+            $checkoutIdx.Count | Should -BeGreaterThan 0
+            foreach ($i in $checkoutIdx) { $i | Should -BeLessThan $pushIdx[0] -Because 'the checkout comes before the push' }
+            $lines = @((Get-Key $steps[$pushIdx[0]] 'run') -split '\r?\n' | ForEach-Object { $_.Trim() })
+            $add = @(0..($lines.Count - 1) | Where-Object { $lines[$_] -ceq 'git -C badges add -A' })
+            $commit = @(0..($lines.Count - 1) | Where-Object { $lines[$_] -cmatch '^git -C badges commit -m ' })
+            $push = @(0..($lines.Count - 1) | Where-Object { $lines[$_] -cmatch '^git -C badges push ' })
+            $add.Count | Should -Be 1 -Because 'without git -C badges add -A the rendered files are never staged'
+            $commit.Count | Should -Be 1 -Because 'without git -C badges commit -m the push sends nothing new'
+            $push.Count | Should -Be 1
+            $add[0] | Should -BeLessThan $commit[0] -Because 'staging comes before the commit'
+            $commit[0] | Should -BeLessThan $push[0] -Because 'the commit comes before the push'
+        }
+        It 'no env value and no with value in test-count.yml names the workflow token, except the push step GH_TOKEN' {
+            $doc = Use-Workflow 'test-count.yml'
+            $hits = [System.Collections.Generic.List[string]]::new()
+            if (Test-NamesToken (Get-Key $doc 'env')) { $hits.Add('workflow env') }
+            foreach ($jn in (Get-Key $doc 'jobs').Keys) {
+                $job = $doc['jobs'][$jn]
+                if (Test-NamesToken (Get-Key $job 'env')) { $hits.Add("job $jn env") }
+                if (Test-NamesToken (Get-Key $job 'with')) { $hits.Add("job $jn with") }
+                $steps = @(Get-Key $job 'steps')
+                for ($i = 0; $i -lt $steps.Count; $i++) {
+                    if (Test-NamesToken (Get-Key $steps[$i] 'with')) { $hits.Add("job $jn step $i with") }
+                    $stepEnv = Get-Key $steps[$i] 'env'
+                    if ($stepEnv -is [System.Collections.IDictionary]) {
+                        foreach ($k in $stepEnv.Keys) {
+                            if ((Test-NamesToken $stepEnv[$k]) -and -not ($jn -ceq 'publish' -and $k -ceq 'GH_TOKEN' -and ((Get-Key $steps[$i] 'run') -cmatch '(?m)\bgit\b.*\bpush\b'))) { $hits.Add("job $jn step $i env $k") }
+                        }
+                    }
+                }
+            }
+            $hits | Should -BeNullOrEmpty -Because "the write token may reach only the one step that pushes (found: $($hits -join '; '))"
+        }
+        It 'the badges probe keeps --exit-code and survives its exit code 2 with || rc=$?' {
+            $doc = Use-Workflow 'test-count.yml'
+            $lines = @(@(Get-Key $doc 'jobs', 'publish', 'steps') | ForEach-Object { Get-Key $_ 'run' } | Where-Object { $_ } |
+                ForEach-Object { $_ -split '\r?\n' } | Where-Object { $_ -cmatch '\bgit\b.*\bls-remote\b' })
+            $lines.Count | Should -Be 1
+            $lines[0] | Should -MatchExactly '\s--exit-code(\s|$)' -Because 'without --exit-code an absent branch and a present one both exit 0 and the case below cannot tell them apart'
+            $lines[0] | Should -MatchExactly '\|\| rc=\$\?\s*$' -Because 'shell: bash runs with -e: without || rc=$? exit code 2 aborts the step before the case can init the orphan branch'
+        }
+        It 'the render step dates the files with the commit date, not the runner clock' {
+            $doc = Use-Workflow 'test-count.yml'
+            $render = @(@(Get-Key $doc 'jobs', 'publish', 'steps') | Where-Object { (Get-Key $_ 'id') -ceq 'render' })
+            $render.Count | Should -Be 1
+            (Get-Key $render[0] 'run').Contains('-Date (git -C main show -s --format=%cs $env:GITHUB_SHA)') | Should -BeTrue -Because 'a later workflow_dispatch would re-date the figure with the runner clock'
+        }
         It 'publish pushes exactly once, to badges, without force' {
             $doc = Use-Workflow 'test-count.yml'
             $lines = @(@(Get-Key $doc 'jobs', 'publish', 'steps') | ForEach-Object { Get-Key $_ 'run' } | Where-Object { $_ } |
@@ -629,6 +694,24 @@ Describe 'test-count workflow wiring' {
             $runs[0].Trim().StartsWith($cmd, [StringComparison]::Ordinal) | Should -BeTrue -Because "the run must start with '$cmd' (got: $($runs[0]))"
             # The whole line: 2>&1 sends stderr (where unittest writes its summary) into the tee, so the emitter can read it.
             $runs[0].Trim() | Should -BeExactly ($cmd + ' 2>&1 | tee "$RUNNER_TEMP/site-checks.log"') -Because 'the summary unittest prints to stderr must reach the log the emitter reads'
+        }
+    }
+
+    Context 'lane identity' {
+        # The README breakdown prints each suite's Lane; the counted job must really run there, and must not fan out into a matrix
+        # (every leg would write the same jobs.<id>.outputs, so the last leg to finish would win and the figure would be a race).
+        # ci-classic.yml check is the one counted job WITH a matrix and is pinned in the canonical_only context.
+        It '<Wf> job <Job> runs on the lane the breakdown names and declares no strategy or matrix' -ForEach @(
+            @{ Wf = 'ci-dotnet.yml'; Job = 'test' }
+            @{ Wf = 'ci-scripts.yml'; Job = 'dev-scripts' }
+            @{ Wf = 'ci-scripts.yml'; Job = 'review-relay-extension' }
+            @{ Wf = 'test-count.yml'; Job = 'site-checks' }
+        ) {
+            $doc = Use-Workflow $Wf
+            $lanes = @($script:TestCountSuiteIds | Where-Object { ($script:Meta[$_].Workflow -ceq $Wf) -and ($script:Meta[$_].Job -ceq $Job) } | ForEach-Object { $script:Meta[$_].Lane } | Select-Object -Unique)
+            $lanes.Count | Should -Be 1 -Because "every suite counted by $Wf job $Job must name the same Lane in Get-TestCountSuiteMeta"
+            Get-Key $doc 'jobs', $Job, 'runs-on' | Should -BeExactly $lanes[0] -Because "the README breakdown says the suites of $Wf job $Job run on $($lanes[0])"
+            Test-Key $doc 'jobs', $Job, 'strategy' | Should -BeFalse -Because "a matrix on $Wf job $Job would make its legs race on jobs.$Job.outputs"
         }
     }
 

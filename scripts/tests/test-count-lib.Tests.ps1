@@ -64,6 +64,12 @@ Describe 'test-count extractors' {
         $t = 'Failed!  - Failed:     1, Passed:   850, Skipped:     0, Total:   851, Duration: 9 s - Clavity.Ls.Tests.dll (net10.0)'
         { Get-DotnetProjectCounts $t 'Clavity.Ls.Tests' } | Should -Throw '*dotnet*'
     }
+    It 'throws on a Failed! .NET line that counts zero failures, and still reads the Passed! line' {
+        # The word Failed! is the verdict even when its own Failed: field says 0; only the word-check catches that.
+        $t = 'Failed!  - Failed:     0, Passed:   850, Skipped:     0, Total:   850, Duration: 9 s - Clavity.Ls.Tests.dll (net10.0)'
+        { Get-DotnetProjectCounts $t 'Clavity.Ls.Tests' } | Should -Throw '*dotnet*' -Because 'a Failed! summary must never be published as a pass'
+        (Get-DotnetProjectCounts $script:DotnetLs 'Clavity.Ls.Tests').Passed | Should -Be 851
+    }
     It 'throws when a .NET project prints two summary lines, or passes nothing' {
         { Get-DotnetProjectCounts "$($script:DotnetLs)`n$($script:DotnetLs)" 'Clavity.Ls.Tests' } | Should -Throw '*dotnet*'
         $z = 'Passed!  - Failed:     0, Passed:     0, Skipped:     0, Total:     0, Duration: 9 s - Clavity.Ls.Tests.dll (net10.0)'
@@ -87,6 +93,20 @@ Describe 'test-count extractors' {
     It 'throws on a cargo FAILED line' {
         $t = "$($script:CargoText)`ntest result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.1s"
         { Get-CargoCounts $t } | Should -Throw '*cargo*'
+    }
+    # The existing colour row wraps the WHOLE line in escapes, so the line still starts with an escape and ends with one
+    # and the tokens in between are plain. Cargo colours only the word `ok` / `FAILED`, so the escapes sit INSIDE the line.
+    It 'reads a cargo ok line whose status word is coloured inline, as CARGO_TERM_COLOR=always prints it' {
+        $r = Get-CargoCounts "test result: `e[32mok`e[0m. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.1s"
+        $r.Passed | Should -Be 22 -Because 'without the escape stripper the coloured ok line is not recognised at all'
+        $r.Skipped | Should -Be 0
+    }
+    It 'throws FAILED on a cargo FAILED line whose status word is coloured inline' {
+        $t = "test result: `e[32mok`e[0m. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.1s`ntest result: `e[31mFAILED`e[0m. 3 passed; 1 failed; 0 ignored"
+        { Get-CargoCounts $t } | Should -Throw '*FAILED*' -Because 'a coloured FAILED line must be reported as FAILED, not as a missing line'
+    }
+    It 'throws when a cargo ok line reports a non-zero failed count' {
+        { Get-CargoCounts 'test result: ok. 22 passed; 1 failed; 0 ignored' } | Should -Throw '*reports 1 failed*'
     }
     It 'throws when cargo prints no test result line' {
         { Get-CargoCounts "Compiling foo`nFinished" } | Should -Throw '*cargo*'
@@ -200,6 +220,13 @@ Describe 'test-count extractors' {
         $r.Skipped | Should -Be 2
         (Get-NodeTapCounts $script:TapText).Passed | Should -Be 5
     }
+    It 'uses the LAST node TAP summary when a log holds two' {
+        $first = "# tests 3`n# suites 0`n# pass 3`n# fail 0`n# cancelled 0`n# skipped 0`n# todo 0`n# duration_ms 1.0`n"
+        $second = "# tests 8`n# suites 0`n# pass 5`n# fail 0`n# cancelled 0`n# skipped 2`n# todo 1`n# duration_ms 2.0`n"
+        $r = Get-NodeTapCounts ($first + "noise`n" + $second)
+        $r.Passed | Should -Be 5 -Because 'a later summary block supersedes the first one'
+        $r.Skipped | Should -Be 3
+    }
     It 'throws on node TAP failures, a missing summary, or zero passes' {
         { Get-NodeTapCounts "# pass 5`n# skipped 0`n# todo 0`n# fail 1`n" } | Should -Throw '*node*'
         { Get-NodeTapCounts "# pass 5`n# fail 0`n" } | Should -Throw '*node*'
@@ -220,6 +247,17 @@ Describe 'test-count extractors' {
         $r = Get-UnittestCounts "Ran 10 tests in 0.1s`n`nOK (skipped=2, expected failures=1)"
         $r.Passed | Should -Be 7
         $r.Skipped | Should -Be 3
+    }
+    It 'reads the singular "Ran 1 test" unittest summary' {
+        $r = Get-UnittestCounts "Ran 1 test in 0.01s`n`nOK"
+        $r.Passed | Should -Be 1 -Because 'unittest prints "test", not "tests", for a run of one'
+        $r.Skipped | Should -Be 0
+    }
+    It 'throws when unittest skipped more than it ran, not only when exactly all of it' {
+        { Get-UnittestCounts "Ran 2 tests in 0.01s`n`nOK (skipped=3)" } | Should -Throw '*nothing passed*'
+    }
+    It 'throws when a unittest log holds a FAILED run after an OK run' {
+        { Get-UnittestCounts "Ran 10 tests in 0.1s`n`nOK`nRan 5 tests in 0.1s`n`nFAILED (failures=1)" } | Should -Throw '*run is FAILED*' -Because 'the earlier OK run must not hide the later FAILED one'
     }
     It 'throws on a malformed unittest summary' {
         { Get-UnittestCounts "nothing here" } | Should -Throw '*unittest*'
@@ -319,6 +357,37 @@ Describe 'test-count extractors' {
             [IO.File]::WriteAllText($f, $script:BashText)
             { & $script:Emit -Suite bash_hooks -Path $f -Passed 15 -Skipped 0 } | Should -Throw '*takes -Path, not -Passed/-Skipped*'
             { & $script:Emit -Suite rust -Passed 5 -Skipped 0 } | Should -Throw '*takes -Path, not -Passed/-Skipped*'
+        }
+        It 'writes the real skipped count for every emitter path, as exactly two LF-terminated lines' {
+            # A non-zero skipped on each path that reads one: a fixed or dropped skipped would pass every skipped=0 row above.
+            $cases = @(
+                @{ Suite = 'pester_scripts'; Text = $script:PesterText; Want = "pester_scripts_passed=2600`npester_scripts_skipped=11`n" }
+                @{ Suite = 'node_relay';     Text = $script:TapText;    Want = "node_relay_passed=5`nnode_relay_skipped=2`n" }
+                @{ Suite = 'site_checks';    Text = $script:UnitText;   Want = "site_checks_passed=130`nsite_checks_skipped=7`n" }
+            )
+            foreach ($c in $cases) {
+                [IO.File]::WriteAllText($script:OutFile, '')
+                $f = New-TestTempPath -Prefix 'tc-in'
+                $script:Made.Add($f)
+                [IO.File]::WriteAllText($f, $c.Text)
+                $null = & $script:Emit -Suite $c.Suite -Path $f
+                Read-Out | Should -BeExactly $c.Want -Because $c.Suite
+            }
+            [IO.File]::WriteAllText($script:OutFile, '')
+            $null = & $script:Emit -Suite pester_install -Passed 12 -Skipped 3
+            Read-Out | Should -BeExactly "pester_install_passed=12`npester_install_skipped=3`n" -Because 'pester_install takes its skipped count from the argument'
+        }
+        It 'rejects -Path for pester_install' {
+            $f = New-TestTempPath -Prefix 'tc-bash'
+            $script:Made.Add($f)
+            [IO.File]::WriteAllText($f, $script:BashText)
+            { & $script:Emit -Suite pester_install -Path $f -Passed 1 -Skipped 0 } | Should -Throw '*takes -Passed/-Skipped, not -Path*'
+            Read-Out | Should -BeNullOrEmpty
+        }
+        It 'rejects a -Path that does not exist for a suite that reads a file' {
+            $gone = New-TestTempPath -Prefix 'tc-gone'
+            { & $script:Emit -Suite bash_hooks -Path $gone } | Should -Throw '*runner output not found*'
+            Read-Out | Should -BeNullOrEmpty
         }
         It 'rejects an unknown suite' {
             { & $script:Emit -Suite nonsense -Path $script:OutFile } | Should -Throw '*nonsense: unknown suite*'
@@ -517,6 +586,71 @@ Describe 'test-count publish' {
         { New-TestCountFiles $c ('a' * 40) '777' $u '2026-11-20' 'o/r' } | Should -Throw '*rust*'
     }
 
+    It 'rejects the repo name <Bad>, a dot segment that would make the commit link point at a directory' -ForEach @(
+        @{ Bad = 'o/..' }, @{ Bad = 'o/.' }, @{ Bad = '../r' }, @{ Bad = './r' }
+    ) {
+        { New-TestCountFiles (New-Counts) ('a' * 40) '777' 'https://github.com/o/r/actions/runs/777' '2026-11-20' $Bad } | Should -Throw '*repo*'
+    }
+    It 'still accepts a repo name with a dot inside it' {
+        { New-TestCountFiles (New-Counts) ('a' * 40) '777' 'https://github.com/o/r/actions/runs/777' '2026-11-20' 'o/r.x' } | Should -Not -Throw
+    }
+    It 'rejects a skipped count of <Bad> when rendering' -ForEach @(@{ Bad = -1 }, @{ Bad = 1000001 }) {
+        $c = New-Counts; $c['rust'].Skipped = $Bad
+        { New-TestCountFiles $c ('a' * 40) '777' 'https://github.com/o/r/actions/runs/777' '2026-11-20' 'o/r' } | Should -Throw '*skipped is not an integer in 0..1000000*'
+    }
+    It 'formats the badge total with a comma whatever the current culture is' {
+        $saved = [cultureinfo]::CurrentCulture
+        try {
+            [cultureinfo]::CurrentCulture = [cultureinfo]::GetCultureInfo('de-DE')
+            ([long]4046).ToString('N0') | Should -Be '4.046' -Because 'the control: this culture really would print a dot, so the test can tell'
+            $f = New-TestCountFiles (New-Counts) ('a' * 40) '777' 'https://github.com/o/r/actions/runs/777' '2026-11-20' 'o/r'
+            ($f['endpoint.json'] | ConvertFrom-Json).message | Should -Be '4,046 passed' -Because 'the badge message must not follow the runner culture'
+        }
+        finally { [cultureinfo]::CurrentCulture = $saved }
+    }
+    It 'formats the README table counts with a comma whatever the current culture is' {
+        $saved = [cultureinfo]::CurrentCulture
+        try {
+            [cultureinfo]::CurrentCulture = [cultureinfo]::GetCultureInfo('de-DE')
+            $f = New-TestCountFiles (New-Counts) ('a' * 40) '777' 'https://github.com/o/r/actions/runs/777' '2026-11-20' 'o/r'
+            $f['README.md'] | Should -BeLike '*| 2,623 |*' -Because 'the README cells must not follow the runner culture'
+            $f['README.md'] | Should -Not -BeLike '*2.623*'
+        }
+        finally { [cultureinfo]::CurrentCulture = $saved }
+    }
+    It 'renders every README table row with its own suite counts, lane, conditions and command, in suite order' {
+        $f = New-TestCountFiles (New-Counts) ('c' * 40) '777' 'https://github.com/o/r/actions/runs/777' '2026-11-20' 'o/r'
+        $inv = [cultureinfo]::InvariantCulture
+        $meta = Get-TestCountSuiteMeta
+        $lines = @($f['README.md'] -split "`n")
+        $sep = [array]::IndexOf($lines, '|---|---:|---:|---|---|---|')
+        $sep | Should -BeGreaterThan 0 -Because 'the table separator line must be there'
+        $rows = @($lines[($sep + 1)..($sep + 9)])
+        $rows.Count | Should -Be 9
+        $lines[$sep + 10] | Should -Be '' -Because 'the table has exactly nine rows'
+        for ($i = 0; $i -lt 9; $i++) {
+            $id = $script:TestCountSuiteIds[$i]
+            # Six cells: split on a pipe that is not preceded by a backslash, drop the outer pipes, then undo the \| escape.
+            $cells = @([regex]::Split($rows[$i].Trim().Trim('|'), '(?<!\\)\|') | ForEach-Object { $_.Trim().Replace('\|', '|') })
+            $cells.Count | Should -Be 6 -Because "row $i ($id)"
+            $cells[0] | Should -BeExactly $meta[$id].Label -Because "row $i label"
+            $cells[1] | Should -BeExactly ([long]$script:Base[$id][0]).ToString('N0', $inv) -Because "row $i ($id) passed cell"
+            $cells[2] | Should -BeExactly ([long]$script:Base[$id][1]).ToString('N0', $inv) -Because "row $i ($id) skipped cell"
+            $cells[3] | Should -BeExactly $meta[$id].Lane -Because "row $i ($id) lane cell"
+            $cells[4] | Should -BeExactly $meta[$id].Conditions -Because "row $i ($id) conditions cell"
+            $cells[5] | Should -BeExactly ('`' + $meta[$id].Command + '`') -Because "row $i ($id) command cell"
+        }
+    }
+    It 'writes every suite into the ledger under its own id, in suite order, with its own passed and skipped' {
+        $f = New-TestCountFiles (New-Counts) ('c' * 40) '777' 'https://github.com/o/r/actions/runs/777' '2026-11-20' 'o/r'
+        $l = $f['ledger.json'] | ConvertFrom-Json
+        @($l.suites.PSObject.Properties | ForEach-Object { $_.Name }) | Should -Be $script:TestCountSuiteIds
+        foreach ($id in $script:TestCountSuiteIds) {
+            $l.suites.$id.passed | Should -Be $script:Base[$id][0] -Because "$id passed"
+            $l.suites.$id.skipped | Should -Be $script:Base[$id][1] -Because "$id skipped"
+        }
+    }
+
     It 'accepts a well-formed endpoint and rejects a malformed one' {
         { Test-EndpointJson '{"schemaVersion":1,"label":"tests","message":"1 passed","color":"brightgreen"}' } | Should -Not -Throw
         foreach ($bad in '{"schemaVersion":"1","label":"tests","message":"1 passed","color":"brightgreen"}',
@@ -535,6 +669,25 @@ Describe 'test-count publish' {
             $e[$k] = 5
             { Test-EndpointJson ($e | ConvertTo-Json -Compress) } | Should -Throw "*'$k' must be a string*"
         }
+    }
+    It 'rejects an endpoint with <Why>' -ForEach @(
+        @{ Why = 'the key SchemaVersion in the wrong letter case'; Json = '{"SchemaVersion":1,"label":"tests","message":"1 passed","color":"brightgreen"}' }
+        @{ Why = 'the key colour instead of color'; Json = '{"schemaVersion":1,"label":"tests","message":"1 passed","colour":"brightgreen"}' }
+    ) {
+        { Test-EndpointJson $Json } | Should -Throw '*endpoint*'
+    }
+    It 'rejects a ledger whose <Why>' -ForEach @(
+        @{ Why = 'suites is an empty array';  Pattern = '"suites":\{.*\}\}\z'; Rep = '"suites":[]}';   Want = '*suites is not an object*' }
+        @{ Why = 'suites is null';            Pattern = '"suites":\{.*\}\}\z'; Rep = '"suites":null}'; Want = '*suites is not an object*' }
+        @{ Why = 'rust suite is a number';    Pattern = '"rust":\{"passed":123,"skipped":0\}'; Rep = '"rust":10'; Want = "*suite 'rust' is not an object*" }
+        @{ Why = 'rust suite has an extra key'; Pattern = '"rust":\{"passed":123,"skipped":0\}'; Rep = '"rust":{"passed":123,"skipped":0,"extra":1}'; Want = '*exactly passed and skipped*' }
+        @{ Why = 'rust suite lacks skipped';  Pattern = '"rust":\{"passed":123,"skipped":0\}'; Rep = '"rust":{"passed":123}'; Want = '*exactly passed and skipped*' }
+        @{ Why = 'rust suite key is Passed (wrong letter case)'; Pattern = '"rust":\{"passed":123,"skipped":0\}'; Rep = '"rust":{"Passed":123,"skipped":0}'; Want = '*exactly passed and skipped*' }
+    ) {
+        $good = Get-LedgerJson ('a' * 40)
+        $j = $good -creplace $Pattern, $Rep
+        ($j -ceq $good) | Should -BeFalse -Because 'the edit must have changed the ledger (compared case-sensitively)'
+        { Test-TestCountLedger $j } | Should -Throw $Want
     }
     It 'rejects a ledger whose commit is not 40 hex' {
         foreach ($bad in '--upload-pack=x', ('A' * 40), ('a' * 39), ('a' * 41), "$('a' * 40)`n") {
@@ -616,6 +769,33 @@ Describe 'test-count publish' {
             Test-Path -LiteralPath (Join-Path $work 'badges' 'endpoint.json') | Should -BeTrue -Because 'the files belong in the badges dir the caller named'
             @(Get-ChildItem -LiteralPath $elsewhere -Force).Count | Should -Be 0 -Because 'nothing may be written under the process directory'
         }
+        It 'resolves a relative GITHUB_OUTPUT against the PowerShell location, not the process directory' {
+            $work = New-Scratch 'tc-gout'
+            $elsewhere = New-Scratch 'tc-gout-proc'
+            $null = New-Item -ItemType File -Path (Join-Path $work 'out.txt')
+            $savedProc = [Environment]::CurrentDirectory
+            Push-Location -LiteralPath $work
+            try {
+                [Environment]::CurrentDirectory = $elsewhere
+                $env:GITHUB_OUTPUT = 'out.txt'
+                Invoke-Publish $script:A | Out-Null
+            }
+            finally {
+                [Environment]::CurrentDirectory = $savedProc
+                Pop-Location
+            }
+            (Get-Content -LiteralPath (Join-Path $work 'out.txt') -Raw) -replace "`r`n", "`n" | Should -Be "changed=true`n" -Because 'the caller named out.txt relative to its own location'
+            @(Get-ChildItem -LiteralPath $elsewhere -Force).Count | Should -Be 0 -Because 'nothing may be written under the process directory'
+        }
+        It 'refuses a -MainDir that is <Kind>' -ForEach @(@{ Kind = 'missing' }, @{ Kind = 'a plain file' }) {
+            if ($Kind -ceq 'missing') { $script:Main = Join-Path $script:Main 'does-not-exist' }
+            else {
+                $script:Main = Join-Path (New-Scratch 'tc-notdir') 'plain.txt'
+                [IO.File]::WriteAllText($script:Main, 'x')
+            }
+            { Invoke-Publish $script:A } | Should -Throw '*-MainDir is not a directory*'
+            @(Get-ChildItem -LiteralPath $script:Badges -Force).Count | Should -Be 0
+        }
         It 'treats a badges dir holding only .git as empty' {
             $null = New-Item -ItemType Directory -Path (Join-Path $script:Badges '.git')
             Invoke-Publish $script:A | Out-Null
@@ -645,6 +825,34 @@ Describe 'test-count publish' {
             Invoke-Publish $script:B | Out-Null
             Read-Out | Should -Be "changed=true`n"
             (Read-Text (Join-Path $script:Badges 'endpoint.json')) | Should -BeLike '*4,047 passed*'
+        }
+        It 'reports changed=true when only the skipped count differs for the same commit' {
+            Invoke-Publish $script:B | Out-Null
+            $endpointBefore = Read-Text (Join-Path $script:Badges 'endpoint.json')
+            [IO.File]::WriteAllText($script:OutFile, '')
+            Set-TcEnv @{ TC_RUST_SKIPPED = '4' }
+            Invoke-Publish $script:B | Out-Null
+            (Read-Text (Join-Path $script:Badges 'endpoint.json')) | Should -Be $endpointBefore -Because 'the passed total is unchanged, so endpoint.json is byte-identical'
+            Read-Out | Should -Be "changed=true`n" -Because 'a changed skipped count still changes ledger.json and README.md'
+            (Test-TestCountLedger (Read-Text (Join-Path $script:Badges 'ledger.json'))).suites.rust.skipped | Should -Be 4
+            (Read-Text (Join-Path $script:Badges 'README.md')) | Should -BeLike '*| Rust (cargo) | 123 | 4 |*'
+        }
+        It 'reports changed=true when a descendant commit is published with identical counts' {
+            Invoke-Publish $script:A | Out-Null
+            $endpointBefore = Read-Text (Join-Path $script:Badges 'endpoint.json')
+            [IO.File]::WriteAllText($script:OutFile, '')
+            Invoke-Publish $script:B | Out-Null
+            (Read-Text (Join-Path $script:Badges 'endpoint.json')) | Should -Be $endpointBefore -Because 'identical counts leave endpoint.json byte-identical'
+            Read-Out | Should -Be "changed=true`n" -Because 'the ledger and README name the new commit'
+            (Test-TestCountLedger (Read-Text (Join-Path $script:Badges 'ledger.json'))).commit | Should -Be $script:B
+        }
+        It 'reports changed=true when only endpoint.json is missing from an otherwise identical tree' {
+            Invoke-Publish $script:B | Out-Null
+            Remove-Item -LiteralPath (Join-Path $script:Badges 'endpoint.json')
+            [IO.File]::WriteAllText($script:OutFile, '')
+            Invoke-Publish $script:B | Out-Null
+            Read-Out | Should -Be "changed=true`n" -Because 'a missing file is a difference even when the other two are byte-identical'
+            Test-Path -LiteralPath (Join-Path $script:Badges 'endpoint.json') | Should -BeTrue
         }
         It 'refuses an ancestor' {
             Invoke-Publish $script:B | Out-Null
