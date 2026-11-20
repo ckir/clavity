@@ -90,6 +90,21 @@ The README "tests" badge: each CI lane extracts its runner's passed/skipped coun
 | `emit-test-count.ps1` | Extract one suite's passed/skipped counts from its runner output (`-Suite <id> -Path <file>`, or `-Passed/-Skipped` for `pester_install`), validate them, and append `<id>_passed` / `<id>_skipped` to `$GITHUB_OUTPUT`; throws on any unrecognised or failing summary | the emitter steps of the called CI workflows; no recipe |
 | `publish-test-count.ps1` | Render the `badges` branch files (`endpoint.json`, `ledger.json`, `README.md`) from the nine `TC_<ID>_PASSED` / `TC_<ID>_SKIPPED` env pairs (`-BadgesDir -MainDir -Commit -RunId -RunUrl -Date -Repo`): validates every value and the existing ledger, refuses a commit that is not a descendant of the ledger's, writes nothing on any failure, and appends `changed=true\|false` to `$GITHUB_OUTPUT` | the `publish` job of `test-count.yml`; no recipe |
 
+### Recovery
+
+The figure is the number of tests executed and passed at one commit of `main`, summed over nine suites that each run on one canonical lane; skipped tests are recorded but not counted. A push to `main` runs the suites a second time from the snapshot, on top of their own push triggers (path-filtered for .NET and classic), which is free on a public repo.
+
+- **A bad count was published** (an extractor bug): fix the emitter on `main`; the next snapshot run replaces the figure. Reverting the `badges` branch alone does not help while the bug is still on `main`.
+- **`main` is red for a while:** the badge stays at the last commit where all nine suites passed together, and the breakdown page (`README.md` on `badges`) says which commit that is. Fix `main`; `gh workflow run test-count` re-runs the snapshot without a new commit.
+- **Corrupt or hand-edited ledger on `badges`:** the `publish` job refuses to write (its ledger validation throws) and the run goes red. Fix `ledger.json` on `badges` by hand (a valid ledger holds `schema` 1, a 40-hex `commit`, a numeric `run_id`, a `date`, and all nine suites with integer counts), then re-run with `gh workflow run test-count`.
+- **The first run cannot create the `badges` branch** (a permission error on the push step; whether `GITHUB_TOKEN` may create a branch cannot be measured before the first run on `main`): the owner creates an empty `badges` branch by hand and re-runs the workflow. An empty `badges` branch counts as a first publish. Switch back to the previous branch afterwards.
+
+  ```
+  git switch --orphan badges && git commit --allow-empty -m init && git push origin badges
+  ```
+
+- **Hold the badge:** `gh workflow disable test-count` stops snapshots and the last published figure stays; `gh workflow enable test-count` resumes.
+
 ## Subdirectories
 
 - `lib/` — shared PowerShell helpers, dot-sourced by the scripts above:
