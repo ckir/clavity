@@ -1,0 +1,73 @@
+# Copyright (c) 2026 Costas Kirgoussios
+#
+# This software is licensed under the PolyForm Noncommercial License 1.0.0.
+# You may obtain a copy of the License at:
+# https://polyformproject.org/licenses/noncommercial/1.0.0/
+
+# TEMP proof workflow (revert before merge): runs the snapshot's jobs on a pull request, with no publish job and no
+# write permission, so the measurements the main-only test-count.yml cannot give can be taken before merge.
+name: test-count-proof
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  dotnet:
+    uses: ./.github/workflows/ci-dotnet.yml
+  classic:
+    uses: ./.github/workflows/ci-classic.yml
+    with:
+      canonical_only: true
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+  scripts:
+    uses: ./.github/workflows/ci-scripts.yml
+    with:
+      canonical_only: true
+      concurrency_scope: proof
+  site-checks:
+    runs-on: ubuntu-latest
+    outputs:
+      site_checks_passed: ${{ steps.count.outputs.site_checks_passed }}
+      site_checks_skipped: ${{ steps.count.outputs.site_checks_skipped }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Same command as pages.yml. Explicit bash: only that shell runs with -eo pipefail, so the test exit code
+      # survives the pipe into tee.
+      - shell: bash
+        run: python3 -m unittest discover -s .github/site-checks 2>&1 | tee "$RUNNER_TEMP/site-checks.log"
+      - id: count
+        shell: pwsh
+        run: |
+          & scripts/emit-test-count.ps1 -Suite site_checks -Path (Join-Path $env:RUNNER_TEMP 'site-checks.log')
+  proof:
+    needs: [dotnet, classic, scripts, site-checks]
+    runs-on: ubuntu-latest
+    env:
+      TC_DOTNET_LS_PASSED: ${{ needs.dotnet.outputs.dotnet_ls_passed }}
+      TC_DOTNET_LS_SKIPPED: ${{ needs.dotnet.outputs.dotnet_ls_skipped }}
+      TC_DOTNET_INTEGRATION_PASSED: ${{ needs.dotnet.outputs.dotnet_integration_passed }}
+      TC_DOTNET_INTEGRATION_SKIPPED: ${{ needs.dotnet.outputs.dotnet_integration_skipped }}
+      TC_RUST_PASSED: ${{ needs.classic.outputs.rust_passed }}
+      TC_RUST_SKIPPED: ${{ needs.classic.outputs.rust_skipped }}
+      TC_PYTHON_BRIDGE_PASSED: ${{ needs.classic.outputs.python_bridge_passed }}
+      TC_PYTHON_BRIDGE_SKIPPED: ${{ needs.classic.outputs.python_bridge_skipped }}
+      TC_PESTER_SCRIPTS_PASSED: ${{ needs.scripts.outputs.pester_scripts_passed }}
+      TC_PESTER_SCRIPTS_SKIPPED: ${{ needs.scripts.outputs.pester_scripts_skipped }}
+      TC_PESTER_INSTALL_PASSED: ${{ needs.scripts.outputs.pester_install_passed }}
+      TC_PESTER_INSTALL_SKIPPED: ${{ needs.scripts.outputs.pester_install_skipped }}
+      TC_BASH_HOOKS_PASSED: ${{ needs.scripts.outputs.bash_hooks_passed }}
+      TC_BASH_HOOKS_SKIPPED: ${{ needs.scripts.outputs.bash_hooks_skipped }}
+      TC_NODE_RELAY_PASSED: ${{ needs.scripts.outputs.node_relay_passed }}
+      TC_NODE_RELAY_SKIPPED: ${{ needs.scripts.outputs.node_relay_skipped }}
+      TC_SITE_CHECKS_PASSED: ${{ needs.site-checks.outputs.site_checks_passed }}
+      TC_SITE_CHECKS_SKIPPED: ${{ needs.site-checks.outputs.site_checks_skipped }}
+    steps:
+      - shell: bash
+        run: |
+          env | grep '^TC_' | sort
+          echo "proof: ok"
