@@ -191,6 +191,15 @@ Describe 'test-count workflow wiring' {
             $hits[0].Job | Should -BeExactly $Job
             Get-Key $hits[0].Step 'shell' | Should -BeExactly 'pwsh' -Because 'the emitter is a pwsh script and must not depend on the runner default'
         }
+        # pester_install is the one emitter that takes its counts as arguments instead of reading a log, so nothing else pins
+        # where the numbers come from: a literal, or TotalCount (which counts skipped tests as passed), would publish a wrong figure.
+        It 'pester_install is emitted from the Pester result PassedCount and SkippedCount, unchanged' {
+            $hits = Get-Emitter 'pester_install'
+            $hits.Count | Should -Be 1
+            $run = Get-Key $hits[0].Step 'run'
+            $run | Should -MatchExactly '(?m)^\s*\$r = Invoke-Pester \S+ .*-PassThru' -Because 'the counts come from the PassThru result of the run in this step'
+            $run | Should -MatchExactly '(?m)^\s*& scripts/emit-test-count\.ps1 -Suite pester_install -Passed \$r\.PassedCount -Skipped \$r\.SkippedCount\s*$' -Because 'a literal or TotalCount here would publish a wrong figure'
+        }
     }
 
     Context 'outputs' {
@@ -322,6 +331,9 @@ Describe 'test-count workflow wiring' {
             if ($null -eq $grant) { $grant = Get-Key $caller 'permissions' }
             $grant | Should -BeOfType [System.Collections.IDictionary] -Because "test-count.yml job $Job must hold a permissions mapping"
             $called = Use-Workflow $Wf
+            # The workflow-level block must be a mapping of its own: a job-level block alone could mask a deleted workflow-level one,
+            # and every other job of the called workflow would then inherit the repository default token on its own triggers.
+            (Get-Key $called 'permissions') | Should -BeOfType [System.Collections.IDictionary] -Because "$Wf must keep a workflow-level permissions mapping (least privilege for every job)"
             $blocks = @((Get-Key $called 'permissions'))
             foreach ($jn in (Get-Key $called 'jobs').Keys) { $blocks += , (Get-Key $called 'jobs', $jn, 'permissions') }
             $asked = 0
@@ -351,13 +363,20 @@ Describe 'test-count workflow wiring' {
             $doc = Use-Workflow 'ci-scripts.yml'
             Get-Key $doc 'jobs', $Job, 'if' | Should -BeExactly (Expr '!inputs.canonical_only')
         }
-        It '<Wf> has no job that is neither listed as canonical nor skipped when canonical_only' -ForEach @(
-            @{ Wf = 'ci-classic.yml'; Known = @('check', 'linux-binary') }
-            @{ Wf = 'ci-scripts.yml'; Known = @('dev-scripts', 'dev-scripts-linux', 'installer-5-1', 'review-relay-extension') }
+        # Derived from the job itself, not from a second hand-copied list: every job of a called workflow that is not one of its
+        # canonical jobs must carry the canonical_only skip, so a job added later (to ANY called workflow, ci-dotnet.yml included)
+        # cannot run on every main snapshot unless it is named canonical here.
+        It '<Wf> runs no job on a canonical_only snapshot except its canonical jobs <Canonical>' -ForEach @(
+            @{ Wf = 'ci-dotnet.yml'; Canonical = @('test') }
+            @{ Wf = 'ci-classic.yml'; Canonical = @('check') }
+            @{ Wf = 'ci-scripts.yml'; Canonical = @('dev-scripts', 'review-relay-extension') }
         ) {
             $doc = Use-Workflow $Wf
-            ((Get-Keys (Get-Key $doc 'jobs')) | Where-Object { $Known -cnotcontains $_ }) | Should -BeNullOrEmpty -Because "a new job in $Wf runs on every main snapshot unless it is listed here as canonical (no if) or gated by if: !inputs.canonical_only"
-            @($Known | Where-Object { -not (Test-Key $doc 'jobs', $_) }) | Should -BeNullOrEmpty -Because "$Wf must still have every job listed here"
+            foreach ($c in $Canonical) { Test-Key $doc 'jobs', $c | Should -BeTrue -Because "$Wf must still have canonical job $c" }
+            $others = @((Get-Keys (Get-Key $doc 'jobs')) | Where-Object { $Canonical -cnotcontains $_ })
+            foreach ($j in $others) {
+                Get-Key $doc 'jobs', $j, 'if' | Should -BeExactly (Expr '!inputs.canonical_only') -Because "job $j of $Wf is not canonical, so it must be gated by if: !inputs.canonical_only or it runs on every main snapshot"
+            }
         }
         It '<Wf> canonical job <Job> has no if' -ForEach @(
             @{ Wf = 'ci-dotnet.yml'; Job = 'test' }
@@ -555,6 +574,11 @@ Describe 'test-count workflow wiring' {
             $withToken.Count | Should -Be 1 -Because 'exactly one publish step may carry GH_TOKEN'
             $run = Get-Key $withToken[0] 'run'
             $run | Should -MatchExactly '(?m)\bgit\b.*\bpush\b' -Because 'the step that holds the token is the one that pushes'
+            # The write token reaches only git commands on the badges checkout: no other client (gh, curl, python) and no command
+            # chaining, so nothing in this step can write to another ref through the same token.
+            $bad = @(($run -split '\r?\n') | Where-Object { $_.Trim() -and ($_.Trim() -cnotmatch '^#') } |
+                Where-Object { ($_.Trim() -cnotmatch '^git -C badges ') -or ($_ -cmatch '&&|\|\||;|\||`|\$\(|<\(|>\(') })
+            $bad | Should -BeNullOrEmpty -Because "every line of the step that holds GH_TOKEN must be a single git -C badges command (found: $($bad -join ' // '))"
         }
         It 'publish has one render step that runs the publisher, and the push step runs only on its changed output' {
             $doc = Use-Workflow 'test-count.yml'
