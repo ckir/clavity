@@ -88,6 +88,7 @@ The README "tests" badge: each CI lane extracts its runner's passed/skipped coun
 | Script | Purpose | Run via |
 |---|---|---|
 | `emit-test-count.ps1` | Extract one suite's passed/skipped counts from its runner output (`-Suite <id> -Path <file>`, or `-Passed/-Skipped` for `pester_install`), validate them, and append `<id>_passed` / `<id>_skipped` to `$GITHUB_OUTPUT`; throws on any unrecognised or failing summary | the emitter steps of the called CI workflows; no recipe |
+| `publish-test-count.ps1` | Render the `badges` branch files (`endpoint.json`, `ledger.json`, `README.md`) from the nine `TC_<ID>_PASSED` / `TC_<ID>_SKIPPED` env pairs (`-BadgesDir -MainDir -Commit -RunId -RunUrl -Date -Repo`): validates every value and the existing ledger, refuses a commit that is not a descendant of the ledger's, writes nothing on any failure, and appends `changed=true\|false` to `$GITHUB_OUTPUT` | the `publish` job of `test-count.yml`; no recipe |
 
 ## Subdirectories
 
@@ -102,7 +103,7 @@ The README "tests" badge: each CI lane extracts its runner's passed/skipped coun
     before a loop, never inside one.** `Get-RootRelativePath -Root -Path` is a one-off convenience that
     builds a fresh resolver per call; in a per-file loop that re-runs `Get-Item` every time, which a
     capstone measured at ~64 s per gate run. ROADMAP section 28; `scripts/tests/path-lib.Tests.ps1` pins it.
-  - `test-count-lib.ps1` — the suite metadata and one extractor per test runner's summary format (.NET, cargo, pytest junit, Pester runner, bash tally, Node TAP, unittest) behind `emit-test-count.ps1`; every extractor throws rather than return a wrong count.
+  - `test-count-lib.ps1` — the suite metadata and one extractor per test runner's summary format (.NET, cargo, pytest junit, Pester runner, bash tally, Node TAP, unittest) behind `emit-test-count.ps1`, plus the env/ledger validation and the file rendering behind `publish-test-count.ps1`; every extractor throws rather than return a wrong count.
   - `rule-runner.ps1` — `Invoke-Rules -Rules -Contexts` runs every rule against every context, and no rule
     can stop the runner, or cut itself short, without a diagnostic: each rule runs behind a
     `do { } while ($false)` barrier, because PowerShell resolves `break`/`continue` dynamically and one

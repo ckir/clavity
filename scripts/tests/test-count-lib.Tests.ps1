@@ -306,3 +306,301 @@ Describe 'test-count extractors' {
         }
     }
 }
+
+# The publish side: read nine count pairs from env, validate the ledger already on the badges branch, check ancestry
+# against the main checkout, and write endpoint.json / ledger.json / README.md. Everything that reaches a file or a git
+# argument is validated against a strict regex first; the ledger is data from a branch, not trusted input.
+Describe 'test-count publish' {
+    BeforeAll {
+        . ([IO.Path]::Combine($PSScriptRoot, 'TestTemp.ps1'))
+        . ([IO.Path]::Combine($PSScriptRoot, '..', 'lib', 'test-count-lib.ps1'))
+        $script:Publish = [IO.Path]::GetFullPath([IO.Path]::Combine($PSScriptRoot, '..', 'publish-test-count.ps1'))
+        $script:Made = [System.Collections.Generic.List[string]]::new()
+        # Sums to 4046, the figure the comma-separator test pins.
+        $script:Base = [ordered]@{
+            dotnet_ls = @(851, 0); dotnet_integration = @(249, 0); rust = @(123, 0); python_bridge = @(38, 0)
+            pester_scripts = @(2623, 11); pester_install = @(12, 0); bash_hooks = @(15, 1); node_relay = @(5, 0); site_checks = @(130, 7)
+        }
+        $script:TcNames = foreach ($id in $script:TestCountSuiteIds) { "TC_$($id.ToUpperInvariant())_PASSED"; "TC_$($id.ToUpperInvariant())_SKIPPED" }
+
+        function Set-TcEnv([hashtable]$Override = @{}) {
+            foreach ($id in $script:TestCountSuiteIds) {
+                $u = $id.ToUpperInvariant()
+                $p = if ($Override.ContainsKey("TC_${u}_PASSED")) { $Override["TC_${u}_PASSED"] } else { [string]$script:Base[$id][0] }
+                $s = if ($Override.ContainsKey("TC_${u}_SKIPPED")) { $Override["TC_${u}_SKIPPED"] } else { [string]$script:Base[$id][1] }
+                [Environment]::SetEnvironmentVariable("TC_${u}_PASSED", $p)
+                [Environment]::SetEnvironmentVariable("TC_${u}_SKIPPED", $s)
+            }
+        }
+        function New-Counts {
+            $c = [ordered]@{}
+            foreach ($id in $script:TestCountSuiteIds) { $c[$id] = @{ Passed = [int]$script:Base[$id][0]; Skipped = [int]$script:Base[$id][1] } }
+            $c
+        }
+        function New-Scratch([string]$Prefix) {
+            $d = New-TestTempPath -Prefix $Prefix
+            $script:Made.Add($d)
+            $null = New-Item -ItemType Directory -Path $d
+            $d
+        }
+        function Invoke-Git([string]$Dir, [string[]]$GitArgs) {
+            $o = & git -C $Dir -c user.name=t -c user.email=t@t -c commit.gpgsign=false @GitArgs 2>&1
+            if ($LASTEXITCODE -ne 0) { throw "git $($GitArgs -join ' ') failed: $o" }
+            $o
+        }
+        function Read-Out { (Get-Content -LiteralPath $script:OutFile -Raw) -replace "`r`n", "`n" }
+        function Read-Text([string]$Path) { [IO.File]::ReadAllText($Path) }
+        function Get-LedgerJson([string]$Commit, [string]$RunId = '777', [string]$Date = '2026-11-20') {
+            (New-TestCountFiles (New-Counts) $Commit $RunId 'https://github.com/o/r/actions/runs/777' $Date 'o/r')['ledger.json']
+        }
+        function Invoke-Publish([string]$Commit, [string]$RunId = '777') {
+            & $script:Publish -BadgesDir $script:Badges -MainDir $script:Main -Commit $Commit -RunId $RunId `
+                -RunUrl "https://github.com/o/r/actions/runs/$RunId" -Date '2026-11-20' -Repo 'o/r'
+        }
+    }
+    AfterAll { Remove-TestPath @($script:Made) }
+    BeforeEach {
+        $script:SavedEnv = @{}
+        foreach ($n in @($script:TcNames) + 'GITHUB_OUTPUT') { $script:SavedEnv[$n] = [Environment]::GetEnvironmentVariable($n) }
+        Set-TcEnv
+        $script:OutFile = New-TestTempPath -Prefix 'tc-pub-out'
+        $script:Made.Add($script:OutFile)
+        [IO.File]::WriteAllText($script:OutFile, '')
+        $env:GITHUB_OUTPUT = $script:OutFile
+    }
+    AfterEach {
+        foreach ($n in $script:SavedEnv.Keys) { [Environment]::SetEnvironmentVariable($n, $script:SavedEnv[$n]) }
+    }
+
+    It 'reads all nine pairs from env' {
+        $c = Read-TestCountEnv
+        @($c.Keys) | Should -Be $script:TestCountSuiteIds
+        $c['dotnet_ls'].Passed | Should -Be 851
+        $c['dotnet_ls'].Passed | Should -BeOfType ([int])
+        $c['site_checks'].Skipped | Should -Be 7
+        $c['pester_install'].Skipped | Should -Be 0
+    }
+    It 'rejects a missing pair' {
+        [Environment]::SetEnvironmentVariable('TC_NODE_RELAY_SKIPPED', $null)
+        { Read-TestCountEnv } | Should -Throw '*TC_NODE_RELAY_SKIPPED*'
+        Set-TcEnv
+        [Environment]::SetEnvironmentVariable('TC_RUST_PASSED', '')
+        { Read-TestCountEnv } | Should -Throw '*TC_RUST_PASSED*'
+    }
+    It 'rejects passed=0' {
+        Set-TcEnv @{ TC_BASH_HOOKS_PASSED = '0' }
+        { Read-TestCountEnv } | Should -Throw '*TC_BASH_HOOKS_PASSED*'
+    }
+    It 'accepts skipped=0 and the range ends, and rejects one past them' {
+        Set-TcEnv @{ TC_RUST_PASSED = '1000000'; TC_RUST_SKIPPED = '1000000'; TC_BASH_HOOKS_PASSED = '1' }
+        (Read-TestCountEnv)['rust'].Passed | Should -Be 1000000
+        Set-TcEnv @{ TC_RUST_PASSED = '1000001' }
+        { Read-TestCountEnv } | Should -Throw '*TC_RUST_PASSED*'
+        Set-TcEnv @{ TC_RUST_SKIPPED = '1000001' }
+        { Read-TestCountEnv } | Should -Throw '*TC_RUST_SKIPPED*'
+    }
+    It 'rejects a non-integer like 12;rm' {
+        foreach ($bad in '12;rm', '1.5', '-3', '+3', ' 3', '3 ', "3`n", '1e3', '12345678', '0x10', '') {
+            Set-TcEnv @{ TC_PYTHON_BRIDGE_PASSED = $bad }
+            { Read-TestCountEnv } | Should -Throw '*TC_PYTHON_BRIDGE_PASSED*' -Because "value '$bad'"
+        }
+        Set-TcEnv @{ TC_PYTHON_BRIDGE_SKIPPED = '12;rm' }
+        { Read-TestCountEnv } | Should -Throw '*TC_PYTHON_BRIDGE_SKIPPED*'
+    }
+
+    It 'formats the total with a comma separator' {
+        $f = New-TestCountFiles (New-Counts) ('a' * 40) '777' 'https://github.com/o/r/actions/runs/777' '2026-11-20' 'o/r'
+        $e = $f['endpoint.json'] | ConvertFrom-Json
+        $e.message | Should -Be '4,046 passed'
+        { Test-EndpointJson $f['endpoint.json'] } | Should -Not -Throw
+        $f['endpoint.json'] | Should -Be '{"schemaVersion":1,"label":"tests","message":"4,046 passed","color":"brightgreen"}'
+    }
+    It 'returns exactly the three files with LF endings' {
+        $f = New-TestCountFiles (New-Counts) ('a' * 40) '777' 'https://github.com/o/r/actions/runs/777' '2026-11-20' 'o/r'
+        @($f.Keys) | Should -Be @('endpoint.json', 'ledger.json', 'README.md')
+        foreach ($k in $f.Keys) { $f[$k] | Should -Not -Match "`r" -Because $k }
+        $f['README.md'] | Should -Match "`n\z"
+    }
+    It 'writes the ledger in suite-id order and it validates' {
+        $sha = 'b' * 40
+        $l = (New-TestCountFiles (New-Counts) $sha '777' 'https://github.com/o/r/actions/runs/777' '2026-11-20' 'o/r')['ledger.json']
+        $l | Should -Match '^\{"schema":1,"commit":"b{40}","run_id":"777","date":"2026-11-20","suites":\{"dotnet_ls":\{"passed":851,"skipped":0\},"dotnet_integration":'
+        $p = Test-TestCountLedger $l
+        $p.commit | Should -Be $sha
+        $p.suites.pester_scripts.passed | Should -Be 2623
+    }
+    It 'renders the breakdown README with links, badge, table and the two sentences' {
+        $sha = 'c' * 40
+        $r = (New-TestCountFiles (New-Counts) $sha '777' 'https://github.com/o/r/actions/runs/777' '2026-11-20' 'o/r')['README.md']
+        $r | Should -BeLike '*4,046*'
+        $r | Should -Match ([regex]::Escape("for commit [``$sha``](https://github.com/o/r/commit/$sha) (2026-11-20)"))
+        $r | Should -BeLike '*(https://github.com/o/r/actions/runs/777)*'
+        $r | Should -BeLike '*https://github.com/o/r/actions/workflows/test-count.yml/badge.svg?branch=main*'
+        foreach ($h in 'Label', 'Passed', 'Skipped', 'Lane', 'Conditions', 'Command') { $r | Should -BeLike "*| $h *" }
+        foreach ($m in (Get-TestCountSuiteMeta).Values) { $r | Should -BeLike "*$($m.Label)*" }
+        @([regex]::Matches($r, '(?m)^\| [^|]+ \| [0-9,]+ \| [0-9,]+ \|')).Count | Should -Be 9
+        $r | Should -BeLike '*tests executed and passed at that one commit*skipped tests are not counted*'
+        $r | Should -BeLike '*status badge is red*last commit where every suite passed*'
+    }
+    It 'refuses inputs that would break the files or a git argument' {
+        $u = 'https://github.com/o/r/actions/runs/777'
+        { New-TestCountFiles (New-Counts) '--upload-pack=x' '777' $u '2026-11-20' 'o/r' } | Should -Throw '*commit*'
+        { New-TestCountFiles (New-Counts) ('a' * 40) '7x' $u '2026-11-20' 'o/r' } | Should -Throw '*run id*'
+        { New-TestCountFiles (New-Counts) ('a' * 40) '777' 'javascript:alert(1)' '2026-11-20' 'o/r' } | Should -Throw '*run url*'
+        { New-TestCountFiles (New-Counts) ('a' * 40) '777' "$u)`n[x](y" '2026-11-20' 'o/r' } | Should -Throw '*run url*'
+        { New-TestCountFiles (New-Counts) ('a' * 40) '777' $u '20261120' 'o/r' } | Should -Throw '*date*'
+        { New-TestCountFiles (New-Counts) ('a' * 40) '777' $u '2026-11-20' 'o r' } | Should -Throw '*repo*'
+        { New-TestCountFiles (New-Counts) ('a' * 40) '777' $u '2026-11-20' 'o/r/../x' } | Should -Throw '*repo*'
+        $c = New-Counts; $c['rust'].Passed = 0
+        { New-TestCountFiles $c ('a' * 40) '777' $u '2026-11-20' 'o/r' } | Should -Throw '*rust*'
+        $c = New-Counts; $c.Remove('rust')
+        { New-TestCountFiles $c ('a' * 40) '777' $u '2026-11-20' 'o/r' } | Should -Throw '*rust*'
+    }
+
+    It 'accepts a well-formed endpoint and rejects a malformed one' {
+        { Test-EndpointJson '{"schemaVersion":1,"label":"tests","message":"1 passed","color":"brightgreen"}' } | Should -Not -Throw
+        foreach ($bad in '{"schemaVersion":"1","label":"tests","message":"1 passed","color":"brightgreen"}',
+                         '{"schemaVersion":2,"label":"tests","message":"1 passed","color":"brightgreen"}',
+                         '{"schemaVersion":1,"label":"tests","message":1,"color":"brightgreen"}',
+                         '{"schemaVersion":1,"label":"tests","message":"1 passed"}',
+                         '{"schemaVersion":1,"label":"tests","message":"1 passed","color":"red","extra":"x"}',
+                         '[1]', 'null', 'not json') {
+            { Test-EndpointJson $bad } | Should -Throw -Because $bad
+        }
+    }
+
+    It 'rejects a ledger whose commit is not 40 hex' {
+        foreach ($bad in '--upload-pack=x', ('A' * 40), ('a' * 39), ('a' * 41), "$('a' * 40)`n") {
+            $j = (Get-LedgerJson ('a' * 40)) -replace ('a' * 40), ($bad -replace "`n", '\n')
+            { Test-TestCountLedger $j } | Should -Throw '*commit*' -Because "commit '$bad'"
+        }
+    }
+    It 'rejects a ledger with an unknown suite' {
+        $j = (Get-LedgerJson ('a' * 40)) -replace '"site_checks"', '"bogus"'
+        { Test-TestCountLedger $j } | Should -Throw '*suite*'
+    }
+    It 'rejects a ledger that is missing a suite, or has a bad count, schema, run id, date or shape' {
+        $good = Get-LedgerJson ('a' * 40)
+        { Test-TestCountLedger $good } | Should -Not -Throw
+        { Test-TestCountLedger ($good -replace '"run_id":"777"', '"run_id":777') } | Should -Not -Throw -Because 'the spec says the run id is an integer'
+        $cases = @(
+            @{ Why = 'missing suite'; Json = ($good -replace ',"site_checks":\{"passed":130,"skipped":7\}', '') }
+            @{ Why = 'passed 0'; Json = ($good -replace '"rust":\{"passed":123', '"rust":{"passed":0') }
+            @{ Why = 'passed over range'; Json = ($good -replace '"rust":\{"passed":123', '"rust":{"passed":1000001') }
+            @{ Why = 'negative skipped'; Json = ($good -replace '"skipped":11', '"skipped":-1') }
+            @{ Why = 'float passed'; Json = ($good -replace '"rust":\{"passed":123', '"rust":{"passed":1.5') }
+            @{ Why = 'string passed'; Json = ($good -replace '"rust":\{"passed":123', '"rust":{"passed":"123"') }
+            @{ Why = 'schema 2'; Json = ($good -replace '"schema":1', '"schema":2') }
+            @{ Why = 'run id not digits'; Json = ($good -replace '"run_id":"777"', '"run_id":"7x7"') }
+            @{ Why = 'run id negative'; Json = ($good -replace '"run_id":"777"', '"run_id":-7') }
+            @{ Why = 'run id float'; Json = ($good -replace '"run_id":"777"', '"run_id":7.5') }
+            @{ Why = 'date shape'; Json = ($good -replace '"2026-11-20"', '"20-11-2026"') }
+            @{ Why = 'not json'; Json = 'garbage' }
+            @{ Why = 'empty'; Json = '' }
+            @{ Why = 'json null'; Json = 'null' }
+            @{ Why = 'json array'; Json = '[]' }
+            @{ Why = 'no suites'; Json = '{"schema":1,"commit":"' + ('a' * 40) + '","run_id":"1","date":"2026-11-20"}' }
+        )
+        foreach ($c in $cases) { { Test-TestCountLedger $c.Json } | Should -Throw -Because $c.Why }
+    }
+
+    Context 'publish-test-count' {
+        BeforeEach {
+            $script:Main = New-Scratch 'tc-main'
+            $script:Badges = New-Scratch 'tc-badges'
+            $null = & git init -q $script:Main 2>&1
+            $null = Invoke-Git $script:Main @('commit', '-q', '--allow-empty', '-m', 'x')
+            $script:A = (Invoke-Git $script:Main @('rev-parse', 'HEAD') | Select-Object -First 1).ToString().Trim()
+            $null = Invoke-Git $script:Main @('commit', '-q', '--allow-empty', '-m', 'x')
+            $script:B = (Invoke-Git $script:Main @('rev-parse', 'HEAD') | Select-Object -First 1).ToString().Trim()
+        }
+        It 'publishes over an empty badges dir' {
+            Invoke-Publish $script:A | Out-Null
+            Test-Path (Join-Path $script:Badges 'endpoint.json') | Should -BeTrue
+            Test-Path (Join-Path $script:Badges 'README.md') | Should -BeTrue
+            (Test-TestCountLedger (Read-Text (Join-Path $script:Badges 'ledger.json'))).commit | Should -Be $script:A
+            (Read-Text (Join-Path $script:Badges 'endpoint.json')) | Should -Be '{"schemaVersion":1,"label":"tests","message":"4,046 passed","color":"brightgreen"}'
+            Read-Out | Should -Be "changed=true`n"
+        }
+        It 'treats a badges dir holding only .git as empty' {
+            $null = New-Item -ItemType Directory -Path (Join-Path $script:Badges '.git')
+            Invoke-Publish $script:A | Out-Null
+            Read-Out | Should -Be "changed=true`n"
+        }
+        It 'creates a missing badges dir' {
+            $script:Badges = Join-Path $script:Badges 'sub'
+            Invoke-Publish $script:A | Out-Null
+            Test-Path (Join-Path $script:Badges 'ledger.json') | Should -BeTrue
+        }
+        It 'publishes a descendant' {
+            [IO.File]::WriteAllText((Join-Path $script:Badges 'ledger.json'), (Get-LedgerJson $script:A))
+            Invoke-Publish $script:B | Out-Null
+            (Test-TestCountLedger (Read-Text (Join-Path $script:Badges 'ledger.json'))).commit | Should -Be $script:B
+            Read-Out | Should -Be "changed=true`n"
+        }
+        It 'accepts the same commit and reports changed=false when nothing differs' {
+            Invoke-Publish $script:B | Out-Null
+            [IO.File]::WriteAllText($script:OutFile, '')
+            Invoke-Publish $script:B | Out-Null
+            Read-Out | Should -Be "changed=false`n"
+        }
+        It 'reports changed=true when the same commit has different counts' {
+            Invoke-Publish $script:B | Out-Null
+            [IO.File]::WriteAllText($script:OutFile, '')
+            Set-TcEnv @{ TC_RUST_PASSED = '124' }
+            Invoke-Publish $script:B | Out-Null
+            Read-Out | Should -Be "changed=true`n"
+            (Read-Text (Join-Path $script:Badges 'endpoint.json')) | Should -BeLike '*4,047 passed*'
+        }
+        It 'refuses an ancestor' {
+            Invoke-Publish $script:B | Out-Null
+            [IO.File]::WriteAllText($script:OutFile, '')
+            $before = Read-Text (Join-Path $script:Badges 'ledger.json')
+            { Invoke-Publish $script:A } | Should -Throw "*refusing to publish $($script:A): not a descendant of $($script:B)"
+            Read-Text (Join-Path $script:Badges 'ledger.json') | Should -Be $before
+            Read-Out | Should -BeNullOrEmpty
+        }
+        It 'refuses a commit the main checkout does not know' {
+            [IO.File]::WriteAllText((Join-Path $script:Badges 'ledger.json'), (Get-LedgerJson ('1' * 40)))
+            { Invoke-Publish $script:B } | Should -Throw '*refusing to publish*not a descendant of*'
+        }
+        It 'refuses when the existing ledger is corrupt and leaves it untouched' {
+            $p = Join-Path $script:Badges 'ledger.json'
+            [IO.File]::WriteAllText($p, '{"schema":1,"commit":"--upload-pack=x"}')
+            $before = Read-Text $p
+            { Invoke-Publish $script:B } | Should -Throw '*ledger*'
+            Read-Text $p | Should -Be $before
+            Test-Path (Join-Path $script:Badges 'endpoint.json') | Should -BeFalse
+            Test-Path (Join-Path $script:Badges 'README.md') | Should -BeFalse
+            Read-Out | Should -BeNullOrEmpty
+        }
+        It 'refuses a non-empty badges dir with no ledger' {
+            [IO.File]::WriteAllText((Join-Path $script:Badges 'stray.txt'), 'x')
+            { Invoke-Publish $script:B } | Should -Throw '*ledger*'
+            Test-Path (Join-Path $script:Badges 'endpoint.json') | Should -BeFalse
+        }
+        It 'writes nothing when an env pair is invalid' {
+            Set-TcEnv @{ TC_RUST_PASSED = '12;rm' }
+            { Invoke-Publish $script:A } | Should -Throw '*TC_RUST_PASSED*'
+            @(Get-ChildItem -LiteralPath $script:Badges -Force).Count | Should -Be 0
+            Read-Out | Should -BeNullOrEmpty
+        }
+        It 'rejects a malformed -Commit before touching git or the files' {
+            { Invoke-Publish '--upload-pack=x' } | Should -Throw '*commit*'
+            @(Get-ChildItem -LiteralPath $script:Badges -Force).Count | Should -Be 0
+        }
+        It 'throws when GITHUB_OUTPUT is unset' {
+            Remove-Item Env:GITHUB_OUTPUT
+            { Invoke-Publish $script:A } | Should -Throw '*GITHUB_OUTPUT*'
+            @(Get-ChildItem -LiteralPath $script:Badges -Force).Count | Should -Be 0
+        }
+        It 'writes files without a BOM or CR' {
+            Invoke-Publish $script:A | Out-Null
+            foreach ($n in 'endpoint.json', 'ledger.json', 'README.md') {
+                $b = [IO.File]::ReadAllBytes((Join-Path $script:Badges $n))
+                ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF) | Should -BeFalse -Because $n
+                $b -contains 13 | Should -BeFalse -Because $n
+            }
+        }
+    }
+}
