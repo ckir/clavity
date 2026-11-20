@@ -46,6 +46,12 @@ Describe 'test-count extractors' {
         (Get-DotnetProjectCounts $script:DotnetText 'Clavity.Integration.Tests').Passed | Should -Be 249
         (Get-DotnetProjectCounts $script:DotnetText 'Clavity.Ls.Tests').Skipped | Should -Be 0
     }
+    It 'reads the .NET skipped count from the Skipped: field' {
+        $t = 'Passed!  - Failed:     0, Passed:   848, Skipped:     3, Total:   851, Duration: 9 s - Clavity.Ls.Tests.dll (net10.0)'
+        $r = Get-DotnetProjectCounts $t 'Clavity.Ls.Tests'
+        $r.Passed | Should -Be 848
+        $r.Skipped | Should -Be 3
+    }
     It 'returns an int Passed and Skipped' {
         $r = Get-DotnetProjectCounts $script:DotnetText 'Clavity.Ls.Tests'
         $r.Passed | Should -BeOfType ([int])
@@ -135,6 +141,17 @@ Describe 'test-count extractors' {
         $r.Passed | Should -Be 2
         $r.Skipped | Should -Be 1
     }
+    It 'attributes a case to the longest listed module in either listing order' {
+        # tests.sub.PlainCase can only land in tests.sub (its passing case is the only one there), and the skipped case must
+        # be counted once, whichever module is listed first. A module that wins by order instead of length leaves tests.sub
+        # with no passed test, which throws.
+        $xml = Write-Junit ('<testcase classname="tests" name="a"/><testcase classname="tests.Other" name="b"/><testcase classname="tests.sub.PlainCase" name="c"/><testcase classname="tests.sub.PlainCase" name="d"><skipped/></testcase>')
+        foreach ($order in @(, @('tests.sub', 'tests')), @(, @('tests', 'tests.sub'))) {
+            $r = Get-PytestCounts $xml $order[0]
+            $r.Passed | Should -Be 3 -Because "order $($order[0] -join ', ')"
+            $r.Skipped | Should -Be 1 -Because "order $($order[0] -join ', ')"
+        }
+    }
     It 'throws when the pytest file is missing or not XML' {
         { Get-PytestCounts (New-TestTempPath -Prefix 'tc-missing') @('test_agy_bus') } | Should -Throw '*pytest*'
         $p = New-TestTempPath -Prefix 'tc-bad' -Suffix '.xml'
@@ -164,6 +181,13 @@ Describe 'test-count extractors' {
         $s = Get-BashHookCounts "skip other driver's PARTIAL is silent - host has clavity (classic) on PATH, so dotnet-only cannot be isolated`n`n14 passed, 0 failed"
         $s.Passed | Should -Be 14
         $s.Skipped | Should -Be 1
+    }
+    It 'uses the LAST bash tally and the LAST unittest summary when a log holds two' {
+        $b = Get-BashHookCounts "3 passed, 0 failed`nnoise`n15 passed, 0 failed"
+        $b.Passed | Should -Be 15
+        $u = Get-UnittestCounts "Ran 5 tests in 0.1s`n`nOK`nnoise`nRan 137 tests in 1.982s`n`nOK (skipped=7)"
+        $u.Passed | Should -Be 130
+        $u.Skipped | Should -Be 7
     }
     It 'throws when the bash tally is absent or zero' {
         { Get-BashHookCounts "ok`n" } | Should -Throw '*bash*'
@@ -288,6 +312,13 @@ Describe 'test-count extractors' {
             $xml = Write-Junit ('<testcase classname="test_agy_bus" name="a"/><testcase classname="test_agy_tmux" name="b"/><testcase classname="tests.test_mcp_wiring.TestX" name="c"/><testcase classname="tests.test_secret_scrub" name="d"/>')
             $null = & $script:Emit -Suite python_bridge -Path $xml
             Read-Out | Should -Be "python_bridge_passed=4`npython_bridge_skipped=0`n"
+        }
+        It 'rejects -Passed/-Skipped for a suite that reads a file' {
+            $f = New-TestTempPath -Prefix 'tc-bash'
+            $script:Made.Add($f)
+            [IO.File]::WriteAllText($f, $script:BashText)
+            { & $script:Emit -Suite bash_hooks -Path $f -Passed 15 -Skipped 0 } | Should -Throw '*takes -Path, not -Passed/-Skipped*'
+            { & $script:Emit -Suite rust -Passed 5 -Skipped 0 } | Should -Throw '*takes -Path, not -Passed/-Skipped*'
         }
         It 'rejects an unknown suite' {
             { & $script:Emit -Suite nonsense -Path $script:OutFile } | Should -Throw '*nonsense: unknown suite*'
@@ -458,6 +489,19 @@ Describe 'test-count publish' {
         $r | Should -BeLike '*tests executed and passed at that one commit*skipped tests are not counted*'
         $r | Should -BeLike '*status badge is red*last commit where every suite passed*'
     }
+    It 'escapes a pipe in a metadata cell so the breakdown table keeps six cells per row' {
+        # The one seam: Get-TestCountSuiteMeta is resolved at call time, so a mock can put a pipe into a Conditions text.
+        $real = Get-TestCountSuiteMeta
+        $real['rust'].Conditions = 'a|b'
+        $script:PipeMeta = $real
+        Mock Get-TestCountSuiteMeta { $script:PipeMeta }
+        $r = (New-TestCountFiles (New-Counts) ('c' * 40) '777' 'https://github.com/o/r/actions/runs/777' '2026-11-20' 'o/r')['README.md']
+        $r | Should -BeLike '*a\|b*'
+        $row = @($r -split "`n" | Where-Object { $_ -like '*a\|b*' })
+        $row.Count | Should -Be 1
+        # Six cells: split on a pipe that is not preceded by a backslash, ignoring the leading and trailing one.
+        @([regex]::Split($row[0].Trim().Trim('|'), '(?<!\\)\|')).Count | Should -Be 6
+    }
     It 'refuses inputs that would break the files or a git argument' {
         $u = 'https://github.com/o/r/actions/runs/777'
         { New-TestCountFiles (New-Counts) '--upload-pack=x' '777' $u '2026-11-20' 'o/r' } | Should -Throw '*commit*'
@@ -485,6 +529,13 @@ Describe 'test-count publish' {
         }
     }
 
+    It 'rejects an endpoint whose label or color is not a string, as well as message' {
+        foreach ($k in 'label', 'message', 'color') {
+            $e = [ordered]@{ schemaVersion = 1; label = 'tests'; message = '1 passed'; color = 'brightgreen' }
+            $e[$k] = 5
+            { Test-EndpointJson ($e | ConvertTo-Json -Compress) } | Should -Throw "*'$k' must be a string*"
+        }
+    }
     It 'rejects a ledger whose commit is not 40 hex' {
         foreach ($bad in '--upload-pack=x', ('A' * 40), ('a' * 39), ('a' * 41), "$('a' * 40)`n") {
             $j = (Get-LedgerJson ('a' * 40)) -replace ('a' * 40), ($bad -replace "`n", '\n')

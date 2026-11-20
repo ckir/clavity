@@ -108,10 +108,6 @@ BeforeAll {
         if ($Node -isnot [System.Collections.IDictionary]) { return @() }
         return @($Node.Keys | ForEach-Object { [string]$_ } | Sort-Object)
     }
-    # Tee-Object is a cmdlet, so its name is case-insensitive (Tee-object works); tee is the bash command, lowercase only,
-    # and must not be read out of Tee-Object (the negative lookahead rejects tee-object and tee_x).
-    $script:teeObject = '(?i)\|\s*Tee-Object\b'
-    $script:teeBash = '\|\s*tee(?![-\w])'
     function Expr([string]$Inner) { return '${{ ' + $Inner + ' }}' }
 
     # Every step of every job of the four workflows that exist, with where it sits.
@@ -131,10 +127,6 @@ BeforeAll {
             }
         }
     }
-    # The steps of one workflow file whose `run` matches (case-sensitively) a pattern.
-    function Get-RunSteps([string]$File, [string]$Pattern) {
-        @(Get-AllSteps | Where-Object { $_.File -ceq $File -and ((Get-Key $_.Step 'run') -is [string]) -and ((Get-Key $_.Step 'run') -cmatch $Pattern) })
-    }
     # The ONE step that emits a suite, wherever it is.
     function Get-Emitter([string]$Id) {
         $hits = @(Get-AllSteps | Where-Object {
@@ -153,6 +145,23 @@ BeforeAll {
         if ($s) { return [string]$s }
         if ((Get-Key $Entry.JobNode 'runs-on') -ceq 'windows-latest') { return 'pwsh' }
         return 'bash'
+    }
+    # Every `| tee` / `| Tee-Object` in a run of one workflow file, in any letter case (Tee-Object is a cmdlet and `tee` is
+    # its alias under PowerShell, so Tee-object and Tee work there; under bash only lowercase tee exists). Each use is
+    # classified by what runs it: Tee-Object, or any tee under a PowerShell shell, is a 'ps' use that needs effective
+    # shell pwsh exactly; a tee under any other shell is a 'bash' use that needs an explicit shell: bash.
+    function Get-TeeUses([string]$File) {
+        $uses = foreach ($e in @(Get-AllSteps | Where-Object { $_.File -ceq $File })) {
+            $run = Get-Key $e.Step 'run'
+            if ($run -isnot [string]) { continue }
+            foreach ($m in [regex]::Matches($run, '(?i)\|\s*(Tee-Object|Tee)(?![-\w])')) {
+                $eff = Get-EffectiveShell $e
+                $token = $m.Groups[1].Value
+                $kind = if ($token -ieq 'Tee-Object' -or $eff -match '^(pwsh|powershell)$') { 'ps' } else { 'bash' }
+                [pscustomobject]@{ Job = $e.Job; Name = [string](Get-Key $e.Step 'name'); Token = $token; Kind = $kind; Effective = $eff; Explicit = Get-Key $e.Step 'shell' }
+            }
+        }
+        return , @($uses)
     }
 }
 
@@ -275,7 +284,12 @@ Describe 'test-count workflow wiring' {
             # called job asks for (a `none` entry asks for nothing; write outranks read).
             $rank = @{ read = 1; write = 2 }
             $blocks = @((Get-Key $classic 'permissions'))
-            foreach ($jn in (Get-Key $classic 'jobs').Keys) { $blocks += , (Get-Key $classic 'jobs', $jn, 'permissions') }
+            foreach ($jn in (Get-Key $classic 'jobs').Keys) {
+                $jp = Get-Key $classic 'jobs', $jn, 'permissions'
+                # A string such as write-all or read-all is a blanket level, not a mapping: it cannot be compared key by key.
+                if ($null -ne $jp) { $jp | Should -BeOfType [System.Collections.IDictionary] -Because "ci-classic.yml job $jn sets permissions to a blanket level ('$jp'), not a mapping" }
+                $blocks += , $jp
+            }
             (Get-Key $classic 'permissions') | Should -BeOfType [System.Collections.IDictionary] -Because 'ci-classic.yml declares workflow-level permissions'
             $want = @{}
             foreach ($b in $blocks) {
@@ -321,27 +335,27 @@ Describe 'test-count workflow wiring' {
     Context 'tee keeps exit codes' {
         It '<Wf> pipes at least one test log into a tee' -ForEach $teeFiles {
             $null = Use-Workflow $Wf
-            $n = @(Get-AllSteps | Where-Object { $_.File -ceq $Wf -and ((Get-Key $_.Step 'run') -is [string]) -and (((Get-Key $_.Step 'run') -cmatch $teeObject) -or ((Get-Key $_.Step 'run') -cmatch $teeBash)) }).Count
-            $n | Should -BeGreaterThan 0 -Because "$Wf is expected to tee a test log for the emitter to read"
+            (Get-TeeUses $Wf).Count | Should -BeGreaterThan 0 -Because "$Wf is expected to tee a test log for the emitter to read"
         }
-        It '<Wf> steps piping into Tee-Object run under pwsh' -ForEach $teeFiles {
+        It '<Wf> steps piping into Tee-Object, or into tee under PowerShell, run under pwsh' -ForEach $teeFiles {
             $null = Use-Workflow $Wf
-            foreach ($e in @(Get-RunSteps $Wf $teeObject)) {
-                Get-EffectiveShell $e | Should -BeExactly 'pwsh' -Because "step '$(Get-Key $e.Step 'name')' (job $($e.Job)) pipes into Tee-Object: only pwsh leaves the test command's exit code as the step's"
+            foreach ($u in @((Get-TeeUses $Wf) | Where-Object { $_.Kind -ceq 'ps' })) {
+                $u.Effective | Should -BeExactly 'pwsh' -Because "step '$($u.Name)' (job $($u.Job)) pipes into $($u.Token): only pwsh leaves the test command's exit code as the step's"
             }
         }
-        It '<Wf> steps piping into tee run under an explicit shell: bash' -ForEach $teeFiles {
+        It '<Wf> steps piping into tee under a non-PowerShell shell use lowercase tee and an explicit shell: bash' -ForEach $teeFiles {
             $null = Use-Workflow $Wf
-            foreach ($e in @(Get-RunSteps $Wf $teeBash)) {
-                Get-Key $e.Step 'shell' | Should -BeExactly 'bash' -Because "step '$(Get-Key $e.Step 'name')' (job $($e.Job)) pipes into tee: only an explicit shell: bash runs with -eo pipefail"
+            foreach ($u in @((Get-TeeUses $Wf) | Where-Object { $_.Kind -ceq 'bash' })) {
+                $u.Explicit | Should -BeExactly 'bash' -Because "step '$($u.Name)' (job $($u.Job)) pipes into tee: only an explicit shell: bash runs with -eo pipefail"
+                $u.Token | Should -BeExactly 'tee' -Because "step '$($u.Name)': only lowercase tee exists under bash"
             }
         }
     }
 
     Context 'logs the emitters read' {
-        # An emitter that reads a file only counts what something wrote there: the basename must show up in the emitter call
-        # AND in at least one more place of the same job's run texts (a tee, --junitxml=, Set-Content). Counting occurrences,
-        # not steps, because the Node step writes and reads in one run. Derived from the emitter lines themselves.
+        # An emitter that reads a file only counts what something wrote there: the basename (taken from the emitter call) must
+        # also show up on a non-emitter line of the same job's run texts (a tee, --junitxml=, Set-Content). Lines, not steps,
+        # because the Node step writes and reads in one run. Derived from the emitter lines themselves.
         It '<Id> reads <Base>, which its job also writes' -ForEach @(
             foreach ($id in $script:TestCountSuiteIds) {
                 $wf = $meta[$id].Workflow
@@ -356,9 +370,15 @@ Describe 'test-count workflow wiring' {
             $n = 0
             foreach ($st in $jobSteps) {
                 $run = Get-Key $st.Step 'run'
-                if ($run -is [string]) { $n += [regex]::Matches($run, [regex]::Escape($Base)).Count }
+                # Only lines that are NOT an emitter call count: two emitters (dotnet_ls, dotnet_integration) name the same
+                # log, so mentions on emitter lines alone would satisfy the pin with no writer at all.
+                if ($run -is [string]) {
+                    foreach ($line in ($run -split '\r?\n')) {
+                        if ($line -notmatch 'emit-test-count\.ps1') { $n += [regex]::Matches($line, [regex]::Escape($Base)).Count }
+                    }
+                }
             }
-            $n | Should -BeGreaterOrEqual 2 -Because "$Base must be named by the emitter and by a step of job $($hits[0].Job) that writes it (found $n mention(s))"
+            $n | Should -BeGreaterOrEqual 1 -Because "$Base is read by the emitter, so a step of job $($hits[0].Job) must write it on a line that is not an emitter call (found $n)"
         }
         It 'every emitter that reads a file is covered by a row above' {
             $files = @($script:TestCountSuiteIds | Where-Object { $_ -cne 'pester_install' })
