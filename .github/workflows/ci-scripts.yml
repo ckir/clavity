@@ -65,13 +65,51 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
+    inputs:
+      canonical_only:
+        description: 'Run only the canonical lanes (dev-scripts and review-relay-extension)'
+        type: boolean
+        required: false
+        default: false
+      concurrency_scope:
+        description: 'Caller scope that keeps a called run out of the direct runs concurrency group'
+        type: string
+        required: false
+        default: ''
+    outputs:
+      pester_scripts_passed:
+        description: 'Tests passed in the full scripts Pester sweep'
+        value: ${{ jobs.dev-scripts.outputs.pester_scripts_passed }}
+      pester_scripts_skipped:
+        description: 'Tests skipped in the full scripts Pester sweep'
+        value: ${{ jobs.dev-scripts.outputs.pester_scripts_skipped }}
+      pester_install_passed:
+        description: 'Tests passed in the clavity-install Pester suite'
+        value: ${{ jobs.dev-scripts.outputs.pester_install_passed }}
+      pester_install_skipped:
+        description: 'Tests skipped in the clavity-install Pester suite'
+        value: ${{ jobs.dev-scripts.outputs.pester_install_skipped }}
+      bash_hooks_passed:
+        description: 'Tests passed in the verify-gate bash fixture suite'
+        value: ${{ jobs.dev-scripts.outputs.bash_hooks_passed }}
+      bash_hooks_skipped:
+        description: 'Tests skipped in the verify-gate bash fixture suite'
+        value: ${{ jobs.dev-scripts.outputs.bash_hooks_skipped }}
+      node_relay_passed:
+        description: 'Tests passed in the review-relay extension Node suite'
+        value: ${{ jobs.review-relay-extension.outputs.node_relay_passed }}
+      node_relay_skipped:
+        description: 'Tests skipped in the review-relay extension Node suite'
+        value: ${{ jobs.review-relay-extension.outputs.node_relay_skipped }}
 
 concurrency:
-  group: ci-scripts-${{ github.ref }}
+  group: ci-scripts-${{ inputs.concurrency_scope || 'direct' }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   installer-5-1:
+    if: ${{ !inputs.canonical_only }}
     name: installer contract (Windows PowerShell 5.1)
     runs-on: windows-latest
     steps:
@@ -269,6 +307,13 @@ jobs:
   dev-scripts:
     name: dev scripts (pwsh 7)
     runs-on: windows-latest
+    outputs:
+      pester_scripts_passed: ${{ steps.count_pester_scripts.outputs.pester_scripts_passed }}
+      pester_scripts_skipped: ${{ steps.count_pester_scripts.outputs.pester_scripts_skipped }}
+      pester_install_passed: ${{ steps.count_pester_install.outputs.pester_install_passed }}
+      pester_install_skipped: ${{ steps.count_pester_install.outputs.pester_install_skipped }}
+      bash_hooks_passed: ${{ steps.count_bash_hooks.outputs.bash_hooks_passed }}
+      bash_hooks_skipped: ${{ steps.count_bash_hooks.outputs.bash_hooks_skipped }}
     # A hung suite must not hold the runner for the 6-hour default; the parallel sweep takes 9 to 15 minutes here.
     timeout-minutes: 60
     steps:
@@ -494,7 +539,13 @@ jobs:
         # The `## windows` section of scripts/tests/_skip-inventory.md was generated ON windows-latest, not on a developer box:
         # the CI account is elevated, so the read-deny rows tagged NotAsRoot skip there and not on a normal box (a listed
         # conditional row that did not skip is fine, so the section holds on both).
-        run: pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -ShowMessages -MinTests 100 -RequireSuite test-suite-registration
+        run: pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -ShowMessages -MinTests 100 -RequireSuite test-suite-registration | Tee-Object "$env:RUNNER_TEMP/pester-scripts.log"
+
+      - id: count_pester_scripts
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          & scripts/emit-test-count.ps1 -Suite pester_scripts -Path (Join-Path $env:RUNNER_TEMP 'pester-scripts.log')
 
       - name: Verify-gate fixture tests (bash)
         # A COMMITTED, WIRED HOOK WHOSE ONLY TEST NOTHING RAN. `.claude/hooks/agy-verify-reminder.sh` is
@@ -512,9 +563,16 @@ jobs:
         # one now above: nothing INVOKED it. A mention is not a caller, and stating the stronger,
         # checkable-and-false version of a true claim is how a rationale stops being evidence.
         shell: bash
-        run: bash agy-autotrain/verify/testdata/run-hook-tests.sh
+        run: bash agy-autotrain/verify/testdata/run-hook-tests.sh | tee "$RUNNER_TEMP/bash-hooks.log"
+
+      - id: count_bash_hooks
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          & scripts/emit-test-count.ps1 -Suite bash_hooks -Path (Join-Path $env:RUNNER_TEMP 'bash-hooks.log')
 
       - name: Pester - clavity-install (pwsh 7)
+        id: count_pester_install
         shell: pwsh
         # NOT covered by the directory sweep above: that runs `Invoke-Pester scripts/tests` and this
         # suite lives in clavity-dotnet/install/. Assuming the sweep reaches it produces a green job
@@ -526,8 +584,10 @@ jobs:
           $bad = @($r.Containers | Where-Object { $_.Result -ne 'Passed' })
           if ($bad.Count -gt 0) { throw "$($bad.Count) container(s) failed to run or discover" }
           if ($r.TotalCount -lt 12) { throw "only $($r.TotalCount) tests discovered - expected the clavity-install suite (>=12)" }
+          & scripts/emit-test-count.ps1 -Suite pester_install -Passed $r.PassedCount -Skipped $r.SkippedCount
 
   dev-scripts-linux:
+    if: ${{ !inputs.canonical_only }}
     name: dev scripts (pwsh 7, linux)
     runs-on: ubuntu-latest
     # A hung suite must not hold the runner for the 6-hour default (the last green run took about 7.5 minutes).
@@ -654,6 +714,9 @@ jobs:
 
   review-relay-extension:
     name: review-relay capture extension (node)
+    outputs:
+      node_relay_passed: ${{ steps.count_node_relay.outputs.node_relay_passed }}
+      node_relay_skipped: ${{ steps.count_node_relay.outputs.node_relay_skipped }}
     # windows-latest on purpose: its checkout uses core.autocrlf, so this job also proves the
     # .gitattributes eol=lf rule keeps the golden capture byte-identical (golden.test.js).
     runs-on: windows-latest
@@ -669,6 +732,7 @@ jobs:
         run: npm ci
 
       - name: Node tests (format + golden contract)
+        id: count_node_relay
         working-directory: review-relay/extension/test
         shell: pwsh
         # `node --test` exits 0 when it finds no test files, and silently skips a named file that does
@@ -680,3 +744,5 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "npm test failed (exit $LASTEXITCODE)" }
           $m = $out | Select-String -Pattern '^# pass (\d+)$' | Select-Object -Last 1
           if (-not $m -or [int]$m.Matches[0].Groups[1].Value -lt 3) { throw "only $(if ($m) { $m.Matches[0].Groups[1].Value } else { 0 }) node tests passed - expected format + golden (>=3)" }
+          $out | Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'node.tap')
+          & (Join-Path $env:GITHUB_WORKSPACE 'scripts/emit-test-count.ps1') -Suite node_relay -Path (Join-Path $env:RUNNER_TEMP 'node.tap')
