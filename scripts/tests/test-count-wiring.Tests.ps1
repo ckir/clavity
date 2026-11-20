@@ -259,6 +259,15 @@ Describe 'test-count workflow wiring' {
             Get-Key $p 'contents' | Should -BeExactly 'read'
             Get-Key $p 'actions' | Should -BeExactly 'read'
             Get-Key $p 'packages' | Should -BeExactly 'read'
+            # And derived: the caller must grant exactly the workflow-level permissions ci-classic.yml itself asks for
+            # (every one whose value is not none), so a change to either file is flagged.
+            $classic = Use-Workflow 'ci-classic.yml'
+            $callee = Get-Key $classic 'permissions'
+            $callee | Should -BeOfType [System.Collections.IDictionary] -Because 'ci-classic.yml declares workflow-level permissions'
+            $asked = @($callee.Keys | Where-Object { $callee[$_] -cne 'none' } | ForEach-Object { [string]$_ } | Sort-Object)
+            $asked.Count | Should -BeGreaterThan 0
+            (Get-Keys $p) | Should -Be $asked -Because 'test-count.yml classic must grant what ci-classic.yml asks for'
+            foreach ($k in $asked) { Get-Key $p $k | Should -BeExactly $callee[$k] -Because "permission $k" }
         }
     }
 
@@ -350,6 +359,7 @@ Describe 'test-count workflow wiring' {
         It 'only publish may write contents' {
             $doc = Use-Workflow 'test-count.yml'
             Get-Key $doc 'jobs', 'publish', 'permissions', 'contents' | Should -BeExactly 'write'
+            (Get-Keys (Get-Key $doc 'jobs', 'publish', 'permissions')) | Should -Be @('contents') -Because 'publish holds contents: write and nothing else'
             foreach ($name in (Get-Key $doc 'jobs').Keys) {
                 if ($name -ceq 'publish') { continue }
                 $p = Get-Key $doc 'jobs', $name, 'permissions'
@@ -401,7 +411,10 @@ Describe 'test-count workflow wiring' {
             # The publisher's ancestry check needs full history: a shallow main/ makes every publish refuse as "not a descendant".
             $mainCo = @(@(Get-Key $doc 'jobs', 'publish', 'steps') | Where-Object { ((Get-Key $_ 'uses') -like 'actions/checkout@*') -and ((Get-Key $_ 'with', 'path') -ceq 'main') })
             $mainCo.Count | Should -Be 1 -Because 'publish checks out the repo to main/ exactly once'
-            Get-Key $mainCo[0] 'with', 'fetch-depth' | Should -Be 0 -Because 'a shallow main/ cannot answer the descendant check'
+            # An integer, not just -eq 0: in PowerShell `$false -eq 0` is true, so `fetch-depth: false` would pass a bare -Be 0.
+            $depth = Get-Key $mainCo[0] 'with', 'fetch-depth'
+            ($depth -is [int] -or $depth -is [long]) | Should -BeTrue -Because "fetch-depth must be the integer 0, not a boolean or a string (got $($depth.GetType().Name))"
+            $depth | Should -Be 0 -Because 'a shallow main/ cannot answer the descendant check'
         }
         It 'publish probes for the badges branch with the full ref, so a branch named like a/badges cannot match' {
             $doc = Use-Workflow 'test-count.yml'
@@ -419,12 +432,27 @@ Describe 'test-count workflow wiring' {
             $run = Get-Key $withToken[0] 'run'
             $run | Should -MatchExactly '(?m)\bgit\b.*\bpush\b' -Because 'the step that holds the token is the one that pushes'
         }
+        It 'publish has one render step that runs the publisher, and the push step runs only on its changed output' {
+            $doc = Use-Workflow 'test-count.yml'
+            $steps = @(Get-Key $doc 'jobs', 'publish', 'steps')
+            $render = @($steps | Where-Object { (Get-Key $_ 'id') -ceq 'render' })
+            $render.Count | Should -Be 1 -Because 'exactly one publish step has id: render (the push step reads its output)'
+            $rrun = Get-Key $render[0] 'run'
+            $rrun | Should -BeOfType [string]
+            $rrun | Should -Match ([regex]::Escape('main/scripts/publish-test-count.ps1')) -Because 'the render step runs the publisher from the main checkout'
+            $rrun | Should -Match ([regex]::Escape('-BadgesDir badges'))
+            $push = @($steps | Where-Object { ((Get-Key $_ 'run') -is [string]) -and ((Get-Key $_ 'run') -cmatch '(?m)\bgit\b.*\bpush\b') })
+            $push.Count | Should -Be 1 -Because 'exactly one publish step pushes'
+            Get-Key $push[0] 'if' | Should -BeExactly "steps.render.outputs.changed == 'true'" -Because 'with another id or condition the push step silently never runs and the badge goes stale'
+            Get-Key $push[0] 'env', 'GH_TOKEN' | Should -BeExactly (Expr 'github.token')
+        }
         It 'publish pushes exactly once, to badges, without force' {
             $doc = Use-Workflow 'test-count.yml'
             $lines = @(@(Get-Key $doc 'jobs', 'publish', 'steps') | ForEach-Object { Get-Key $_ 'run' } | Where-Object { $_ } |
                 ForEach-Object { $_ -split '\r?\n' } | Where-Object { $_ -cmatch '\bgit\b.*\bpush\b' })
             $lines.Count | Should -Be 1 -Because "exactly one line in publish's run blocks may match git ... push (found $($lines.Count))"
             $line = $lines[0]
+            $line.Trim() | Should -BeExactly 'git -C badges push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/badges' -Because 'the push line is one refspec, to badges, over the token URL; an added refspec would push elsewhere too'
             $line | Should -MatchExactly '\sHEAD:refs/heads/badges$'
             $line | Should -Not -Match '(\s|^)(--force\S*|-f)(\s|$)'
             $line | Should -Not -Match '\s\+\S*refs/'
@@ -438,6 +466,8 @@ Describe 'test-count workflow wiring' {
             $runs = @(@(Get-Key $doc 'jobs', 'site-checks', 'steps') | ForEach-Object { Get-Key $_ 'run' } | Where-Object { ($_ -is [string]) -and $_.Contains('unittest') })
             $runs.Count | Should -Be 1 -Because 'exactly one site-checks step runs the unittest command'
             $runs[0].Trim().StartsWith($cmd, [StringComparison]::Ordinal) | Should -BeTrue -Because "the run must start with '$cmd' (got: $($runs[0]))"
+            # The whole line: 2>&1 sends stderr (where unittest writes its summary) into the tee, so the emitter can read it.
+            $runs[0].Trim() | Should -BeExactly ($cmd + ' 2>&1 | tee "$RUNNER_TEMP/site-checks.log"') -Because 'the summary unittest prints to stderr must reach the log the emitter reads'
         }
     }
 
