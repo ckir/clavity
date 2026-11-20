@@ -42,19 +42,19 @@ At this point, Claude will improve its own design by running the agy-first skill
 
 Tip: Before starting the adversarial-panel-review, you can set a lower model on Claude main to save tokens. A Sonnet is enough as the load goes to agy. Remember to /compact before you change the model.
 
-Caveat: The adversarial-panel-review skill can produce many rounds of findings and fixing so there is a cap at six rounds yours to waive it if you want the process to continue.
+Caveat: The adversarial-panel-review skill can produce many rounds of findings and fixing so there is a cap at six rounds; it is yours to waive if you want the process to continue.
 
 After the specs review, Claude will write the implementation plan. Again, same adversarial-panel-review treatment here (see the examples below).
 
 You choose the implementation mode (Subagent-Driven or Inline).
 After the implementation claude will run agy-capstone skill. Sit back and relax, watching your code improve from naive to professional.
 
-The last step before delivery is the agy-capstone the agy-test-audit skill. This will harden your test suites before Claude declares the plan as completed.
+The last step before delivery is the agy-test-audit skill. This will harden your test suites before Claude declares the plan as completed.
 
 All the above can be waived by prompts. Say for example, “Waive agy for this step,” and Claude will execute the step solo.
 In case you have a problem starting agy (e.g., quota exhausted, Google’s servers are down), you can switch to subagents mode by prompt. Say for example, “Waive agy for this and use subagents”.
 
-Bonus: Automatic debugging for your repo. Claude agents tend to ignore any pre-existing defects in your codebase, not anymore with clavity. Claude will capture any pre-existing defects in your code (both main and subagents). At the end of a plan, just say “run the triage,” and any defects found during the process will be organized into a ranked backlog (promoted to TODO.md / ROADMAP.md so you can start a new brainstorm to fix, like “/brainstorming sequencing fork open items”. This will start a new plan to fix any remaining defects.
+Bonus: Automatic debugging for your repo. Claude agents tend to ignore any pre-existing defects in your codebase, not anymore with clavity. Claude will capture any pre-existing defects in your code (both main and subagents). At the end of a plan, just say “run the triage,” and any defects found during the process will be organized into a ranked backlog (promoted to TODO.md / ROADMAP.md so you can start a new brainstorm to fix, like “/brainstorming sequencing fork open items”). This will start a new plan to fix any remaining defects.
 
 Tip: How to use agy for best performance? (As Agy answered during a session in this repo)
 
