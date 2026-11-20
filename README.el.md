@@ -96,7 +96,7 @@ Bonus: Αυτόματος εντοπισμός σφαλμάτων για το α
 Αυτά τα δύο εργαλεία είναι **αμοιβαία αποκλειόμενα** — επιλέξτε ακριβώς ένα. Επιτρέπουν στο Claude Code να αναθέτει εργασίες, να λαμβάνει δεύτερες γνώμες ή να συνεργάζεται με το `agy`.
 
 *   **[clavity-dotnet](clavity-dotnet/README.md) (Κύριο):** Η σύγχρονη ανακατασκευή σε .NET 10. Εκθέτει το `agy` στο Claude ως MCP server μέσω ενός τοπικού Language Server. Κάθε instance του Claude διαχειρίζεται τον δικό του απομονωμένο κύκλο ζωής και κατάσταση.
-*   **[clavity-classic](clavity-classic/README.md) (Εφεδρικό):** Η αρχική γέφυρα βασισμένη σε Rust. Χρησιμοποιεί ένα κουδούνι psmux και το δίαυλο agentmemory για να καθοδηγήσει έναν ζωντανό ομότιμο `agy` στον ίδιο φάκελο. Χρησιμοποιήστε το ως εναλλακτική εάν το clavity-dotnet δεν είναι διαθέσιμο.
+*   **[clavity-classic](clavity-classic/README.md) (Εφεδρικό):** Η αρχική γέφυρα βασισμένη σε Rust. Χρησιμοποιεί ένα κουδούνι psmux και τον δίαυλο agentmemory για να καθοδηγήσει έναν ζωντανό ομότιμο `agy` στον ίδιο φάκελο. Χρησιμοποιήστε το ως εναλλακτική εάν το clavity-dotnet δεν είναι διαθέσιμο.
 
 #### Θέλω οι πράκτορές μου να μαθαίνουν και να μοιράζονται γνώση (Προαιρετικά Πρόσθετα)
 *   **[agy-autotrain](agy-autotrain/README.md):** Αυτο-εκπαιδεύει τη γνώση του clavity για το `agy` από την καθημερινή χρήση. Καταγράφει συμπεράσματα, τα επαληθεύει και τα συγκεντρώνει σε ένα εγχειρίδιο ανεξάρτητο από το έργο.
@@ -140,7 +140,7 @@ claude plugin install review-relay@clavity
 Αναβάθμιση από παλιό πρόγραμμα εγκατάστασης `<member>-setup-<version>.exe`; Δείτε το
 [`docs/migrating-from-the-inno-installers.md`](docs/migrating-from-the-inno-installers.md).
 
-**Ένα διατίθεται με αυτόνομο πρόγραμμα εγκατάστασης Windows** — clavity-classic:
+**Ένα από αυτά διατίθεται με αυτόνομο πρόγραμμα εγκατάστασης Windows** — το clavity-classic:
 
 1. Μεταβείτε στη σελίδα [Εκδόσεις](https://github.com/ckir/clavity/releases). Η γενική έκδοση `clavity-v<N>` περιλαμβάνει το πρόγραμμα εγκατάστασης.
 2. Κατεβάστε το — το αρχείο ονομάζεται `clavity-classic-setup-<version>.exe`, με ένα `.sha256`.
@@ -156,7 +156,7 @@ claude plugin install review-relay@clavity
 
 Το αποθετήριο χρησιμοποιεί ένα task runner `just` δύο επιπέδων (`just test`, `just lint`, `just release`). Πριν από το push, το `lefthook` εκτελεί τις πύλες pre-push για να διατηρεί το `main` πράσινο· οι βαρύτερες εντολές `just lint` και `just test` εκτελούνται τοπικά (και οι δύο υπάρχουν στο CI).
 
-Το Pre-commit εκτελεί το `ruff` σε σταδιοποιημένα (staged) αρχεία Python, καθώς και ελέγχους `curate-in-progress` και `cheatsheet-parity` όταν σταδιοποιούνται τα αρχεία driver-cheatsheet.
+Το pre-commit εκτελεί το `ruff` σε σταδιοποιημένα (staged) αρχεία Python, καθώς και ελέγχους `curate-in-progress` και `cheatsheet-parity` όταν σταδιοποιούνται τα αρχεία driver-cheatsheet.
 
 ### Άδεια χρήσης
 
