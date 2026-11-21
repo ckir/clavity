@@ -4,6 +4,7 @@
 [![ci-dotnet](https://github.com/ckir/clavity/actions/workflows/ci-dotnet.yml/badge.svg?branch=main)](https://github.com/ckir/clavity/actions/workflows/ci-dotnet.yml)
 [![ci-classic](https://github.com/ckir/clavity/actions/workflows/ci-classic.yml/badge.svg?branch=main)](https://github.com/ckir/clavity/actions/workflows/ci-classic.yml)
 [![ci-scripts](https://github.com/ckir/clavity/actions/workflows/ci-scripts.yml/badge.svg?branch=main)](https://github.com/ckir/clavity/actions/workflows/ci-scripts.yml)
+[![tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fckir%2Fclavity%2Fbadges%2Fendpoint.json)](https://github.com/ckir/clavity/blob/badges/README.md)
 [![Pages](https://github.com/ckir/clavity/actions/workflows/pages.yml/badge.svg?branch=main)](https://ckir.github.io/clavity/)
 [![Last commit](https://img.shields.io/github/last-commit/ckir/clavity/main)](https://github.com/ckir/clavity/commits/main)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
