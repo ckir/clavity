@@ -81,6 +81,30 @@ because the check is worth re-running by hand when that area changes.
 | `check-rulings-recorded.ps1` | Assert each named `ROADMAP.md` entry carries an `OWNER RULING (` block. Written for the steps-0-1 plan after its first verifier - an inline `awk` one-liner - FAILED SILENTLY on the last of four entries: it bounded each section by scanning to the next `#### ` heading, but the entry after `§17b` is `### §18`, so the bound never matched, the loop ran to EOF, and it printed nothing. **No output read as "not ruled" to a human and as success to a pipeline.** Matching is case-SENSITIVE (`-cnotmatch`) on purpose: PowerShell's `-match` is case-insensitive, which had certified `§14f` as ruled because its prose says "needs an owner ruling, not a fix" | `pwsh -File scripts/check-rulings-recorded.ps1` |
 | `check-roadmap-claims.ps1` | Verify the ROADMAP's own mechanically checkable claims: every `` `path` (N lines) `` claim matches the tracked file it names (an ambiguous claim resolving to two tracked files with different counts is an error, not a coin flip), and every backticked 7-40 hex sha on a line carrying a closure token actually exists, and every backticked `path/with/slash:N` pointer is inside its file (an anchored `file:N` ("text") pointer must still hold its text) | run directly, no `just` recipe; read-only |
 
+## Test-count badge
+
+The README "tests" badge: each CI lane extracts its runner's passed/skipped counts and a publish job sums them.
+
+| Script | Purpose | Run via |
+|---|---|---|
+| `emit-test-count.ps1` | Extract one suite's passed/skipped counts from its runner output (`-Suite <id> -Path <file>`, or `-Passed/-Skipped` for `pester_install`), validate them, and append `<id>_passed` / `<id>_skipped` to `$GITHUB_OUTPUT`; throws on any unrecognised or failing summary | the emitter steps of the called CI workflows and the `site-checks` job of `test-count.yml`; no recipe |
+| `publish-test-count.ps1` | Render the `badges` branch files (`endpoint.json`, `ledger.json`, `README.md`) from the nine `TC_<ID>_PASSED` / `TC_<ID>_SKIPPED` env pairs (`-BadgesDir -MainDir -Commit -RunId -RunUrl -Date -Repo`): validates every value and the existing ledger, refuses a commit that is not a descendant of the ledger's, writes nothing on any failure, and appends `changed=true\|false` to `$GITHUB_OUTPUT` | the `publish` job of `test-count.yml`; no recipe |
+
+### Recovery
+
+The figure is the number of tests executed and passed at one commit of `main`, summed over nine suites that each run on one canonical lane; skipped tests are recorded but not counted. A push to `main` runs the suites a second time from the snapshot, on top of their own push triggers (path-filtered for .NET and classic), which is free on a public repo.
+
+- **A bad count was published** (an extractor bug): fix the emitter on `main`; the next snapshot run replaces the figure. Reverting the `badges` branch alone does not help while the bug is still on `main`.
+- **`main` is red for a while:** the badge stays at the last commit where all nine suites passed together, and the breakdown page (`README.md` on `badges`) says which commit that is. Fix `main`; `gh workflow run test-count` re-runs the snapshot without a new commit.
+- **Corrupt or hand-edited ledger on `badges`:** the `publish` job refuses to write (its ledger validation throws) and the run goes red. A valid ledger holds `schema` 1, a 40-character lowercase hex `commit`, a digits-only `run_id`, a `yyyy-MM-dd` `date`, and exactly the nine suite ids (no extra suites), each with an integer `passed` of at least 1 and an integer `skipped` of at least 0 and no other keys. Extra top-level keys are ignored. A hand-fixed `commit` must still be an ancestor of (or equal to) the next `main` commit, or the publish is refused. The simplest recovery is to replace the branch content with an empty commit (`git switch badges`, remove the files, commit the deletion, push): an empty `badges` counts as a first publish. Then re-run with `gh workflow run test-count`.
+- **The first run cannot create the `badges` branch** (a permission error on the push step; whether `GITHUB_TOKEN` may create a branch cannot be measured before the first run on `main`): the owner creates an empty `badges` branch by hand and re-runs the workflow. An empty `badges` branch counts as a first publish. Switch back to the previous branch afterwards.
+
+  ```
+  git switch --orphan badges && git commit --allow-empty -m init && git push origin badges
+  ```
+
+- **Hold the badge:** `gh workflow disable test-count` stops snapshots and the last published figure stays; `gh workflow enable test-count` resumes.
+
 ## Subdirectories
 
 - `lib/` — shared PowerShell helpers, dot-sourced by the scripts above:
@@ -94,6 +118,7 @@ because the check is worth re-running by hand when that area changes.
     before a loop, never inside one.** `Get-RootRelativePath -Root -Path` is a one-off convenience that
     builds a fresh resolver per call; in a per-file loop that re-runs `Get-Item` every time, which a
     capstone measured at ~64 s per gate run. ROADMAP section 28; `scripts/tests/path-lib.Tests.ps1` pins it.
+  - `test-count-lib.ps1` — the suite metadata and one extractor per test runner's summary format (.NET, cargo, pytest junit, Pester runner, bash tally, Node TAP, unittest) behind `emit-test-count.ps1`, plus the env/ledger validation and the file rendering behind `publish-test-count.ps1`; every extractor throws rather than return a wrong count.
   - `rule-runner.ps1` — `Invoke-Rules -Rules -Contexts` runs every rule against every context, and no rule
     can stop the runner, or cut itself short, without a diagnostic: each rule runs behind a
     `do { } while ($false)` barrier, because PowerShell resolves `break`/`continue` dynamically and one
