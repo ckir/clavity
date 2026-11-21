@@ -1,8 +1,8 @@
 # Test count
 
-**4,293 tests passed** for commit [`33d91e3774fea3df86008688f11d97de09da1dbc`](https://github.com/ckir/clavity/commit/33d91e3774fea3df86008688f11d97de09da1dbc) (2026-11-21).
+**4,293 tests passed** for commit [`9e1facbecd1b9ea9db664574d47dc8c19ad3b3fd`](https://github.com/ckir/clavity/commit/9e1facbecd1b9ea9db664574d47dc8c19ad3b3fd) (2026-11-21).
 
-Counted by [workflow run 44866151165](https://github.com/ckir/clavity/actions/runs/44866151165). Workflow status: [![test-count](https://github.com/ckir/clavity/actions/workflows/test-count.yml/badge.svg?branch=main)](https://github.com/ckir/clavity/actions/workflows/test-count.yml)
+Counted by [workflow run 44866234555](https://github.com/ckir/clavity/actions/runs/44866234555). Workflow status: [![test-count](https://github.com/ckir/clavity/actions/workflows/test-count.yml/badge.svg?branch=main)](https://github.com/ckir/clavity/actions/workflows/test-count.yml)
 
 | Label | Passed | Skipped | Lane | Conditions | Command |
 |---|---:|---:|---|---|---|
