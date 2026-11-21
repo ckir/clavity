@@ -31,7 +31,7 @@ Clavity introduces a real-time, adversarial pairing protocol between two distinc
 - **Zero Cloud Proxies:** Runs locally via a lightweight Language Server MCP bridge over stdio.
 - **Cross-Platform:** Supports Windows, Linux, and macOS.
 - **Capstone & Test Audits:** Peer cites exact file:line proofs; test audits ensure tests catch future regressions.
-- **Automated Bug Triage:** Captures pre-existing repository defects during development and organizes them into a ranked backlog with `start the triage`.
+- **Automated Bug Triage:** Captures pre-existing repository defects during development and organizes them into a ranked backlog with `run the triage`.
 
 Clavity is completely free for developer evaluation during our public beta under the PolyForm Noncommercial 1.0.0 license.
 

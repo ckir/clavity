@@ -41,7 +41,7 @@ No more premature "I'm done!" claims from an agent.
 ### 5/8
 Bonus: while navigating your repo, Claude captures pre-existing defects it encounters along the way.
 
-At the end of any task, just say "start the triage" and Clavity formats them into a prioritized backlog.
+At the end of any task, just say "run the triage" and Clavity formats them into a prioritized backlog.
 
 ---
 
