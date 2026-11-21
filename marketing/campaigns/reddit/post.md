@@ -26,7 +26,7 @@ Clavity runs Claude Code and Google Antigravity (`agy`) in the same folder.
 5. **Capstone (`agy-capstone`):** Convergent review of the committed diff. The peer cites specific file:line defects; Claude fixes them before the completion gate.
 6. **Test Audit (`agy-test-audit`):** Antigravity audits the test suite with mutation probing to make sure tests would catch real regressions.
 
-Bonus: While navigating your codebase, Claude records existing defects it notices. At the end of a session, just type `start the triage` to get an automatically ranked backlog.
+Bonus: While navigating your codebase, Claude records existing defects it notices. At the end of a session, just type `run the triage` to get an automatically ranked backlog.
 
 ### Tech Stack & Privacy
 The primary bridge is `clavity-dotnet`, a .NET 10 Language Server exposing Antigravity as an in-process MCP server over stdio. It runs 100% locally on Windows, Linux, and macOS. Zero source code or telemetry leaves your machine.

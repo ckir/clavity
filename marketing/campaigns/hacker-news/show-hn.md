@@ -24,7 +24,7 @@ The flagship bridge (`clavity-dotnet`) runs as a lightweight, cross-platform Lan
 1. **Adversarial Panel Review:** Before coding, Antigravity simulates three distinct review seats (Architecture, Security, Performance) to challenge the driver's assumptions.
 2. **Capstone Review (`agy-capstone`):** A rounds-until-green review of committed git diffs. The peer provides actionable citations, and the driver measures and refactors until the verdict is clean.
 3. **Test Audit (`agy-test-audit`):** An automated audit measuring untested behaviors and vacuous assertions.
-4. **Automatic Defect Capture:** Pre-existing bugs observed during execution are cataloged and ranked into a prioritized backlog upon running `start the triage`.
+4. **Automatic Defect Capture:** Pre-existing bugs observed during execution are cataloged and ranked into a prioritized backlog when you say `run the triage`.
 
 ### Installation
 Clavity is free for developer evaluation under the PolyForm Noncommercial 1.0.0 license. If you have Claude Code, Antigravity, and `superpowers` installed, you can try it right from your terminal:

@@ -29,7 +29,7 @@ Editorial schedule, tutorial briefs, video specifications, and distribution cade
 ### Tutorial 2: "Capturing and Triaging Repo Bugs Automatically"
 - Running a task with Clavity.
 - Observing how Claude notes pre-existing defects during tool execution.
-- Executing `start the triage` to generate a prioritized backlog without manual issue writing.
+- Executing `run the triage` to generate a prioritized backlog without manual issue writing.
 
 ### Tutorial 3: "Sharing Cross-Agent Memory with CommonMemory"
 - Installing `@agentmemory/agentmemory` and the `commonmemory` plugin.

@@ -125,7 +125,7 @@ Only capabilities verified in source code and existing documentation are listed:
   - Multi-round adversarial panel review (`adversarial-panel-review`).
   - Pre-completion code review gate (`agy-capstone`).
   - Test suite exhaustiveness audit (`agy-test-audit`).
-  - Automatic repo defect capture and ranked backlog triage (`start the triage`).
+  - Automatic repo defect capture and ranked backlog triage (`run the triage`).
 
 ### 2. clavity-classic (Failover Bridge)
 - **Role:** Standalone Rust binary bridging Claude Code and Antigravity over `psmux` and `agentmemory`.
