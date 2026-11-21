@@ -5,7 +5,7 @@
 # You may obtain a copy of the License at:
 # https://polyformproject.org/licenses/noncommercial/1.0.0/
 
-"""Structural (1-5) and README parity (6-7) checks for the one-page GitHub Pages site.
+"""Structural (1-5) and README parity (6) checks for the one-page GitHub Pages site.
 
 Usage: check_site.py --site site --readme README.md
 Prints one `CHECK<n>: <detail>` line per problem. Exit 0 clean, 1 on any
@@ -16,9 +16,9 @@ Maintainer notes. Checks: 1 no root-relative refs (HTML, CSS, inline styles);
 2 every local ref and anchor resolves inside site/; 3 repo links stay on the
 allowlist (repo root, /blob/main, /tree/main, /releases, /issues; no
 raw.githubusercontent.com/ckir/clavity URL); 4 rasters under site/assets/ are <= 300 KB; 5 no third-party
-loads; 6 #install commands and copy buttons equal the README;
-7 the two data-readme-quote texts equal the README. One README fact is
-hard-coded here: the two waiver opening phrases (WAIVER_OPENINGS). Exit codes: 0 clean, 1 problems, 2 unreadable input.
+loads; 6 #install commands and copy buttons equal the README. The README's HUMAN ONLY
+block (the lines from its START to its END marker comment, when both exist) is cut out
+before parsing and never read. Exit codes: 0 clean, 1 problems, 2 unreadable input.
 Any <base href> is a problem (5 absolute, 2 relative); `claude plugin` text is
 allowed only inside <code data-cmd> in #install, anywhere else on the page is
 check 6 (adjacent block elements are joined with a space, so a heading "Claude"
@@ -26,8 +26,7 @@ followed by a paragraph starting "Plugin" is flagged: reword it); the values of 
 aria-label, aria-description, placeholder, input value and meta content are each checked on
 their own for check 6 (a value never joins the text around it, and is never a sanctioned
 command, not even on <code data-cmd>; data-* values are not checked); a repeated attribute
-keeps its first value (as HTML5 does); README
-folding strips * and ` and understands only inline [text](url) links.
+keeps its first value (as HTML5 does).
 Pages nested deeper than 512 elements fail closed with exit 2.
 Page loads that must not be third-party: every <link href> except canonical, and the
 attributes src, srcset, poster, object data, background, and href on svg
@@ -35,9 +34,8 @@ image/use (also xlink:href, feImage href), imagesrcset and quoted image-set()
 strings (a quoted string after `image-set(` in the same declaration, up to `;`,
 `{` or `}`, counts as an image-set URL: put other strings in a separate declaration).
 Form action, a ping and meta refresh are navigation and NOT checked.
-The README parser understands ``` fences, inline `[text](url)` links and
-`*`/backtick emphasis; tilde fences and `_`/`__` emphasis are NOT understood
-and fail the build (exit 2 or CHECK7): reword the README or extend the parser.
+The README parser understands ``` fences only; tilde fences are NOT understood
+and fail the build (exit 2): reword the README or extend the parser.
 Unit tests: python3 -m unittest discover -s .github/site-checks
 """
 
@@ -75,17 +73,12 @@ CSS_IMAGE_SET = re.compile(r"""image-set\(([^;{}]*)""", re.IGNORECASE)
 CSS_QUOTED = re.compile(r"""(?<!url\()(['"])(.*?)\1""", re.IGNORECASE)
 SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:")
 
-# Tags whose boundaries separate words in quote text; inline tags add nothing.
+# Tags whose boundaries separate words in page text; inline tags add nothing.
 BLOCK_TAGS = frozenset(
     "address article aside blockquote br dd details div dl dt fieldset figcaption "
     "figure footer form h1 h2 h3 h4 h5 h6 header hr li main nav ol p pre section "
     "table tbody td tfoot th thead tr ul".split()
 )
-QUOTE_KEYS = ("waiver-1", "waiver-2")
-WAIVER_OPENINGS = {
-    "waiver-1": "All the above can be waived by prompts.",
-    "waiver-2": "In case you have problem to start agy",
-}
 # Attribute values a visitor sees or hears (a tooltip, an alt text, an accessible name, a form
 # field), each checked on its own for check 6. Plus content on <meta> and value on <input>, which
 # are tag-specific. data-* payloads are not rendered anywhere and stay out (ROADMAP section 96).
@@ -103,8 +96,7 @@ class CannotAnswer(Exception):
 class Capture:
     """Text collected while one element is open."""
 
-    kind: str  # quote | cmd
-    key: str  # data-readme-quote value ("" otherwise)
+    kind: str  # cmd
     li: int | None  # enclosing `<li>` of an #install element
     parts: list[str] = field(default_factory=list)
 
@@ -124,7 +116,7 @@ class Frame:
 
 
 class PageParser(HTMLParser):
-    """Collects elements, ids, quote/command text and #install button payloads."""
+    """Collects elements, ids, command text and #install button payloads."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -132,7 +124,6 @@ class PageParser(HTMLParser):
         self.elements: list[tuple[str, dict[str, str]]] = []
         self.ids: set[str] = set()
         self.lis = 0
-        self.quotes: list[Capture] = []
         self.commands: list[Capture] = []  # <code data-cmd> in #install
         self.copies: list[tuple[int | None, str]] = []  # (li, data-copy) in #install
         self.page_text: list[str] = []  # all text except <code data-cmd> in #install
@@ -164,16 +155,13 @@ class PageParser(HTMLParser):
             li = self.lis
             self.lis += 1
         captures: list[Capture] = []
-        if "data-readme-quote" in values:
-            captures.append(Capture("quote", values["data-readme-quote"], None))
-            self.quotes.append(captures[-1])
         if "style" in values:
             self.inline_css.append(values["style"])
         if tag == "style":
             self.inline_css.append("")
         if in_install:
             if "data-cmd" in values:
-                captures.append(Capture("cmd", "", li))
+                captures.append(Capture("cmd", li))
                 self.commands.append(captures[-1])
             if "data-copy" in values:
                 self.copies.append((li, values["data-copy"]))
@@ -417,11 +405,30 @@ def readme_lines(readme_text: str) -> list[str]:
     return readme_text.splitlines()  # copes with LF and CRLF alike
 
 
+HUMAN_START = "HUMAN ONLY SECTION START"
+HUMAN_END = "HUMAN ONLY SECTION END"
+
+
+def strip_human_block(lines: list[str]) -> list[str]:
+    """Drop the START..END marker lines and everything between them.
+
+    Needs both markers (first START, first END after it); with one or none the
+    lines come back unchanged, so a missing install fence still fails loudly.
+    """
+    for start, line in enumerate(lines):
+        if HUMAN_START in line:
+            for end in range(start + 1, len(lines)):
+                if HUMAN_END in lines[end]:
+                    return lines[:start] + lines[end + 1 :]
+            break
+    return lines
+
+
 def readme_install_commands(readme_text: str) -> list[str]:
     """`claude plugin` lines of the first fenced block with `marketplace add`."""
     blocks: list[list[str]] = []
     inside = False
-    for line in readme_lines(readme_text):
+    for line in strip_human_block(readme_lines(readme_text)):
         if line.lstrip().startswith("```"):
             inside = not inside
             if inside:
@@ -442,25 +449,6 @@ def readme_install_commands(readme_text: str) -> list[str]:
         if line.startswith(COMMAND_PREFIX):
             commands.append(re.sub(r"\s+#.*$", "", line).strip())
     return commands
-
-
-def plain(markdown: str) -> str:
-    """Drop `[text](url)` link syntax (keeping text) and `*` emphasis, then fold."""
-    markdown = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", markdown)
-    return fold(markdown.replace("*", "").replace("`", ""))
-
-
-def readme_quote_units(readme_text: str) -> dict[str, str]:
-    """Folded README text for the `waiver-1` and `waiver-2` quotes."""
-    units = {}
-    for key, opening in WAIVER_OPENINGS.items():
-        for line in readme_lines(readme_text):
-            if line.startswith(opening):
-                units[key] = plain(line)
-                break
-        else:
-            raise CannotAnswer(f"README.md has no line starting {opening!r}")
-    return units
 
 
 def multiset_detail(page: list[str], readme: list[str]) -> list[str]:
@@ -516,40 +504,15 @@ def check_install(parser: PageParser, readme_text: str, name: str) -> list[Probl
     return problems
 
 
-def check_quotes(parser: PageParser, readme_text: str, name: str) -> list[Problem]:
-    """Check 7: exactly two data-readme-quote elements equal to the README units."""
-    problems: list[Problem] = []
-    units = readme_quote_units(readme_text)
-    keys = sorted(q.key for q in parser.quotes)
-    if keys != sorted(QUOTE_KEYS):
-        problems.append(
-            (
-                7,
-                f"{name}: data-readme-quote values are {keys}, need {sorted(QUOTE_KEYS)}",
-            )
-        )
-    for quote in parser.quotes:
-        if quote.key in units and (not quote.text or quote.text != units[quote.key]):
-            problems.append(
-                (
-                    7,
-                    f"{name}: quote {quote.key!r} is {quote.text!r}, README has {units[quote.key]!r}",
-                )
-            )
-    return problems
-
-
 def check_parity(site: Path, readme: Path) -> list[Problem]:
-    """Checks 6-7: site/index.html against the README."""
+    """Check 6: site/index.html against the README's install block."""
     parser = parse_page(read_text(site / "index.html", "site/index.html"))
     readme_text = read_text(readme, "README.md")
-    return check_install(parser, readme_text, "index.html") + check_quotes(
-        parser, readme_text, "index.html"
-    )
+    return check_install(parser, readme_text, "index.html")
 
 
 def check_site(site: Path, readme: Path) -> list[Problem]:
-    """Run every check: structure (1-5), then README parity (6-7)."""
+    """Run every check: structure (1-5), then README parity (6)."""
     return check_structure(site) + check_parity(site, readme)
 
 

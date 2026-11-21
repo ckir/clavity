@@ -134,13 +134,13 @@ cp "$ART/profile_clavity.png" site/assets/profile.png
     <h2>How it works</h2>
     <p>clavity starts a Claude Code instance and an Antigravity (agy) instance in the same folder. Claude Code is the driver: it implements and verifies. Antigravity is the peer: it reviews and recommends.</p>
     <p>You need <a href="https://github.com/obra/superpowers">superpowers</a> installed first. You start with a brainstorm, which ends in a design document. That design goes to agy for an expert-panel review (<code>adversarial-panel-review</code>), and the implementation plan written from it gets the same treatment. You then choose how to implement: subagent-driven or inline. After the build, Claude runs <code>agy-capstone</code> to improve the code, and a final <code>agy-test-audit</code> hardens your test suites before the plan is declared complete.</p>
-    <p>Bonus: automatic debugging. Claude captures pre-existing defects it finds in your repo, including those seen by subagents. At the end of a plan, say "start the triage" and the defects are organised into a ranked backlog.</p>
-    <p>Every one of those review steps can be waived with a prompt, and there is a fallback if agy will not start. These two notes are quoted from the README.</p>
-    <blockquote data-readme-quote="waiver-1">
-      <p>All the above can be waived by prompts. Say for example "Waive agy for this step" and claude will execute the step solo.</p>
+    <p>Bonus: automatic debugging. Claude captures pre-existing defects it finds in your repo, including those seen by subagents. At the end of a plan, say “run the triage” and the defects are organised into a ranked backlog.</p>
+    <p>Every one of those review steps can be waived with a prompt, and there is a fallback if agy will not start. These two notes come from the README.</p>
+    <blockquote>
+      <p>All the above can be waived by prompts. Say for example, “Waive agy for this step,” and Claude will execute the step solo.</p>
     </blockquote>
-    <blockquote data-readme-quote="waiver-2">
-      <p>In case you have problem to start agy (e.g. quota exhausted, Google's servers are down) you can switch to subagents mode by prompt. Say for example "Waive agy for this and use subagents".</p>
+    <blockquote>
+      <p>In case you have a problem starting agy (e.g., quota exhausted, Google’s servers are down), you can switch to subagents mode by prompt. Say for example, “Waive agy for this and use subagents”.</p>
     </blockquote>
     <p>For the complete stage-by-stage workflow breakdown, explore <a href="./how-it-works/">How Collaboration Works</a> or consult the <a href="https://github.com/ckir/clavity/blob/main/README.md">README</a>.</p>
   </section>
@@ -189,9 +189,8 @@ cp "$ART/profile_clavity.png" site/assets/profile.png
   - "claude plugin" text may appear only in <code data-cmd> inside this section (anywhere else on the page fails).
   - Each copy button carries a unique aria-label starting with Copy; the page keeps one role=status live region (id copy-status) outside any <li>.
   - Every command is a <code data-cmd> in its own <li> with exactly one <button data-copy> whose value equals it.
-  - Two elements carry data-readme-quote: waiver-1, waiver-2. Their text must equal the README text.
   - No raw.githubusercontent.com/ckir/clavity link may appear (check 3); links to other sites are not checked.
-  - A README change to the install block or the two waiver lines requires this page to change in the same PR.
+  - A README change to the install block requires this page to change in the same PR.
   -->
   <section id="install">
     <h2>Install</h2>

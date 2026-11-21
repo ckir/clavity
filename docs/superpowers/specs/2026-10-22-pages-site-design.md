@@ -195,6 +195,8 @@ Installing and choosing a product come second to that understanding.
      passing on an empty set). For each, the element's text — tags stripped, HTML entities decoded
      (`&quot;` → `"`), curly quotes folded to straight quotes, whitespace collapsed — must appear in
      README.md after the same folding and after stripping markdown emphasis and link syntax.
+
+  > Amended 2026-11-20 (owner ruling): check 7 was removed. The README's HUMAN ONLY block is free text and nothing may depend on it; the two waiver blockquotes on the page are now ordinary site copy.
   Consequence, accepted: a README change that touches those lines turns the `build` check red until
   `site/` is updated in the same PR, which is the point. If such a README change reaches `main` anyway,
   `build` goes red and `deploy` is skipped, so the live site simply stays on its previous, internally
