@@ -35,7 +35,9 @@
                suite is an error (a typo must not silently exclude nothing), and excluding every suite is an error. Excluded
                suites are NAMED in the output: a lane that skips a suite must say so, because it is not a full gate.
 .PARAMETER ShowMessages  print each failing row's first error message (whitespace collapsed, cut at 300 chars) under its FAILED
-               name, so a flaky row that fails once can be diagnosed from the run that failed instead of a re-run.
+               name, so a flaky row that fails once can be diagnosed from the run that failed instead of a re-run. A container that
+               failed (a throwing BeforeAll or a discovery error) has its first error printed as a `CONTAINER ERROR:` line above the
+               suite's FAILED rows: those rows carry no message of their own.
 .PARAMETER MinTests    fail (exit 1) when fewer tests than this ran in total (passed + failed + skipped). A coverage floor: a lane whose suites
                were deleted or never discovered must not stay green.
 .PARAMETER RequireSuite  suites that MUST report a result, by BASE name, comma-separated. A required suite that is missing, excluded or whose child
@@ -86,6 +88,13 @@ if ($Child) {
         # A container whose every test skipped ends 'Skipped', not 'Passed': that is not a broken container (each skip is gated by the parent).
         badContainers = @($r.Containers | Where-Object { $_.Result -cnotin 'Passed', 'Skipped' } | ForEach-Object { [string]$_.Name }).Count
         failedNames = @($r.Failed | ForEach-Object { [string]$_.ExpandedPath })
+        # A BeforeAll (or discovery) that throws fails every row with an EMPTY ErrorRecord: the real message lives only on the
+        # CONTAINER (measured on Pester 6.2.0, ROADMAP 93 item 10), so a run that lost a whole suite to its setup showed FAILED names and
+        # no cause. Same shape as failedMessages: first error, whitespace collapsed, bounded. Empty when the container had none.
+        containerMessages = @($r.Containers | Where-Object { $_.Result -cnotin 'Passed', 'Skipped' } | ForEach-Object {
+            $m = if ($_.ErrorRecord) { ([string]@($_.ErrorRecord)[0].Exception.Message) -replace '\s+', ' ' } else { '' }
+            $m.Trim().Substring(0, [Math]::Min(300, $m.Trim().Length))
+        } | Where-Object { $_ })
         # Always captured (cheap); the parent decides whether to print. One line, bounded, so a 2000-char assertion dump cannot flood a log.
         failedMessages = @($r.Failed | ForEach-Object {
             $m = if ($_.ErrorRecord) { ([string]$_.ErrorRecord[0].Exception.Message) -replace '\s+', ' ' } else { '' }
@@ -320,6 +329,7 @@ foreach ($r in ($results | Sort-Object File)) {
     $tot.passed += $s.passed; $tot.failed += $s.failed; $tot.skipped += $s.skipped; $tot.bad += $s.badContainers
     $flag = if ($s.failed -gt 0 -or $s.badContainers -gt 0) { 'FAIL' } else { 'ok  ' }
     Write-Host ("{0} {1} passed={2} failed={3} skipped={4} badContainers={5} secs={6}" -f $flag, $name, $s.passed, $s.failed, $s.skipped, $s.badContainers, $s.secs)
+    if ($ShowMessages) { foreach ($cm in @($s.containerMessages)) { if ($cm) { Write-Host "    CONTAINER ERROR: $cm" } } }
     $names = @($s.failedNames); $msgs = @($s.failedMessages)
     for ($i = 0; $i -lt $names.Count; $i++) {
         Write-Host "    FAILED $($names[$i])"
