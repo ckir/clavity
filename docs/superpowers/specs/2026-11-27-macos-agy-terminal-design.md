@@ -51,7 +51,9 @@ Probe: `.github/probes/macos-terminal-probe.sh`, branch `probe/macos-terminal` (
 - Gaps: the probe wrote its scripts under `$TMPDIR`; the real script is `~/.clavity/agy-session.<id>.sh`
   (`SessionPaths.cs:25`; a hidden folder, not Desktop/Documents/Downloads). Only one macOS version was measured: a
   `macos-14` leg was cancelled twice with zero steps (the runner never started), so there is no second OS version.
-  The script also `cd`s into the user's project folder, which may be a TCC-protected folder; unmeasured.
+  The script also `cd`s into the user's project folder, which may be a TCC-protected folder; unmeasured. agy itself was
+  not run on macOS (the runner has none), so the pairing half of Goal 1 is unmeasured: only the terminal launch and the
+  generated script were.
 
 ## Approaches considered
 
@@ -62,7 +64,7 @@ Probe: `.github/probes/macos-terminal-probe.sh`, branch `probe/macos-terminal` (
 - D. `.command` instead of `.sh`. Rejected by M1.
 
 AGY-FIRST: consulted the live peer (two rounds on this fork). Verdict NEGOTIATE with refinements only; the driver judges
-ALIGNED with the folds. AGY-AFTER panel: rounds 1-5 (solo + peer) folded below; round 5 reported no blocking item; see Stand-downs.
+ALIGNED with the folds. AGY-AFTER panel: rounds 1-6 (solo + peer) folded below; see Stand-downs for the status.
 
 ## Decisions
 
@@ -136,7 +138,8 @@ ALIGNED with the folds. AGY-AFTER panel: rounds 1-5 (solo + peer) folded below; 
    - Lookup: `PosixAgyTab.FindOnPath` (`PosixAgyTab.cs:181-192`) becomes exec-checked on Unix and returns an absolute path.
      Today it uses `File.Exists`, which ignores the execute bit, and `Path.Combine`, which keeps a relative PATH entry
      relative (a `.` entry then breaks after the script `cd`s). Predicate: any of the user/group/other execute bits set on
-     the file the path resolves to (symlinks followed; on Windows there is no execute bit, so the default predicate is "exists", exactly today's behaviour); it returns the PATH-entry path (`<dir>/agy`), never the symlink
+     the file the path resolves to AND `File.Exists` is true for it (a directory named `agy` is never a hit: `GetUnixFileMode`
+     succeeds on directories, `File.Exists` does not; symlinks followed; on Windows there is no execute bit, so the default predicate is "exists", exactly today's behaviour); it returns the PATH-entry path (`<dir>/agy`), never the symlink
      target, because only the directory is used. It is an approximation of "this user can execute it": a false positive
      (a file only another user can execute) is harmless, because the script's own `command -v agy || clavity_end 127`
      (`Launcher.cs:202`) still stops it with today's message. The predicate is injected (`isExecutable`) so its logic is
@@ -159,10 +162,24 @@ ALIGNED with the folds. AGY-AFTER panel: rounds 1-5 (solo + peer) folded below; 
      never contains `:` (it came from splitting PATH on the separator, `PosixAgyTab.cs:185`). It never captures the whole
      caller PATH and never shadows the login PATH. Appending the directory covers an agy shim whose runtime lives in the same
      directory (UNVERIFIED-MACOS).
-8. Label: CHANGELOG and docs say, exactly: "the macOS terminal ladder and generated script were exercised on a GitHub macOS
-   runner; the full `clavity-ls start` command was not run on macOS". They must not say "verified on macOS". A ROADMAP item
-   tracks the real-Mac check: Gatekeeper/TCC dialogs (including `cd` into Documents/Desktop/Downloads), a zsh login
-   shell's PATH, `.sh` handler overrides, iTerm2/other bundles, a second macOS version.
+8. Label and shipping path. The label is: "the macOS terminal ladder and generated script were exercised on a GitHub macOS
+   runner; the full `clavity-ls start` command was not run on macOS". It must not say "verified on macOS". It reaches users
+   through the commit SUBJECT of the `feat(dotnet): ...` commit, because the release computes the bump and writes
+   `clavity-dotnet/CHANGELOG.md` and the GitHub release notes only from conventional commit subjects
+   (`scripts/lib/release-lib.ps1`, `Get-BumpLevel` / `Update-Changelog` / `Format-ReleaseNotes`; `docs/release-runbook.md`
+   says a non-conventional commit gets no CHANGELOG entry). So the subject carries the label (short form allowed, for
+   example `feat(dotnet): open agy in Terminal.app on macOS (ladder exercised on a CI macOS runner only)`); hand-editing
+   the generated CHANGELOG is not the route. The same text goes into the macOS paragraph of `clavity-dotnet/README.md`
+   (`:39-40`) and the `CliVerbs.cs` help; `docs/USER_GUIDE.html` is generated and is not edited. The owner reads
+   `just release-dry` (the feat subject must yield a minor bump and the label must appear in the previewed notes) before any
+   release; this work does not run `just release`.
+   A ROADMAP entry in `clavity-dotnet/ROADMAP.md` tracks the real-Mac check, written to `docs/tracker-format.md` (a
+   `###` heading that is the title only, the next non-blank line `**Status:** OPEN <date> - <one line>`, its own entry, never
+   a sub-item of a SHIPPED one; `just check-tracker-status` must pass). It lists: Gatekeeper/TCC dialogs (including `cd`
+   into Documents/Desktop/Downloads), a zsh login shell's PATH, `.sh` handler overrides, iTerm2/other bundles, a second
+   macOS version, and agy's own macOS behaviour (its shell under zsh, Keychain auth, pairing end to end).
+   `clavity-dotnet/plugin/knowledge/agy-assumptions.md` has no macOS content today and gets none from this work: nothing
+   in it may be written without a measurement; the ROADMAP entry is where the open macOS assumptions are recorded.
 
 ## Constraints
 
@@ -197,7 +214,9 @@ ALIGNED with the folds. AGY-AFTER panel: rounds 1-5 (solo + peer) folded below; 
    timeout flag (the existing tests `Agy_failing_records_its_exit_code...` and `Run_with_here_in_the_users_own_terminal...`
    in `PosixScriptRunTests.cs` are the templates; a closed stdin would make "no wait" vacuous); PATH fallback finds an agy that is only in the
    resolved directory, including with an empty PATH and a directory containing a space and an apostrophe.
-3. One live check on a GitHub macOS runner, on a throwaway branch only (never added to the main CI): a test that runs only
+3. One live check on a GitHub macOS runner, living ONLY on the throwaway `probe/macos-terminal` branch (never merged, so
+   no permanently skipped test in the main suite; for the final-commit re-run that branch is rebased onto the head of
+   `feat/macos-terminal`, run, and discarded): a test that runs only
    when `OperatingSystem.IsMacOS()` and an env var is set, calls the real `PosixAgyTab.TryOpen` with `RealDeps`, a real
    `SessionPaths.For(<home>, id)` location and a stub `agy` that exists only on the caller's PATH. The stub writes a marker
    file with its own `PATH`, so the check asserts (a) the claim appears, (b) the stub RAN (proving `command -v agy` failed
@@ -218,10 +237,10 @@ ALIGNED with the folds. AGY-AFTER panel: rounds 1-5 (solo + peer) folded below; 
 ## Left to the builder
 
 The callback type for the 4 s hint and the abandoned-candidate line, the exact `TryOpen` signature (it already takes the timeout; `RealStartEffects` supplies it), message wording within the contents above, whether `BuildPosixScript` receives the
-`GaveUp` path or derives it from the claim path (one helper, never two spellings), how the NEW PATH-fallback script test runs under Git Bash on Windows CI (it must convert
-the directory like the existing harness does, `cygpath -u` / `Fwd`, or the `C:` splits PATH; a silent skip is not allowed), and
+`GaveUp` path or derives it from the claim path (one helper, never two spellings), how the NEW PATH-fallback script test runs under Git Bash on Windows CI (it must hand the script the directory in POSIX form,
+see seam (2) below, or the `C:` splits PATH; a silent skip is not allowed), and
 the test names. Two seams the builder
-must settle: (1) `RealStartEffects` is `internal` to `Clavity.Cli` (`RealStartEffects.cs:16`) but `Clavity.Cli.csproj:9`
+must settle: (1) `RealStartEffects` is `internal` to `Clavity.Cli` (`RealStartEffects.cs:17`) but `Clavity.Cli.csproj:9`
 already grants `InternalsVisibleTo` to `Clavity.Ls.Tests`, so it is reachable; the SSH variables are read through an
 injectable reader, not the process environment, so parallel tests cannot race on them; (2) the harness's `Fwd` only turns
 `\\` into `/` (it leaves `C:`), and its `cygpath -u` runs inside `bash -c` AFTER the script text exists, so the PATH-fallback
@@ -286,4 +305,14 @@ BLOCKING items remain"):
   no longer contradicts item 1; header says rounds 1-5).
 - Panel status: NOT claimed GREEN. Round 5 still returned findings (all folded), so the "full round with no live
   challenge" condition has not been met; a round 6 is the hard-cap point where the owner is asked "continue or ship?".
+
+Round 6 (peer, run at the owner's request; new bespoke Release Gatekeeper seat; 7 findings, 1 blocking): all dispositioned.
+- FOLDED: F1 (the label could not reach the CHANGELOG or the GitHub notes through a hand edit; it now rides in the feat commit
+  subject, the docs targets are named, `release-dry` is the owner's check), F2 (ROADMAP entry shape and gate named), F3
+  (`agy-assumptions.md` has no macOS content, verified; nothing unmeasured is written into it, the ROADMAP entry carries
+  the open assumptions; the unmeasured pairing half is stated), F4 (two paragraphs disagreed; now one), F5 (`:17`),
+  F6 (the live check lives only on the throwaway branch), F7 (`File.Exists` AND the exec bit; directories excluded).
+- Panel status: NOT claimed GREEN. Round 6 returned one blocking and six other findings, so a clean round has not
+  happened; this was the hard-cap round, and the findings were release-path and consistency items rather than design
+  defects in Decisions 1-7 (the peer's own judgement). Whether to run a seventh round is the owner's call.
 
