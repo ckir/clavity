@@ -332,7 +332,7 @@ public sealed class PosixScriptRunTests : IDisposable
     public void Path_fallback_with_an_empty_PATH_yields_the_bare_directory()
     {
         var record = Fwd(Path.Combine(_dir, "path-seen.txt"));
-        // Builtins only: with PATH empty nothing else can be found.
+        // Builtins only (printf, >): with PATH empty nothing else can be found.
         var agy = HiddenAgy("printf '%s' \"$PATH\" > '" + record + "'\n");
         var (bin, script, _, _) = Setup("", withAgy: false, resolvedAgy: PosixForm(agy));
         // `${PATH:+$PATH:}` keeps an empty PATH from becoming ":dir" - an empty entry is the current directory.
@@ -344,13 +344,16 @@ public sealed class PosixScriptRunTests : IDisposable
     [Fact]
     public void Path_fallback_does_not_run_when_agy_is_already_on_PATH()
     {
-        var onPathMarker = Fwd(Path.Combine(_dir, "bin-ran"));
+        var onPathRecord = Fwd(Path.Combine(_dir, "bin-path-seen.txt"));
         var hiddenMarker = Fwd(Path.Combine(_dir, "hidden-ran"));
         var hidden = HiddenAgy(": > '" + hiddenMarker + "'\n");
-        var (bin, script, _, _) = Setup(": > '" + onPathMarker + "'\n", resolvedAgy: PosixForm(hidden));
+        // The agy in bin records the PATH it was started with: were the fallback line unconditional, the resolved
+        // directory would be appended to it even though this agy was found first.
+        var (bin, script, _, _) = Setup("printf '%s' \"$PATH\" > '" + onPathRecord + "'\n", resolvedAgy: PosixForm(hidden));
         Assert.Equal(0, RunSh(script, bin));
-        Assert.True(File.Exists(onPathMarker));
+        Assert.True(File.Exists(onPathRecord), "the agy on PATH did not run");
         Assert.False(File.Exists(hiddenMarker));
+        Assert.DoesNotContain("hid den's", File.ReadAllText(onPathRecord));
     }
 
     [Fact]
