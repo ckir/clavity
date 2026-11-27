@@ -225,6 +225,7 @@ public class PosixAgyTabTests
         try
         {
             File.WriteAllText(Path.Combine(dir, "agy"), "");
+            MakeExecutable(Path.Combine(dir, "agy"));
             Assert.Equal(Path.Combine(dir, "agy"), PosixAgyTab.FindOnPath("agy", "/nope" + Path.PathSeparator + dir));
             Assert.Null(PosixAgyTab.FindOnPath("agy", "/nope"));
             Assert.Null(PosixAgyTab.FindOnPath("agy", null));
@@ -243,6 +244,7 @@ public class PosixAgyTabTests
         // relative name and match a file in whatever directory this process runs in.
         var name = "clavity-cwd-probe-" + Guid.NewGuid().ToString("N");
         File.WriteAllText(name, "");   // in the CURRENT directory, on purpose
+        MakeExecutable(name);
         try
         {
             Assert.True(File.Exists(name));   // control: the probe is really visible through a bare relative name
@@ -250,6 +252,187 @@ public class PosixAgyTabTests
             Assert.Null(PosixAgyTab.FindOnPath(name, "/nope" + Path.PathSeparator));
         }
         finally { File.Delete(name); }
+    }
+
+    private static void MakeExecutable(string path)
+    {
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    }
+
+    private static void SetMode(string path, UnixFileMode mode)
+    {
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(path, mode);
+    }
+
+    private const UnixFileMode Mode0755 =
+        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+        UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
+    private const UnixFileMode Mode0644 =
+        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead;
+
+    /// <summary>A temp root with a <c>bad</c> and a <c>good</c> directory; <c>good/agy</c> is a 0755 file.</summary>
+    private static (string Root, string Bad, string Good) BadGood()
+    {
+        var root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "clavity-path-" + Guid.NewGuid().ToString("N"))).FullName;
+        var bad = Directory.CreateDirectory(Path.Combine(root, "bad")).FullName;
+        var good = Directory.CreateDirectory(Path.Combine(root, "good")).FullName;
+        File.WriteAllText(Path.Combine(good, "agy"), "");
+        SetMode(Path.Combine(good, "agy"), Mode0755);
+        return (root, bad, good);
+    }
+
+    [Fact]
+    public void FindOnPath_skips_a_0644_file()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var (root, bad, good) = BadGood();
+        try
+        {
+            File.WriteAllText(Path.Combine(bad, "agy"), "");
+            SetMode(Path.Combine(bad, "agy"), Mode0644);
+            Assert.Equal(Path.Combine(good, "agy"), PosixAgyTab.FindOnPath("agy", bad + Path.PathSeparator + good));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void FindOnPath_skips_a_directory_named_agy()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var (root, bad, good) = BadGood();
+        try
+        {
+            SetMode(Directory.CreateDirectory(Path.Combine(bad, "agy")).FullName, Mode0755);
+            Assert.Equal(Path.Combine(good, "agy"), PosixAgyTab.FindOnPath("agy", bad + Path.PathSeparator + good));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void FindOnPath_skips_a_symlink_to_a_0644_file()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var (root, bad, good) = BadGood();
+        try
+        {
+            var target = Path.Combine(root, "plain");
+            File.WriteAllText(target, "");
+            SetMode(target, Mode0644);
+            File.CreateSymbolicLink(Path.Combine(bad, "agy"), target);
+            Assert.Equal(Path.Combine(good, "agy"), PosixAgyTab.FindOnPath("agy", bad + Path.PathSeparator + good));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void FindOnPath_skips_a_dangling_symlink_without_throwing()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var (root, bad, good) = BadGood();
+        try
+        {
+            File.CreateSymbolicLink(Path.Combine(bad, "agy"), "/nonexistent/x");
+            Assert.Equal(Path.Combine(good, "agy"), PosixAgyTab.FindOnPath("agy", bad + Path.PathSeparator + good));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void FindOnPath_skips_an_unreadable_directory()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var (root, bad, good) = BadGood();
+        try
+        {
+            File.WriteAllText(Path.Combine(bad, "agy"), "");
+            SetMode(Path.Combine(bad, "agy"), Mode0755);
+            SetMode(bad, (UnixFileMode)0);
+            // Precondition: a run as root can still stat through a 0000 directory, which would make this test vacuous.
+            Assert.False(File.Exists(Path.Combine(bad, "agy")));
+            Assert.Equal(Path.Combine(good, "agy"), PosixAgyTab.FindOnPath("agy", bad + Path.PathSeparator + good));
+        }
+        finally
+        {
+            SetMode(bad, Mode0755);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void FindOnPath_accepts_a_0755_file_and_a_symlink_to_one_and_returns_the_entry_path_not_the_target()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var (root, bad, good) = BadGood();
+        try
+        {
+            // The first entry holds a SYMLINK to a 0755 file elsewhere: it is a hit, and the result is the entry path.
+            var target = Path.Combine(root, "real-agy");
+            File.WriteAllText(target, "");
+            SetMode(target, Mode0755);
+            File.CreateSymbolicLink(Path.Combine(bad, "agy"), target);
+            Assert.Equal(Path.Combine(bad, "agy"), PosixAgyTab.FindOnPath("agy", bad + Path.PathSeparator + good));
+            // And a plain 0755 file is a hit too.
+            Assert.Equal(Path.Combine(good, "agy"), PosixAgyTab.FindOnPath("agy", good));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void FindOnPath_returns_an_absolute_path_for_a_relative_PATH_entry()
+    {
+        var dirName ="clavity-rel-" + Guid.NewGuid().ToString("N");
+        var good = Path.Combine(Environment.CurrentDirectory, dirName);
+        Directory.CreateDirectory(good);
+        try
+        {
+            File.WriteAllText(Path.Combine(good, "agy"), "");
+            SetMode(Path.Combine(good, "agy"), Mode0755);
+            var rel = dirName;
+            Assert.False(Path.IsPathRooted(rel));
+            var found = PosixAgyTab.FindOnPath("agy", rel);
+            Assert.NotNull(found);
+            Assert.True(Path.IsPathRooted(found));
+            Assert.Equal(Path.Combine(good, "agy"), found);
+        }
+        finally { Directory.Delete(good, recursive: true); }
+    }
+
+    [Fact]
+    public void FindOnPath_uses_the_injected_predicate()
+    {
+        var root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "clavity-path-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            var no = Directory.CreateDirectory(Path.Combine(root, "no")).FullName;
+            var ok = Directory.CreateDirectory(Path.Combine(root, "ok")).FullName;
+            File.WriteAllText(Path.Combine(no, "agy"), "");
+            File.WriteAllText(Path.Combine(ok, "agy"), "");
+            Assert.Equal(Path.Combine(ok, "agy"),
+                PosixAgyTab.FindOnPath("agy", no + Path.PathSeparator + ok,
+                    p => p.EndsWith("ok" + Path.DirectorySeparatorChar + "agy")));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void FindOnPath_treats_a_throwing_predicate_as_not_a_hit()
+    {
+        var root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "clavity-path-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            var first = Directory.CreateDirectory(Path.Combine(root, "first")).FullName;
+            var second = Directory.CreateDirectory(Path.Combine(root, "second")).FullName;
+            File.WriteAllText(Path.Combine(first, "agy"), "");
+            File.WriteAllText(Path.Combine(second, "agy"), "");
+            Assert.Equal(Path.Combine(second, "agy"),
+                PosixAgyTab.FindOnPath("agy", first + Path.PathSeparator + second, p =>
+                    p.Contains(Path.DirectorySeparatorChar + "first" + Path.DirectorySeparatorChar)
+                        ? throw new InvalidOperationException("boom")
+                        : true));
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 
     [Fact]

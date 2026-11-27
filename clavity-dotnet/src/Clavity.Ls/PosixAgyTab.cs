@@ -178,17 +178,40 @@ public static class PosixAgyTab
             : null;
     }
 
-    public static string? FindOnPath(string name, string? pathVar)
+    /// <summary>First PATH entry holding an executable <paramref name="name"/>, as the ABSOLUTE entry path (never a
+    /// symlink target). Any exception while checking one entry (predicate, path normalisation) means "not a hit" and the
+    /// search continues. Empty entries are skipped; a quoted entry is not searched.</summary>
+    public static string? FindOnPath(string name, string? pathVar, Func<string, bool>? isExecutable = null)
     {
         if (string.IsNullOrEmpty(pathVar))
             return null;
+        isExecutable ??= IsExecutableFile;
         foreach (var dir in pathVar.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
         {
-            var candidate = Path.Combine(dir, name);
-            if (File.Exists(candidate))
-                return candidate;
+            try
+            {
+                var candidate = Path.GetFullPath(Path.Combine(dir, name));
+                if (isExecutable(candidate))
+                    return candidate;
+            }
+            catch (Exception)
+            {
+                // Not a hit: an unreadable entry, a dangling symlink or an invalid path must not stop the search.
+            }
         }
         return null;
+    }
+
+    /// <summary>The default <see cref="FindOnPath"/> predicate. Windows: the file exists. Unix: it exists (following
+    /// symlinks, and not a directory) AND any of the user/group/other execute bits is set.</summary>
+    public static bool IsExecutableFile(string path)
+    {
+        if (!File.Exists(path))
+            return false;
+        if (OperatingSystem.IsWindows())
+            return true;
+        const UnixFileMode anyExecute = UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
+        return (File.GetUnixFileMode(path) & anyExecute) != 0;
     }
 
     /// <summary>Write the generated script owner-only and executable (it names this session's endpoint file).</summary>
