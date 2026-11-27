@@ -55,11 +55,13 @@ internal sealed class Fake : IStartEffects
     }
     public void PruneLogs(string logsDir) => Calls.Add("prune");
     public string? ReadProjectId(string agyHome) => null;
-    public bool OnPath(string exe)
+    public string? ResolveOnPath(string exe)
     {
         Calls.Add("onpath:" + exe);
-        return exe == "agy" ? AgyOnPath : exe == "pwsh.exe" ? PwshOnPath : exe is "agent-profile" or "agent-profile.exe" && AgentProfileOnPath;
+        var present = exe == "agy" ? AgyOnPath : exe == "pwsh.exe" ? PwshOnPath : exe is "agent-profile" or "agent-profile.exe" && AgentProfileOnPath;
+        return present ? "/fake/bin/" + exe : null;
     }
+    public bool OnPath(string exe) => ResolveOnPath(exe) is not null;
     public bool ClaudeFindable()
     {
         Calls.Add("claude?");

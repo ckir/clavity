@@ -174,7 +174,7 @@ public static class Launcher
     /// <c>set -C</c> (O_EXCL; measured atomic under dash and bash): only one copy can ever run agy, and the claim
     /// file is the launcher's proof that a terminal really started - an exit code is not (a terminal returns 0 even
     /// when the command it was given does not exist).</summary>
-    public static string BuildPosixScript(LaunchOptions options, string claimPath, string exitedPath)
+    public static string BuildPosixScript(LaunchOptions options, string claimPath, string exitedPath, string? agyPath)
     {
         var sb = new StringBuilder();
         sb.Append("#!/bin/sh\n");
@@ -200,6 +200,11 @@ public static class Launcher
         foreach (var (key, value) in BuildAgyEnv(options))
             sb.Append("export ").Append(key).Append('=').Append(ShQuote(value)).Append('\n');
         sb.Append("cd ").Append(ShQuote(options.Folder)).Append(" || clavity_end 1 'cannot enter the session folder.'\n");
+        // The caller already found agy; the terminal's own PATH may not hold it (a terminal does not inherit the caller's
+        // PATH). Add ONLY its directory, and AFTER what is there, so a PATH agy still wins. `${PATH:+$PATH:}` adds no
+        // separator to an empty PATH: ":dir" has an empty entry, which is the current directory - the session folder.
+        if (agyPath is not null && AgyDir(agyPath) is { } agyDir)
+            sb.Append("command -v agy >/dev/null 2>&1 || PATH=\"${PATH:+$PATH:}\"").Append(ShQuote(agyDir)).Append('\n');
         sb.Append("command -v agy >/dev/null 2>&1 || clavity_end 127 'agy is not on PATH in this terminal.'\n");
         sb.Append("agy --log-file ").Append(ShQuote(options.AgyLogFilePath));
         if (options.SkipPermissions)
@@ -209,6 +214,14 @@ public static class Launcher
         sb.Append('\n');
         sb.Append("clavity_end $? 'agy exited.'\n");
         return sb.ToString();
+    }
+
+    /// <summary>The directory part of a resolved agy path, by string handling on '/' (Path.GetDirectoryName would emit a
+    /// backslash on Windows): "/a/b/agy" is "/a/b", "/agy" is "/", and a path with no '/' is null.</summary>
+    public static string? AgyDir(string agyPath)
+    {
+        var slash = agyPath.LastIndexOf('/');
+        return slash < 0 ? null : slash == 0 ? "/" : agyPath[..slash];
     }
 
     /// <summary>What a copy that did not win the claim does (design Decision 6) instead of closing silently. Builtins and

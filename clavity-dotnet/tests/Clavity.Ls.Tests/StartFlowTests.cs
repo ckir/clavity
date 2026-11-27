@@ -312,6 +312,32 @@ public sealed class StartFlowTests
         Assert.Contains($"cd {Launcher.ShQuote(Repo)} ||", content);
     }
 
+    private const string FallbackPathLine = "PATH=\"${PATH:+$PATH:}\"'/fake/bin'";
+
+    [Fact]
+    public void Start_passes_the_resolved_agy_to_the_script()
+    {
+        var fx = new Fake();
+        Assert.Equal(0, StartFlow.Start([Repo], fx));
+        Assert.Contains(FallbackPathLine, fx.Scripts.Single().Content);
+    }
+
+    [Fact]
+    public void Start_with_a_profile_passes_the_resolved_agy_to_the_script()
+    {
+        var fx = ProfileFake();
+        Assert.Equal(0, StartFlow.Start([Repo, "--profile", "work"], fx));
+        Assert.Contains(FallbackPathLine, fx.Scripts.Single().Content);
+    }
+
+    [Fact]
+    public void The_agy_verb_passes_the_resolved_agy_to_the_script()
+    {
+        var fx = new Fake();
+        StartFlow.Agy([Repo], fx);
+        Assert.Contains(FallbackPathLine, fx.Scripts.Single().Content);
+    }
+
     [Theory]
     [InlineData(true, "pwsh")]
     [InlineData(false, "powershell")]

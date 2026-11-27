@@ -62,7 +62,7 @@ public class LauncherTests
         Assert.Equal("/p/work/claude", plan.ClaudeLaunch.Environment["CLAUDE_CONFIG_DIR"]);
         Assert.DoesNotContain("CLAUDE_CONFIG_DIR", plan.AgyTab.Environment.Keys);
         Assert.DoesNotContain("CLAUDE_CONFIG_DIR", DecodeScript(plan));
-        Assert.DoesNotContain("CLAUDE_CONFIG_DIR", Launcher.BuildPosixScript(options, "/c", "/e"));
+        Assert.DoesNotContain("CLAUDE_CONFIG_DIR", Launcher.BuildPosixScript(options, "/c", "/e", null));
     }
 
     [Fact]
@@ -269,7 +269,7 @@ public class LauncherTests
     public void PosixScript_claims_first_then_traps_every_end_exports_the_session_env_and_runs_agy_with_the_pairing_prompt()
     {
         var script = Launcher.BuildPosixScript(PosixOpts(), "/home/u/.clavity/agy-session.S.claim",
-            "/home/u/.clavity/agy-session.S.exited");
+            "/home/u/.clavity/agy-session.S.exited", null);
         // The head (shebang, three comment lines, the claim-line prefix) is pinned here; the lost-claim block after the
         // prefix is builder-worded, and the PosixScriptRunTests pin its behaviour by running it.
         Assert.StartsWith(
@@ -302,7 +302,7 @@ public class LauncherTests
     [Fact]
     public void Posix_script_claim_line_no_longer_exits_silently()
     {
-        var script = Launcher.BuildPosixScript(PosixOpts(), "/c", "/e");
+        var script = Launcher.BuildPosixScript(PosixOpts(), "/c", "/e", null);
         Assert.Contains("( set -C; : > '/c' ) 2>/dev/null || {", script);
         Assert.DoesNotContain("|| exit 0\n", script);
     }
@@ -310,7 +310,7 @@ public class LauncherTests
     [Fact]
     public void PosixScript_omits_the_project_id_when_absent_and_is_LF_only()
     {
-        var script = Launcher.BuildPosixScript(PosixOpts(projectId: null), "/c", "/e");
+        var script = Launcher.BuildPosixScript(PosixOpts(projectId: null), "/c", "/e", null);
         Assert.DoesNotContain("ANTIGRAVITY_PROJECT_ID", script);
         Assert.DoesNotContain("\r", script);
     }
@@ -319,9 +319,37 @@ public class LauncherTests
     public void ShQuote_escapes_an_embedded_single_quote_the_POSIX_way()
     {
         Assert.Equal("'it'\\''s'", Launcher.ShQuote("it's"));
-        Assert.Contains("cd '/home/o'\\''brien' || clavity_end", Launcher.BuildPosixScript(PosixOpts(folder: "/home/o'brien"), "/c", "/e"));
+        Assert.Contains("cd '/home/o'\\''brien' || clavity_end", Launcher.BuildPosixScript(PosixOpts(folder: "/home/o'brien"), "/c", "/e", null));
         // The exited path is quoted the same way: it sits inside a single-quoted trap only as "$clavity_exited".
         Assert.Contains("clavity_exited='/x/o'\\''b.exited'\n",
-            Launcher.BuildPosixScript(PosixOpts(), "/c", "/x/o'b.exited"));
+            Launcher.BuildPosixScript(PosixOpts(), "/c", "/x/o'b.exited", null));
+    }
+
+    [Theory]
+    [InlineData("/a/b/agy", "/a/b")]
+    [InlineData("/agy", "/")]
+    [InlineData("/opt/o'b/agy", "/opt/o'b")]
+    [InlineData("agy", null)]
+    public void AgyDir_cuts_on_slash_and_keeps_root(string agyPath, string? expected) =>
+        Assert.Equal(expected, Launcher.AgyDir(agyPath));
+
+    [Fact]
+    public void Posix_script_without_a_resolved_agy_has_no_path_line()
+    {
+        Assert.DoesNotContain("${PATH:+$PATH:}", Launcher.BuildPosixScript(PosixOpts(), "/c", "/e", null));
+        // A path with no directory part (nothing to add) emits nothing either.
+        Assert.DoesNotContain("${PATH:+$PATH:}", Launcher.BuildPosixScript(PosixOpts(), "/c", "/e", "agy"));
+    }
+
+    [Fact]
+    public void Posix_script_with_a_resolved_agy_appends_only_its_directory()
+    {
+        var script = Launcher.BuildPosixScript(PosixOpts(), "/c", "/e", "/opt/o'b/agy");
+        const string line = "command -v agy >/dev/null 2>&1 || PATH=\"${PATH:+$PATH:}\"'/opt/o'\\''b'\n";
+        Assert.Contains(line, script);
+        var end127 = script.IndexOf("command -v agy >/dev/null 2>&1 || clavity_end 127", StringComparison.Ordinal);
+        Assert.True(end127 > 0);
+        Assert.Equal(end127, script.IndexOf(line, StringComparison.Ordinal) + line.Length);   // immediately before it
+        Assert.Contains("PATH=\"${PATH:+$PATH:}\"'/'\n", Launcher.BuildPosixScript(PosixOpts(), "/c", "/e", "/agy"));
     }
 }

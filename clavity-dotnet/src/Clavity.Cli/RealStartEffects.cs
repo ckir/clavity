@@ -25,7 +25,8 @@ internal sealed class RealStartEffects : IStartEffects
     public void CreateDirectory(string path) => Directory.CreateDirectory(path);
     public void PruneLogs(string logsDir) => LogRetention.Prune(logsDir, LogRetention.DefaultMaxAge, DateTime.UtcNow);
     public string? ReadProjectId(string agyHome) => AgyEnvironment.TryReadProjectId(agyHome);
-    public bool OnPath(string exe) => PosixAgyTab.FindOnPath(exe, Environment.GetEnvironmentVariable("PATH")) is not null;
+    public string? ResolveOnPath(string exe) => PosixAgyTab.FindOnPath(exe, Environment.GetEnvironmentVariable("PATH"));
+    public bool OnPath(string exe) => ResolveOnPath(exe) is not null;
 
     // Windows: with UseShellExecute=false a bare name resolves to NAME.exe and never to a .cmd shim (measured on .NET 10:
     // `claude` with only claude.cmd on PATH -> Win32Exception, native error 2), searched the way CreateProcess searches -
