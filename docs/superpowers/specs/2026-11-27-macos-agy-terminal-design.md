@@ -143,8 +143,13 @@ ALIGNED with the folds. AGY-AFTER panel: rounds 1-6 (solo + peer) folded below; 
      target, because only the directory is used. It is an approximation of "this user can execute it": a false positive
      (a file only another user can execute) is harmless, because the script's own `command -v agy || clavity_end 127`
      (`Launcher.cs:202`) still stops it with today's message. The predicate is injected (`isExecutable`) so its logic is
-     testable on Windows CI; the Unix implementation is tested on a Linux box. The lookup never throws: an unreadable PATH
-     entry is skipped, not fatal.
+     testable on Windows CI; the Unix implementation is tested on a Linux box. The lookup never throws: ANY exception while
+     checking an entry (MEASURED on .NET 10, Linux: a dangling symlink makes `File.Exists` true and `File.GetUnixFileMode` THROW
+     `FileNotFoundException`; an unreadable directory makes `File.Exists` false without throwing) means "not a hit" and the
+     search continues with the next PATH entry, so a stray broken `agy`, `claude` or `pwsh.exe` symlink early on PATH cannot
+     abort `start`. The callers affected are every caller of `FindOnPath`: `OnPath` (agy, claude, the tools `ProfileSetup.cs:56`
+     checks, `pwsh.exe` via `StartFlow.cs:354`) and `RealStartEffects.ClaudeFindable`; on Windows the predicate is "exists", so
+     nothing changes there.
    - Plumbing: `IStartEffects.OnPath(string)` answers yes/no only (`StartFlow.cs:29`; used at `StartFlow.cs:137`, `:259`,
      `:376` and `ProfileSetup.cs:56`). A resolver returning the absolute path is added, and `OnPath` is defined as "resolver
      returns non-null" so the two cannot drift, and keeps its signature (`StartFlow.cs:354` passes it as a method group to
@@ -169,8 +174,13 @@ ALIGNED with the folds. AGY-AFTER panel: rounds 1-6 (solo + peer) folded below; 
    (`scripts/lib/release-lib.ps1`, `Get-BumpLevel` / `Update-Changelog` / `Format-ReleaseNotes`; `docs/release-runbook.md`
    says a non-conventional commit gets no CHANGELOG entry). So the subject carries the label (short form allowed, for
    example `feat(dotnet): open agy in Terminal.app on macOS (ladder exercised on a CI macOS runner only)`); hand-editing
-   the generated CHANGELOG is not the route. The same text goes into the macOS paragraph of `clavity-dotnet/README.md`
-   (`:39-40`) and the `CliVerbs.cs` help; `docs/USER_GUIDE.html` is generated and is not edited. The owner reads
+   the generated CHANGELOG is not the route. The repository merges pull requests with MERGE COMMITS (`git log --merges`), and
+   `release-lib.ps1` counts EVERY `feat` / `fix` / `revert` / `!` commit that touches `clavity-dotnet/**` since the last
+   release, so the branch carries exactly ONE `feat(dotnet): ...` commit, the one with the label; every other commit on it is
+   typed `test:`, `refactor:`, `docs:` or `chore:` (a `fix:` only if it deserves its own changelog line). The pull request
+   description repeats this rule for whoever merges. The same text goes into `clavity-dotnet/README.md`: a macOS sentence in `### First run` (`:76-89`, which documents only the
+   Linux terminal launch today) and the `## Configuration` line for `CLAVITY_TERMINAL` (`:187-188`, today "Linux: ... e.g.
+   gnome-terminal"); `:39-42` is the RIDs paragraph and is left alone. The `CliVerbs.cs` help changes too; `docs/USER_GUIDE.html` is generated and is not edited. The owner reads
    `just release-dry` (the feat subject must yield a minor bump and the label must appear in the previewed notes) before any
    release; this work does not run `just release`.
    A ROADMAP entry in `clavity-dotnet/ROADMAP.md` tracks the real-Mac check, written to `docs/tracker-format.md` (a
@@ -198,9 +208,15 @@ ALIGNED with the folds. AGY-AFTER panel: rounds 1-6 (solo + peer) folded below; 
 ## Verification plan
 
 1. Unit tests (run on Linux here, Windows in CI): gate matrix (macOS x SSH x CLAVITY_TERMINAL), macOS message text (SSH
-   variables named per reason, no unmeasured example), timeout and hint wiring (macOS only; Linux unchanged), the `GaveUp`
+   variables named per reason, no unmeasured example), timeout and hint wiring (macOS only; Linux unchanged), LINUX cells of the gate matrix (`isMacOS: false` with `DISPLAY` and
+   `SSH_CONNECTION` both set, as under `ssh -X`, still yields the Linux candidates: the SSH check must not leak onto Linux;
+   `FallbackMessage(isMacOS: false, isSsh: true)` prints the Linux text; the abandoned-candidate line is silent on Linux),
+   `CliVerbs.HelpText()` (a test in `CliHelpTests.cs` that the `CLAVITY_TERMINAL` line no longer says "Linux:" and carries no
+   unmeasured example), the `GaveUp`
    file is created after the claim and its failure is swallowed, lost-claim script text, PATH fallback script text
-   (empty-PATH form, `ShQuote` adjacency), `FindOnPath` (injected predicate, relative entry, unreadable entry), both
+   (empty-PATH form, `ShQuote` adjacency), `FindOnPath` with the REAL Unix default predicate on real files (a 0755 file is a hit; a 0644 file, a 0755 DIRECTORY named
+   `agy`, a symlink to a 0644 file, a dangling symlink and an unreadable directory are each skipped without throwing, and a
+   valid later entry is still found after each), plus the injected predicate, relative entry, both
    `BuildPosixScript` call sites pass the resolved agy (including `start --profile` and `start` without it), `IsMacOS` and
    `IsSshSession` reach the message from `StartFlow`, and the REAL effects class reports
    `IsMacOS == OperatingSystem.IsMacOS()` and reads the SSH variables (a unit test, so that part of the real wiring is
@@ -216,8 +232,9 @@ ALIGNED with the folds. AGY-AFTER panel: rounds 1-6 (solo + peer) folded below; 
    resolved directory, including with an empty PATH and a directory containing a space and an apostrophe.
 3. One live check on a GitHub macOS runner, living ONLY on the throwaway `probe/macos-terminal` branch (never merged, so
    no permanently skipped test in the main suite; for the final-commit re-run that branch is rebased onto the head of
-   `feat/macos-terminal`, run, and discarded): a test that runs only
-   when `OperatingSystem.IsMacOS()` and an env var is set, calls the real `PosixAgyTab.TryOpen` with `RealDeps`, a real
+   `feat/macos-terminal`, run, and discarded): a test that FAILS (never returns early or skips) if it is not
+   running on macOS or its env var is unset, so a misconfigured workflow cannot report green without running Terminal.app, and
+   otherwise calls the real `PosixAgyTab.TryOpen` with `RealDeps`, a real
    `SessionPaths.For(<home>, id)` location and a stub `agy` that exists only on the caller's PATH. The stub writes a marker
    file with its own `PATH`, so the check asserts (a) the claim appears, (b) the stub RAN (proving `command -v agy` failed
    first and the fallback found it) with a CONTROL run in which the resolved path is null and the stub must NOT run (M3
@@ -315,4 +332,15 @@ Round 6 (peer, run at the owner's request; new bespoke Release Gatekeeper seat; 
 - Panel status: NOT claimed GREEN. Round 6 returned one blocking and six other findings, so a clean round has not
   happened; this was the hard-cap round, and the findings were release-path and consistency items rather than design
   defects in Decisions 1-7 (the peer's own judgement). Whether to run a seventh round is the owner's call.
+
+Round 7 (peer, run at the owner's request; new bespoke Regression Hunter seat; 7 findings, 0 blocking; the peer's judgement:
+"No BLOCKING item remains", and a full round did not land with no live challenge):
+- FOLDED: F1 (MEASURED here on .NET 10: a dangling symlink gives `File.Exists` true and `GetUnixFileMode` throws; any
+  exception now means "not a hit"; the caller list is complete), F2 (Linux gate, message and hint cells are now tests, so the
+  SSH check cannot leak onto `ssh -X` users), F3 (README targets corrected: `:76-89` and `:187-188`, not `:39-40`), F4 (the
+  real Unix predicate is tested on real files, including the directory and the dangling link, measured above), F5 (a
+  `CliVerbs.HelpText()` test), F6 (the live test fails loudly instead of returning early), F7 (merge commits count: one labelled
+  feat commit, everything else typed otherwise).
+- Panel status: still NOT claimed GREEN. Findings per round: 17, 15, 14, 9, 3, 7, 7 (blocking: 8, 5, 3, 2, 0, 1, 0). The last
+  two rounds were verification-plan and release-path strengthening, none of them a defect in Decisions 1-7.
 
