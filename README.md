@@ -1,8 +1,8 @@
 # Test count
 
-**4,293 tests passed** for commit [`82ea745fb7adf2852c56ad0264ec2be506ce44ba`](https://github.com/ckir/clavity/commit/82ea745fb7adf2852c56ad0264ec2be506ce44ba) (2026-11-25).
+**4,296 tests passed** for commit [`e3fb80ac57156ee735298e2472c64e9318506ed0`](https://github.com/ckir/clavity/commit/e3fb80ac57156ee735298e2472c64e9318506ed0) (2026-11-27).
 
-Counted by [workflow run 45633585101](https://github.com/ckir/clavity/actions/runs/45633585101). Workflow status: [![test-count](https://github.com/ckir/clavity/actions/workflows/test-count.yml/badge.svg?branch=main)](https://github.com/ckir/clavity/actions/workflows/test-count.yml)
+Counted by [workflow run 45936311474](https://github.com/ckir/clavity/actions/runs/45936311474). Workflow status: [![test-count](https://github.com/ckir/clavity/actions/workflows/test-count.yml/badge.svg?branch=main)](https://github.com/ckir/clavity/actions/workflows/test-count.yml)
 
 | Label | Passed | Skipped | Lane | Conditions | Command |
 |---|---:|---:|---|---|---|
@@ -10,7 +10,7 @@ Counted by [workflow run 45633585101](https://github.com/ckir/clavity/actions/ru
 | .NET Clavity.Integration.Tests | 249 | 0 | windows-latest | - | `cd clavity-dotnet; dotnet test tests/Clavity.Integration.Tests` |
 | Rust (cargo) | 123 | 0 | ubuntu-latest | - | `cd clavity-classic; cargo test --all --features test-fakes` |
 | Python bridge (pytest) | 38 | 0 | ubuntu-latest | - | `cd clavity-classic; uv run --project agy-mcp-bridge --frozen pytest agy-mcp-bridge/test_agy_bus.py agy-mcp-bridge/test_agy_tmux.py agy-mcp-bridge/tests/test_mcp_wiring.py agy-mcp-bridge/tests/test_secret_scrub.py` |
-| Pester scripts/tests | 2,869 | 33 | windows-latest | elevated Windows account (NotAsRoot rows skip); ripgrep, lefthook, yq, ast-grep, jq, Pester 6 installed | `pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -MinTests 100 -RequireSuite test-suite-registration` |
+| Pester scripts/tests | 2,872 | 33 | windows-latest | elevated Windows account (NotAsRoot rows skip); ripgrep, lefthook, yq, ast-grep, jq, Pester 6 installed | `pwsh -NoProfile -File scripts/run-pester-parallel.ps1 -Directory scripts/tests -SkipInventory scripts/tests/_skip-inventory.md -MinTests 100 -RequireSuite test-suite-registration` |
 | Pester clavity-install | 12 | 0 | windows-latest | Pester 6 | `Invoke-Pester clavity-dotnet/install/clavity-install.Tests.ps1` |
 | Bash verify-gate fixtures | 15 | 0 | windows-latest | Git Bash; a host with clavity (classic) on PATH skips one case | `bash agy-autotrain/verify/testdata/run-hook-tests.sh` |
 | Node review-relay extension | 5 | 0 | windows-latest | Node 22 | `cd review-relay/extension/test; npm ci; npm test` |
