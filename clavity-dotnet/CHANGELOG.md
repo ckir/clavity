@@ -1,4 +1,9 @@
 # dotnet changelog
+## 0.20.1 - 2026-11-27
+
+### Fixes
+- fix(scripts): print a failed container's error under -ShowMessages (ROADMAP 93 item 10)
+
 ## 0.20.0 - 2026-11-18
 
 ### Features
