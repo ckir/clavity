@@ -64,7 +64,7 @@ public sealed class PosixScriptRunTests : IDisposable
     /// <summary><paramref name="folderExists"/> false names a session folder that does not exist; <paramref name="withAgy"/>
     /// false leaves the fake agy out of the bin directory.</summary>
     private (string bin, string script, string claim, string exited) Setup(string fakeAgyBody, bool folderExists = true,
-        bool withAgy = true)
+        bool withAgy = true, string? claimPath = null)
     {
         var bin = Directory.CreateDirectory(Path.Combine(_dir, "bin")).FullName;
         var work = Path.Combine(_dir, "work dir");   // a space, on purpose
@@ -78,7 +78,7 @@ public sealed class PosixScriptRunTests : IDisposable
                 File.SetUnixFileMode(fakeAgy, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
 
-        var claim = Fwd(Path.Combine(_dir, "s.claim"));
+        var claim = claimPath ?? Fwd(Path.Combine(_dir, "s.claim"));
         var exited = Fwd(Path.Combine(_dir, "s p.exited"));   // a space: it is used inside the single-quoted trap
         var script = Path.Combine(_dir, "s.sh");
         File.WriteAllText(script, Launcher.BuildPosixScript(new LaunchOptions
@@ -116,6 +116,93 @@ public sealed class PosixScriptRunTests : IDisposable
         Assert.True(File.Exists(claim));
         // The winner recorded agy's end; the loser (exit 0 at the claim) did not overwrite it.
         Assert.Equal("0", File.ReadAllText(exited).Trim());
+    }
+
+    /// <summary>Runs the script with stdin held OPEN until the script has ended or ~6 s pass: only a script that sits at
+    /// "Press Enter" lets the 6 s pass, and then "$3.timedout" exists. The writer side decides, not a clock, so
+    /// "did not wait" is not vacuous (a closed stdin would make every read return at once).</summary>
+    private (int rc, string stdout, bool waited) RunWaitProbe(string script, string bin, string args = "")
+    {
+        var probe = Fwd(Path.Combine(_dir, "probe"));
+        var (rc, stdout) = RunShOut(script, bin,
+            "( i=0; while [ ! -e \"$3.done\" ] && [ $i -lt 60 ]; do sleep 0.1; i=$((i+1)); done; " +
+            "[ -e \"$3.done\" ] || : > \"$3.timedout\" ) | { sh \"$2\" " + args + "; rc=$?; : > \"$3.done\"; exit $rc; }",
+            extra: probe);
+        return (rc, stdout, File.Exists(probe + ".timedout"));
+    }
+
+    private const string AbsentText = "clavity: cannot create the session claim file ";
+    private const string GaveUpText = "clavity-ls start gave up waiting for a terminal";
+    private const string AlreadyClaimedText = "did not start agy for this session because the session was already claimed";
+
+    [Fact]
+    public void Lost_claim_with_the_claim_absent_prints_the_error_waits_and_exits_1()
+    {
+        var claim = Fwd(Path.Combine(_dir, "nodir", "s.claim"));   // its folder does not exist: the claim cannot be created
+        var (bin, script, _, exited) = Setup("exit 0\n", claimPath: claim);
+
+        var (rc, stdout, waited) = RunWaitProbe(script, bin);
+
+        Assert.Equal(1, rc);
+        Assert.Contains(AbsentText + claim, stdout);
+        Assert.Contains("Press Enter to close.", stdout);
+        Assert.True(waited, "the script did not wait for Enter");
+        Assert.False(File.Exists(exited), "a loser must never write the exited file");
+    }
+
+    [Fact]
+    public void Lost_claim_with_gaveup_present_prints_waits_and_exits_0()
+    {
+        var (bin, script, claim, exited) = Setup("exit 0\n");
+        File.WriteAllText(claim, "");
+        File.WriteAllText(claim + ".gaveup", "");
+
+        var (rc, stdout, waited) = RunWaitProbe(script, bin);
+
+        Assert.Equal(0, rc);
+        Assert.Contains(GaveUpText, stdout);
+        Assert.Contains("run clavity-ls start again", stdout);
+        Assert.Contains("Press Enter to close.", stdout);
+        Assert.True(waited, "the script did not wait for Enter");
+        Assert.False(File.Exists(exited), "a loser must never write the exited file");
+    }
+
+    [Fact]
+    public void Lost_claim_without_gaveup_prints_one_line_and_does_not_wait()
+    {
+        var (bin, script, claim, exited) = Setup("exit 0\n");
+        File.WriteAllText(claim, "");
+
+        var (rc, stdout, waited) = RunWaitProbe(script, bin);
+
+        Assert.Equal(0, rc);
+        var line = Assert.Single(stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        Assert.Contains(AlreadyClaimedText, line);
+        Assert.Contains("if clavity-ls start reported a problem, run it again", line);
+        Assert.False(waited, "the script waited for Enter although the session was simply already claimed");
+        Assert.False(File.Exists(exited), "a loser must never write the exited file");
+    }
+
+    [Theory]
+    [InlineData(false)]   // (a) claim absent
+    [InlineData(true)]    // (b) gave-up file present
+    public void Lost_claim_with_here_never_waits(bool gaveUp)
+    {
+        string? claimPath = gaveUp ? null : Fwd(Path.Combine(_dir, "nodir", "s.claim"));
+        var (bin, script, claim, exited) = Setup("exit 0\n", claimPath: claimPath);
+        if (gaveUp)
+        {
+            File.WriteAllText(claim, "");
+            File.WriteAllText(claim + ".gaveup", "");
+        }
+
+        var (rc, stdout, waited) = RunWaitProbe(script, bin, "--here");
+
+        Assert.Equal(gaveUp ? 0 : 1, rc);
+        Assert.Contains(gaveUp ? GaveUpText : AbsentText, stdout);
+        Assert.DoesNotContain("Press Enter to close.", stdout);
+        Assert.False(waited, "the script waited for Enter despite --here");
+        Assert.False(File.Exists(exited), "a loser must never write the exited file");
     }
 
     [Fact]

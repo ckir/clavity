@@ -307,7 +307,7 @@ public sealed class StartFlowTests
         var paths = SessionPaths.For(fx.UserProfile, fx.NewSessionId());
         var (path, content) = fx.Scripts.Single();
         Assert.Equal(paths.AgyScript, path);
-        Assert.Contains($"( set -C; : > {Launcher.ShQuote(paths.Claim)} ) 2>/dev/null || exit 0\n", content);
+        Assert.Contains($"( set -C; : > {Launcher.ShQuote(paths.Claim)} ) 2>/dev/null || {{", content);
         Assert.Contains($"clavity_exited={Launcher.ShQuote(paths.Exited)}\n", content);
         Assert.Contains($"cd {Launcher.ShQuote(Repo)} ||", content);
     }
