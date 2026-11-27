@@ -102,6 +102,32 @@ Describe 'run-pester-parallel' {
             $r.Out | Should -Match 'first-line second-line'
             $r.Out | Should -Not -Match 'x{400}'
         }
+
+        # ROADMAP 93 item 10. A throwing BeforeAll fails every row with an EMPTY ErrorRecord; the cause lives only on the container.
+        It 'prints a throwing BeforeAll''s message as a CONTAINER ERROR line when asked (the rows carry none)' {
+            $ba = New-Suite 'beforeall-throws' "BeforeAll { throw 'setup-boom-marker' }`nDescribe 'ba' { It 'r1' { 1 | Should -Be 1 }; It 'r2' { 1 | Should -Be 1 } }"
+            $r = Invoke-Runner -ExtraArgs @('-Files', $ba, '-ShowMessages')
+            $r.Exit | Should -Be 1 -Because $r.Out
+            $r.Out | Should -Match 'FAILED ba\.r1'
+            $r.Out | Should -Match 'CONTAINER ERROR: .*setup-boom-marker'
+        }
+
+        It 'prints a discovery error as a CONTAINER ERROR line when asked' {
+            $dx = New-Suite 'discovery-throws' "throw 'discovery-boom-marker'`nDescribe 'dx' { It 'r' { 1 | Should -Be 1 } }"
+            $r = Invoke-Runner -ExtraArgs @('-Files', $dx, '-ShowMessages')
+            $r.Exit | Should -Be 1 -Because $r.Out
+            $r.Out | Should -Match 'CONTAINER ERROR: .*discovery-boom-marker'
+        }
+
+        It 'does NOT print a container error unless asked, and prints none for a clean suite' {
+            $ba = New-Suite 'beforeall-throws-quiet' "BeforeAll { throw 'quiet-boom-marker' }`nDescribe 'bq' { It 'r' { 1 | Should -Be 1 } }"
+            $r = Invoke-Runner -ExtraArgs @('-Files', $ba)
+            $r.Exit | Should -Be 1 -Because $r.Out
+            $r.Out | Should -Not -Match 'quiet-boom-marker|CONTAINER ERROR'
+            $c = Invoke-Runner -ExtraArgs @('-Files', $script:Pass1, '-ShowMessages')
+            $c.Exit | Should -Be 0 -Because $c.Out
+            $c.Out | Should -Not -Match 'CONTAINER ERROR'
+        }
     }
 
     Context '-MinTests and -RequireSuite (a lane that lost suites must not stay green)' {
