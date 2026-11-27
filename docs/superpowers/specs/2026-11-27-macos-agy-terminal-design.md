@@ -1,6 +1,6 @@
 # macOS: `clavity-ls start` opens agy in Terminal.app
 
-**Status:** DRAFT, awaiting owner approval. Branch: `feat/macos-terminal` (cut from main at 61948692 / v35).
+**Status:** APPROVED by the owner 2026-11-28 (including the decision-5 accepted risk, the 10 s macOS timeout and the label wording). Panel rounds 1-7 folded, not claimed GREEN. Branch: `feat/macos-terminal` (cut from main at 61948692 / v35).
 
 This is a design, not a plan. It states contracts and decisions; it makes no claim about code that does not exist yet.
 The line-level plan is written against the real files after approval. Every citation below was read, not recalled.
