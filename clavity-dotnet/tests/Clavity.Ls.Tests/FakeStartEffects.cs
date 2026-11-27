@@ -19,6 +19,8 @@ internal sealed class Fake : IStartEffects
     public readonly List<LaunchCommand> Ran = new();
     public readonly StringWriter Err = new();
     public bool IsWindows { get; init; }
+    public bool IsMacOS { get; init; }
+    public bool IsSshSession { get; init; }
     public TextWriter Error => Err;
     public string UserProfile => Path.Combine(Path.GetTempPath(), "clavity-flow-home");
     public string CurrentDirectory => Path.Combine(Path.GetTempPath(), "clavity-flow-cwd");

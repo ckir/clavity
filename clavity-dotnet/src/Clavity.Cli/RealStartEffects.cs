@@ -16,7 +16,13 @@ namespace Clavity.Cli;
 /// unit-tested; this file is exercised by the built-binary runs.</summary>
 internal sealed class RealStartEffects : IStartEffects
 {
+    private readonly Func<string, string?> _env;
+
+    public RealStartEffects(Func<string, string?>? env = null) => _env = env ?? Environment.GetEnvironmentVariable;
+
     public bool IsWindows => OperatingSystem.IsWindows();
+    public bool IsMacOS => OperatingSystem.IsMacOS();
+    public bool IsSshSession => PosixAgyTab.IsSshSession(_env);
     public TextWriter Error => Console.Error;
     public string UserProfile => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     public string CurrentDirectory => Directory.GetCurrentDirectory();

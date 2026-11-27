@@ -448,6 +448,92 @@ public class PosixAgyTabTests
     }
 
     [Fact]
+    public void FallbackMessage_linux_text_is_unchanged_whatever_ssh_says()
+    {
+        Assert.Equal(PosixAgyTab.FallbackMessage("/home/o'brien/repo"), PosixAgyTab.FallbackMessage("/home/o'brien/repo", false, true));
+        Assert.Equal(PosixAgyTab.FallbackMessage("/f"), PosixAgyTab.FallbackMessage("/f", false, false));
+        Assert.Equal(
+            "clavity: could not open a terminal for agy - there is no display (DISPLAY / WAYLAND_DISPLAY unset), or no\n" +
+            "  terminal started it within 5 s. Claude was NOT started. Run agy yourself, in a terminal you can see:\n" +
+            "    clavity-ls agy '/f'\n" +
+            "  It prints the command that starts Claude paired with that agy. To choose the terminal instead, set\n" +
+            "  CLAVITY_TERMINAL to a command that runs its last argument, for example \"gnome-terminal --tab --\".\n",
+            PosixAgyTab.FallbackMessage("/f", false, true));
+    }
+
+    [Fact]
+    public void FallbackMessage_macos_ssh_names_both_variables_and_says_the_override_is_ignored()
+    {
+        var m = PosixAgyTab.FallbackMessage("/home/o'brien/repo", true, true);
+        Assert.Contains("Claude was NOT started", m);
+        Assert.Contains("clavity-ls agy '/home/o'\\''brien/repo'", m);
+        Assert.Contains("SSH_CONNECTION", m);
+        Assert.Contains("SSH_TTY", m);
+        Assert.Contains("CLAVITY_TERMINAL is ignored over SSH", m);
+        Assert.Contains("unset", m);
+        Assert.Contains("CLAVITY_TERMINAL", m);
+        Assert.Contains("a command that runs its last argument", m);
+    }
+
+    [Fact]
+    public void FallbackMessage_macos_did_not_start_names_Terminal_app_and_ten_seconds()
+    {
+        var m = PosixAgyTab.FallbackMessage("/repo", true, false);
+        Assert.Contains("Claude was NOT started", m);
+        Assert.Contains("clavity-ls agy '/repo'", m);
+        Assert.Contains("Terminal.app", m);
+        Assert.Contains("10 s", m);
+        Assert.Contains("CLAVITY_TERMINAL", m);
+        Assert.Contains("a command that runs its last argument", m);
+        Assert.DoesNotContain("SSH_CONNECTION", m);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FallbackMessage_macos_never_names_gnome_terminal_display_or_an_example(bool ssh)
+    {
+        var m = PosixAgyTab.FallbackMessage("/repo", true, ssh);
+        Assert.DoesNotContain("gnome-terminal", m);
+        Assert.DoesNotContain("DISPLAY", m);
+        Assert.DoesNotContain("for example", m);
+        Assert.DoesNotContain("e.g.", m);
+    }
+
+    public static TheoryData<string[]> SshEnvs => new()
+    {
+        new string[] { },
+        new[] { "SSH_CONNECTION" },
+        new[] { "SSH_TTY" },
+        new[] { "SSH_CONNECTION", "SSH_TTY" },
+        new[] { "BLANK" },
+    };
+
+    [Theory]
+    [MemberData(nameof(SshEnvs))]
+    public void IsSshSession_reads_either_variable_and_ignores_blank(string[] set)
+    {
+        string? Env(string name) => name switch
+        {
+            "SSH_CONNECTION" when set.Contains("SSH_CONNECTION") => "10.0.0.1 1 10.0.0.2 22",
+            "SSH_TTY" when set.Contains("SSH_TTY") => "/dev/pts/1",
+            "SSH_CONNECTION" or "SSH_TTY" when set.Contains("BLANK") => "  ",
+            _ => null,
+        };
+        var expected = set.Contains("SSH_CONNECTION") || set.Contains("SSH_TTY");
+        Assert.Equal(expected, PosixAgyTab.IsSshSession(Env));
+    }
+
+    [Fact]
+    public void ReadyTimeoutFor_is_10s_on_macos_and_5s_elsewhere()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(10), PosixAgyTab.ReadyTimeoutFor(true));
+        Assert.Equal(TimeSpan.FromSeconds(5), PosixAgyTab.ReadyTimeoutFor(false));
+        Assert.Equal(TimeSpan.FromSeconds(10), PosixAgyTab.MacOsReadyTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(4), PosixAgyTab.MacOsHintAfter);
+    }
+
+    [Fact]
     public void AttachHint_names_the_session_and_the_start_command()
     {
         Assert.Equal(

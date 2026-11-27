@@ -16,6 +16,10 @@ namespace Clavity.Ls;
 public interface IStartEffects
 {
     bool IsWindows { get; }
+    /// <summary>True on macOS, where the terminal ladder and the fallback message differ.</summary>
+    bool IsMacOS { get; }
+    /// <summary>True inside an SSH session (<see cref="PosixAgyTab.IsSshSession"/>).</summary>
+    bool IsSshSession { get; }
     TextWriter Error { get; }
     string UserProfile { get; }
     string CurrentDirectory { get; }
@@ -388,7 +392,7 @@ public static class StartFlow
         fx.WriteScript(paths.AgyScript, Launcher.BuildPosixScript(options, paths.Claim, paths.Exited, agyPath));
         if (!fx.OpenPosixTerminal(paths, folder))
         {
-            fx.Error.Write(PosixAgyTab.FallbackMessage(folder));
+            fx.Error.Write(PosixAgyTab.FallbackMessage(folder, fx.IsMacOS, fx.IsSshSession));
             return 1;
         }
         // Owner request 2026-10-03: the user sees agy - and any prompt it waits on - before Claude takes the terminal.

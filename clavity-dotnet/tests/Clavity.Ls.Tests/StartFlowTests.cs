@@ -756,6 +756,31 @@ public sealed class StartFlowTests
     }
 
     [Fact]
+    public void Macos_start_without_a_terminal_prints_the_macos_fallback()
+    {
+        var fx = new Fake { TerminalOpens = false, IsMacOS = true };
+        Assert.Equal(1, StartFlow.Start([Repo], fx));
+        Assert.Contains(PosixAgyTab.FallbackMessage(Repo, true, false), fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Macos_start_over_ssh_prints_the_ssh_reason()
+    {
+        var fx = new Fake { TerminalOpens = false, IsMacOS = true, IsSshSession = true };
+        Assert.Equal(1, StartFlow.Start([Repo], fx));
+        Assert.Contains(PosixAgyTab.FallbackMessage(Repo, true, true), fx.Err.ToString());
+        Assert.Contains("SSH_TTY", fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Linux_start_over_ssh_prints_the_linux_text()
+    {
+        var fx = new Fake { TerminalOpens = false, IsMacOS = false, IsSshSession = true };
+        Assert.Equal(1, StartFlow.Start([Repo], fx));
+        Assert.Contains(PosixAgyTab.FallbackMessage(Repo), fx.Err.ToString());
+    }
+
+    [Fact]
     public void Linux_start_whose_agy_ends_before_pairing_never_starts_Claude()
     {
         var fx = new Fake { Pairs = false };

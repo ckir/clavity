@@ -53,6 +53,10 @@ public static class PosixAgyTab
 {
     public const string TerminalVar = "CLAVITY_TERMINAL";
     public static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(5);
+    /// <summary>macOS gives Terminal.app longer than <see cref="ReadyTimeout"/>: a cold launch measured 2.8 s on a CI runner.</summary>
+    public static readonly TimeSpan MacOsReadyTimeout = TimeSpan.FromSeconds(10);
+    /// <summary>How long macOS waits before telling the user a one-time permission prompt may be pending.</summary>
+    public static readonly TimeSpan MacOsHintAfter = TimeSpan.FromSeconds(4);
     public static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
     private const int MaxParentDepth = 10;
 
@@ -223,12 +227,42 @@ public static class PosixAgyTab
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
     }
 
-    public static string FallbackMessage(string folder) =>
-        "clavity: could not open a terminal for agy - there is no display (DISPLAY / WAYLAND_DISPLAY unset), or no\n" +
-        $"  terminal started it within {ReadyTimeout.TotalSeconds:0} s. Claude was NOT started. Run agy yourself, in a terminal you can see:\n" +
-        $"    clavity-ls agy {Launcher.ShQuote(folder)}\n" +
-        "  It prints the command that starts Claude paired with that agy. To choose the terminal instead, set\n" +
-        $"  {TerminalVar} to a command that runs its last argument, for example \"gnome-terminal --tab --\".\n";
+    /// <summary>The ready timeout for the platform: <see cref="MacOsReadyTimeout"/> on macOS, else <see cref="ReadyTimeout"/>.</summary>
+    public static TimeSpan ReadyTimeoutFor(bool isMacOS) => isMacOS ? MacOsReadyTimeout : ReadyTimeout;
+
+    /// <summary>True when this process runs inside an SSH session (SSH_CONNECTION or SSH_TTY non-blank): a GUI
+    /// terminal opened from there would land on the remote machine's screen, not in front of the user.</summary>
+    public static bool IsSshSession(Func<string, string?> env) =>
+        !string.IsNullOrWhiteSpace(env("SSH_CONNECTION")) || !string.IsNullOrWhiteSpace(env("SSH_TTY"));
+
+    public static string FallbackMessage(string folder) => FallbackMessage(folder, false, false);
+
+    /// <summary>The message printed when no terminal opened agy. Linux keeps its text whatever <paramref name="isSsh"/>
+    /// says; macOS builds it from the reason (SSH, or the launch did not start the script).</summary>
+    public static string FallbackMessage(string folder, bool isMacOS, bool isSsh)
+    {
+        if (!isMacOS)
+            return
+                "clavity: could not open a terminal for agy - there is no display (DISPLAY / WAYLAND_DISPLAY unset), or no\n" +
+                $"  terminal started it within {ReadyTimeout.TotalSeconds:0} s. Claude was NOT started. Run agy yourself, in a terminal you can see:\n" +
+                $"    clavity-ls agy {Launcher.ShQuote(folder)}\n" +
+                "  It prints the command that starts Claude paired with that agy. To choose the terminal instead, set\n" +
+                $"  {TerminalVar} to a command that runs its last argument, for example \"gnome-terminal --tab --\".\n";
+
+        var reason = isSsh
+            ? "clavity: this is an SSH session (SSH_CONNECTION or SSH_TTY is set), so no terminal was opened for agy.\n" +
+              $"  {TerminalVar} is ignored over SSH. Claude was NOT started. Run agy yourself, in a terminal you can see:\n"
+            : "clavity: Terminal.app did not start agy: the launch failed or did not run the script within " +
+              $"{MacOsReadyTimeout.TotalSeconds:0} s.\n  Claude was NOT started. Run agy yourself, in a terminal you can see:\n";
+        var tail = isSsh
+            ? "  To open a terminal on this machine's screen instead, unset SSH_CONNECTION and SSH_TTY in a local GUI\n" +
+              $"  session, or set {TerminalVar} to a command that runs its last argument.\n"
+            : "  To choose the terminal instead, set\n" +
+              $"  {TerminalVar} to a command that runs its last argument.\n";
+        return reason +
+            $"    clavity-ls agy {Launcher.ShQuote(folder)}\n" +
+            "  It prints the command that starts Claude paired with that agy.\n" + tail;
+    }
 
     public static string AttachHint(string folder, string sessionId) =>
         $"clavity: this terminal runs agy for session {sessionId}.\n" +
