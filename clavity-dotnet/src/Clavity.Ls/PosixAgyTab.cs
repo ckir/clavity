@@ -41,6 +41,8 @@ public sealed class PosixAgyTabDeps
     public required Func<string, bool> TryCreateExclusive { get; init; }
     public required Func<long> NowMs { get; init; }
     public required Action<TimeSpan> Sleep { get; init; }
+    /// <summary>Writes one line to the user's stderr (the macOS waiting hint and the abandoned-candidate line).</summary>
+    public required Action<string> Notice { get; init; }
 }
 
 /// <summary>
@@ -76,9 +78,24 @@ public static class PosixAgyTab
             ProcessNamePrefix: "xfce4-terminal"),
     };
 
-    public static IReadOnlyList<TerminalCandidate> Candidates(Func<string, string?> env, IReadOnlyList<string> parentComms)
+    public static IReadOnlyList<TerminalCandidate> Candidates(
+        Func<string, string?> env, IReadOnlyList<string> parentComms, bool isMacOS)
     {
         var list = new List<TerminalCandidate>();
+        if (isMacOS)
+        {
+            // Over ssh a GUI terminal would open on the remote machine's screen: no candidate at all, the override
+            // included. No DISPLAY check on macOS (Terminal.app needs none) and no Linux terminals.
+            if (IsSshSession(env))
+                return list;
+            if (env(TerminalVar) is { } macCustom && !string.IsNullOrWhiteSpace(macCustom))
+                list.Add(OverrideCandidate(macCustom));
+            // /usr/bin/open is absolute on purpose: a bare "open" can be shadowed on PATH.
+            list.Add(new TerminalCandidate("Terminal.app", "/usr/bin/open", new[] { "-b", "com.apple.Terminal" },
+                ScriptAsOneArgument: false));
+            return list;
+        }
+
         // Over ssh or on a text console no terminal can open: go straight to the fallback (measured: rc 1 in 30 ms).
         if (string.IsNullOrWhiteSpace(env("DISPLAY")) && string.IsNullOrWhiteSpace(env("WAYLAND_DISPLAY")))
             return list;
@@ -86,8 +103,7 @@ public static class PosixAgyTab
         // The override runs through /bin/sh, so it may quote arguments exactly as at a prompt
         // (gnome-terminal --profile 'My Profile' --tab --); the script path arrives as "$1".
         if (env(TerminalVar) is { } custom && !string.IsNullOrWhiteSpace(custom))
-            list.Add(new TerminalCandidate(TerminalVar, "/bin/sh",
-                new[] { "-c", custom.Trim() + " \"$1\"", "clavity-terminal" }, ScriptAsOneArgument: false));
+            list.Add(OverrideCandidate(custom));
 
         // The terminal the user is IN: the nearest ancestor that is a known terminal. Under tmux or ssh the chain does
         // not reach it, so fall back to the env markers that do name one terminal (VTE_VERSION does not - every VTE
@@ -109,15 +125,23 @@ public static class PosixAgyTab
         return list;
     }
 
+    private static TerminalCandidate OverrideCandidate(string custom)
+        => new(TerminalVar, "/bin/sh", new[] { "-c", custom.Trim() + " \"$1\"", "clavity-terminal" }, ScriptAsOneArgument: false);
+
     public static IReadOnlyList<string> ArgumentsFor(TerminalCandidate c, string scriptPath)
         => c.Prefix.Append(c.ScriptAsOneArgument ? Launcher.ShQuote(scriptPath) : scriptPath).ToArray();
 
     /// <summary>Try each candidate until the session's script claims <see cref="SessionPaths.Claim"/>. Returns the
-    /// winning candidate's name, or null when nothing did (the caller prints <see cref="FallbackMessage"/>).</summary>
-    public static string? TryOpen(SessionPaths paths, string folder, PosixAgyTabDeps deps, TimeSpan readyTimeout)
+    /// winning candidate's name, or null when nothing did (the caller prints <see cref="FallbackMessage(string,bool,bool)"/>).
+    /// On macOS (<paramref name="isMacOS"/>) it also tells the user, on stderr, that it is waiting and which candidate it
+    /// abandoned; Linux prints nothing.</summary>
+    public static string? TryOpen(SessionPaths paths, string folder, PosixAgyTabDeps deps, TimeSpan readyTimeout, bool isMacOS)
     {
-        foreach (var c in Candidates(deps.GetEnv, deps.ParentComms()))
+        var candidates = Candidates(deps.GetEnv, deps.ParentComms(), isMacOS);
+        var launched = false;
+        for (var i = 0; i < candidates.Count; i++)
         {
+            var c = candidates[i];
             IStartedProcess launcher;
             try
             {
@@ -126,17 +150,21 @@ public static class PosixAgyTab
             }
             catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
             {
-                continue;   // not installed
+                Abandoned(deps, candidates, i, isMacOS);   // not installed
+                continue;
             }
 
+            launched = true;
             var started = deps.NowMs();
+            var hinted = false;
             while (true)
             {
                 if (deps.FileExists(paths.Claim))
                     return c.Name;
                 if (launcher.HasExited && launcher.ExitCode != 0)
                     break;
-                if (deps.NowMs() - started >= (long)readyTimeout.TotalMilliseconds)
+                var elapsed = deps.NowMs() - started;
+                if (elapsed >= (long)readyTimeout.TotalMilliseconds)
                 {
                     // Some terminals (xterm) do not fork, so their launcher never exits; close it rather than leave an
                     // empty window. Its script, if it ever runs, finds the claim taken and exits.
@@ -144,13 +172,35 @@ public static class PosixAgyTab
                         launcher.Kill();
                     break;
                 }
+                if (isMacOS && !hinted && elapsed >= (long)MacOsHintAfter.TotalMilliseconds)
+                {
+                    hinted = true;
+                    deps.Notice($"clavity: waiting for {c.Name} to start agy...");
+                }
                 deps.Sleep(PollInterval);
             }
+            Abandoned(deps, candidates, i, isMacOS);
         }
 
         // Nothing claimed in time. Take the claim ourselves so a terminal that opens LATER exits instead of starting an
         // agy that no Claude pairs with. If a script got there first after all, that agy is real: use it.
-        return deps.TryCreateExclusive(paths.Claim) ? null : "late";
+        if (!deps.TryCreateExclusive(paths.Claim))
+            return "late";
+
+        // A launcher was started and gave up: record it so the script that may still open later says why it exits.
+        // Best effort - a failed write must never turn the fallback into an exception.
+        if (launched)
+        {
+            try { deps.TryCreateExclusive(paths.GaveUp); }
+            catch (Exception) { /* best effort */ }
+        }
+        return null;
+    }
+
+    private static void Abandoned(PosixAgyTabDeps deps, IReadOnlyList<TerminalCandidate> candidates, int index, bool isMacOS)
+    {
+        if (isMacOS && index + 1 < candidates.Count)
+            deps.Notice($"clavity: {candidates[index].Name} did not start agy; trying {candidates[index + 1].Name}");
     }
 
     public static IReadOnlyList<string> ReadParentComms(int pid, Func<int, string?> readComm, Func<int, string?> readStat)
@@ -294,6 +344,7 @@ public static class PosixAgyTab
             },
             NowMs = () => clock.ElapsedMilliseconds,
             Sleep = t => Thread.Sleep(t),
+            Notice = Console.Error.WriteLine,
         };
     }
 

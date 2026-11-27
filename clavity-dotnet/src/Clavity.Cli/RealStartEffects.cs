@@ -52,7 +52,7 @@ internal sealed class RealStartEffects : IStartEffects
     public void WriteScript(string path, string content) => PosixAgyTab.WriteScript(path, content);
 
     public bool OpenPosixTerminal(SessionPaths paths, string folder) =>
-        PosixAgyTab.TryOpen(paths, folder, PosixAgyTab.RealDeps(), PosixAgyTab.ReadyTimeout) is not null;
+        PosixAgyTab.TryOpen(paths, folder, PosixAgyTab.RealDeps(), PosixAgyTab.ReadyTimeoutFor(IsMacOS), IsMacOS) is not null;
 
     public bool WaitForPairing(SessionPaths paths)
     {

@@ -19,18 +19,18 @@ public class PosixAgyTabTests
 
     [Fact]
     public void No_display_means_no_candidates_at_all()
-        => Assert.Empty(PosixAgyTab.Candidates(Env(), new[] { "mate-terminal" }));
+        => Assert.Empty(PosixAgyTab.Candidates(Env(), new[] { "mate-terminal" }, isMacOS: false));
 
     [Fact]
     public void Wayland_alone_counts_as_a_display()
-        => Assert.NotEmpty(PosixAgyTab.Candidates(Env(("WAYLAND_DISPLAY", "wayland-0")), Array.Empty<string>()));
+        => Assert.NotEmpty(PosixAgyTab.Candidates(Env(("WAYLAND_DISPLAY", "wayland-0")), Array.Empty<string>(), isMacOS: false));
 
     [Fact]
     public void Order_is_override_then_detected_tab_then_xdg_then_x_terminal_emulator_then_the_rest()
     {
         var c = PosixAgyTab.Candidates(
             Env(("DISPLAY", ":10.0"), (PosixAgyTab.TerminalVar, "kitty --single-instance")),
-            new[] { "bash", "mate-terminal", "mate-panel" });
+            new[] { "bash", "mate-terminal", "mate-panel" }, isMacOS: false);
         Assert.Equal(
             new[] { "CLAVITY_TERMINAL", "mate-terminal", "xdg-terminal-exec", "x-terminal-emulator", "gnome-terminal", "konsole", "xfce4-terminal" },
             Names(c));
@@ -44,32 +44,32 @@ public class PosixAgyTabTests
     public void The_NEAREST_matching_ancestor_wins_and_comm_matches_by_prefix()
     {
         // gnome-terminal-server's comm is truncated by the kernel to 15 bytes: "gnome-terminal-".
-        var c = PosixAgyTab.Candidates(Env(("DISPLAY", ":0")), new[] { "bash", "gnome-terminal-", "konsole" });
+        var c = PosixAgyTab.Candidates(Env(("DISPLAY", ":0")), new[] { "bash", "gnome-terminal-", "konsole" }, isMacOS: false);
         Assert.Equal("gnome-terminal", c[0].Name);
     }
 
     [Fact]
     public void With_no_matching_ancestor_an_env_marker_picks_the_tab_terminal()
     {
-        var c = PosixAgyTab.Candidates(Env(("DISPLAY", ":0"), ("KONSOLE_VERSION", "230802")), new[] { "tmux: server" });
+        var c = PosixAgyTab.Candidates(Env(("DISPLAY", ":0"), ("KONSOLE_VERSION", "230802")), new[] { "tmux: server" }, isMacOS: false);
         Assert.Equal(new[] { "konsole", "xdg-terminal-exec", "x-terminal-emulator", "mate-terminal", "gnome-terminal", "xfce4-terminal" }, Names(c));
     }
 
     [Fact]
     public void With_nothing_detected_the_order_is_the_round_2_order()
     {
-        var c = PosixAgyTab.Candidates(Env(("DISPLAY", ":0")), new[] { "sshd" });
+        var c = PosixAgyTab.Candidates(Env(("DISPLAY", ":0")), new[] { "sshd" }, isMacOS: false);
         Assert.Equal(new[] { "xdg-terminal-exec", "x-terminal-emulator", "mate-terminal", "gnome-terminal", "konsole", "xfce4-terminal" }, Names(c));
     }
 
     [Fact]
     public void A_blank_override_is_ignored()
-        => Assert.DoesNotContain("CLAVITY_TERMINAL", Names(PosixAgyTab.Candidates(Env(("DISPLAY", ":0"), (PosixAgyTab.TerminalVar, "   ")), Array.Empty<string>())));
+        => Assert.DoesNotContain("CLAVITY_TERMINAL", Names(PosixAgyTab.Candidates(Env(("DISPLAY", ":0"), (PosixAgyTab.TerminalVar, "   ")), Array.Empty<string>(), isMacOS: false)));
 
     [Fact]
     public void Mate_terminal_gets_the_script_as_ONE_quoted_string_and_the_others_as_a_last_argument()
     {
-        var all = PosixAgyTab.Candidates(Env(("DISPLAY", ":0")), Array.Empty<string>());
+        var all = PosixAgyTab.Candidates(Env(("DISPLAY", ":0")), Array.Empty<string>(), isMacOS: false);
         Assert.Equal(new[] { "--tab", "-e", "'/s p/a.sh'" }, PosixAgyTab.ArgumentsFor(all.Single(c => c.Name == "mate-terminal"), "/s p/a.sh"));
         Assert.Equal(new[] { "-e", "/s p/a.sh" }, PosixAgyTab.ArgumentsFor(all.Single(c => c.Name == "x-terminal-emulator"), "/s p/a.sh"));
     }
@@ -92,6 +92,11 @@ public class PosixAgyTabTests
         public readonly HashSet<string> Files = new();
         public readonly List<string> Started = new();
         public bool ExclusiveCreated;
+        /// <summary>Paths created through <c>TryCreateExclusive</c>, in creation order (the HashSet has none).</summary>
+        public readonly List<string> Created = new();
+        public readonly List<string> Notices = new();
+        /// <summary>Paths for which <c>TryCreateExclusive</c> throws, to prove a failing write is swallowed.</summary>
+        public readonly HashSet<string> ThrowOnCreate = new();
         public Func<LaunchCommand, IStartedProcess> OnStart = _ => new FakeProc(true, 0);
 
         public PosixAgyTabDeps Deps(params (string K, string V)[] env) => new()
@@ -100,9 +105,17 @@ public class PosixAgyTabTests
             ParentComms = () => new[] { "sshd" },   // nothing detected: the round-2 order
             Start = cmd => { Started.Add(cmd.FileName); return OnStart(cmd); },
             FileExists = path => Files.Contains(path) || (path == P.Claim && ClaimAt is { } at && Now >= at),
-            TryCreateExclusive = path => { if (!Files.Add(path)) return false; ExclusiveCreated = true; return true; },
+            TryCreateExclusive = path =>
+            {
+                if (ThrowOnCreate.Contains(path)) throw new UnauthorizedAccessException(path);
+                if (!Files.Add(path)) return false;
+                Created.Add(path);
+                ExclusiveCreated = true;
+                return true;
+            },
             NowMs = () => Now,
             Sleep = t => Now += (long)t.TotalMilliseconds,
+            Notice = Notices.Add,
         };
     }
 
@@ -111,7 +124,7 @@ public class PosixAgyTabTests
     {
         var w = new World();
         w.OnStart = cmd => { w.Files.Add(P.Claim); return new FakeProc(true, 0); };
-        Assert.Equal("xdg-terminal-exec", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout));
+        Assert.Equal("xdg-terminal-exec", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout, isMacOS: false));
         Assert.Equal(new[] { "xdg-terminal-exec" }, w.Started);
     }
 
@@ -122,7 +135,7 @@ public class PosixAgyTabTests
         w.OnStart = cmd => cmd.FileName == "xdg-terminal-exec"
             ? throw new System.ComponentModel.Win32Exception(2)
             : Claim(w);
-        Assert.Equal("x-terminal-emulator", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout));
+        Assert.Equal("x-terminal-emulator", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout, isMacOS: false));
     }
 
     private static IStartedProcess Claim(World w) { w.Files.Add(P.Claim); return new FakeProc(true, 0); }
@@ -132,7 +145,7 @@ public class PosixAgyTabTests
     {
         var w = new World();
         w.OnStart = cmd => cmd.FileName == "xdg-terminal-exec" ? new FakeProc(true, 1) : Claim(w);
-        Assert.Equal("x-terminal-emulator", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout));
+        Assert.Equal("x-terminal-emulator", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout, isMacOS: false));
         Assert.True(w.Now < 1000, $"waited {w.Now} ms on a launcher that had already failed");
     }
 
@@ -142,7 +155,7 @@ public class PosixAgyTabTests
         var w = new World();
         var hung = new FakeProc(false, 0);
         w.OnStart = cmd => cmd.FileName == "xdg-terminal-exec" ? hung : Claim(w);
-        Assert.Equal("x-terminal-emulator", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout));
+        Assert.Equal("x-terminal-emulator", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout, isMacOS: false));
         Assert.True(hung.Killed);
         Assert.True(w.Now >= 5000);
     }
@@ -153,7 +166,7 @@ public class PosixAgyTabTests
         // MEASURED (MATE VM): the mate-terminal client hands the tab to the running server and exits 0 in ~60 ms;
         // the script claims at ~100 ms. Giving up on a clean exit would skip the one terminal that works.
         var w = new World { ClaimAt = 100 };
-        Assert.Equal("xdg-terminal-exec", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout));
+        Assert.Equal("xdg-terminal-exec", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout, isMacOS: false));
         Assert.Equal(new[] { "xdg-terminal-exec" }, w.Started);
     }
 
@@ -161,7 +174,7 @@ public class PosixAgyTabTests
     public void When_nothing_claims_the_launcher_takes_the_claim_itself_and_reports_failure()
     {
         var w = new World();
-        Assert.Null(PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout));
+        Assert.Null(PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout, isMacOS: false));
         Assert.True(w.ExclusiveCreated, "a terminal that opens later must find the claim taken and exit");
         Assert.Equal(6, w.Started.Count);   // every candidate was tried
     }
@@ -180,16 +193,195 @@ public class PosixAgyTabTests
             NowMs = deps.NowMs,
             Sleep = deps.Sleep,
             TryCreateExclusive = _ => false,   // a late script won the race
+            Notice = deps.Notice,
         };
-        Assert.NotNull(PosixAgyTab.TryOpen(P, "/repo", lateDeps, PosixAgyTab.ReadyTimeout));
+        Assert.NotNull(PosixAgyTab.TryOpen(P, "/repo", lateDeps, PosixAgyTab.ReadyTimeout, isMacOS: false));
     }
 
     [Fact]
     public void No_display_tries_nothing_and_reports_failure()
     {
         var w = new World();
-        Assert.Null(PosixAgyTab.TryOpen(P, "/repo", w.Deps(("HOME", "/home/u")), PosixAgyTab.ReadyTimeout));
+        Assert.Null(PosixAgyTab.TryOpen(P, "/repo", w.Deps(("HOME", "/home/u")), PosixAgyTab.ReadyTimeout, isMacOS: false));
         Assert.Empty(w.Started);
+    }
+
+    // ---- macOS ladder (isMacOS: true) -------------------------------------------------------------------------
+
+    [Fact]
+    public void Macos_no_ssh_no_display_yields_Terminal_app_only()
+    {
+        var c = PosixAgyTab.Candidates(Env(), Array.Empty<string>(), isMacOS: true);
+        Assert.Equal(new[] { "Terminal.app" }, Names(c));
+        Assert.Equal("/usr/bin/open", c[0].FileName);
+        Assert.Equal(new[] { "-b", "com.apple.Terminal", "/s/a.sh" }, PosixAgyTab.ArgumentsFor(c[0], "/s/a.sh"));
+    }
+
+    [Fact]
+    public void Macos_with_override_puts_it_first()
+    {
+        var c = PosixAgyTab.Candidates(Env((PosixAgyTab.TerminalVar, "open -a iTerm")), Array.Empty<string>(), isMacOS: true);
+        Assert.Equal(new[] { "CLAVITY_TERMINAL", "Terminal.app" }, Names(c));
+    }
+
+    [Fact]
+    public void Macos_over_SSH_CONNECTION_yields_nothing_even_with_an_override()
+        => Assert.Empty(PosixAgyTab.Candidates(
+            Env(("SSH_CONNECTION", "10.0.0.1 1 10.0.0.2 22"), (PosixAgyTab.TerminalVar, "open -a iTerm")),
+            Array.Empty<string>(), isMacOS: true));
+
+    [Fact]
+    public void Macos_over_SSH_TTY_yields_nothing()
+        => Assert.Empty(PosixAgyTab.Candidates(Env(("SSH_TTY", "/dev/ttys001")), Array.Empty<string>(), isMacOS: true));
+
+    [Fact]
+    public void Macos_ignores_DISPLAY_entirely()
+        => Assert.Equal(new[] { "Terminal.app" },
+            Names(PosixAgyTab.Candidates(Env(("DISPLAY", ":0")), new[] { "mate-terminal" }, isMacOS: true)));
+
+    [Fact]
+    public void Linux_with_DISPLAY_and_SSH_CONNECTION_still_gets_the_linux_terminals()
+    {
+        var c = PosixAgyTab.Candidates(Env(("DISPLAY", ":10.0"), ("SSH_CONNECTION", "1")), new[] { "sshd" }, isMacOS: false);
+        Assert.Equal(new[] { "xdg-terminal-exec", "x-terminal-emulator", "mate-terminal", "gnome-terminal", "konsole", "xfce4-terminal" },
+            Names(c));
+    }
+
+    private static IStartedProcess Silent() => new FakeProc(true, 0);   // exits 0 and never claims
+
+    [Fact]
+    public void Macos_timeout_ten_seconds_moves_to_the_next_candidate_only_after_10s()
+    {
+        var w = new World();
+        long startedTerminalAt = -1;
+        w.OnStart = cmd =>
+        {
+            if (cmd.FileName == "/usr/bin/open") { startedTerminalAt = w.Now; return Claim(w); }
+            return Silent();
+        };
+        var deps = w.Deps((PosixAgyTab.TerminalVar, "my-term"));
+        Assert.Equal("Terminal.app", PosixAgyTab.TryOpen(P, "/repo", deps, PosixAgyTab.MacOsReadyTimeout, isMacOS: true));
+        Assert.True(startedTerminalAt >= 10_000, $"Terminal.app started at {startedTerminalAt} ms");
+        Assert.True(w.Now >= 10_000);
+    }
+
+    [Fact]
+    public void Macos_hint_is_printed_once_per_candidate_wait_and_names_the_candidate_without_ctrl_c()
+    {
+        var w = new World { ClaimAt = 6000 };
+        var deps = w.Deps();
+        Assert.Equal("Terminal.app", PosixAgyTab.TryOpen(P, "/repo", deps, PosixAgyTab.MacOsReadyTimeout, isMacOS: true));
+        var notice = Assert.Single(w.Notices);
+        Assert.Contains("waiting for Terminal.app to start agy", notice);
+        Assert.DoesNotContain("Ctrl", notice);
+    }
+
+    [Fact]
+    public void Macos_prints_the_abandoned_candidate_line_only_when_another_follows()
+    {
+        var w = new World();
+        var deps = w.Deps((PosixAgyTab.TerminalVar, "my-term"));
+        Assert.Null(PosixAgyTab.TryOpen(P, "/repo", deps, PosixAgyTab.MacOsReadyTimeout, isMacOS: true));
+        Assert.Contains("clavity: CLAVITY_TERMINAL did not start agy; trying Terminal.app", w.Notices);
+        Assert.DoesNotContain(w.Notices, n => n.Contains("Terminal.app did not start agy"));
+        Assert.Equal(2, w.Started.Count);
+    }
+
+    [Fact]
+    public void Macos_not_installed_candidate_prints_the_abandoned_line()
+    {
+        var w = new World();
+        w.OnStart = cmd => cmd.FileName == "/bin/sh" ? throw new System.ComponentModel.Win32Exception(2) : Claim(w);
+        var deps = w.Deps((PosixAgyTab.TerminalVar, "my-term"));
+        Assert.Equal("Terminal.app", PosixAgyTab.TryOpen(P, "/repo", deps, PosixAgyTab.MacOsReadyTimeout, isMacOS: true));
+        Assert.Equal(new[] { "clavity: CLAVITY_TERMINAL did not start agy; trying Terminal.app" }, w.Notices);
+    }
+
+    [Fact]
+    public void Linux_prints_no_hint_and_no_abandoned_line()
+    {
+        var w = new World();
+        // xdg-terminal-exec waits the whole 5 s (a hung launcher), the rest are abandoned too.
+        w.OnStart = cmd => cmd.FileName == "xdg-terminal-exec" ? new FakeProc(false, 0) : new FakeProc(true, 1);
+        Assert.Null(PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout, isMacOS: false));
+        Assert.True(w.Now >= 4000, "the first candidate waited past the macOS hint threshold");
+        Assert.Empty(w.Notices);
+    }
+
+    [Fact]
+    public void GaveUp_is_created_after_the_claim_when_a_terminal_was_launched()
+    {
+        var w = new World();
+        Assert.Null(PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout, isMacOS: false));
+        Assert.Contains(P.Claim, w.Files);
+        Assert.Contains(P.GaveUp, w.Files);
+        Assert.Equal(new[] { P.Claim, P.GaveUp }, w.Created);
+    }
+
+    [Fact]
+    public void GaveUp_is_not_created_when_no_terminal_could_be_launched()
+    {
+        var w = new World();
+        var deps = w.Deps(("SSH_CONNECTION", "1 2 3 4"));
+        Assert.Null(PosixAgyTab.TryOpen(P, "/repo", deps, PosixAgyTab.MacOsReadyTimeout, isMacOS: true));
+        Assert.Empty(w.Started);
+        Assert.Contains(P.Claim, w.Files);
+        Assert.DoesNotContain(P.GaveUp, w.Files);
+    }
+
+    [Fact]
+    public void Macos_hint_is_printed_once_for_EACH_candidate_that_waits_past_4s()
+    {
+        var w = new World();
+        var deps = w.Deps((PosixAgyTab.TerminalVar, "my-term"));
+        Assert.Null(PosixAgyTab.TryOpen(P, "/repo", deps, PosixAgyTab.MacOsReadyTimeout, isMacOS: true));
+        var hints = w.Notices.Where(n => n.Contains("waiting for")).ToArray();
+        Assert.Equal(2, hints.Length);
+        Assert.Contains("waiting for CLAVITY_TERMINAL to start agy", hints[0]);
+        Assert.Contains("waiting for Terminal.app to start agy", hints[1]);
+    }
+
+    [Fact]
+    public void GaveUp_is_not_created_when_every_launcher_fails_to_start()
+    {
+        var w = new World();
+        w.OnStart = _ => throw new System.ComponentModel.Win32Exception(2);
+        Assert.Null(PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout, isMacOS: false));
+        Assert.NotEmpty(w.Started);
+        Assert.Contains(P.Claim, w.Files);
+        Assert.DoesNotContain(P.GaveUp, w.Files);
+    }
+
+    [Fact]
+    public void GaveUp_is_not_created_when_a_late_script_won_the_claim()
+    {
+        var w = new World();
+        var attempts = new List<string>();
+        var deps = w.Deps();
+        var lateDeps = new PosixAgyTabDeps
+        {
+            GetEnv = deps.GetEnv,
+            ParentComms = deps.ParentComms,
+            Start = deps.Start,
+            FileExists = deps.FileExists,
+            NowMs = deps.NowMs,
+            Sleep = deps.Sleep,
+            Notice = deps.Notice,
+            TryCreateExclusive = path => { attempts.Add(path); return false; },
+        };
+        Assert.Equal("late", PosixAgyTab.TryOpen(P, "/repo", lateDeps, PosixAgyTab.ReadyTimeout, isMacOS: false));
+        Assert.Equal(new[] { P.Claim }, attempts);
+    }
+
+    [Fact]
+    public void A_failing_GaveUp_write_is_swallowed()
+    {
+        var w = new World();
+        w.ThrowOnCreate.Add(P.GaveUp);
+        var deps = w.Deps();
+        Assert.Null(PosixAgyTab.TryOpen(P, "/repo", deps, PosixAgyTab.ReadyTimeout, isMacOS: false));
+        Assert.Contains(P.Claim, w.Files);
+        Assert.DoesNotContain(P.GaveUp, w.Files);
     }
 
     // ---- parent walk, PATH lookup, messages ----------------------------------------------------------------------
