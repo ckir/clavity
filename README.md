@@ -1,12 +1,12 @@
 # Test count
 
-**4,296 tests passed** for commit [`6194869220358df0f792320fa6ed9e5faf1c9017`](https://github.com/ckir/clavity/commit/6194869220358df0f792320fa6ed9e5faf1c9017) (2026-11-27).
+**4,375 tests passed** for commit [`39d4c2fe50717a29bd0ac973cdbdf8b4a0a7b999`](https://github.com/ckir/clavity/commit/39d4c2fe50717a29bd0ac973cdbdf8b4a0a7b999) (2026-11-28).
 
-Counted by [workflow run 45938872748](https://github.com/ckir/clavity/actions/runs/45938872748). Workflow status: [![test-count](https://github.com/ckir/clavity/actions/workflows/test-count.yml/badge.svg?branch=main)](https://github.com/ckir/clavity/actions/workflows/test-count.yml)
+Counted by [workflow run 46117008546](https://github.com/ckir/clavity/actions/runs/46117008546). Workflow status: [![test-count](https://github.com/ckir/clavity/actions/workflows/test-count.yml/badge.svg?branch=main)](https://github.com/ckir/clavity/actions/workflows/test-count.yml)
 
 | Label | Passed | Skipped | Lane | Conditions | Command |
 |---|---:|---:|---|---|---|
-| .NET Clavity.Ls.Tests | 851 | 0 | windows-latest | - | `cd clavity-dotnet; dotnet test tests/Clavity.Ls.Tests` |
+| .NET Clavity.Ls.Tests | 930 | 0 | windows-latest | - | `cd clavity-dotnet; dotnet test tests/Clavity.Ls.Tests` |
 | .NET Clavity.Integration.Tests | 249 | 0 | windows-latest | - | `cd clavity-dotnet; dotnet test tests/Clavity.Integration.Tests` |
 | Rust (cargo) | 123 | 0 | ubuntu-latest | - | `cd clavity-classic; cargo test --all --features test-fakes` |
 | Python bridge (pytest) | 38 | 0 | ubuntu-latest | - | `cd clavity-classic; uv run --project agy-mcp-bridge --frozen pytest agy-mcp-bridge/test_agy_bus.py agy-mcp-bridge/test_agy_tmux.py agy-mcp-bridge/tests/test_mcp_wiring.py agy-mcp-bridge/tests/test_secret_scrub.py` |
