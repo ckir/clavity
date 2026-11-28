@@ -235,6 +235,13 @@ public class PosixAgyTabTests
         Assert.Equal(new[] { "CLAVITY_TERMINAL", "Terminal.app" }, Names(c));
     }
 
+    [Theory]
+    [InlineData("   ")]
+    [InlineData("")]
+    public void Macos_blank_override_is_ignored(string blank)
+        => Assert.Equal(new[] { "Terminal.app" },
+            Names(PosixAgyTab.Candidates(Env((PosixAgyTab.TerminalVar, blank)), Array.Empty<string>(), isMacOS: true)));
+
     [Fact]
     public void Macos_over_SSH_CONNECTION_yields_nothing_even_with_an_override()
         => Assert.Empty(PosixAgyTab.Candidates(

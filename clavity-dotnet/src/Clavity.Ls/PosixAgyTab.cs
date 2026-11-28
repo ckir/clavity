@@ -377,7 +377,8 @@ public static class PosixAgyTab
         public void Kill()
         {
             try { process.Kill(entireProcessTree: true); }
-            catch (InvalidOperationException) { /* already gone */ }
+            // Already gone, or cannot be killed (access denied on a child, a partial tree kill): the ladder moves on.
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or AggregateException) { }
         }
     }
 }

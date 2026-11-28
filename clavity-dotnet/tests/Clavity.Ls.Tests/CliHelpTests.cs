@@ -54,6 +54,7 @@ public sealed class CliHelpTests
         Assert.DoesNotContain("gnome-terminal", line);
         Assert.DoesNotContain("e.g.", line);
         Assert.DoesNotContain("for example", line);
+        Assert.Contains("macOS", line);
         Assert.Contains("last argument", line);
     }
 
