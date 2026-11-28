@@ -4673,7 +4673,7 @@ Decide when picked up: add `ubuntu-latest` to the `test` job as a matrix leg (th
 
 **Status:** OPEN 2026-11-28 - the Terminal.app ladder ships after a CI-runner check only; a real Mac has not run it.
 
-The macOS terminal ladder and the generated script were exercised on a GitHub macOS runner (live check: run id 46085528171, `macos-latest`, branch `probe/macos-terminal` at `39c24152`, `Passed! Failed: 0, Passed: 3`); the full `clavity-ls start` command was not run on macOS. What a real Mac still has to show:
+The macOS terminal ladder and the generated script were exercised on a GitHub macOS runner (live check: a throwaway `probe/macos-terminal` branch run on GitHub `macos-latest` calling the real `PosixAgyTab.TryOpen`, 3 of 3 passed; the run ids are in the pull request description); the full `clavity-ls start` command was not run on macOS. What a real Mac still has to show:
 
 - Gatekeeper and TCC dialogs, including the one a `cd` into Documents, Desktop or Downloads can raise.
 - A zsh login shell's PATH.
