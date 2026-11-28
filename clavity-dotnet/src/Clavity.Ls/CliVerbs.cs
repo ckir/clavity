@@ -78,7 +78,7 @@ public static class CliVerbs
         "  is-installed: 0 installed, 1 not installed.",
         "",
         "ENVIRONMENT (optional)",
-        "  CLAVITY_TERMINAL           The terminal command `start` opens agy with; it must run its last argument.",
+        "  CLAVITY_TERMINAL           Linux and macOS: the terminal command `start` opens agy with; it must run its last argument.",
         "  CLAVITY_GOLDEN_HEADER      Directory holding the golden-header files (default: ~/.clavity).",
         "  CLAVITY_AGY_IDLE_MAX_SECONDS  How long agy_ask waits for agy to go idle (default 600).",
         "",

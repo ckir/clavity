@@ -89,7 +89,7 @@ neither has seen before, both agy and Claude Code ask you to trust it, each in i
 or it does not pair.
 
 On macOS, `start` opens agy in a new Terminal.app window (not a tab) through `/usr/bin/open -b com.apple.Terminal`,
-and waits up to 10 s (Linux: 5 s) for the terminal to start the script; it uses the claim file as proof that the
+and waits up to 10 s per terminal it tries (Linux: 5 s) for the terminal to start the script; it uses the claim file as proof that the
 terminal really started. Over ssh (`SSH_CONNECTION` or `SSH_TTY` set) it starts nothing and tells you to
 run `clavity-ls agy <folder>` in a terminal you can see, then `clavity-ls start <folder> --attach` in a second one;
 `CLAVITY_TERMINAL` is ignored over ssh on macOS. For iTerm2 or another macOS terminal, set `CLAVITY_TERMINAL` to a

@@ -4671,7 +4671,7 @@ Decide when picked up: add `ubuntu-latest` to the `test` job as a matrix leg (th
 
 ### §114 — macOS terminal: the real-Mac check
 
-**Status:** OPEN 2026-11-28 - the Terminal.app ladder shipped after a CI-runner check only; a real Mac has not run it.
+**Status:** OPEN 2026-11-28 - the Terminal.app ladder ships after a CI-runner check only; a real Mac has not run it.
 
 The macOS terminal ladder and the generated script were exercised on a GitHub macOS runner (live check: run id 46085528171, `macos-latest`, branch `probe/macos-terminal` at `39c24152`, `Passed! Failed: 0, Passed: 3`); the full `clavity-ls start` command was not run on macOS. What a real Mac still has to show:
 
