@@ -46,7 +46,8 @@ public sealed class PosixAgyTabDeps
 }
 
 /// <summary>
-/// Opens this session's agy in a terminal the user can SEE on Linux (ROADMAP section 62). Windows keeps its Windows
+/// Opens this session's agy in a terminal the user can SEE on Linux (ROADMAP section 62) and, via the Terminal.app
+/// ladder behind <c>isMacOS</c>, on macOS. Windows keeps its Windows
 /// Terminal tab (<see cref="Launcher.Build"/>); this class is never used there. Order (owner-adopted after AGY-FIRST
 /// R1-R3): CLAVITY_TERMINAL, then the terminal the user is
 /// running in as a TAB, then xdg-terminal-exec, x-terminal-emulator, then the other known tab terminals.
@@ -57,7 +58,7 @@ public static class PosixAgyTab
     public static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(5);
     /// <summary>macOS gives Terminal.app longer than <see cref="ReadyTimeout"/>: a cold launch measured 2.8 s on a CI runner.</summary>
     public static readonly TimeSpan MacOsReadyTimeout = TimeSpan.FromSeconds(10);
-    /// <summary>How long macOS waits before telling the user a one-time permission prompt may be pending.</summary>
+    /// <summary>The point, after a macOS terminal launch, at which a "waiting for ... to start agy" hint is printed.</summary>
     public static readonly TimeSpan MacOsHintAfter = TimeSpan.FromSeconds(4);
     public static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
     private const int MaxParentDepth = 10;
@@ -175,7 +176,7 @@ public static class PosixAgyTab
                 if (isMacOS && !hinted && elapsed >= (long)MacOsHintAfter.TotalMilliseconds)
                 {
                     hinted = true;
-                    deps.Notice($"clavity: waiting for {c.Name} to start agy...");
+                    Say(deps, $"clavity: waiting for {c.Name} to start agy...");
                 }
                 deps.Sleep(PollInterval);
             }
@@ -197,10 +198,18 @@ public static class PosixAgyTab
         return null;
     }
 
+    /// <summary>Write one stderr line, never letting a failed write (stderr closed, <c>2&gt;&amp;-</c>) escape: it would
+    /// abort <see cref="TryOpen"/> before the claim is taken while a launcher already started may still open agy.</summary>
+    private static void Say(PosixAgyTabDeps deps, string text)
+    {
+        try { deps.Notice(text); }
+        catch (Exception) { /* best effort */ }
+    }
+
     private static void Abandoned(PosixAgyTabDeps deps, IReadOnlyList<TerminalCandidate> candidates, int index, bool isMacOS)
     {
         if (isMacOS && index + 1 < candidates.Count)
-            deps.Notice($"clavity: {candidates[index].Name} did not start agy; trying {candidates[index + 1].Name}");
+            Say(deps, $"clavity: {candidates[index].Name} did not start agy; trying {candidates[index + 1].Name}");
     }
 
     public static IReadOnlyList<string> ReadParentComms(int pid, Func<int, string?> readComm, Func<int, string?> readStat)
@@ -305,10 +314,9 @@ public static class PosixAgyTab
             : "clavity: Terminal.app did not start agy: the launch failed or did not run the script within " +
               $"{MacOsReadyTimeout.TotalSeconds:0} s.\n  Claude was NOT started. Run agy yourself, in a terminal you can see:\n";
         var tail = isSsh
-            ? "  To open a terminal on this machine's screen instead, unset SSH_CONNECTION and SSH_TTY in a local GUI\n" +
-              $"  session, or set {TerminalVar} to a command that runs its last argument.\n"
-            : "  To choose the terminal instead, set\n" +
-              $"  {TerminalVar} to a command that runs its last argument.\n";
+            ? "  To open a terminal on this machine's screen instead, unset SSH_CONNECTION and SSH_TTY in a local GUI session\n" +
+              $"  on this machine (there, {TerminalVar} can name a command that runs its last argument).\n"
+            : $"  To choose the terminal instead, set {TerminalVar} to a command that runs its last argument.\n";
         return reason +
             $"    clavity-ls agy {Launcher.ShQuote(folder)}\n" +
             "  It prints the command that starts Claude paired with that agy.\n" + tail;

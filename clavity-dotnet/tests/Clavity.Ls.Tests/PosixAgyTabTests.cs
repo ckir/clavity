@@ -95,6 +95,8 @@ public class PosixAgyTabTests
         /// <summary>Paths created through <c>TryCreateExclusive</c>, in creation order (the HashSet has none).</summary>
         public readonly List<string> Created = new();
         public readonly List<string> Notices = new();
+        /// <summary>When set, <c>Notice</c> records the line and then throws, like a closed stderr (<c>2&gt;&amp;-</c>).</summary>
+        public bool ThrowOnNotice;
         /// <summary>Paths for which <c>TryCreateExclusive</c> throws, to prove a failing write is swallowed.</summary>
         public readonly HashSet<string> ThrowOnCreate = new();
         public Func<LaunchCommand, IStartedProcess> OnStart = _ => new FakeProc(true, 0);
@@ -117,7 +119,11 @@ public class PosixAgyTabTests
             },
             NowMs = () => Now,
             Sleep = t => Now += (long)t.TotalMilliseconds,
-            Notice = Notices.Add,
+            Notice = text =>
+            {
+                Notices.Add(text);
+                if (ThrowOnNotice) throw new UnauthorizedAccessException("stderr is closed");
+            },
         };
     }
 
@@ -324,6 +330,29 @@ public class PosixAgyTabTests
         Assert.Empty(w.Notices);
         Assert.Contains(P.Claim, w.Files);
         Assert.DoesNotContain(P.GaveUp, w.Files);
+    }
+
+    [Fact]
+    public void Macos_a_throwing_hint_write_still_takes_the_claim_when_the_launcher_hangs()
+    {
+        var w = new World { ThrowOnNotice = true };
+        w.OnStart = _ => new FakeProc(false, 0);   // a launcher that never exits and never claims
+        var result = PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.MacOsReadyTimeout, isMacOS: true);
+        Assert.Null(result);
+        Assert.Single(w.Notices);   // the 4 s hint was attempted (and threw)
+        Assert.Contains(P.Claim, w.Created);   // so a terminal that opens later finds the claim taken and exits
+        Assert.Contains(P.GaveUp, w.Created);
+    }
+
+    [Fact]
+    public void Macos_a_throwing_abandoned_line_write_does_not_stop_the_next_candidate()
+    {
+        var w = new World { ThrowOnNotice = true };
+        w.OnStart = cmd => cmd.FileName == "/bin/sh" ? new FakeProc(true, 127) : Claim(w);
+        var deps = w.Deps((PosixAgyTab.TerminalVar, "my-term"));
+        Assert.Equal("Terminal.app", PosixAgyTab.TryOpen(P, "/repo", deps, PosixAgyTab.MacOsReadyTimeout, isMacOS: true));
+        Assert.Single(w.Notices);   // the abandoned-candidate line was attempted (and threw)
+        Assert.Equal(2, w.Started.Count);
     }
 
     // The loop order per poll is: claim check, non-zero-exit check, timeout check, hint check (elapsed >= 4000), sleep 50.
@@ -625,7 +654,7 @@ public class PosixAgyTabTests
     [Fact]
     public void FindOnPath_returns_an_absolute_path_for_a_relative_PATH_entry()
     {
-        var dirName ="clavity-rel-" + Guid.NewGuid().ToString("N");
+        var dirName = "clavity-rel-" + Guid.NewGuid().ToString("N");
         var good = Path.Combine(Environment.CurrentDirectory, dirName);
         Directory.CreateDirectory(good);
         try
@@ -716,6 +745,10 @@ public class PosixAgyTabTests
         Assert.Contains("unset", m);
         Assert.Contains("CLAVITY_TERMINAL", m);
         Assert.Contains("a command that runs its last argument", m);
+        // The advice must not contradict "ignored over SSH": CLAVITY_TERMINAL is offered only for the local GUI session.
+        var flat = string.Join(' ', m.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        Assert.Contains("unset SSH_CONNECTION and SSH_TTY in a local GUI session on this machine (there, CLAVITY_TERMINAL can name a command that runs its last argument)", flat);
+        Assert.DoesNotContain("or set CLAVITY_TERMINAL", flat);
     }
 
     [Fact]
