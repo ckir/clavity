@@ -174,6 +174,27 @@ public sealed class PosixScriptRunTests : IDisposable
     }
 
     [Fact]
+    public void Lost_claim_absent_wins_over_a_gaveup_file_because_branch_a_is_tested_first()
+    {
+        if (OperatingSystem.IsWindows()) return;   // a dangling symlink needs a privilege there
+        // The claim cannot be created (set -C refuses a symlink, even a dangling one) and `-e` follows the symlink to
+        // nothing, so the claim is ABSENT while its sibling gave-up file exists: branches (a) and (b) both hold.
+        var claim = Fwd(Path.Combine(_dir, "s.claim"));
+        var target = Path.Combine(_dir, "no-such-target");
+        File.CreateSymbolicLink(claim, target);
+        File.WriteAllText(claim + ".gaveup", "");
+        var (bin, script, _, exited) = Setup("exit 0\n", claimPath: claim);
+        Assert.False(File.Exists(target), "precondition: the symlink must dangle (File.Exists(claim) would say true for the link itself)");
+
+        var (rc, stdout) = RunShOut(script, bin, "exec sh \"$2\" --here");
+
+        Assert.Equal(1, rc);
+        Assert.Contains(AbsentText + claim, stdout);
+        Assert.DoesNotContain(GaveUpText, stdout);
+        Assert.False(File.Exists(exited), "a loser must never write the exited file");
+    }
+
+    [Fact]
     public void Lost_claim_with_gaveup_present_prints_waits_and_exits_0()
     {
         var (bin, script, claim, exited) = Setup("exit 0\n");

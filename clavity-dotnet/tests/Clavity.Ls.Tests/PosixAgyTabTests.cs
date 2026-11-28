@@ -108,6 +108,8 @@ public class PosixAgyTabTests
             TryCreateExclusive = path =>
             {
                 if (ThrowOnCreate.Contains(path)) throw new UnauthorizedAccessException(path);
+                // Consistent with FileExists: once ClaimAt has passed, the claim already exists (a late script took it).
+                if (path == P.Claim && ClaimAt is { } at && Now >= at) return false;
                 if (!Files.Add(path)) return false;
                 Created.Add(path);
                 ExclusiveCreated = true;
@@ -158,6 +160,7 @@ public class PosixAgyTabTests
         Assert.Equal("x-terminal-emulator", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout, isMacOS: false));
         Assert.True(hung.Killed);
         Assert.True(w.Now >= 5000);
+        Assert.True(w.Now < 10_000, $"waited {w.Now} ms: the ladder used the macOS timeout instead of the readyTimeout it was given");
     }
 
     [Fact]
@@ -176,6 +179,8 @@ public class PosixAgyTabTests
         var w = new World();
         Assert.Null(PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout, isMacOS: false));
         Assert.True(w.ExclusiveCreated, "a terminal that opens later must find the claim taken and exit");
+        Assert.Contains(P.Claim, w.Files);   // ExclusiveCreated is also set by the GaveUp write: the claim itself is the point
+        Assert.Equal(P.Claim, w.Created[0]);
         Assert.Equal(6, w.Started.Count);   // every candidate was tried
     }
 
@@ -295,6 +300,52 @@ public class PosixAgyTabTests
         var deps = w.Deps((PosixAgyTab.TerminalVar, "my-term"));
         Assert.Equal("Terminal.app", PosixAgyTab.TryOpen(P, "/repo", deps, PosixAgyTab.MacOsReadyTimeout, isMacOS: true));
         Assert.Equal(new[] { "clavity: CLAVITY_TERMINAL did not start agy; trying Terminal.app" }, w.Notices);
+    }
+
+    [Fact]
+    public void Macos_a_candidate_that_exits_non_zero_is_abandoned_with_the_line_and_without_waiting_out_the_timeout()
+    {
+        var w = new World();
+        w.OnStart = cmd => cmd.FileName == "/bin/sh" ? new FakeProc(true, 127) : Claim(w);   // a missing command exits 127 at once
+        var deps = w.Deps((PosixAgyTab.TerminalVar, "my-term"));
+        Assert.Equal("Terminal.app", PosixAgyTab.TryOpen(P, "/repo", deps, PosixAgyTab.MacOsReadyTimeout, isMacOS: true));
+        Assert.Equal(new[] { "clavity: CLAVITY_TERMINAL did not start agy; trying Terminal.app" }, w.Notices);
+        Assert.True(w.Now < 1000, $"waited {w.Now} ms on a launcher that had already failed");
+    }
+
+    [Fact]
+    public void Macos_the_last_candidate_failing_to_start_prints_nothing_and_still_takes_the_claim()
+    {
+        var w = new World();
+        w.OnStart = _ => throw new System.ComponentModel.Win32Exception(2);
+        var deps = w.Deps();   // no override: Terminal.app is the only candidate
+        Assert.Null(PosixAgyTab.TryOpen(P, "/repo", deps, PosixAgyTab.MacOsReadyTimeout, isMacOS: true));
+        Assert.Equal(new[] { "/usr/bin/open" }, w.Started);
+        Assert.Empty(w.Notices);
+        Assert.Contains(P.Claim, w.Files);
+        Assert.DoesNotContain(P.GaveUp, w.Files);
+    }
+
+    // The loop order per poll is: claim check, non-zero-exit check, timeout check, hint check (elapsed >= 4000), sleep 50.
+    // Started at 0 the polls run at 0, 50, ..., so the poll at 4000 is the first that can hint.
+
+    [Fact]
+    public void Macos_a_claim_at_4050_ms_gets_exactly_one_hint_from_the_4000_ms_poll()
+    {
+        var w = new World { ClaimAt = 4050 };
+        w.OnStart = _ => new FakeProc(false, 0);   // a launcher that is still running
+        Assert.Equal("Terminal.app", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.MacOsReadyTimeout, isMacOS: true));
+        var notice = Assert.Single(w.Notices);
+        Assert.Contains("waiting for Terminal.app to start agy", notice);
+    }
+
+    [Fact]
+    public void Macos_a_claim_at_4000_ms_wins_the_4000_ms_poll_before_the_hint_check()
+    {
+        var w = new World { ClaimAt = 4000 };
+        w.OnStart = _ => new FakeProc(false, 0);
+        Assert.Equal("Terminal.app", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.MacOsReadyTimeout, isMacOS: true));
+        Assert.Empty(w.Notices);
     }
 
     [Fact]
