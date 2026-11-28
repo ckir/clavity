@@ -195,6 +195,36 @@ public sealed class PosixScriptRunTests : IDisposable
     }
 
     [Fact]
+    public void Lost_claim_branches_quote_a_claim_path_with_a_space_an_apostrophe_a_percent_a_dollar_and_a_backtick()
+    {
+        const string Hostile = "q d's %s $HOME `x`";   // a home folder like /Users/o'brien is ordinary on a Mac
+        var dir = Path.Combine(_dir, Hostile);
+
+        // (a) the claim cannot be created: its folder does not exist
+        var absent = Fwd(Path.Combine(dir, "gone", "s.claim"));
+        var (bin, script, _, _) = Setup("exit 0\n", claimPath: absent);
+        var (rcA, outA) = RunShOut(script, bin, "exec sh \"$2\" --here");
+        Assert.Equal(1, rcA);
+        Assert.Contains(AbsentText + absent, outA);
+
+        // (b) a claim and a gave-up file beside it
+        Directory.CreateDirectory(dir);
+        var claim = Fwd(Path.Combine(dir, "s.claim"));
+        File.WriteAllText(claim, "");
+        File.WriteAllText(claim + ".gaveup", "");
+        (bin, script, _, _) = Setup("exit 0\n", claimPath: claim);
+        var (rcB, outB) = RunShOut(script, bin, "exec sh \"$2\" --here");
+        Assert.Equal(0, rcB);
+        Assert.Contains(GaveUpText, outB);
+
+        // (c) a claim only
+        File.Delete(claim + ".gaveup");
+        var (rcC, outC) = RunShOut(script, bin, "exec sh \"$2\" --here");
+        Assert.Equal(0, rcC);
+        Assert.Contains(AlreadyClaimedText, outC);
+    }
+
+    [Fact]
     public void Lost_claim_with_gaveup_present_prints_waits_and_exits_0()
     {
         var (bin, script, claim, exited) = Setup("exit 0\n");

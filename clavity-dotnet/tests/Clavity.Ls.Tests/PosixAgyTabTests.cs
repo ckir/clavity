@@ -79,7 +79,9 @@ public class PosixAgyTabTests
     private sealed class FakeProc(bool exited, int code) : IStartedProcess
     {
         public bool HasExited { get; set; } = exited;
-        public int ExitCode => code;
+        // Like System.Diagnostics.Process, whose ExitCode throws until the process has exited: a fake that returned the code
+        // while running would let a ladder that reads ExitCode too early pass here and crash for real.
+        public int ExitCode => HasExited ? code : throw new InvalidOperationException("The process has not exited.");
         public bool Killed { get; private set; }
         public void Kill() { Killed = true; HasExited = true; }
     }
@@ -91,6 +93,8 @@ public class PosixAgyTabTests
         public long? ClaimAt;
         public readonly HashSet<string> Files = new();
         public readonly List<string> Started = new();
+        /// <summary>Every command handed to <c>Start</c>, whole (argv and working directory included).</summary>
+        public readonly List<LaunchCommand> Commands = new();
         public bool ExclusiveCreated;
         /// <summary>Paths created through <c>TryCreateExclusive</c>, in creation order (the HashSet has none).</summary>
         public readonly List<string> Created = new();
@@ -105,7 +109,7 @@ public class PosixAgyTabTests
         {
             GetEnv = Env(env.Length == 0 ? new[] { ("DISPLAY", ":0") } : env),
             ParentComms = () => new[] { "sshd" },   // nothing detected: the round-2 order
-            Start = cmd => { Started.Add(cmd.FileName); return OnStart(cmd); },
+            Start = cmd => { Started.Add(cmd.FileName); Commands.Add(cmd); return OnStart(cmd); },
             FileExists = path => Files.Contains(path) || (path == P.Claim && ClaimAt is { } at && Now >= at),
             TryCreateExclusive = path =>
             {
@@ -155,6 +159,68 @@ public class PosixAgyTabTests
         w.OnStart = cmd => cmd.FileName == "xdg-terminal-exec" ? new FakeProc(true, 1) : Claim(w);
         Assert.Equal("x-terminal-emulator", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout, isMacOS: false));
         Assert.True(w.Now < 1000, $"waited {w.Now} ms on a launcher that had already failed");
+    }
+
+    [Fact]
+    public void A_claim_that_exists_wins_even_when_the_launcher_exited_non_zero()
+    {
+        var w = new World();
+        w.OnStart = _ => { w.Files.Add(P.Claim); return new FakeProc(true, 1); };   // e.g. a terminal that forks, claims, then reports an error
+        Assert.Equal("xdg-terminal-exec", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout, isMacOS: false));
+        Assert.Equal(new[] { "xdg-terminal-exec" }, w.Started);
+    }
+
+    /// <summary>A launcher whose process exits non-zero only after <paramref name="exitAtMs"/> on the world's fake clock.</summary>
+    private sealed class DelayedFailure(World w, long exitAtMs) : IStartedProcess
+    {
+        public bool HasExited => w.Now >= exitAtMs;
+        public int ExitCode => HasExited ? 1 : throw new InvalidOperationException("The process has not exited.");
+        public void Kill() { }
+    }
+
+    [Fact]
+    public void A_launcher_that_fails_part_way_through_the_wait_is_abandoned_when_it_fails_not_at_the_timeout()
+    {
+        var w = new World();
+        w.OnStart = cmd => cmd.FileName == "xdg-terminal-exec" ? new DelayedFailure(w, 200) : Claim(w);
+        Assert.Equal("x-terminal-emulator", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.ReadyTimeout, isMacOS: false));
+        Assert.True(w.Now < 1000, $"waited {w.Now} ms on a launcher that failed at 200 ms");
+    }
+
+    [Fact]
+    public void Macos_hands_open_the_Terminal_bundle_the_script_and_the_folder()
+    {
+        var w = new World();
+        w.OnStart = _ => Claim(w);
+        Assert.Equal("Terminal.app", PosixAgyTab.TryOpen(P, "/repo", w.Deps(), PosixAgyTab.MacOsReadyTimeout, isMacOS: true));
+        var cmd = Assert.Single(w.Commands);
+        Assert.Equal("/usr/bin/open", cmd.FileName);
+        Assert.Equal(new[] { "-b", "com.apple.Terminal", P.AgyScript }, cmd.Arguments);
+        Assert.Equal("/repo", cmd.WorkingDirectory);
+    }
+
+    [Fact]
+    public void Macos_runs_a_CLAVITY_TERMINAL_override_through_sh_with_the_script_as_dollar_1()
+    {
+        var w = new World();
+        w.OnStart = _ => Claim(w);
+        var deps = w.Deps((PosixAgyTab.TerminalVar, "my-term --tab"));
+        Assert.Equal("CLAVITY_TERMINAL", PosixAgyTab.TryOpen(P, "/repo", deps, PosixAgyTab.MacOsReadyTimeout, isMacOS: true));
+        var cmd = Assert.Single(w.Commands);
+        Assert.Equal("/bin/sh", cmd.FileName);
+        Assert.Equal(new[] { "-c", "my-term --tab \"$1\"", "clavity-terminal", P.AgyScript }, cmd.Arguments);
+        Assert.Equal("/repo", cmd.WorkingDirectory);
+    }
+
+    [Fact]
+    public void GaveUp_is_created_when_an_earlier_terminal_launched_and_the_last_could_not_be_started()
+    {
+        var w = new World();
+        w.OnStart = cmd => cmd.FileName == "/usr/bin/open" ? throw new System.ComponentModel.Win32Exception(2) : new FakeProc(false, 0);
+        var deps = w.Deps((PosixAgyTab.TerminalVar, "my-term"));
+        Assert.Null(PosixAgyTab.TryOpen(P, "/repo", deps, PosixAgyTab.MacOsReadyTimeout, isMacOS: true));
+        // The override launched and timed out; Terminal.app then failed to start. A late override terminal must still be told.
+        Assert.Equal(new[] { P.Claim, P.GaveUp }, w.Created);
     }
 
     [Fact]
@@ -766,6 +832,8 @@ public class PosixAgyTabTests
         Assert.Contains("clavity-ls agy '/repo'", m);
         Assert.Contains("Terminal.app", m);
         Assert.Contains("10 s", m);
+        // Decision 4: the launcher's own error is not captured, so the message must name BOTH causes it cannot tell apart.
+        Assert.Contains("the launch failed or did not run the script", m);
         Assert.Contains("CLAVITY_TERMINAL", m);
         Assert.Contains("a command that runs its last argument", m);
         Assert.DoesNotContain("SSH_CONNECTION", m);
