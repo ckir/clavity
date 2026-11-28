@@ -307,9 +307,35 @@ public sealed class StartFlowTests
         var paths = SessionPaths.For(fx.UserProfile, fx.NewSessionId());
         var (path, content) = fx.Scripts.Single();
         Assert.Equal(paths.AgyScript, path);
-        Assert.Contains($"( set -C; : > {Launcher.ShQuote(paths.Claim)} ) 2>/dev/null || exit 0\n", content);
+        Assert.Contains($"( set -C; : > {Launcher.ShQuote(paths.Claim)} ) 2>/dev/null || {{", content);
         Assert.Contains($"clavity_exited={Launcher.ShQuote(paths.Exited)}\n", content);
         Assert.Contains($"cd {Launcher.ShQuote(Repo)} ||", content);
+    }
+
+    private const string FallbackPathLine = "PATH=\"${PATH:+$PATH:}\"'/fake/bin'";
+
+    [Fact]
+    public void Start_passes_the_resolved_agy_to_the_script()
+    {
+        var fx = new Fake();
+        Assert.Equal(0, StartFlow.Start([Repo], fx));
+        Assert.Contains(FallbackPathLine, fx.Scripts.Single().Content);
+    }
+
+    [Fact]
+    public void Start_with_a_profile_passes_the_resolved_agy_to_the_script()
+    {
+        var fx = ProfileFake();
+        Assert.Equal(0, StartFlow.Start([Repo, "--profile", "work"], fx));
+        Assert.Contains(FallbackPathLine, fx.Scripts.Single().Content);
+    }
+
+    [Fact]
+    public void The_agy_verb_passes_the_resolved_agy_to_the_script()
+    {
+        var fx = new Fake();
+        StartFlow.Agy([Repo], fx);
+        Assert.Contains(FallbackPathLine, fx.Scripts.Single().Content);
     }
 
     [Theory]
@@ -726,6 +752,31 @@ public sealed class StartFlowTests
         var fx = new Fake { TerminalOpens = false };
         Assert.Equal(1, StartFlow.Start([Repo], fx));
         Assert.Equal("terminal", fx.Calls[^2]);   // [^1] is the folder lock's release
+        Assert.Contains(PosixAgyTab.FallbackMessage(Repo), fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Macos_start_without_a_terminal_prints_the_macos_fallback()
+    {
+        var fx = new Fake { TerminalOpens = false, IsMacOS = true };
+        Assert.Equal(1, StartFlow.Start([Repo], fx));
+        Assert.Contains(PosixAgyTab.FallbackMessage(Repo, true, false), fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Macos_start_over_ssh_prints_the_ssh_reason()
+    {
+        var fx = new Fake { TerminalOpens = false, IsMacOS = true, IsSshSession = true };
+        Assert.Equal(1, StartFlow.Start([Repo], fx));
+        Assert.Contains(PosixAgyTab.FallbackMessage(Repo, true, true), fx.Err.ToString());
+        Assert.Contains("SSH_TTY", fx.Err.ToString());
+    }
+
+    [Fact]
+    public void Linux_start_over_ssh_prints_the_linux_text()
+    {
+        var fx = new Fake { TerminalOpens = false, IsMacOS = false, IsSshSession = true };
+        Assert.Equal(1, StartFlow.Start([Repo], fx));
         Assert.Contains(PosixAgyTab.FallbackMessage(Repo), fx.Err.ToString());
     }
 

@@ -32,6 +32,14 @@ public class SessionPathsTests
         Assert.Equal(Path.Combine(home, ".clavity", $"agy-session.{Sid}.alive"), p.Alive);
     }
 
+    [Fact]
+    public void GaveUp_is_the_claim_path_plus_gaveup()
+    {
+        var p = SessionPaths.For(Path.Combine("x", "home"), Sid);
+        Assert.Equal(p.Claim + ".gaveup", p.GaveUp);
+        Assert.Equal(p.Claim + ".gaveup", SessionPaths.GaveUpFor(p.Claim));
+    }
+
     [Theory]
     [InlineData(Sid, true)]
     [InlineData("AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE", true)]

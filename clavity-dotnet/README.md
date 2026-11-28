@@ -88,6 +88,14 @@ machine instead. In a folder
 neither has seen before, both agy and Claude Code ask you to trust it, each in its own window: answer agy's in its tab,
 or it does not pair.
 
+On macOS, `start` opens agy in a new Terminal.app window (not a tab) through `/usr/bin/open -b com.apple.Terminal`,
+and waits up to 10 s per terminal it tries (Linux: 5 s) for the terminal to start the script; it uses the claim file as proof that the
+terminal really started. Over ssh (`SSH_CONNECTION` or `SSH_TTY` set) it starts nothing and tells you to
+run `clavity-ls agy <folder>` in a terminal you can see, then `clavity-ls start <folder> --attach` in a second one;
+`CLAVITY_TERMINAL` is ignored over ssh on macOS. For iTerm2 or another macOS terminal, set `CLAVITY_TERMINAL` to a
+command that runs its last argument. What was checked:
+the macOS terminal ladder and generated script were exercised on a GitHub macOS runner; the full `clavity-ls start` command was not run on macOS.
+
 ### Running Claude under a profile
 
 The simplest route is `--profile`, which uses [agent-profile](https://github.com/ckir/aiprofiles) to do the setup
@@ -184,8 +192,8 @@ CLAUDE_CONFIG_DIR=~/.claude-profiles/test clavity-ls start ~/path/to/your/projec
   default does so per session id, or per pid when no session id is set); a call the caller
   cancels is rethrown to the SDK, so its reply has no fields, though its `cancelled` line is logged; the SDK's own
   "An error occurred invoking" errors are not covered.
-- `CLAVITY_TERMINAL` — Linux: the terminal command `start` opens agy with, run by `/bin/sh` with the script path
-  appended as its last argument, so shell quoting works (e.g. `gnome-terminal --tab --`).
+- `CLAVITY_TERMINAL` — the terminal command `start` opens agy with on Linux and macOS, run by `/bin/sh` with the
+  script path appended as its last argument, so shell quoting works (a Linux example: `gnome-terminal --tab --`).
 - `CLAVITY_DATA_DIR` — overrides the dir removed by `uninstall --purge-data` (default
   `%USERPROFILE%\.clavity`); mainly used by the test suite.
 

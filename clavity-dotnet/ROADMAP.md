@@ -4669,6 +4669,21 @@ Decide when picked up: add `ubuntu-latest` to the `test` job as a matrix leg (th
 **Status:** SHIPPED 2026-11-18 - the clock-driven tests section 106 left on real time now run on a virtual clock that starts five minutes BEFORE the real now (so a stray real-clock read can neither agree with it nor look past it), with a 30 s real bound on every await: the shared helpers and `FakeAskLs` made `internal` (`3b0c3e5d`); the generation-cap tests with exact window counts and a pump that advances only for a window parked on the server (`3f14a7ab`); the budget-gone label test, whose fake LS arms its own probe timer on the same clock so the label is decided at exactly the budget (`0f8ab8fc`); ten boot-race tests (`0642d0b3`); a stale comment (`1ef302ab`). The integration project dropped from about 30 s to 18 s. Every conversion was proven by a mutant that is RED on the converted test and, where the original could be made to show it, GREEN or weaker on the original: the generation `Since` and the cap comparison read from the real clock and its `>=` as `>` (the cap-outlived test, expected 5 calls, got 10, 2 and 6), the label's right-hand side from the real clock and its `>=` as `>`, the boot-race verdict rules, and the deadline check and poll delay on the real clock (each by the real bound). EIGHT tests stay on the real clock ON PURPOSE, each with a comment saying why: a hung handler bounded by a REAL transport deadline (`LookAsync_honors_the_boot_race_budget_..._hangs`, `Boot_race_reached_empty_whose_final_poll_is_clamped...`), a caller cancel after about 20 ms, three tests that finish on poll 1 or 3 in milliseconds, a socket connect failure in 300 ms, and a guard test with one real 150 ms window; a virtual budget would turn a real-deadline wait into a 10 minute one. A banned-API analyzer for `DateTime.UtcNow` was considered and rejected: once every site is pinned by a mutant-proven test it adds a build dependency and suppressions to a production project for no remaining benefit. Still open by design: the boot-race remaining-budget read is pinned for poll 1 only (later polls of that fake fail on the unreadable log before any RPC), so a fake that keeps answering RPCs after the clock advanced is what would pin a later poll.
 > **Previous status:** OPEN 2026-11-18 - left over from section 106. The generation clock (the `generating` tuple and the cap test in `WaitForIdleWithProgressAsync`) and the right-hand side of the budget-spent label test read the injected clock, but no test drives them with a fake: only the real-clock generation-cap tests (about 1.5 s and 5 s of real time) and `AskAsync_reports_absolute_max_when_the_budget_is_GONE_even_though_the_server_ended_the_window` reach them, and only under `TimeProvider.System`, so a stray `DateTime.UtcNow` at either site would still compile (a `DateTime` converts implicitly to `DateTimeOffset`) and pass. The sibling boot-race tests in `AgyChannelDownTests.cs` and `AgyViewIntegrationTests.cs` still use a real 2 s budget.
 
+### §114 — macOS terminal: the real-Mac check
+
+**Status:** OPEN 2026-11-28 - the Terminal.app ladder ships after a CI-runner check only; a real Mac has not run it.
+
+The macOS terminal ladder and the generated script were exercised on a GitHub macOS runner (live check: a throwaway `probe/macos-terminal` branch run on GitHub `macos-latest` calling the real `PosixAgyTab.TryOpen`, 3 of 3 passed; the run ids are in the pull request description); the full `clavity-ls start` command was not run on macOS. What a real Mac still has to show:
+
+- Gatekeeper and TCC dialogs, including the one a `cd` into Documents, Desktop or Downloads can raise.
+- A zsh login shell's PATH.
+- `.sh` handler overrides.
+- iTerm2 and other terminal bundles, through `CLAVITY_TERMINAL`.
+- A second macOS version.
+- agy's own macOS behaviour: its shell under zsh, Keychain auth, and pairing end to end.
+
+Design and the decisions behind it: `docs/superpowers/specs/2026-11-27-macos-agy-terminal-design.md`.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the

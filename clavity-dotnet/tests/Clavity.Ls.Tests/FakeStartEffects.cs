@@ -19,6 +19,8 @@ internal sealed class Fake : IStartEffects
     public readonly List<LaunchCommand> Ran = new();
     public readonly StringWriter Err = new();
     public bool IsWindows { get; init; }
+    public bool IsMacOS { get; init; }
+    public bool IsSshSession { get; init; }
     public TextWriter Error => Err;
     public string UserProfile => Path.Combine(Path.GetTempPath(), "clavity-flow-home");
     public string CurrentDirectory => Path.Combine(Path.GetTempPath(), "clavity-flow-cwd");
@@ -55,11 +57,13 @@ internal sealed class Fake : IStartEffects
     }
     public void PruneLogs(string logsDir) => Calls.Add("prune");
     public string? ReadProjectId(string agyHome) => null;
-    public bool OnPath(string exe)
+    public string? ResolveOnPath(string exe)
     {
         Calls.Add("onpath:" + exe);
-        return exe == "agy" ? AgyOnPath : exe == "pwsh.exe" ? PwshOnPath : exe is "agent-profile" or "agent-profile.exe" && AgentProfileOnPath;
+        var present = exe == "agy" ? AgyOnPath : exe == "pwsh.exe" ? PwshOnPath : exe is "agent-profile" or "agent-profile.exe" && AgentProfileOnPath;
+        return present ? "/fake/bin/" + exe : null;
     }
+    public bool OnPath(string exe) => ResolveOnPath(exe) is not null;
     public bool ClaudeFindable()
     {
         Calls.Add("claude?");

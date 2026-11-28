@@ -64,7 +64,7 @@ public sealed class PosixScriptRunTests : IDisposable
     /// <summary><paramref name="folderExists"/> false names a session folder that does not exist; <paramref name="withAgy"/>
     /// false leaves the fake agy out of the bin directory.</summary>
     private (string bin, string script, string claim, string exited) Setup(string fakeAgyBody, bool folderExists = true,
-        bool withAgy = true)
+        bool withAgy = true, string? claimPath = null, string? resolvedAgy = null)
     {
         var bin = Directory.CreateDirectory(Path.Combine(_dir, "bin")).FullName;
         var work = Path.Combine(_dir, "work dir");   // a space, on purpose
@@ -78,7 +78,7 @@ public sealed class PosixScriptRunTests : IDisposable
                 File.SetUnixFileMode(fakeAgy, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
 
-        var claim = Fwd(Path.Combine(_dir, "s.claim"));
+        var claim = claimPath ?? Fwd(Path.Combine(_dir, "s.claim"));
         var exited = Fwd(Path.Combine(_dir, "s p.exited"));   // a space: it is used inside the single-quoted trap
         var script = Path.Combine(_dir, "s.sh");
         File.WriteAllText(script, Launcher.BuildPosixScript(new LaunchOptions
@@ -89,7 +89,7 @@ public sealed class PosixScriptRunTests : IDisposable
             AgyEndpointFilePath = Fwd(Path.Combine(_dir, "ep.json")),
             SkipPermissions = true,
             AgyInstallDocPath = Fwd(Path.Combine(_dir, "doc.md")),
-        }, claim, exited));
+        }, claim, exited, resolvedAgy));
         return (bin, script, claim, exited);
     }
 
@@ -116,6 +116,167 @@ public sealed class PosixScriptRunTests : IDisposable
         Assert.True(File.Exists(claim));
         // The winner recorded agy's end; the loser (exit 0 at the claim) did not overwrite it.
         Assert.Equal("0", File.ReadAllText(exited).Trim());
+    }
+
+    /// <summary>Runs the script with stdin held OPEN until the script has ended or ~6 s pass: only a script that sits at
+    /// "Press Enter" lets the 6 s pass, and then "$3.timedout" exists. The writer side decides, not a clock, so
+    /// "did not wait" is not vacuous (a closed stdin would make every read return at once).</summary>
+    private (int rc, string stdout, bool waited) RunWaitProbe(string script, string bin, string args = "")
+    {
+        var probe = Fwd(Path.Combine(_dir, "probe"));
+        var (rc, stdout) = RunShOut(script, bin,
+            "( i=0; while [ ! -e \"$3.done\" ] && [ $i -lt 60 ]; do sleep 0.1; i=$((i+1)); done; " +
+            "[ -e \"$3.done\" ] || : > \"$3.timedout\" ) | { sh \"$2\" " + args + "; rc=$?; : > \"$3.done\"; exit $rc; }",
+            extra: probe);
+        return (rc, stdout, File.Exists(probe + ".timedout"));
+    }
+
+    /// <summary>The form of <paramref name="p"/> a POSIX shell on this machine understands inside PATH: Git Bash splits PATH
+    /// on the colon of <c>C:</c>, so on Windows <c>C:\\x</c> becomes <c>/c/x</c> (any drive letter); identity elsewhere.</summary>
+    private static string PosixForm(string p)
+    {
+        if (!OperatingSystem.IsWindows())
+            return p;
+        var f = Fwd(p);
+        return f.Length >= 3 && char.IsAsciiLetter(f[0]) && f[1] == ':' && f[2] == '/'
+            ? "/" + char.ToLowerInvariant(f[0]) + f[2..]
+            : f;
+    }
+
+    /// <summary>A fake agy in a directory that is NOT on the harness PATH, named with a space and an apostrophe.</summary>
+    private string HiddenAgy(string body, string marker = "hidden-agy")
+    {
+        var dir = Directory.CreateDirectory(Path.Combine(_dir, "hid den's", marker)).FullName;
+        var agy = Path.Combine(dir, "agy");
+        File.WriteAllText(agy, "#!/bin/sh\n" + body);
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(agy, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return agy;
+    }
+
+    private const string AbsentText = "clavity: cannot create the session claim file ";
+    private const string GaveUpText = "clavity-ls start gave up waiting for a terminal";
+    private const string AlreadyClaimedText = "did not start agy for this session because the session was already claimed";
+
+    [Fact]
+    public void Lost_claim_with_the_claim_absent_prints_the_error_waits_and_exits_1()
+    {
+        var claim = Fwd(Path.Combine(_dir, "nodir", "s.claim"));   // its folder does not exist: the claim cannot be created
+        var (bin, script, _, exited) = Setup("exit 0\n", claimPath: claim);
+
+        var (rc, stdout, waited) = RunWaitProbe(script, bin);
+
+        Assert.Equal(1, rc);
+        Assert.Contains(AbsentText + claim, stdout);
+        Assert.Contains("Press Enter to close.", stdout);
+        Assert.True(waited, "the script did not wait for Enter");
+        Assert.False(File.Exists(exited), "a loser must never write the exited file");
+    }
+
+    [Fact]
+    public void Lost_claim_absent_wins_over_a_gaveup_file_because_branch_a_is_tested_first()
+    {
+        if (OperatingSystem.IsWindows()) return;   // a dangling symlink needs a privilege there
+        // The claim cannot be created (set -C refuses a symlink, even a dangling one) and `-e` follows the symlink to
+        // nothing, so the claim is ABSENT while its sibling gave-up file exists: branches (a) and (b) both hold.
+        var claim = Fwd(Path.Combine(_dir, "s.claim"));
+        var target = Path.Combine(_dir, "no-such-target");
+        File.CreateSymbolicLink(claim, target);
+        File.WriteAllText(claim + ".gaveup", "");
+        var (bin, script, _, exited) = Setup("exit 0\n", claimPath: claim);
+        Assert.False(File.Exists(target), "precondition: the symlink must dangle (File.Exists(claim) would say true for the link itself)");
+
+        var (rc, stdout) = RunShOut(script, bin, "exec sh \"$2\" --here");
+
+        Assert.Equal(1, rc);
+        Assert.Contains(AbsentText + claim, stdout);
+        Assert.DoesNotContain(GaveUpText, stdout);
+        Assert.False(File.Exists(exited), "a loser must never write the exited file");
+    }
+
+    [Fact]
+    public void Lost_claim_branches_quote_a_claim_path_with_a_space_an_apostrophe_a_percent_a_dollar_and_a_backtick()
+    {
+        const string Hostile = "q d's %s $HOME `x`";   // a home folder like /Users/o'brien is ordinary on a Mac
+        var dir = Path.Combine(_dir, Hostile);
+
+        // (a) the claim cannot be created: its folder does not exist
+        var absent = Fwd(Path.Combine(dir, "gone", "s.claim"));
+        var (bin, script, _, _) = Setup("exit 0\n", claimPath: absent);
+        var (rcA, outA) = RunShOut(script, bin, "exec sh \"$2\" --here");
+        Assert.Equal(1, rcA);
+        Assert.Contains(AbsentText + absent, outA);
+
+        // (b) a claim and a gave-up file beside it
+        Directory.CreateDirectory(dir);
+        var claim = Fwd(Path.Combine(dir, "s.claim"));
+        File.WriteAllText(claim, "");
+        File.WriteAllText(claim + ".gaveup", "");
+        (bin, script, _, _) = Setup("exit 0\n", claimPath: claim);
+        var (rcB, outB) = RunShOut(script, bin, "exec sh \"$2\" --here");
+        Assert.Equal(0, rcB);
+        Assert.Contains(GaveUpText, outB);
+
+        // (c) a claim only
+        File.Delete(claim + ".gaveup");
+        var (rcC, outC) = RunShOut(script, bin, "exec sh \"$2\" --here");
+        Assert.Equal(0, rcC);
+        Assert.Contains(AlreadyClaimedText, outC);
+    }
+
+    [Fact]
+    public void Lost_claim_with_gaveup_present_prints_waits_and_exits_0()
+    {
+        var (bin, script, claim, exited) = Setup("exit 0\n");
+        File.WriteAllText(claim, "");
+        File.WriteAllText(claim + ".gaveup", "");
+
+        var (rc, stdout, waited) = RunWaitProbe(script, bin);
+
+        Assert.Equal(0, rc);
+        Assert.Contains(GaveUpText, stdout);
+        Assert.Contains("run clavity-ls start again", stdout);
+        Assert.Contains("Press Enter to close.", stdout);
+        Assert.True(waited, "the script did not wait for Enter");
+        Assert.False(File.Exists(exited), "a loser must never write the exited file");
+    }
+
+    [Fact]
+    public void Lost_claim_without_gaveup_prints_one_line_and_does_not_wait()
+    {
+        var (bin, script, claim, exited) = Setup("exit 0\n");
+        File.WriteAllText(claim, "");
+
+        var (rc, stdout, waited) = RunWaitProbe(script, bin);
+
+        Assert.Equal(0, rc);
+        var line = Assert.Single(stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        Assert.Contains(AlreadyClaimedText, line);
+        Assert.Contains("if clavity-ls start reported a problem, run it again", line);
+        Assert.False(waited, "the script waited for Enter although the session was simply already claimed");
+        Assert.False(File.Exists(exited), "a loser must never write the exited file");
+    }
+
+    [Theory]
+    [InlineData(false)]   // (a) claim absent
+    [InlineData(true)]    // (b) gave-up file present
+    public void Lost_claim_with_here_never_waits(bool gaveUp)
+    {
+        string? claimPath = gaveUp ? null : Fwd(Path.Combine(_dir, "nodir", "s.claim"));
+        var (bin, script, claim, exited) = Setup("exit 0\n", claimPath: claimPath);
+        if (gaveUp)
+        {
+            File.WriteAllText(claim, "");
+            File.WriteAllText(claim + ".gaveup", "");
+        }
+
+        var (rc, stdout, waited) = RunWaitProbe(script, bin, "--here");
+
+        Assert.Equal(gaveUp ? 0 : 1, rc);
+        Assert.Contains(gaveUp ? GaveUpText : AbsentText, stdout);
+        Assert.DoesNotContain("Press Enter to close.", stdout);
+        Assert.False(waited, "the script waited for Enter despite --here");
+        Assert.False(File.Exists(exited), "a loser must never write the exited file");
     }
 
     [Fact]
@@ -203,5 +364,56 @@ public sealed class PosixScriptRunTests : IDisposable
         Assert.Equal(127, rc);
         Assert.Equal("127", File.ReadAllText(exited).Trim());
         Assert.Contains("clavity: agy is not on PATH in this terminal. (exit 127)", stdout);
+    }
+
+    [Fact]
+    public void Path_fallback_finds_an_agy_only_in_the_resolved_directory()
+    {
+        var record = Fwd(Path.Combine(_dir, "path-seen.txt"));
+        var agy = HiddenAgy("printf '%s' \"$PATH\" > '" + record + "'\n");
+        var (bin, script, _, _) = Setup("", withAgy: false, resolvedAgy: PosixForm(agy));
+        // PATH is the empty bin directory alone, so only the fallback can find the fake agy.
+        var rc = RunSh(script, bin, "s=$(command -v sh); PATH=\"${PATH%%:*}\"; exec \"$s\" \"$2\" --here");
+        Assert.Equal(0, rc);
+        Assert.True(File.Exists(record), "the fake agy in the resolved directory did not run");
+        Assert.EndsWith(":" + PosixForm(Path.GetDirectoryName(agy)!), File.ReadAllText(record));
+    }
+
+    [Fact]
+    public void Path_fallback_with_an_empty_PATH_yields_the_bare_directory()
+    {
+        var record = Fwd(Path.Combine(_dir, "path-seen.txt"));
+        // Builtins only (printf, >): with PATH empty nothing else can be found.
+        var agy = HiddenAgy("printf '%s' \"$PATH\" > '" + record + "'\n");
+        var (bin, script, _, _) = Setup("", withAgy: false, resolvedAgy: PosixForm(agy));
+        // `${PATH:+$PATH:}` keeps an empty PATH from becoming ":dir" - an empty entry is the current directory.
+        var rc = RunSh(script, bin, "s=$(command -v sh); PATH=\"\"; exec \"$s\" \"$2\" --here");
+        Assert.Equal(0, rc);
+        Assert.Equal(PosixForm(Path.GetDirectoryName(agy)!), File.ReadAllText(record));
+    }
+
+    [Fact]
+    public void Path_fallback_does_not_run_when_agy_is_already_on_PATH()
+    {
+        var onPathRecord = Fwd(Path.Combine(_dir, "bin-path-seen.txt"));
+        var hiddenMarker = Fwd(Path.Combine(_dir, "hidden-ran"));
+        var hidden = HiddenAgy(": > '" + hiddenMarker + "'\n");
+        // The agy in bin records the PATH it was started with: were the fallback line unconditional, the resolved
+        // directory would be appended to it even though this agy was found first.
+        var (bin, script, _, _) = Setup("printf '%s' \"$PATH\" > '" + onPathRecord + "'\n", resolvedAgy: PosixForm(hidden));
+        Assert.Equal(0, RunSh(script, bin));
+        Assert.True(File.Exists(onPathRecord), "the agy on PATH did not run");
+        Assert.False(File.Exists(hiddenMarker));
+        Assert.DoesNotContain("hid den's", File.ReadAllText(onPathRecord));
+    }
+
+    [Fact]
+    public void Without_a_resolved_agy_a_missing_agy_still_records_127()
+    {
+        var (bin, script, _, exited) = Setup("", withAgy: false, resolvedAgy: null);
+        var (rc, stdout) = RunShOut(script, bin, "s=$(command -v sh); PATH=\"${PATH%%:*}\"; exec \"$s\" \"$2\" --here");
+        Assert.Equal(127, rc);
+        Assert.Equal("127", File.ReadAllText(exited).Trim());
+        Assert.Contains("agy is not on PATH in this terminal", stdout);
     }
 }

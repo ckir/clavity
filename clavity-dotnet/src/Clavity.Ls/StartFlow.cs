@@ -16,6 +16,10 @@ namespace Clavity.Ls;
 public interface IStartEffects
 {
     bool IsWindows { get; }
+    /// <summary>True on macOS, where the terminal ladder and the fallback message differ.</summary>
+    bool IsMacOS { get; }
+    /// <summary>True inside an SSH session (<see cref="PosixAgyTab.IsSshSession"/>).</summary>
+    bool IsSshSession { get; }
     TextWriter Error { get; }
     string UserProfile { get; }
     string CurrentDirectory { get; }
@@ -25,7 +29,10 @@ public interface IStartEffects
     /// <summary><see cref="LogRetention.Prune"/> with the default age, now.</summary>
     void PruneLogs(string logsDir);
     string? ReadProjectId(string agyHome);
-    /// <summary>True when <paramref name="exe"/> is a file in a PATH directory (<see cref="PosixAgyTab.FindOnPath"/>).</summary>
+    /// <summary>The absolute path of <paramref name="exe"/> when it is an executable file in a PATH directory
+    /// (<see cref="PosixAgyTab.FindOnPath"/>), else null.</summary>
+    string? ResolveOnPath(string exe);
+    /// <summary>True when <see cref="ResolveOnPath"/> finds <paramref name="exe"/>.</summary>
     bool OnPath(string exe);
     /// <summary>True when a bare-name start of Claude would find it: on Windows `claude.exe` in the order process creation
     /// searches; elsewhere `claude` on PATH.</summary>
@@ -134,7 +141,7 @@ public static class StartFlow
         var session = fx.NewSessionId();
         var paths = SessionPaths.For(home, session);
         fx.CreateDirectory(Path.GetDirectoryName(paths.AgyLog)!);
-        if (!fx.OnPath("agy"))
+        if (fx.ResolveOnPath("agy") is not { } agyPath)
         {
             fx.Error.WriteLine(AgyNotOnPath);
             return 1;
@@ -150,7 +157,7 @@ public static class StartFlow
             AgyEndpointFilePath = paths.Endpoint,
             SkipPermissions = true,
             AgyInstallDocPath = doc,
-        }, paths.Claim, paths.Exited));
+        }, paths.Claim, paths.Exited, agyPath));
         // `start --attach` without an id finds this session through its folder record, and counts it only while this
         // process holds .alive - taken FIRST, so a record never exists without a live holder (ROADMAP section 65).
         using var alive = fx.HoldSessionAlive(paths);
@@ -252,11 +259,12 @@ public static class StartFlow
         // Cheap presence checks BEFORE `--profile` setup: that setup installs plugins over the network, which must not run
         // for a start that cannot launch anyway. Both programs are checked before anything is opened, so a missing `claude`
         // found only after agy's tab is up cannot leave an orphaned agy behind.
+        string? agyPath = null;   // where this process found agy; the POSIX script falls back to its directory
         var presenceChecked = false;
         if (!start.Attach && start.Profile is not null)
         {
             presenceChecked = true;
-            if (!fx.IsWindows && !fx.OnPath("agy"))
+            if (!fx.IsWindows && (agyPath = fx.ResolveOnPath("agy")) is null)
             {
                 fx.Error.WriteLine(AgyNotOnPath);
                 return 1;
@@ -373,7 +381,7 @@ public static class StartFlow
         // an orphaned agy behind. (With --profile they were already checked, before the profile setup.)
         if (!presenceChecked)
         {
-            if (!fx.OnPath("agy"))
+            if ((agyPath = fx.ResolveOnPath("agy")) is null)
             {
                 fx.Error.WriteLine(AgyNotOnPath);
                 return 1;
@@ -381,10 +389,10 @@ public static class StartFlow
             if (!ClaudeIsStartable(fx))
                 return 1;
         }
-        fx.WriteScript(paths.AgyScript, Launcher.BuildPosixScript(options, paths.Claim, paths.Exited));
+        fx.WriteScript(paths.AgyScript, Launcher.BuildPosixScript(options, paths.Claim, paths.Exited, agyPath));
         if (!fx.OpenPosixTerminal(paths, folder))
         {
-            fx.Error.Write(PosixAgyTab.FallbackMessage(folder));
+            fx.Error.Write(PosixAgyTab.FallbackMessage(folder, fx.IsMacOS, fx.IsSshSession));
             return 1;
         }
         // Owner request 2026-10-03: the user sees agy - and any prompt it waits on - before Claude takes the terminal.

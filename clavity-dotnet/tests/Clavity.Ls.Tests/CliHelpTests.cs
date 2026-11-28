@@ -46,6 +46,19 @@ public sealed class CliHelpTests
     public void Help_is_not_requested(string line) => Assert.False(CliVerbs.IsHelpRequest(Words(line)), line);
 
     [Fact]
+    public void Help_terminal_line_is_platform_neutral()
+    {
+        var line = CliVerbs.HelpText().Split('\n').SingleOrDefault(l => l.Contains("CLAVITY_TERMINAL"));
+        Assert.NotNull(line);
+        Assert.DoesNotContain("Linux:", line);
+        Assert.DoesNotContain("gnome-terminal", line);
+        Assert.DoesNotContain("e.g.", line);
+        Assert.DoesNotContain("for example", line);
+        Assert.Contains("macOS", line);
+        Assert.Contains("last argument", line);
+    }
+
+    [Fact]
     public void Help_tells_a_cold_reader_how_to_install()
     {
         var help = CliVerbs.HelpText();

@@ -16,7 +16,13 @@ namespace Clavity.Cli;
 /// unit-tested; this file is exercised by the built-binary runs.</summary>
 internal sealed class RealStartEffects : IStartEffects
 {
+    private readonly Func<string, string?> _env;
+
+    public RealStartEffects(Func<string, string?>? env = null) => _env = env ?? Environment.GetEnvironmentVariable;
+
     public bool IsWindows => OperatingSystem.IsWindows();
+    public bool IsMacOS => OperatingSystem.IsMacOS();
+    public bool IsSshSession => PosixAgyTab.IsSshSession(_env);
     public TextWriter Error => Console.Error;
     public string UserProfile => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     public string CurrentDirectory => Directory.GetCurrentDirectory();
@@ -25,7 +31,8 @@ internal sealed class RealStartEffects : IStartEffects
     public void CreateDirectory(string path) => Directory.CreateDirectory(path);
     public void PruneLogs(string logsDir) => LogRetention.Prune(logsDir, LogRetention.DefaultMaxAge, DateTime.UtcNow);
     public string? ReadProjectId(string agyHome) => AgyEnvironment.TryReadProjectId(agyHome);
-    public bool OnPath(string exe) => PosixAgyTab.FindOnPath(exe, Environment.GetEnvironmentVariable("PATH")) is not null;
+    public string? ResolveOnPath(string exe) => PosixAgyTab.FindOnPath(exe, Environment.GetEnvironmentVariable("PATH"));
+    public bool OnPath(string exe) => ResolveOnPath(exe) is not null;
 
     // Windows: with UseShellExecute=false a bare name resolves to NAME.exe and never to a .cmd shim (measured on .NET 10:
     // `claude` with only claude.cmd on PATH -> Win32Exception, native error 2), searched the way CreateProcess searches -
@@ -45,7 +52,7 @@ internal sealed class RealStartEffects : IStartEffects
     public void WriteScript(string path, string content) => PosixAgyTab.WriteScript(path, content);
 
     public bool OpenPosixTerminal(SessionPaths paths, string folder) =>
-        PosixAgyTab.TryOpen(paths, folder, PosixAgyTab.RealDeps(), PosixAgyTab.ReadyTimeout) is not null;
+        PosixAgyTab.TryOpen(paths, folder, PosixAgyTab.RealDeps(), PosixAgyTab.ReadyTimeoutFor(IsMacOS), IsMacOS) is not null;
 
     public bool WaitForPairing(SessionPaths paths)
     {
